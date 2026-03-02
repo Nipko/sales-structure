@@ -1,0 +1,61 @@
+# Parallext Engine - Development Docker Compose
+# PostgreSQL + Redis + (optional) Chatwoot
+
+version: '3.9'
+
+services:
+  # ---- PostgreSQL with pgvector ----
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: parallext-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parallext
+      POSTGRES_PASSWORD: parallext_secret
+      POSTGRES_DB: parallext_engine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backup:/backup
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parallext -d parallext_engine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Redis (Cache + Queue) ----
+  redis:
+    image: redis:7-alpine
+    container_name: parallext-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Redis Commander (Dev UI) ----
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: parallext-redis-ui
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    profiles:
+      - dev-tools
+
+volumes:
+  postgres_data:
+    name: parallext-postgres-data
+  redis_data:
+    name: parallext-redis-data

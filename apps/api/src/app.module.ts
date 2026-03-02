@@ -1,0 +1,64 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { BullModule } from '@nestjs/bullmq';
+
+// Core modules
+import { PrismaModule } from './modules/prisma/prisma.module';
+import { RedisModule } from './modules/redis/redis.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
+import { ChannelsModule } from './modules/channels/channels.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
+import { AIModule } from './modules/ai/ai.module';
+import { PersonaModule } from './modules/persona/persona.module';
+import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { HandoffModule } from './modules/handoff/handoff.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { HealthModule } from './modules/health/health.module';
+
+// Configuration
+import appConfig from './config/app.config';
+import databaseConfig from './config/database.config';
+import redisConfig from './config/redis.config';
+import authConfig from './config/auth.config';
+import llmConfig from './config/llm.config';
+
+@Module({
+    imports: [
+        // Global config
+        ConfigModule.forRoot({
+            isGlobal: true,
+            load: [appConfig, databaseConfig, redisConfig, authConfig, llmConfig],
+            envFilePath: ['.env.local', '.env'],
+        }),
+
+        // Scheduled tasks (backups, cleanup)
+        ScheduleModule.forRoot(),
+
+        // BullMQ message queue
+        BullModule.forRoot({
+            connection: {
+                host: process.env.REDIS_HOST || 'localhost',
+                port: parseInt(process.env.REDIS_PORT || '6379'),
+            },
+        }),
+
+        // Core infrastructure
+        PrismaModule,
+        RedisModule,
+        HealthModule,
+
+        // Business modules
+        AuthModule,
+        TenantsModule,
+        ChannelsModule,
+        ConversationsModule,
+        AIModule,
+        PersonaModule,
+        KnowledgeModule,
+        HandoffModule,
+        AnalyticsModule,
+    ],
+})
+export class AppModule { }

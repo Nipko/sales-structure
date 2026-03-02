@@ -1,0 +1,100 @@
+// Parallext Engine - Prisma Schema
+// Multi-tenant platform with schema-per-tenant strategy
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), uuid_ossp(map: "uuid-ossp")]
+  schemas    = ["public"]
+}
+
+// ============================================
+// PUBLIC SCHEMA — Global tables
+// ============================================
+
+// ---- Tenants (Client businesses) ----
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  industry    String
+  language    String   @default("es-CO")
+  schemaName  String   @unique @map("schema_name")
+  isActive    Boolean  @default(true)
+  plan        String   @default("starter")
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users             User[]
+  channelAccounts   ChannelAccount[]
+
+  @@map("tenants")
+  @@schema("public")
+}
+
+// ---- Users (Platform users: admins, agents) ----
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  role        String   @default("tenant_agent") // super_admin, tenant_admin, tenant_agent, tenant_viewer
+  tenantId    String?  @map("tenant_id")
+  isActive    Boolean  @default(true)
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("users")
+  @@schema("public")
+}
+
+// ---- Channel Accounts (WhatsApp numbers, IG accounts, etc.) ----
+model ChannelAccount {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  channelType   String   @map("channel_type")  // whatsapp, instagram, messenger, telegram
+  accountId     String   @map("account_id")     // Phone number / page ID / bot token
+  displayName   String   @map("display_name")
+  accessToken   String   @map("access_token")   // Encrypted
+  refreshToken  String?  @map("refresh_token")  // Encrypted
+  webhookSecret String?  @map("webhook_secret")
+  isActive      Boolean  @default(true)
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([channelType, accountId])
+  @@index([tenantId])
+  @@map("channel_accounts")
+  @@schema("public")
+}
+
+// ---- Audit Log ----
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  tenantId  String?  @map("tenant_id")
+  action    String
+  resource  String
+  details   Json     @default("{}")
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@map("audit_logs")
+  @@schema("public")
+}

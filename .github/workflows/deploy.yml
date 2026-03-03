@@ -13,11 +13,14 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
+          envs: GH_TOKEN
           script: |
             set -e
             echo "🚀 Inciando despliegue en Hostinger VPS..."
@@ -26,28 +29,36 @@ jobs:
             mkdir -p /opt/parallext-engine
             cd /opt/parallext-engine
             
-            # 2. Clonar o actualizar el repo
+            # 2. URL autenticada con token temporal de GitHub Actions
+            REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+            
+            # 3. Clonar o actualizar el repo
             if [ ! -d ".git" ]; then
               echo "Clonando repositorio por primera vez..."
-              git clone https://github.com/Nipko/sales-structure.git .
+              git clone $REPO_URL .
             else
               echo "Actualizando repositorio..."
+              # Actualizar la URL remota con el token fresco de ESTA ejecución
+              git remote set-url origin $REPO_URL
               git fetch origin
               git reset --hard origin/main
             fi
             
-            # 3. Crear .env si no existe (usa defaults seguros para desarrollo)
+            # Limpiar el token del remote URL después de descargar (seguridad)
+            git remote set-url origin https://github.com/${{ github.repository }}.git
+            
+            # 4. Crear .env si no existe
             if [ ! -f ".env" ]; then
               echo "Creando archivo .env con valores por defecto..."
               cp .env.example .env
             fi
             
-            # 4. Iniciar Docker (solo DB + Redis por ahora, sin build de apps)
+            # 5. Iniciar Docker (solo DB + Redis por ahora)
             echo "🐳 Levantando infraestructura base (PostgreSQL + Redis)..."
             docker compose -f infra/docker/docker-compose.yml down || true
             docker compose -f infra/docker/docker-compose.yml up -d
             
-            # 5. Verificar que los servicios están arriba
+            # 6. Verificar
             sleep 5
             echo "📊 Estado de los contenedores:"
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"

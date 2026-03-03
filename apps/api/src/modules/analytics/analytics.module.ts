@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AnalyticsService } from './analytics.service';
+import { AnalyticsController } from './analytics.controller';
 
 @Module({
-    // TODO: AnalyticsService
-    // - Track events: conversation_started, resolved, handoff, order_created, etc.
-    // - Per-tenant dashboard metrics
-    // - Conversation volume, resolution rate, response time
-    // - LLM cost tracking per tenant
-    // - Model usage distribution
-    // - Revenue attribution
+    providers: [AnalyticsService],
+    controllers: [AnalyticsController],
+    exports: [AnalyticsService],
 })
 export class AnalyticsModule { }

@@ -76,6 +76,20 @@ export class RedisService implements OnModuleDestroy {
         await this.setJson(this.tenantKey(tenantId, `conv:${conversationId}:context`), context, ttlSeconds);
     }
 
+    // ---- Counter Operations ----
+
+    async incr(key: string): Promise<number> {
+        return this.client.incr(key);
+    }
+
+    async incrByFloat(key: string, increment: number): Promise<string> {
+        return this.client.incrbyfloat(key, increment);
+    }
+
+    async expire(key: string, seconds: number): Promise<void> {
+        await this.client.expire(key, seconds);
+    }
+
     // ---- Rate Limiting ----
 
     async incrementRateLimit(key: string, windowSeconds: number): Promise<number> {

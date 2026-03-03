@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
+import { HandoffService } from './handoff.service';
+import { HandoffController } from './handoff.controller';
 
 @Module({
-    // TODO: HandoffService
-    // - Detect handoff triggers from persona config
-    // - Create Chatwoot conversation with AI summary
-    // - Assign to available human agent
-    // - Sync messages between platform and Chatwoot
-    // - Handle handoff completion (return to AI)
+    providers: [HandoffService],
+    controllers: [HandoffController],
+    exports: [HandoffService],
 })
 export class HandoffModule { }

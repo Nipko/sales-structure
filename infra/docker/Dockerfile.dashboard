@@ -1,0 +1,39 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy root package files
+COPY package.json package-lock.json* turbo.json ./
+
+# Copy workspace package files
+COPY apps/dashboard/package.json ./apps/dashboard/
+COPY packages/shared/package.json ./packages/shared/
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY packages/shared/ ./packages/shared/
+COPY apps/dashboard/ ./apps/dashboard/
+
+# Build
+RUN npx turbo build --filter=@parallext/dashboard
+
+# ---- Production image ----
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy built Next.js standalone output
+COPY --from=builder /app/apps/dashboard/.next/standalone ./
+COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
+COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
+
+EXPOSE 3001
+
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "apps/dashboard/server.js"]

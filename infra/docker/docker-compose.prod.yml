@@ -1,7 +1,5 @@
 # Parallext Engine - Production Docker Compose
 
-version: '3.9'
-
 services:
   # ---- API Server ----
   api:
@@ -12,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD}@postgres:5432/parallext_engine
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
     env_file:
@@ -47,11 +45,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: parallext
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-parallext_secret}
       POSTGRES_DB: parallext_engine
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backup:/backup
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U parallext -d parallext_engine" ]
       interval: 10s
@@ -63,11 +60,11 @@ services:
     image: redis:7-alpine
     container_name: parallext-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5

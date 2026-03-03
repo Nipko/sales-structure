@@ -13,32 +13,42 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }} # Usar contraseña o SSH_KEY
-          # key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
+          envs: GITHUB_TOKEN
           script: |
+            set -e # Detener el script inmediatamente si hay un error
             echo "🚀 Inciando despliegue en Hostinger VPS..."
             
-            # Asegurarse de que el directorio existe (solo la primera vez)
+            # 1. Preparar directorio
             mkdir -p /opt/parallext-engine
             cd /opt/parallext-engine
             
-            # Si no es un repo git, clonarlo (requiere token o deploy key configurada en el VPS)
+            # 2. Configurar URL de Git con Token de Github Actions (funciona con repos privados)
+            # Reemplaza automáticamente el usuario y el nombre del repo de github
+            REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+            
+            # 3. Descargar código
             if [ ! -d ".git" ]; then
-              echo "Clonando repositorio por primera vez..."
-              git clone https://github.com/Nipko/sales-structure.git .
+              echo "Clonando repositorio por primera vez en carpeta vacía..."
+              git clone $REPO_URL temp_dir
+              cp -r temp_dir/. .
+              rm -rf temp_dir
             else
-              echo "Actualizando repositorio..."
-              git reset --hard HEAD
-              git pull origin main
+              echo "Actualizando repositorio existente..."
+              git remote set-url origin $REPO_URL
+              git fetch origin
+              git reset --hard origin/main
             fi
             
-            # Ejecutar despliegue con Docker Compose
+            # 4. Iniciar Docker
             echo "🐳 Construyendo y levantando contenedores Docker..."
-            docker compose -f infra/docker/docker-compose.prod.yml down
+            docker compose -f infra/docker/docker-compose.prod.yml down || true
             docker compose -f infra/docker/docker-compose.prod.yml up -d --build
             
-            echo "✅ Despliegue completado con éxito"
+            echo "✅ Despliegue completado con éxito en el VPS"

@@ -37,6 +37,7 @@ export interface MessageContent {
 }
 
 export interface OutboundMessage {
+    tenantId: string;
     to: string;
     channelType: ChannelType;
     channelAccountId: string;

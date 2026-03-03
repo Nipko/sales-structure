@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
+import { ConversationsService } from './conversations.service';
+import { ConversationsController } from './conversations.controller';
+import { PersonaModule } from '../persona/persona.module';
+import { AIModule } from '../ai/ai.module';
+import { ChannelsModule } from '../channels/channels.module';
 
 @Module({
-    // TODO: ConversationsService, ConversationsController
-    // - Manage conversation lifecycle (create, resolve, archive)
-    // - Orchestrate: receive normalized message → load persona → call LLM Router → generate response → send via channel
-    // - Manage conversation stage transitions (greeting → discovery → negotiation → closing)
-    // - Track estimated ticket value for routing decisions
+    imports: [PersonaModule, AIModule, ChannelsModule],
+    providers: [ConversationsService],
+    controllers: [ConversationsController],
+    exports: [ConversationsService],
 })
 export class ConversationsModule { }

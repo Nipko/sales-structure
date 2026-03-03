@@ -36,7 +36,7 @@
         "ioredis": "^5.4.0",
         "js-yaml": "^4.1.0",
         "openai": "^4.70.0",
-        "@anthropic-ai/sdk": "^0.34.0",
+        "@anthropic-ai/sdk": "latest",
         "@google/generative-ai": "^0.21.0",
         "passport": "^0.7.0",
         "passport-jwt": "^4.0.1",

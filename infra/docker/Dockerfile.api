@@ -2,6 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install OpenSSL for Prisma engine build
+RUN apk add --no-cache openssl
+
 # Copy root package files
 COPY package.json package-lock.json* turbo.json ./
 
@@ -16,7 +19,7 @@ RUN npm install
 COPY packages/shared/ ./packages/shared/
 COPY apps/api/ ./apps/api/
 
-# Generate Prisma client
+# Generate Prisma client for linux-musl (Alpine)
 RUN cd apps/api && npx prisma generate
 
 # Build
@@ -29,13 +32,15 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy the entire built monorepo (deps are hoisted at root)
+# Prisma needs OpenSSL to run on Alpine
+RUN apk add --no-cache openssl
+
+# Copy the built app with hoisted node_modules
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
 COPY --from=builder /app/apps/api/package.json ./
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD node -e "const http = require('http'); http.get('http://localhost:3000/api/v1/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 

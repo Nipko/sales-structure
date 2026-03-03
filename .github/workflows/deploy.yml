@@ -21,46 +21,51 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: 22
           envs: GH_TOKEN
+          command_timeout: 15m
           script: |
             set -e
-            echo "🚀 Inciando despliegue en Hostinger VPS..."
+            echo "🚀 Iniciando despliegue de Parallext Engine..."
             
             # 1. Preparar directorio
             mkdir -p /opt/parallext-engine
             cd /opt/parallext-engine
             
-            # 2. URL autenticada con token temporal de GitHub Actions
+            # 2. Clonar o actualizar código
             REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-            
-            # 3. Clonar o actualizar el repo
             if [ ! -d ".git" ]; then
-              echo "Clonando repositorio por primera vez..."
+              echo "📦 Clonando repositorio..."
               git clone $REPO_URL .
             else
-              echo "Actualizando repositorio..."
-              # Actualizar la URL remota con el token fresco de ESTA ejecución
+              echo "🔄 Actualizando repositorio..."
               git remote set-url origin $REPO_URL
               git fetch origin
               git reset --hard origin/main
             fi
-            
-            # Limpiar el token del remote URL después de descargar (seguridad)
+            # Limpiar token del remote
             git remote set-url origin https://github.com/${{ github.repository }}.git
             
-            # 4. Crear .env si no existe
+            # 3. Crear .env si no existe
             if [ ! -f ".env" ]; then
-              echo "Creando archivo .env con valores por defecto..."
+              echo "📝 Creando .env desde .env.example..."
               cp .env.example .env
+              echo "⚠️  IMPORTANTE: Edita /opt/parallext-engine/.env con tus credenciales reales"
             fi
             
-            # 5. Iniciar Docker (solo DB + Redis por ahora)
-            echo "🐳 Levantando infraestructura base (PostgreSQL + Redis)..."
-            docker compose -f infra/docker/docker-compose.yml down || true
-            docker compose -f infra/docker/docker-compose.yml up -d
+            # 4. Bajar contenedores anteriores
+            echo "🛑 Deteniendo servicios anteriores..."
+            docker compose -f infra/docker/docker-compose.prod.yml down || true
+            
+            # 5. Construir y levantar TODO el stack
+            echo "🐳 Construyendo y levantando el stack completo..."
+            docker compose -f infra/docker/docker-compose.prod.yml up -d --build
             
             # 6. Verificar
-            sleep 5
+            sleep 10
+            echo ""
             echo "📊 Estado de los contenedores:"
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             
-            echo "✅ Despliegue completado con éxito"
+            echo ""
+            echo "✅ Despliegue completado"
+            echo "🌐 API:       http://api.parallly-chat.cloud"
+            echo "🛠️ Dashboard: http://admin.parallly-chat.cloud"

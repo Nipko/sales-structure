@@ -16,7 +16,7 @@ RUN npm install
 COPY packages/shared/ ./packages/shared/
 COPY apps/dashboard/ ./apps/dashboard/
 
-# Build
+# Build (standalone output mode configured in next.config.ts)
 RUN npx turbo build --filter=@parallext/dashboard
 
 # ---- Production image ----
@@ -25,15 +25,14 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
 
-# Copy built Next.js standalone output
+# Next.js standalone output includes its own node_modules
 COPY --from=builder /app/apps/dashboard/.next/standalone ./
 COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
 
 EXPOSE 3001
-
-ENV PORT=3001
-ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "apps/dashboard/server.js"]

@@ -9,7 +9,7 @@ COPY package.json package-lock.json* turbo.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
-# Install dependencies
+# Install ALL dependencies (monorepo hoists to root)
 RUN npm install
 
 # Copy source code
@@ -29,15 +29,14 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy built artifacts
+# Copy the entire built monorepo (deps are hoisted at root)
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
-COPY --from=builder /app/apps/api/node_modules ./node_modules
-COPY --from=builder /app/node_modules ./root_node_modules
 COPY --from=builder /app/apps/api/package.json ./
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD node -e "const http = require('http'); http.get('http://localhost:3000/api/v1/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 EXPOSE 3000

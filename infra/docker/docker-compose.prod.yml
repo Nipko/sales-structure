@@ -1,5 +1,5 @@
 # Parallext Engine - Production Docker Compose
-# Uses Cloudflare Tunnel (Zero Trust) — no ports exposed
+# Auto-deploys via Watchtower when new images are pushed to GHCR
 
 services:
   # ---- Cloudflare Tunnel ----
@@ -9,16 +9,14 @@ services:
     restart: unless-stopped
     command: tunnel --config /etc/cloudflared/config.yml run parallext
     volumes:
-      - /root/.cloudflared:/etc/cloudflared:ro
+      - /opt/cloudflared:/etc/cloudflared:ro
     depends_on:
       - api
       - dashboard
 
   # ---- API Server ----
   api:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.api
+    image: ghcr.io/nipko/parallext-api:latest
     container_name: parallext-api
     restart: unless-stopped
     environment:
@@ -35,12 +33,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   # ---- Dashboard ----
   dashboard:
-    build:
-      context: ../../
-      dockerfile: infra/docker/Dockerfile.dashboard
+    image: ghcr.io/nipko/parallext-dashboard:latest
     container_name: parallext-dashboard
     restart: unless-stopped
     environment:
@@ -50,6 +48,8 @@ services:
       - "3001"
     depends_on:
       - api
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   # ---- PostgreSQL + pgvector ----
   postgres:
@@ -85,6 +85,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ---- Watchtower (auto-deploys new images) ----
+  watchtower:
+    image: containrrr/watchtower
+    container_name: parallext-watchtower
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: 300
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_NOTIFICATIONS: "shoutrrr"
+      WATCHTOWER_NOTIFICATION_URL: ""
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
 
 volumes:
   postgres_data:

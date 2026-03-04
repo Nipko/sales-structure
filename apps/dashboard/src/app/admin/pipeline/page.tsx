@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     DollarSign,
@@ -64,6 +65,7 @@ const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 
 export default function PipelinePage() {
     const { user } = useAuth();
+    const { activeTenantId } = useTenant();
     const [stages, setStages] = useState(mockStages);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
     const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -72,15 +74,15 @@ export default function PipelinePage() {
     // Load kanban from API
     useEffect(() => {
         async function load() {
-            if (!user?.tenantId) return;
-            const result = await api.getKanban(user.tenantId);
+            if (!activeTenantId) return;
+            const result = await api.getKanban(activeTenantId);
             if (result.success && Array.isArray(result.data) && result.data.length > 0) {
                 setStages(result.data);
                 setIsLive(true);
             }
         }
         load();
-    }, [user?.tenantId]);
+    }, [activeTenantId]);
 
     const totalValue = stages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value, 0);
     const weightedValue = stages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value * (d.probability / 100), 0);

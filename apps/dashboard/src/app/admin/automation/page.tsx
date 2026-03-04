@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Zap,
@@ -79,25 +80,26 @@ const triggerLabels: Record<string, string> = {
 
 export default function AutomationPage() {
     const { user } = useAuth();
+    const { activeTenantId } = useTenant();
     const [rules, setRules] = useState(mockRules);
     const [isLive, setIsLive] = useState(false);
 
     // Load automation rules from API
     useEffect(() => {
         async function load() {
-            if (!user?.tenantId) return;
-            const result = await api.getAutomationRules(user.tenantId);
+            if (!activeTenantId) return;
+            const result = await api.getAutomationRules(activeTenantId);
             if (result.success && Array.isArray(result.data) && result.data.length > 0) {
                 setRules(result.data as any);
                 setIsLive(true);
             }
         }
         load();
-    }, [user?.tenantId]);
+    }, [activeTenantId]);
 
     const toggleRule = async (id: string) => {
         setRules(prev => prev.map(r => r.id === id ? { ...r, isActive: !r.isActive } : r));
-        if (user?.tenantId) await api.toggleRule(user.tenantId, id);
+        if (activeTenantId) await api.toggleRule(activeTenantId, id);
     };
 
     const activeCount = rules.filter(r => r.isActive).length;

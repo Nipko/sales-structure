@@ -2,6 +2,7 @@
 
 import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/contexts/AuthContext";
+import { TenantProvider, TenantSelector } from "@/contexts/TenantContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -53,32 +54,35 @@ export default function AdminLayout({
                     overflow: "auto",
                 }}
             >
-                {/* Top Bar with user info */}
-                <div style={{
-                    display: "flex", justifyContent: "flex-end", alignItems: "center",
-                    marginBottom: 16, gap: 12,
-                }}>
-                    <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>
-                            {user?.firstName} {user?.lastName}
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                            {user?.role?.replace("_", " ")} {user?.tenantName ? `· ${user.tenantName}` : ""}
-                        </div>
-                    </div>
+                <TenantProvider>
+                    {/* Top Bar with user info */}
                     <div style={{
-                        width: 36, height: 36, borderRadius: "50%",
-                        background: "linear-gradient(135deg, var(--accent), #9b59b6)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                    }}
-                        title="Cerrar sesión"
-                        onClick={logout}
-                    >
-                        {user?.firstName?.charAt(0) || "U"}
+                        display: "flex", justifyContent: "flex-end", alignItems: "center",
+                        marginBottom: 16, gap: 12,
+                    }}>
+                        <TenantSelector />
+                        <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                {user?.firstName} {user?.lastName}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                {user?.role?.replace("_", " ")} {user?.tenantName ? `· ${user.tenantName}` : ""}
+                            </div>
+                        </div>
+                        <div style={{
+                            width: 36, height: 36, borderRadius: "50%",
+                            background: "linear-gradient(135deg, var(--accent), #9b59b6)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                        }}
+                            title="Cerrar sesión"
+                            onClick={logout}
+                        >
+                            {user?.firstName?.charAt(0) || "U"}
+                        </div>
                     </div>
-                </div>
-                {children}
+                    {children}
+                </TenantProvider>
             </main>
         </div>
     );

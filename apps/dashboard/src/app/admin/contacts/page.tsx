@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Search,
@@ -68,6 +69,7 @@ const segmentColors: Record<string, { bg: string; color: string }> = {
 
 export default function ContactsPage() {
     const { user } = useAuth();
+    const { activeTenantId } = useTenant();
     const [contacts, setContacts] = useState(mockContacts);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeSegment, setActiveSegment] = useState<string>("all");
@@ -78,12 +80,12 @@ export default function ContactsPage() {
         async function load() {
             // Contacts endpoint TBD — for now use mock
             // When API has /contacts endpoint, uncomment:
-            // if (!user?.tenantId) return;
-            // const result = await api.getContacts(user.tenantId);
+            // if (!activeTenantId) return;
+            // const result = await api.getContacts(activeTenantId);
             // if (result.success && Array.isArray(result.data)) ...
         }
         load();
-    }, [user?.tenantId]);
+    }, [activeTenantId]);
 
     const segments = [
         { key: "all", label: "Todos", count: contacts.length },

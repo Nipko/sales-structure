@@ -4,6 +4,17 @@
 
 ---
 
+## [1.4.1] — 2026-03-04
+
+### 🏢 Tenant Context & Full API Integration
+- **TenantContext** (`contexts/TenantContext.tsx`) — Provider + `useTenant()` hook for tenant-scoped API calls
+- **TenantSelector** — Dropdown in top bar for super_admin to switch between tenants
+- **All 8 pages** connected: Dashboard, Tenants, Inbox, Settings, Pipeline, Analytics, Automation, Contacts
+- Pages auto-reload data when super_admin switches tenant
+- All pages show **LIVE/DEMO badge** for data source transparency
+
+---
+
 ## [1.4.0] — 2026-03-03
 
 ### 🔗 Frontend → API Integration

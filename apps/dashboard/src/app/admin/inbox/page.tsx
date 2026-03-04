@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Search,
@@ -113,6 +114,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 
 export default function InboxPage() {
     const { user } = useAuth();
+    const { activeTenantId } = useTenant();
     const [filter, setFilter] = useState<InboxFilter>("all");
     const [conversations, setConversations] = useState(mockConversations);
     const [selectedConv, setSelectedConv] = useState(mockConversations[0]);
@@ -125,8 +127,8 @@ export default function InboxPage() {
     // Load conversations from API
     useEffect(() => {
         async function load() {
-            if (!user?.tenantId) return;
-            const result = await api.getInbox(user.tenantId);
+            if (!activeTenantId) return;
+            const result = await api.getInbox(activeTenantId);
             if (result.success && Array.isArray(result.data) && result.data.length > 0) {
                 setConversations(result.data);
                 setSelectedConv(result.data[0]);
@@ -134,7 +136,7 @@ export default function InboxPage() {
             }
         }
         load();
-    }, [user?.tenantId]);
+    }, [activeTenantId]);
 
     const filteredConversations = conversations.filter(c => {
         if (searchQuery) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     BarChart3,
@@ -64,6 +65,7 @@ type TabType = "overview" | "agents" | "csat";
 
 export default function AgentAnalyticsPage() {
     const { user } = useAuth();
+    const { activeTenantId } = useTenant();
     const [activeTab, setActiveTab] = useState<TabType>("overview");
     const [overview, setOverview] = useState(mockOverview);
     const [agents, setAgents] = useState(mockAgents);
@@ -74,18 +76,18 @@ export default function AgentAnalyticsPage() {
     // Load analytics from API
     useEffect(() => {
         async function load() {
-            if (!user?.tenantId) return;
+            if (!activeTenantId) return;
             const [overviewRes, agentsRes, csatRes] = await Promise.all([
-                api.getOverviewStats(user.tenantId),
-                api.getAgentLeaderboard(user.tenantId),
-                api.getCSATResponses(user.tenantId),
+                api.getOverviewStats(activeTenantId),
+                api.getAgentLeaderboard(activeTenantId),
+                api.getCSATResponses(activeTenantId),
             ]);
             if (overviewRes.success && overviewRes.data) { setOverview(overviewRes.data as any); setIsLive(true); }
             if (agentsRes.success && Array.isArray(agentsRes.data)) setAgents(agentsRes.data as any);
             if (csatRes.success && Array.isArray(csatRes.data)) setCsatRecent(csatRes.data as any);
         }
         load();
-    }, [user?.tenantId]);
+    }, [activeTenantId]);
 
     const csatTotal = Object.values(csatData).reduce((a, b) => a + b, 0);
     const csatMaxBar = Math.max(...Object.values(csatData));

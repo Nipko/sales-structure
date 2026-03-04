@@ -16,6 +16,10 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { HandoffModule } from './modules/handoff/handoff.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module';
+import { AgentConsoleModule } from './modules/agent-console/agent-console.module';
+import { PipelineModule } from './modules/pipeline/pipeline.module';
+import { AgentAnalyticsModule } from './modules/analytics/agent-analytics.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -59,6 +63,11 @@ import llmConfig from './config/llm.config';
         KnowledgeModule,
         HandoffModule,
         AnalyticsModule,
+        AgentConsoleModule,
+        PipelineModule,
+        AgentAnalyticsModule,
+        SettingsModule,
     ],
 })
 export class AppModule { }
+

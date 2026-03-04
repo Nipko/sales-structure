@@ -9,7 +9,14 @@
 | 📊 Dashboard | [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud/admin) |
 | 🔌 API | [api.parallly-chat.cloud](https://api.parallly-chat.cloud) |
 
----
+### 📚 Documentación
+
+| Documento | Descripción |
+|-----------|------------|
+| [MANUAL.md](MANUAL.md) | Manual completo de la plataforma |
+| [docs/SECURITY.md](docs/SECURITY.md) | Autenticación, JWT, roles, permisos |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Todos los endpoints y WebSocket events |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios por versión |
 
 ## 📋 ¿Qué es Parallext?
 

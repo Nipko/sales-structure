@@ -180,6 +180,20 @@ export const api = {
 
     deactivateTenant: (id: string) =>
         apiPost(`/tenants/${id}/deactivate`, {}),
+
+    // --- Copilot ---
+    copilotChat: (data: {
+        message: string;
+        context: {
+            page: string;
+            tenantId?: string;
+            tenantName?: string;
+            userName: string;
+            userRole: string;
+        };
+        history: { role: string; content: string }[];
+    }) =>
+        apiPost<{ reply: string }>("/copilot/chat", data),
 };
 
 // ============================================

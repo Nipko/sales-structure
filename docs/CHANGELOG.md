@@ -4,6 +4,17 @@
 
 ---
 
+## [1.8.0] — 2026-03-04
+
+### 🤖 Parallext Copilot (AI Assistant)
+- **CopilotWidget** — Floating ✨ button + slide-out chat drawer on every admin page
+- **Context-Aware** — System prompt includes user role, active tenant, and current page
+- **Page Suggestions** — Contextual quick-action buttons per page (e.g. "¿Cómo creo un deal?" on Pipeline)
+- **Backend** — `POST /copilot/chat` (NestJS, JWT-protected, OpenAI gpt-4o-mini, graceful fallback)
+- **Full Platform Knowledge** — Knows all 13 modules, architecture, roles, and processes
+
+---
+
 ## [1.7.0] — 2026-03-04
 
 ### 🚀 Complete Sidebar (Final 3 Pages)

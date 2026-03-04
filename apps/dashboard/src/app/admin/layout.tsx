@@ -1,6 +1,7 @@
 "use client";
 
 import Sidebar from "@/components/Sidebar";
+import CopilotWidget from "@/components/CopilotWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantProvider, TenantSelector } from "@/contexts/TenantContext";
 import { useRouter } from "next/navigation";
@@ -82,6 +83,7 @@ export default function AdminLayout({
                         </div>
                     </div>
                     {children}
+                    <CopilotWidget />
                 </TenantProvider>
             </main>
         </div>

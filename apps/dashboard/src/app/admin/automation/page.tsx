@@ -83,6 +83,10 @@ export default function AutomationPage() {
     const { activeTenantId } = useTenant();
     const [rules, setRules] = useState(mockRules);
     const [isLive, setIsLive] = useState(false);
+    const [showNewRule, setShowNewRule] = useState(false);
+    const [newRule, setNewRule] = useState({ name: "", type: "auto_assign", trigger: "new_conversation", description: "" });
+    const [saving, setSaving] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
 
     // Load automation rules from API
     useEffect(() => {
@@ -102,10 +106,53 @@ export default function AutomationPage() {
         if (activeTenantId) await api.toggleRule(activeTenantId, id);
     };
 
+    const deleteRule = async (id: string) => {
+        setRules(prev => prev.filter(r => r.id !== id));
+        if (activeTenantId) await api.deleteRule(activeTenantId, id);
+        setToast("Regla eliminada");
+        setTimeout(() => setToast(null), 2000);
+    };
+
+    const handleCreateRule = async () => {
+        if (!newRule.name) return;
+        setSaving(true);
+        try {
+            const ruleData = {
+                name: newRule.name,
+                type: newRule.type,
+                trigger: newRule.trigger,
+                conditions: {},
+                actions: {},
+            };
+            if (activeTenantId) {
+                await api.createRule(activeTenantId, ruleData);
+            }
+            // Optimistic add
+            setRules(prev => [...prev, {
+                id: `r${Date.now()}`,
+                name: newRule.name,
+                type: newRule.type as any,
+                trigger: newRule.trigger,
+                description: newRule.description || `Regla ${newRule.type}`,
+                isActive: true,
+                executionCount: 0,
+                lastExecutedAt: null as any,
+                conditions: {} as any,
+                actions: {} as any,
+            }]);
+            setShowNewRule(false);
+            setNewRule({ name: "", type: "auto_assign", trigger: "new_conversation", description: "" });
+            setToast("Regla creada exitosamente");
+            setTimeout(() => setToast(null), 2000);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const activeCount = rules.filter(r => r.isActive).length;
     const totalExecutions = rules.reduce((sum, r) => sum + r.executionCount, 0);
 
-    return (
+    const content = (
         <div>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
@@ -118,7 +165,7 @@ export default function AutomationPage() {
                         {activeCount} reglas activas · {totalExecutions} ejecuciones totales
                     </p>
                 </div>
-                <button style={{
+                <button onClick={() => setShowNewRule(true)} style={{
                     display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
                     borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
                     fontWeight: 600, fontSize: 14, cursor: "pointer",
@@ -228,7 +275,7 @@ export default function AutomationPage() {
                                 }}>
                                     <Settings size={16} />
                                 </button>
-                                <button style={{
+                                <button onClick={() => deleteRule(rule.id)} style={{
                                     background: "none", border: "none", color: "#e74c3c",
                                     cursor: "pointer", padding: 4, opacity: 0.6,
                                 }}>
@@ -240,5 +287,76 @@ export default function AutomationPage() {
                 })}
             </div>
         </div>
+    );
+
+    const ruleTypes = [
+        { value: "auto_assign", label: "Auto-asignación" },
+        { value: "auto_tag", label: "Auto-etiqueta" },
+        { value: "sla_alert", label: "Alerta SLA" },
+        { value: "auto_reply", label: "Auto-respuesta" },
+        { value: "follow_up", label: "Follow-up" },
+    ];
+
+    const triggerOpts = [
+        { value: "new_conversation", label: "Nueva conversación" },
+        { value: "message_received", label: "Mensaje recibido" },
+        { value: "sla_timeout", label: "Timeout SLA" },
+        { value: "after_hours", label: "Fuera de horario" },
+        { value: "inactivity", label: "Inactividad" },
+    ];
+
+    const modalOverlay = showNewRule ? (
+        <div style={{
+            position: "fixed", inset: 0, zIndex: 1000, display: "flex",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+        }} onClick={() => setShowNewRule(false)}>
+            <div onClick={e => e.stopPropagation()} style={{
+                width: 440, padding: 28, borderRadius: 18,
+                background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Nueva Regla de Automatización</h2>
+                <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Nombre</label>
+                    <input value={newRule.name} onChange={e => setNewRule(p => ({ ...p, name: e.target.value }))} placeholder="Asignar nuevas conversaciones" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Tipo</label>
+                    <select value={newRule.type} onChange={e => setNewRule(p => ({ ...p, type: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" as const }}>
+                        {ruleTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Trigger</label>
+                    <select value={newRule.trigger} onChange={e => setNewRule(p => ({ ...p, trigger: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" as const }}>
+                        {triggerOpts.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Descripción</label>
+                    <textarea value={newRule.description} onChange={e => setNewRule(p => ({ ...p, description: e.target.value }))} placeholder="Descripción de la regla..." rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" as const, resize: "vertical" as const }} />
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                    <button onClick={() => setShowNewRule(false)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-primary)", fontSize: 14, cursor: "pointer" }}>Cancelar</button>
+                    <button onClick={handleCreateRule} disabled={saving || !newRule.name} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: saving ? "var(--border)" : "var(--accent)", color: "white", fontSize: 14, fontWeight: 600, cursor: saving ? "wait" : "pointer" }}>{saving ? "Guardando..." : "Crear Regla"}</button>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
+    const toastElement = toast ? (
+        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1100, padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: toast?.includes("eliminada") ? "#e74c3c" : "#2ecc71", color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.2)", animation: "slideUp 0.3s ease" }}>
+            ✓ {toast}
+        </div>
+    ) : null;
+
+    return (
+        <>
+            {content}
+            {modalOverlay}
+            {toastElement}
+            <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+        </>
     );
 }

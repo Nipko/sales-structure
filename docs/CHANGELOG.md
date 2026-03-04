@@ -4,6 +4,20 @@
 
 ---
 
+## [1.5.0] — 2026-03-04
+
+### ⚡ Interactive CRUD (Functional Dashboard)
+- **Pipeline**: "Nuevo Deal" modal (título, contacto, valor, etapa, probabilidad) → `api.createDeal()`
+- **Pipeline**: Drag & drop calls `api.moveDeal()` to persist changes + toast notification
+- **Inbox**: Send message → optimistic UI + `api.sendMessage()`
+- **Inbox**: Add internal note → `api.addNote()`
+- **Inbox**: Resolve conversation → `api.resolveConversation()`
+- **Automation**: "Nueva regla" modal (nombre, tipo, trigger, descripción) → `api.createRule()`
+- **Automation**: Delete rule → `api.deleteRule()` with red toast
+- All modals: glassmorphism + backdrop blur + animations
+
+---
+
 ## [1.4.1] — 2026-03-04
 
 ### 🏢 Tenant Context & Full API Integration

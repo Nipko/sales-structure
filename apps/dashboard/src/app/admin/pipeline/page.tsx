@@ -70,6 +70,10 @@ export default function PipelinePage() {
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
     const [dragOverStage, setDragOverStage] = useState<string | null>(null);
     const [isLive, setIsLive] = useState(false);
+    const [showNewDeal, setShowNewDeal] = useState(false);
+    const [newDeal, setNewDeal] = useState({ title: "", contactName: "", contactPhone: "", value: "", stageId: "s1", probability: "10" });
+    const [saving, setSaving] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
 
     // Load kanban from API
     useEffect(() => {
@@ -88,7 +92,7 @@ export default function PipelinePage() {
     const weightedValue = stages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value * (d.probability / 100), 0);
     const totalDeals = stages.flatMap(s => s.deals).length;
 
-    return (
+    const content = (
         <div>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -101,7 +105,7 @@ export default function PipelinePage() {
                         Arrastra los deals entre etapas · {totalDeals} oportunidades abiertas
                     </p>
                 </div>
-                <button style={{
+                <button onClick={() => setShowNewDeal(true)} style={{
                     display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
                     borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
                     fontWeight: 600, fontSize: 14, cursor: "pointer",
@@ -150,8 +154,25 @@ export default function PipelinePage() {
                             key={stage.id}
                             onDragOver={e => { e.preventDefault(); setDragOverStage(stage.id); }}
                             onDragLeave={() => setDragOverStage(null)}
-                            onDrop={() => {
-                                // TODO: API call to move deal
+                            onDrop={async () => {
+                                if (draggedDeal && activeTenantId) {
+                                    // Optimistic update: move deal in local state
+                                    setStages(prev => {
+                                        const allDeals = prev.flatMap(s => s.deals);
+                                        const deal = allDeals.find(d => d.id === draggedDeal);
+                                        if (!deal) return prev;
+                                        return prev.map(s => ({
+                                            ...s,
+                                            deals: s.id === stage.id
+                                                ? [...s.deals.filter(d => d.id !== draggedDeal), deal]
+                                                : s.deals.filter(d => d.id !== draggedDeal),
+                                        }));
+                                    });
+                                    // API call
+                                    await api.moveDeal(activeTenantId, draggedDeal, stage.id);
+                                    setToast(`Deal movido a ${stage.name}`);
+                                    setTimeout(() => setToast(null), 2000);
+                                }
                                 setDragOverStage(null);
                                 setDraggedDeal(null);
                             }}
@@ -259,5 +280,133 @@ export default function PipelinePage() {
                 })}
             </div>
         </div>
+    );
+
+    // ---- New Deal Modal ----
+    async function handleCreateDeal() {
+        if (!newDeal.title || !newDeal.value) return;
+        setSaving(true);
+        try {
+            const dealData = {
+                title: newDeal.title,
+                contactId: "", // Will match by name
+                value: parseInt(newDeal.value) || 0,
+                stageId: newDeal.stageId,
+                probability: parseInt(newDeal.probability) || 10,
+            };
+            if (activeTenantId) {
+                await api.createDeal(activeTenantId, dealData);
+            }
+            // Optimistic add to local state
+            const targetStage = stages.find(s => s.id === newDeal.stageId);
+            setStages(prev => prev.map(s => {
+                if (s.id !== newDeal.stageId) return s;
+                return {
+                    ...s,
+                    deals: [...s.deals, {
+                        id: `d${Date.now()}`,
+                        title: newDeal.title,
+                        contactName: newDeal.contactName || "Nuevo contacto",
+                        value: parseInt(newDeal.value) || 0,
+                        probability: parseInt(newDeal.probability) || 10,
+                        daysInStage: 0,
+                        contactPhone: newDeal.contactPhone || "",
+                    }],
+                };
+            }));
+            setShowNewDeal(false);
+            setNewDeal({ title: "", contactName: "", contactPhone: "", value: "", stageId: "s1", probability: "10" });
+            setToast("Deal creado exitosamente");
+            setTimeout(() => setToast(null), 2000);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    const modalOverlay = showNewDeal ? (
+        <div style={{
+            position: "fixed", inset: 0, zIndex: 1000, display: "flex",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+        }} onClick={() => setShowNewDeal(false)}>
+            <div onClick={e => e.stopPropagation()} style={{
+                width: 440, padding: 28, borderRadius: 18,
+                background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Nuevo Deal</h2>
+                {[
+                    { key: "title", label: "Título del deal", placeholder: "Paquete aventura x4" },
+                    { key: "contactName", label: "Nombre del contacto", placeholder: "Carlos Medina" },
+                    { key: "contactPhone", label: "Teléfono", placeholder: "+57 310 456 7890" },
+                    { key: "value", label: "Valor (COP)", placeholder: "1500000", type: "number" },
+                    { key: "probability", label: "Probabilidad (%)", placeholder: "50", type: "number" },
+                ].map(field => (
+                    <div key={field.key} style={{ marginBottom: 14 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
+                            {field.label}
+                        </label>
+                        <input
+                            value={(newDeal as any)[field.key]}
+                            onChange={e => setNewDeal(prev => ({ ...prev, [field.key]: e.target.value }))}
+                            placeholder={field.placeholder}
+                            type={field.type || "text"}
+                            style={{
+                                width: "100%", padding: "10px 12px", borderRadius: 8,
+                                border: "1px solid var(--border)", background: "var(--bg-primary)",
+                                color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box",
+                            }}
+                        />
+                    </div>
+                ))}
+                <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
+                        Etapa
+                    </label>
+                    <select
+                        value={newDeal.stageId}
+                        onChange={e => setNewDeal(prev => ({ ...prev, stageId: e.target.value }))}
+                        style={{
+                            width: "100%", padding: "10px 12px", borderRadius: 8,
+                            border: "1px solid var(--border)", background: "var(--bg-primary)",
+                            color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box",
+                        }}
+                    >
+                        {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                    <button onClick={() => setShowNewDeal(false)} style={{
+                        flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--border)",
+                        background: "transparent", color: "var(--text-primary)", fontSize: 14, cursor: "pointer",
+                    }}>Cancelar</button>
+                    <button onClick={handleCreateDeal} disabled={saving || !newDeal.title || !newDeal.value} style={{
+                        flex: 1, padding: "10px", borderRadius: 10, border: "none",
+                        background: saving ? "var(--border)" : "var(--accent)", color: "white",
+                        fontSize: 14, fontWeight: 600, cursor: saving ? "wait" : "pointer",
+                    }}>{saving ? "Guardando..." : "Crear Deal"}</button>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
+    const toastElement = toast ? (
+        <div style={{
+            position: "fixed", bottom: 24, right: 24, zIndex: 1100,
+            padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+            background: "#2ecc71", color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+            animation: "slideUp 0.3s ease",
+        }}>
+            ✓ {toast}
+        </div>
+    ) : null;
+
+    return (
+        <>
+            {content}
+            {modalOverlay}
+            {toastElement}
+            <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+        </>
     );
 }

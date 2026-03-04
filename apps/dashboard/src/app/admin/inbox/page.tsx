@@ -148,11 +148,48 @@ export default function InboxPage() {
         return true;
     });
 
-    const handleSend = () => {
+    // ---- Interactive functions ----
+    const handleSend = async () => {
         if (!messageInput.trim()) return;
-        // TODO: API call
+        const content = messageInput.trim();
         setMessageInput("");
+        // Optimistic add to local messages
+        setSelectedConv((prev: any) => ({
+            ...prev,
+            messages: [...(prev.messages || []), {
+                id: `msg_${Date.now()}`, sender: "agent" as const, content,
+                timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+            }],
+            lastMessage: content,
+        }));
+        // API call
+        if (activeTenantId && selectedConv.id) {
+            await api.sendMessage(activeTenantId, selectedConv.id, content);
+        }
     };
+
+    const handleAddNote = async () => {
+        if (!noteInput.trim()) return;
+        const content = noteInput.trim();
+        setNoteInput("");
+        // API call
+        if (activeTenantId && selectedConv.id) {
+            await api.addNote(activeTenantId, selectedConv.id, content);
+        }
+    };
+
+    const handleResolve = async () => {
+        // Optimistic update
+        setConversations(prev => prev.map(c =>
+            c.id === selectedConv.id ? { ...c, status: "resolved" as any } : c
+        ));
+        setSelectedConv(prev => ({ ...prev, status: "resolved" as any }));
+        // API call
+        if (activeTenantId && selectedConv.id) {
+            await api.resolveConversation(activeTenantId, selectedConv.id);
+        }
+    };
+
 
     return (
         <div style={{ display: "flex", height: "calc(100vh - 64px)", margin: "-32px -40px", overflow: "hidden" }}>
@@ -432,7 +469,7 @@ export default function InboxPage() {
                                     background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 12, outline: "none",
                                 }}
                             />
-                            <button style={{
+                            <button onClick={handleAddNote} style={{
                                 padding: "6px 12px", borderRadius: 6, border: "none",
                                 background: "#ffaa00", color: "white", fontSize: 12, cursor: "pointer",
                             }}>

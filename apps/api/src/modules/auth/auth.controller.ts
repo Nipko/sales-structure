@@ -1,26 +1,46 @@
 import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { IsEmail, IsString, IsOptional, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
 class LoginDto {
+    @IsEmail()
     email: string;
+
+    @IsString()
+    @MinLength(1)
     password: string;
 }
 
 class RegisterDto {
+    @IsEmail()
     email: string;
+
+    @IsString()
+    @MinLength(6)
     password: string;
+
+    @IsString()
     firstName: string;
+
+    @IsString()
     lastName: string;
+
+    @IsString()
+    @IsOptional()
     role?: string;
+
+    @IsString()
+    @IsOptional()
     tenantId?: string;
 }
 
 class RefreshTokenDto {
+    @IsString()
     refreshToken: string;
 }
 

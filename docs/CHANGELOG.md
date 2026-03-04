@@ -4,6 +4,18 @@
 
 ---
 
+## [1.4.0] — 2026-03-03
+
+### 🔗 Frontend → API Integration
+- **API Client** (`lib/api.ts`) — Centralized HTTP client with JWT auth, auto-refresh on 401, 30+ typed methods
+- **useApiData hook** (`hooks/useApiData.tsx`) — Loading/error/isLive states, mock data fallback, DataSourceBadge (LIVE/DEMO)
+- **Dashboard** — Personalized greeting, live tenant count from API, LIVE/DEMO indicator
+- **Tenants page** — Loads real tenants from API, falls back to mock data
+- **Auth fixes** — Global prefix `/api/v1`, class-validator decorators, ValidationPipe fix, CORS config
+- **Admin seed** — bcrypt-hashed admin user + SQL migration
+
+---
+
 ## [1.3.0] — 2026-03-03
 
 ### 🔐 Autenticación y Seguridad

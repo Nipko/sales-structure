@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     DollarSign,
     TrendingUp,
@@ -60,19 +63,38 @@ const mockStages = [
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 
 export default function PipelinePage() {
+    const { user } = useAuth();
+    const [stages, setStages] = useState(mockStages);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
     const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+    const [isLive, setIsLive] = useState(false);
 
-    const totalValue = mockStages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value, 0);
-    const weightedValue = mockStages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value * (d.probability / 100), 0);
-    const totalDeals = mockStages.flatMap(s => s.deals).length;
+    // Load kanban from API
+    useEffect(() => {
+        async function load() {
+            if (!user?.tenantId) return;
+            const result = await api.getKanban(user.tenantId);
+            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                setStages(result.data);
+                setIsLive(true);
+            }
+        }
+        load();
+    }, [user?.tenantId]);
+
+    const totalValue = stages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value, 0);
+    const weightedValue = stages.flatMap(s => s.deals).reduce((sum, d) => sum + d.value * (d.probability / 100), 0);
+    const totalDeals = stages.flatMap(s => s.deals).length;
 
     return (
         <div>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div>
-                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Pipeline de Ventas</h1>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Pipeline de Ventas</h1>
+                        <DataSourceBadge isLive={isLive} />
+                    </div>
                     <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
                         Arrastra los deals entre etapas · {totalDeals} oportunidades abiertas
                     </p>
@@ -117,7 +139,7 @@ export default function PipelinePage() {
                 display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16,
                 minHeight: "calc(100vh - 320px)",
             }}>
-                {mockStages.map(stage => {
+                {stages.map(stage => {
                     const stageTotal = stage.deals.reduce((sum, d) => sum + d.value, 0);
                     const isDragOver = dragOverStage === stage.id;
 

@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     BarChart3,
     Clock,
@@ -60,17 +63,41 @@ const starColors = ["", "#e74c3c", "#e67e22", "#f1c40f", "#2ecc71", "#27ae60"];
 type TabType = "overview" | "agents" | "csat";
 
 export default function AgentAnalyticsPage() {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>("overview");
+    const [overview, setOverview] = useState(mockOverview);
+    const [agents, setAgents] = useState(mockAgents);
+    const [csatData, setCsatData] = useState(mockCSAT);
+    const [csatRecent, setCsatRecent] = useState(mockCSATRecent);
+    const [isLive, setIsLive] = useState(false);
 
-    const csatTotal = Object.values(mockCSAT).reduce((a, b) => a + b, 0);
-    const csatMaxBar = Math.max(...Object.values(mockCSAT));
+    // Load analytics from API
+    useEffect(() => {
+        async function load() {
+            if (!user?.tenantId) return;
+            const [overviewRes, agentsRes, csatRes] = await Promise.all([
+                api.getOverviewStats(user.tenantId),
+                api.getAgentLeaderboard(user.tenantId),
+                api.getCSATResponses(user.tenantId),
+            ]);
+            if (overviewRes.success && overviewRes.data) { setOverview(overviewRes.data as any); setIsLive(true); }
+            if (agentsRes.success && Array.isArray(agentsRes.data)) setAgents(agentsRes.data as any);
+            if (csatRes.success && Array.isArray(csatRes.data)) setCsatRecent(csatRes.data as any);
+        }
+        load();
+    }, [user?.tenantId]);
+
+    const csatTotal = Object.values(csatData).reduce((a, b) => a + b, 0);
+    const csatMaxBar = Math.max(...Object.values(csatData));
 
     return (
         <div>
             {/* Header */}
             <div style={{ marginBottom: 20 }}>
                 <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                    <BarChart3 size={28} color="var(--accent)" /> Analytics de Agentes
+                    <BarChart3 size={28} color="var(--accent)" />
+                    Analytics de Agentes
+                    <DataSourceBadge isLive={isLive} />
                 </h1>
                 <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
                     Performance en tiempo real · CSAT · Métricas de equipo
@@ -109,10 +136,10 @@ export default function AgentAnalyticsPage() {
                     {/* Stats Grid */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
                         {[
-                            { icon: MessageSquare, label: "Conversaciones", value: String(mockOverview.totalConversations), color: "#3498db", sub: `${mockOverview.resolvedToday} resueltas hoy` },
-                            { icon: Clock, label: "Tiempo de respuesta", value: mockOverview.avgResponseTime, color: "#e67e22", sub: "Promedio primera respuesta" },
-                            { icon: CheckCircle, label: "Resolución", value: mockOverview.avgResolutionTime, color: "#2ecc71", sub: "Promedio de resolución" },
-                            { icon: Star, label: "CSAT Promedio", value: mockOverview.csatAvg.toFixed(1), color: "#f1c40f", sub: `${mockOverview.csatTrend > 0 ? "↑" : "↓"} ${Math.abs(mockOverview.csatTrend).toFixed(1)}% esta semana` },
+                            { icon: MessageSquare, label: "Conversaciones", value: String(overview.totalConversations), color: "#3498db", sub: `${overview.resolvedToday} resueltas hoy` },
+                            { icon: Clock, label: "Tiempo de respuesta", value: overview.avgResponseTime, color: "#e67e22", sub: "Promedio primera respuesta" },
+                            { icon: CheckCircle, label: "Resolución", value: overview.avgResolutionTime, color: "#2ecc71", sub: "Promedio de resolución" },
+                            { icon: Star, label: "CSAT Promedio", value: overview.csatAvg.toFixed(1), color: "#f1c40f", sub: `${overview.csatTrend > 0 ? "↑" : "↓"} ${Math.abs(overview.csatTrend).toFixed(1)}% esta semana` },
                         ].map(card => (
                             <div key={card.label} style={{
                                 padding: "16px", borderRadius: 14, border: "1px solid var(--border)",
@@ -137,21 +164,21 @@ export default function AgentAnalyticsPage() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
                         <div style={{ padding: 16, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
                             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>Agentes activos</div>
-                            <div style={{ fontSize: 32, fontWeight: 700 }}>{mockOverview.activeAgents}</div>
+                            <div style={{ fontSize: 32, fontWeight: 700 }}>{overview.activeAgents}</div>
                             <div style={{ fontSize: 12, color: "#2ecc71", display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
                                 <Users size={14} /> Con conversaciones abiertas
                             </div>
                         </div>
                         <div style={{ padding: 16, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
                             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>Tasa de handoff IA→Humano</div>
-                            <div style={{ fontSize: 32, fontWeight: 700 }}>{(mockOverview.handoffRate * 100).toFixed(0)}%</div>
+                            <div style={{ fontSize: 32, fontWeight: 700 }}>{(overview.handoffRate * 100).toFixed(0)}%</div>
                             <div style={{ fontSize: 12, color: "#e67e22", display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
-                                <Zap size={14} /> {Math.round(mockOverview.totalConversations * mockOverview.handoffRate)} handoffs totales
+                                <Zap size={14} /> {Math.round(overview.totalConversations * overview.handoffRate)} handoffs totales
                             </div>
                         </div>
                         <div style={{ padding: 16, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
                             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>Resolución por IA</div>
-                            <div style={{ fontSize: 32, fontWeight: 700 }}>{(100 - mockOverview.handoffRate * 100).toFixed(0)}%</div>
+                            <div style={{ fontSize: 32, fontWeight: 700 }}>{(100 - overview.handoffRate * 100).toFixed(0)}%</div>
                             <div style={{ fontSize: 12, color: "#9b59b6", display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
                                 <TrendingUp size={14} /> Sin intervención humana
                             </div>
@@ -179,7 +206,7 @@ export default function AgentAnalyticsPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {mockAgents.map((agent, i) => (
+                            {agents.map((agent, i) => (
                                 <tr
                                     key={agent.agentName}
                                     style={{ borderBottom: "1px solid var(--border)" }}
@@ -251,7 +278,7 @@ export default function AgentAnalyticsPage() {
                         <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Distribución de calificaciones</h3>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                             {[5, 4, 3, 2, 1].map(rating => {
-                                const count = mockCSAT[rating] || 0;
+                                const count = csatData[rating] || 0;
                                 const pct = csatTotal > 0 ? (count / csatTotal * 100) : 0;
                                 return (
                                     <div key={rating} style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -286,7 +313,7 @@ export default function AgentAnalyticsPage() {
                         }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                                 <Star size={24} color="#f1c40f" fill="#f1c40f" />
-                                <span style={{ fontSize: 36, fontWeight: 700 }}>{mockOverview.csatAvg.toFixed(1)}</span>
+                                <span style={{ fontSize: 36, fontWeight: 700 }}>{overview.csatAvg.toFixed(1)}</span>
                             </div>
                             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
                                 de {csatTotal} respuestas
@@ -298,7 +325,7 @@ export default function AgentAnalyticsPage() {
                     <div style={{ padding: 20, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
                         <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Respuestas recientes</h3>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {mockCSATRecent.map((entry, i) => (
+                            {csatRecent.map((entry, i) => (
                                 <div key={i} style={{
                                     padding: "12px", borderRadius: 10, background: "var(--bg-primary)",
                                     border: "1px solid var(--border)",

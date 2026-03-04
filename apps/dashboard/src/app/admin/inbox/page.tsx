@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Search,
     Filter,
@@ -109,14 +112,31 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 // ============================================
 
 export default function InboxPage() {
+    const { user } = useAuth();
     const [filter, setFilter] = useState<InboxFilter>("all");
+    const [conversations, setConversations] = useState(mockConversations);
     const [selectedConv, setSelectedConv] = useState(mockConversations[0]);
     const [messageInput, setMessageInput] = useState("");
     const [noteInput, setNoteInput] = useState("");
     const [showNotes, setShowNotes] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [isLive, setIsLive] = useState(false);
 
-    const filteredConversations = mockConversations.filter(c => {
+    // Load conversations from API
+    useEffect(() => {
+        async function load() {
+            if (!user?.tenantId) return;
+            const result = await api.getInbox(user.tenantId);
+            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                setConversations(result.data);
+                setSelectedConv(result.data[0]);
+                setIsLive(true);
+            }
+        }
+        load();
+    }, [user?.tenantId]);
+
+    const filteredConversations = conversations.filter(c => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             return c.contactName.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q);
@@ -142,7 +162,10 @@ export default function InboxPage() {
             }}>
                 {/* Header */}
                 <div style={{ padding: "16px", borderBottom: "1px solid var(--border)" }}>
-                    <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 12px" }}>Inbox</h2>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 12px" }}>Inbox</h2>
+                        <DataSourceBadge isLive={isLive} />
+                    </div>
 
                     {/* Search */}
                     <div style={{ position: "relative", marginBottom: 12 }}>
@@ -162,9 +185,9 @@ export default function InboxPage() {
                     {/* Filters */}
                     <div style={{ display: "flex", gap: 4 }}>
                         {([
-                            { key: "all" as const, label: "Todas", count: mockConversations.length },
-                            { key: "handoff" as const, label: "Handoff", count: mockConversations.filter(c => c.status === "handoff").length },
-                            { key: "unassigned" as const, label: "IA", count: mockConversations.filter(c => c.isAiHandled).length },
+                            { key: "all" as const, label: "Todas", count: conversations.length },
+                            { key: "handoff" as const, label: "Handoff", count: conversations.filter(c => c.status === "handoff").length },
+                            { key: "unassigned" as const, label: "IA", count: conversations.filter(c => c.isAiHandled).length },
                         ]).map(f => (
                             <button
                                 key={f.key}

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Brain,
     MessageSquare,
@@ -66,6 +68,7 @@ const settingsSchema: Record<string, FieldConfig[]> = {
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState("llm");
+    const [isLive, setIsLive] = useState(false);
     const [values, setValues] = useState<Record<string, string>>({
         "llm.default_model": "gpt-4o-mini",
         "llm.default_temperature": "0.7",
@@ -82,6 +85,18 @@ export default function SettingsPage() {
     const [saved, setSaved] = useState(false);
     const [saving, setSaving] = useState(false);
 
+    // Load existing API keys from backend
+    useEffect(() => {
+        async function load() {
+            const result = await api.getApiKeys();
+            if (result.success && result.data) {
+                setValues(prev => ({ ...prev, ...result.data }));
+                setIsLive(true);
+            }
+        }
+        load();
+    }, []);
+
     const handleChange = (key: string, value: string) => {
         setValues(prev => ({ ...prev, [key]: value }));
         setSaved(false);
@@ -90,13 +105,14 @@ export default function SettingsPage() {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud";
-            await fetch(`${apiUrl}/api/v1/settings`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(values),
-            });
+            // Save API keys through the centralized client
+            for (const [key, value] of Object.entries(values)) {
+                if (value && key.includes("api_key") || key.includes("token") || key.includes("secret")) {
+                    await api.setApiKey(key, value);
+                }
+            }
             setSaved(true);
+            setIsLive(true);
             setTimeout(() => setSaved(false), 3000);
         } catch {
             console.error("Error saving settings");
@@ -209,7 +225,10 @@ export default function SettingsPage() {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
                 <div>
-                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Configuración</h1>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Configuración</h1>
+                        <DataSourceBadge isLive={isLive} />
+                    </div>
                     <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
                         Gestiona las API keys, credenciales y parámetros de la plataforma
                     </p>

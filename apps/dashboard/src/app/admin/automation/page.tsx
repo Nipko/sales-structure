@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Zap,
     Plus,
@@ -75,10 +78,26 @@ const triggerLabels: Record<string, string> = {
 };
 
 export default function AutomationPage() {
+    const { user } = useAuth();
     const [rules, setRules] = useState(mockRules);
+    const [isLive, setIsLive] = useState(false);
 
-    const toggleRule = (id: string) => {
+    // Load automation rules from API
+    useEffect(() => {
+        async function load() {
+            if (!user?.tenantId) return;
+            const result = await api.getAutomationRules(user.tenantId);
+            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                setRules(result.data as any);
+                setIsLive(true);
+            }
+        }
+        load();
+    }, [user?.tenantId]);
+
+    const toggleRule = async (id: string) => {
         setRules(prev => prev.map(r => r.id === id ? { ...r, isActive: !r.isActive } : r));
+        if (user?.tenantId) await api.toggleRule(user.tenantId, id);
     };
 
     const activeCount = rules.filter(r => r.isActive).length;
@@ -91,6 +110,7 @@ export default function AutomationPage() {
                 <div>
                     <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
                         <Zap size={28} color="var(--accent)" /> Automatización
+                        <DataSourceBadge isLive={isLive} />
                     </h1>
                     <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
                         {activeCount} reglas activas · {totalExecutions} ejecuciones totales

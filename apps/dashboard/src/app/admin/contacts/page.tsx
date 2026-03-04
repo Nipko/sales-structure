@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     Search,
     Filter,
@@ -64,17 +67,32 @@ const segmentColors: Record<string, { bg: string; color: string }> = {
 };
 
 export default function ContactsPage() {
+    const { user } = useAuth();
+    const [contacts, setContacts] = useState(mockContacts);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeSegment, setActiveSegment] = useState<string>("all");
+    const [isLive, setIsLive] = useState(false);
+
+    // Load contacts from API (reusing inbox data shape)
+    useEffect(() => {
+        async function load() {
+            // Contacts endpoint TBD — for now use mock
+            // When API has /contacts endpoint, uncomment:
+            // if (!user?.tenantId) return;
+            // const result = await api.getContacts(user.tenantId);
+            // if (result.success && Array.isArray(result.data)) ...
+        }
+        load();
+    }, [user?.tenantId]);
 
     const segments = [
-        { key: "all", label: "Todos", count: mockContacts.length },
-        { key: "lead", label: "Leads", count: mockContacts.filter(c => c.segment === "lead").length },
-        { key: "qualified", label: "Calificados", count: mockContacts.filter(c => c.segment === "qualified").length },
-        { key: "customer", label: "Clientes", count: mockContacts.filter(c => c.segment === "customer").length },
+        { key: "all", label: "Todos", count: contacts.length },
+        { key: "lead", label: "Leads", count: contacts.filter(c => c.segment === "lead").length },
+        { key: "qualified", label: "Calificados", count: contacts.filter(c => c.segment === "qualified").length },
+        { key: "customer", label: "Clientes", count: contacts.filter(c => c.segment === "customer").length },
     ];
 
-    const filtered = mockContacts.filter(c => {
+    const filtered = contacts.filter(c => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             return c.name.toLowerCase().includes(q) || c.phone.includes(q) || c.email.toLowerCase().includes(q);
@@ -83,16 +101,19 @@ export default function ContactsPage() {
         return true;
     });
 
-    const totalValue = mockContacts.reduce((sum, c) => sum + c.lifetimeValue, 0);
+    const totalValue = contacts.reduce((sum, c) => sum + c.lifetimeValue, 0);
 
     return (
         <div>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                 <div>
-                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Contactos</h1>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Contactos</h1>
+                        <DataSourceBadge isLive={isLive} />
+                    </div>
                     <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
-                        {mockContacts.length} contactos · Valor total: ${totalValue.toLocaleString()} COP
+                        {contacts.length} contactos · Valor total: ${totalValue.toLocaleString()} COP
                     </p>
                 </div>
                 <button style={{

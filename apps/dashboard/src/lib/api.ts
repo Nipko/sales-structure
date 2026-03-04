@@ -166,6 +166,20 @@ export const api = {
         apiPost("/settings/api-keys", { provider, key }),
     deleteApiKey: (provider: string) =>
         apiDelete(`/settings/api-keys/${provider}`),
+
+    // --- Users ---
+    registerUser: (data: { email: string; password: string; firstName: string; lastName: string; role?: string; tenantId?: string }) =>
+        apiPost("/auth/register", data),
+
+    // --- Tenant CRUD ---
+    createTenant: (data: { name: string; slug: string; industry: string; language?: string; plan?: string }) =>
+        apiPost("/tenants", data),
+
+    updateTenant: (id: string, data: any) =>
+        apiPut(`/tenants/${id}`, data),
+
+    deactivateTenant: (id: string) =>
+        apiPost(`/tenants/${id}/deactivate`, {}),
 };
 
 // ============================================

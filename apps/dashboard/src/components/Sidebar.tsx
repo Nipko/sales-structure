@@ -18,6 +18,7 @@ import {
     Inbox,
     Contact,
     TrendingUp,
+    Megaphone,
 } from "lucide-react";
 
 const navItems = [
@@ -27,6 +28,7 @@ const navItems = [
     { href: "/admin/contacts", label: "Contactos", icon: Contact },
     { href: "/admin/pipeline", label: "Pipeline", icon: TrendingUp },
     { href: "/admin/automation", label: "Automatización", icon: Zap },
+    { href: "/admin/broadcast", label: "Broadcast", icon: Megaphone },
     { href: "/admin/conversations", label: "Conversaciones", icon: MessageSquare },
     { href: "/admin/ai", label: "AI / LLM Router", icon: Brain },
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },

@@ -4,6 +4,16 @@
 
 ---
 
+## [1.6.0] — 2026-03-04
+
+### 👥 Users Management + 📢 Broadcast
+- **Users page** (`/admin/users`): Stats cards, searchable table, role badges, "Nuevo Usuario" modal → `api.registerUser()`
+- **Broadcast page** (`/admin/broadcast`): Campaign builder, delivery/read/reply metrics, progress bars, template preview with `{{name}}` substitution, scheduling
+- **Sidebar**: Added Broadcast link with Megaphone icon
+- **API Client**: Added `registerUser`, `createTenant`, `updateTenant`, `deactivateTenant`
+
+---
+
 ## [1.5.0] — 2026-03-04
 
 ### ⚡ Interactive CRUD (Functional Dashboard)

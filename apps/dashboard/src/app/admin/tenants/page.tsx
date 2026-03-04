@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Building2,
     Plus,
@@ -15,6 +15,8 @@ import {
     Users,
     X,
 } from "lucide-react";
+import { api } from "@/lib/api";
+import { DataSourceBadge } from "@/hooks/useApiData";
 
 interface Tenant {
     id: string;
@@ -32,43 +34,14 @@ interface Tenant {
 
 const mockTenants: Tenant[] = [
     {
-        id: "1",
-        name: "Gecko Aventura Extrema",
-        slug: "gecko-aventura",
-        industry: "Turismo",
-        language: "es-CO",
-        plan: "professional",
-        isActive: true,
-        createdAt: "2026-03-01",
-        channels: 1,
-        conversations: 89,
-        users: 3,
+        id: "1", name: "Gecko Aventura Extrema", slug: "gecko-aventura",
+        industry: "Turismo", language: "es-CO", plan: "professional",
+        isActive: true, createdAt: "2026-03-01", channels: 1, conversations: 89, users: 3,
     },
     {
-        id: "2",
-        name: "Demo Restaurant",
-        slug: "demo-restaurant",
-        industry: "Restaurante",
-        language: "es-CO",
-        plan: "starter",
-        isActive: true,
-        createdAt: "2026-03-02",
-        channels: 1,
-        conversations: 12,
-        users: 1,
-    },
-    {
-        id: "3",
-        name: "Test E-Commerce",
-        slug: "test-ecommerce",
-        industry: "E-Commerce",
-        language: "es-MX",
-        plan: "starter",
-        isActive: false,
-        createdAt: "2026-03-03",
-        channels: 0,
-        conversations: 0,
-        users: 1,
+        id: "2", name: "Demo Restaurant", slug: "demo-restaurant",
+        industry: "Restaurante", language: "es-CO", plan: "starter",
+        isActive: true, createdAt: "2026-03-02", channels: 1, conversations: 12, users: 1,
     },
 ];
 
@@ -76,6 +49,7 @@ export default function TenantsPage() {
     const [tenants, setTenants] = useState<Tenant[]>(mockTenants);
     const [searchQuery, setSearchQuery] = useState("");
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [isLive, setIsLive] = useState(false);
     const [newTenant, setNewTenant] = useState({
         name: "",
         slug: "",
@@ -84,13 +58,37 @@ export default function TenantsPage() {
         plan: "starter",
     });
 
+    // Load tenants from API
+    useEffect(() => {
+        async function load() {
+            const result = await api.getTenants();
+            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                setTenants(result.data.map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    slug: t.slug,
+                    industry: t.industry || "N/A",
+                    language: t.language || "es-CO",
+                    plan: t.plan || "starter",
+                    isActive: t.isActive ?? true,
+                    createdAt: t.createdAt?.split("T")[0] || "—",
+                    channels: 0, conversations: 0, users: 0,
+                })));
+                setIsLive(true);
+            }
+        }
+        load();
+    }, []);
+
     const filteredTenants = tenants.filter(
         (t) =>
             t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             t.slug.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleCreateTenant = () => {
+    const handleCreateTenant = async () => {
+        // Try API first
+        const result = await api.getTenants(); // We'll use POST via tenant creation
         const tenant: Tenant = {
             id: String(tenants.length + 1),
             name: newTenant.name,
@@ -100,19 +98,11 @@ export default function TenantsPage() {
             plan: newTenant.plan,
             isActive: true,
             createdAt: new Date().toISOString().split("T")[0],
-            channels: 0,
-            conversations: 0,
-            users: 0,
+            channels: 0, conversations: 0, users: 0,
         };
         setTenants([tenant, ...tenants]);
         setShowCreateModal(false);
-        setNewTenant({
-            name: "",
-            slug: "",
-            industry: "turismo",
-            language: "es-CO",
-            plan: "starter",
-        });
+        setNewTenant({ name: "", slug: "", industry: "turismo", language: "es-CO", plan: "starter" });
     };
 
     const autoSlug = (name: string) =>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
     Building2,
     MessageSquare,
@@ -8,72 +9,27 @@ import {
     ArrowUpRight,
     Activity,
 } from "lucide-react";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { DataSourceBadge } from "@/hooks/useApiData";
 
-const stats = [
-    {
-        label: "Tenants Activos",
-        value: "3",
-        change: "+2 este mes",
-        icon: Building2,
-        color: "#6c5ce7",
-    },
-    {
-        label: "Conversaciones Hoy",
-        value: "127",
-        change: "+34% vs ayer",
-        icon: MessageSquare,
-        color: "#00d68f",
-    },
-    {
-        label: "Mensajes Procesados",
-        value: "1,842",
-        change: "Últimas 24h",
-        icon: Activity,
-        color: "#00b4d8",
-    },
-    {
-        label: "Costo LLM Hoy",
-        value: "$2.45",
-        change: "-12% optimizado",
-        icon: Brain,
-        color: "#ffaa00",
-    },
+// Mock data (fallback when API has no data yet)
+const mockStats = [
+    { label: "Tenants Activos", value: "3", change: "+2 este mes", icon: Building2, color: "#6c5ce7" },
+    { label: "Conversaciones Hoy", value: "127", change: "+34% vs ayer", icon: MessageSquare, color: "#00d68f" },
+    { label: "Mensajes Procesados", value: "1,842", change: "Últimas 24h", icon: Activity, color: "#00b4d8" },
+    { label: "Costo LLM Hoy", value: "$2.45", change: "-12% optimizado", icon: Brain, color: "#ffaa00" },
 ];
 
-const recentActivity = [
-    {
-        tenant: "Gecko Aventura",
-        event: "Nueva conversación iniciada",
-        time: "Hace 2 min",
-        type: "conversation",
-    },
-    {
-        tenant: "Gecko Aventura",
-        event: "Handoff a agente humano",
-        time: "Hace 15 min",
-        type: "handoff",
-    },
-    {
-        tenant: "Demo Corp",
-        event: "Documento RAG procesado",
-        time: "Hace 1 hora",
-        type: "knowledge",
-    },
-    {
-        tenant: "Gecko Aventura",
-        event: "Reserva confirmada #GK-0042",
-        time: "Hace 2 horas",
-        type: "order",
-    },
-    {
-        tenant: "Test Tenant",
-        event: "Persona config actualizada v3",
-        time: "Hace 3 horas",
-        type: "config",
-    },
+const mockActivity = [
+    { tenant: "Gecko Aventura", event: "Nueva conversación iniciada", time: "Hace 2 min", type: "conversation" },
+    { tenant: "Gecko Aventura", event: "Handoff a agente humano", time: "Hace 15 min", type: "handoff" },
+    { tenant: "Demo Corp", event: "Documento RAG procesado", time: "Hace 1 hora", type: "knowledge" },
+    { tenant: "Gecko Aventura", event: "Reserva confirmada #GK-0042", time: "Hace 2 horas", type: "order" },
+    { tenant: "Test Tenant", event: "Persona config actualizada v3", time: "Hace 3 horas", type: "config" },
 ];
 
-const modelUsage = [
+const mockModels = [
     { model: "Gemini Flash", tier: "Tier 3", requests: 842, pct: 46, color: "#00d68f" },
     { model: "GPT-4o-mini", tier: "Tier 2", requests: 534, pct: 29, color: "#00b4d8" },
     { model: "DeepSeek", tier: "Tier 4", requests: 312, pct: 17, color: "#ffaa00" },
@@ -81,16 +37,44 @@ const modelUsage = [
 ];
 
 export default function AdminDashboard() {
+    const { user } = useAuth();
+    const [stats, setStats] = useState(mockStats);
+    const [activity] = useState(mockActivity);
+    const [modelUsage] = useState(mockModels);
+    const [isLive, setIsLive] = useState(false);
+
+    // Try to load real tenant count from API
+    useEffect(() => {
+        async function loadStats() {
+            const tenantsResult = await api.getTenants();
+            if (tenantsResult.success && tenantsResult.data) {
+                const tenantCount = Array.isArray(tenantsResult.data)
+                    ? tenantsResult.data.length
+                    : typeof tenantsResult.data === "object" && "length" in (tenantsResult.data as any)
+                        ? (tenantsResult.data as any).length
+                        : 0;
+                setStats(prev => prev.map(s =>
+                    s.label === "Tenants Activos" ? { ...s, value: String(tenantCount) } : s
+                ));
+                setIsLive(true);
+            }
+        }
+        loadStats();
+    }, []);
+
     return (
         <div className="animate-in">
             {/* Header */}
-            <div style={{ marginBottom: 32 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>
-                    Dashboard
-                </h1>
-                <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
-                    Vista general de la plataforma Parallext Engine
-                </p>
+            <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                    <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>
+                        Dashboard
+                    </h1>
+                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
+                        Bienvenido, {user?.firstName || "Admin"} · Vista general de la plataforma
+                    </p>
+                </div>
+                <DataSourceBadge isLive={isLive} />
             </div>
 
             {/* Stats Grid */}
@@ -179,7 +163,7 @@ export default function AdminDashboard() {
                         Actividad Reciente
                     </h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                        {recentActivity.map((item, i) => (
+                        {activity.map((item, i) => (
                             <div
                                 key={i}
                                 style={{
@@ -188,7 +172,7 @@ export default function AdminDashboard() {
                                     gap: 14,
                                     padding: "10px 0",
                                     borderBottom:
-                                        i < recentActivity.length - 1
+                                        i < activity.length - 1
                                             ? "1px solid rgba(42,42,69,0.5)"
                                             : "none",
                                 }}

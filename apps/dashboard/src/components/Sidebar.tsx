@@ -30,7 +30,7 @@ const navItems = [
     { href: "/admin/conversations", label: "Conversaciones", icon: MessageSquare },
     { href: "/admin/ai", label: "AI / LLM Router", icon: Brain },
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },
-    { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+    { href: "/admin/agent-analytics", label: "Analytics", icon: BarChart3 },
     { href: "/admin/users", label: "Usuarios", icon: Users },
     { href: "/admin/settings", label: "Configuración", icon: Settings },
 ];

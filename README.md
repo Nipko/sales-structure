@@ -68,7 +68,14 @@ Sales_Structure/
 │   │       ├── tenant-schema.sql  # Template para tenant schemas
 │   │       └── seed-gecko.sql  # Seed del piloto Gecko Aventura
 │   └── dashboard/              # Next.js 16 Admin Panel
-│       └── src/app/admin/      # Dashboard + Tenants pages
+│       └── src/
+│           ├── app/admin/      # 8 páginas: dashboard, tenants, inbox,
+│           │                   #   contacts, pipeline, automation,
+│           │                   #   agent-analytics, settings
+│           ├── contexts/       # AuthContext + TenantContext
+│           ├── hooks/          # useApiData (LIVE/DEMO badge)
+│           ├── lib/            # api.ts (centralized HTTP client)
+│           └── components/     # Sidebar, UI components
 ├── packages/
 │   └── shared/                 # Types, interfaces, constants compartidos
 ├── templates/
@@ -177,6 +184,7 @@ El script `setup-vps.sh`:
 ## 📈 Roadmap
 
 - [x] **Phase 1**: Foundation (MVP Core) ✅
+- [x] **Phase 1.11**: Frontend → API Integration ✅
 - [ ] **Phase 2**: Extended Features (Instagram, Messenger, Telegram, pagos)
 - [ ] **Phase 3**: Scale & Polish (Kubernetes, analytics avanzados, onboarding portal)
 

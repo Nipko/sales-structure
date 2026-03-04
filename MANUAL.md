@@ -1,6 +1,6 @@
 # 📖 Parallext Engine — Manual de la Plataforma
 
-> Versión 1.0 · Actualizado: Marzo 3, 2026
+> Versión 1.4.1 · Actualizado: Marzo 4, 2026
 
 ---
 
@@ -233,6 +233,33 @@ Configuración de API keys y servicios.
 ### Sidebar de navegación:
 Inbox → Dashboard → Tenants → Contactos → Pipeline → Automatización → Conversaciones → AI/LLM → Knowledge → Analytics → Usuarios → Configuración
 
+### Arquitectura Frontend-API:
+
+**API Client** (`lib/api.ts`):
+- Cliente HTTP centralizado con JWT auto-refresh
+- 30+ métodos tipados para todos los módulos
+- Si 401 → auto-refresh token → retry → si falla → logout
+
+**TenantContext** (`contexts/TenantContext.tsx`):
+- `super_admin`: Selector dropdown en el top bar para cambiar tenant
+- `tenant_admin / agent`: Usa su tenantId asignado automáticamente
+- Al cambiar tenant, todas las páginas recargan datos
+
+**DataSourceBadge** (● LIVE / ● DEMO):
+- Cada página muestra si los datos son reales (API) o mock
+- Si la API devuelve datos → badge verde **LIVE**
+- Si la API falla → datos mock con badge amarillo **DEMO**
+
+```
+Page → useEffect → api.getXXX(tenantId)
+                      ↓
+              lib/api.ts → authFetch()
+                      ↓
+          ┌─ 200 → setState(data) → ● LIVE
+          ├─ 401 → refreshToken → retry
+          └─ Error → keep mock → ● DEMO
+```
+
 ---
 
 ## 5. Base de Datos
@@ -388,3 +415,7 @@ Para dudas técnicas o nuevas funcionalidades, contactar al equipo de desarrollo
 **URLs de producción:**
 - Dashboard: https://admin.parallly-chat.cloud/admin
 - API: https://api.parallly-chat.cloud
+
+---
+
+*Última actualización: 2026-03-04 — v1.4.1*

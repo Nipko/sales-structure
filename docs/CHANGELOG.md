@@ -4,6 +4,15 @@
 
 ---
 
+## [1.7.0] — 2026-03-04
+
+### 🚀 Complete Sidebar (Final 3 Pages)
+- **Conversaciones** (`/admin/conversations`): Global inbox view, status filters, sentiment analysis badges, tag cloud summary
+- **AI / LLM Router** (`/admin/ai`): Model latency monitoring (GPT-4o, Claude, etc.), routing rules table, and visual architecture diagram
+- **Knowledge Base** (`/admin/knowledge`): RAG document manager, chunk stats, processing status, and web URL ingester
+
+---
+
 ## [1.6.0] — 2026-03-04
 
 ### 👥 Users Management + 📢 Broadcast

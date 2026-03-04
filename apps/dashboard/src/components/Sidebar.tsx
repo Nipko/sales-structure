@@ -15,11 +15,15 @@ import {
     ChevronLeft,
     ChevronRight,
     Zap,
+    Inbox,
+    Contact,
 } from "lucide-react";
 
 const navItems = [
+    { href: "/admin/inbox", label: "Inbox", icon: Inbox },
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/tenants", label: "Tenants", icon: Building2 },
+    { href: "/admin/contacts", label: "Contactos", icon: Contact },
     { href: "/admin/conversations", label: "Conversaciones", icon: MessageSquare },
     { href: "/admin/ai", label: "AI / LLM Router", icon: Brain },
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },

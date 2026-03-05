@@ -4,6 +4,17 @@
 
 ---
 
+## [1.9.0] — 2026-03-04
+
+### 📱 Multi-Channel: Instagram DM + Facebook Messenger
+- **InstagramAdapter** — Full `IChannelAdapter` for Instagram DMs (text, images, story mentions)
+- **MessengerAdapter** — Full `IChannelAdapter` for Facebook Messenger (text, images, attachments, quick replies, locations)
+- **Webhook Endpoints** — Dedicated `GET/POST /channels/webhook/instagram` and `/channels/webhook/messenger`
+- **ChannelsModule** — Both adapters auto-registered via the Gateway pattern
+- **Env Variables** — `INSTAGRAM_VERIFY_TOKEN`, `MESSENGER_VERIFY_TOKEN`, `MESSENGER_PAGE_ACCESS_TOKEN`
+
+---
+
 ## [1.8.0] — 2026-03-04
 
 ### 🤖 Parallext Copilot (AI Assistant)

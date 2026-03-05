@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
+import { InstagramAdapter } from './instagram/instagram.adapter';
+import { MessengerAdapter } from './messenger/messenger.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannelType } from '@parallext/shared';
 
@@ -14,12 +16,15 @@ export class ChannelsController {
     constructor(
         private gateway: ChannelGatewayService,
         private whatsappAdapter: WhatsAppAdapter,
+        private instagramAdapter: InstagramAdapter,
+        private messengerAdapter: MessengerAdapter,
         private prisma: PrismaService,
     ) { }
 
-    /**
-     * WhatsApp webhook verification (GET)
-     */
+    // ==========================================
+    // WhatsApp
+    // ==========================================
+
     @Get('webhook/whatsapp')
     @ApiOperation({ summary: 'WhatsApp webhook verification' })
     verifyWhatsApp(@Query() query: any, @Res() res: Response) {
@@ -30,27 +35,17 @@ export class ChannelsController {
         return res.status(403).send('Forbidden');
     }
 
-    /**
-     * WhatsApp webhook receiver (POST)
-     */
     @Post('webhook/whatsapp')
     @ApiOperation({ summary: 'Receive WhatsApp webhook events' })
     async receiveWhatsApp(@Body() body: any, @Res() res: Response) {
-        // Always respond 200 immediately (Meta requirement)
         res.status(200).send('OK');
 
         try {
-            // Extract phone_number_id from webhook
             const phoneNumberId = body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
             if (!phoneNumberId) return;
 
-            // Find tenant by channel account
             const channelAccount = await this.prisma.channelAccount.findFirst({
-                where: {
-                    channelType: 'whatsapp',
-                    accountId: phoneNumberId,
-                    isActive: true,
-                },
+                where: { channelType: 'whatsapp', accountId: phoneNumberId, isActive: true },
             });
 
             if (!channelAccount) {
@@ -58,26 +53,104 @@ export class ChannelsController {
                 return;
             }
 
-            // Normalize the message
             const normalized = await this.gateway.processIncomingWebhook('whatsapp', body, phoneNumberId);
             if (!normalized) return;
 
-            // Set the tenant ID
             normalized.tenantId = channelAccount.tenantId;
-
             this.logger.log(`Incoming WhatsApp message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
-
-            // TODO: Queue message for processing by the Conversation Orchestrator
-            // await this.messageQueue.add('process-message', normalized);
-
         } catch (error) {
             this.logger.error(`Error processing WhatsApp webhook: ${error}`);
         }
     }
 
-    /**
-     * Generic webhook for other channels (future: Instagram, Messenger, Telegram)
-     */
+    // ==========================================
+    // Instagram DM
+    // ==========================================
+
+    @Get('webhook/instagram')
+    @ApiOperation({ summary: 'Instagram webhook verification' })
+    verifyInstagram(@Query() query: any, @Res() res: Response) {
+        const challenge = this.instagramAdapter.verifyWebhook(query);
+        if (challenge) {
+            return res.status(200).send(challenge);
+        }
+        return res.status(403).send('Forbidden');
+    }
+
+    @Post('webhook/instagram')
+    @ApiOperation({ summary: 'Receive Instagram DM webhook events' })
+    async receiveInstagram(@Body() body: any, @Res() res: Response) {
+        res.status(200).send('OK');
+
+        try {
+            const igUserId = body?.entry?.[0]?.id;
+            if (!igUserId) return;
+
+            const channelAccount = await this.prisma.channelAccount.findFirst({
+                where: { channelType: 'instagram', accountId: igUserId, isActive: true },
+            });
+
+            if (!channelAccount) {
+                this.logger.warn(`No tenant found for Instagram IG User ID: ${igUserId}`);
+                return;
+            }
+
+            const normalized = await this.gateway.processIncomingWebhook('instagram', body, igUserId);
+            if (!normalized) return;
+
+            normalized.tenantId = channelAccount.tenantId;
+            this.logger.log(`Incoming Instagram DM for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+        } catch (error) {
+            this.logger.error(`Error processing Instagram webhook: ${error}`);
+        }
+    }
+
+    // ==========================================
+    // Facebook Messenger
+    // ==========================================
+
+    @Get('webhook/messenger')
+    @ApiOperation({ summary: 'Messenger webhook verification' })
+    verifyMessenger(@Query() query: any, @Res() res: Response) {
+        const challenge = this.messengerAdapter.verifyWebhook(query);
+        if (challenge) {
+            return res.status(200).send(challenge);
+        }
+        return res.status(403).send('Forbidden');
+    }
+
+    @Post('webhook/messenger')
+    @ApiOperation({ summary: 'Receive Messenger webhook events' })
+    async receiveMessenger(@Body() body: any, @Res() res: Response) {
+        res.status(200).send('OK');
+
+        try {
+            const pageId = body?.entry?.[0]?.id;
+            if (!pageId) return;
+
+            const channelAccount = await this.prisma.channelAccount.findFirst({
+                where: { channelType: 'messenger', accountId: pageId, isActive: true },
+            });
+
+            if (!channelAccount) {
+                this.logger.warn(`No tenant found for Messenger Page ID: ${pageId}`);
+                return;
+            }
+
+            const normalized = await this.gateway.processIncomingWebhook('messenger', body, pageId);
+            if (!normalized) return;
+
+            normalized.tenantId = channelAccount.tenantId;
+            this.logger.log(`Incoming Messenger message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+        } catch (error) {
+            this.logger.error(`Error processing Messenger webhook: ${error}`);
+        }
+    }
+
+    // ==========================================
+    // Generic (fallback for future channels)
+    // ==========================================
+
     @Post('webhook/:channelType')
     @ApiOperation({ summary: 'Generic channel webhook receiver' })
     async receiveGeneric(
@@ -92,9 +165,9 @@ export class ChannelsController {
             if (!normalized) return;
 
             this.logger.log(`Incoming ${channelType} message: ${normalized.contactId}`);
-            // TODO: Queue for processing
         } catch (error) {
             this.logger.error(`Error processing ${channelType} webhook: ${error}`);
         }
     }
 }
+

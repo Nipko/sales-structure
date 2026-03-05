@@ -2,23 +2,28 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { ChannelsController } from './channels.controller';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
+import { InstagramAdapter } from './instagram/instagram.adapter';
+import { MessengerAdapter } from './messenger/messenger.adapter';
 
 @Module({
     controllers: [ChannelsController],
-    providers: [ChannelGatewayService, WhatsAppAdapter],
+    providers: [ChannelGatewayService, WhatsAppAdapter, InstagramAdapter, MessengerAdapter],
     exports: [ChannelGatewayService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(
         private gateway: ChannelGatewayService,
         private whatsappAdapter: WhatsAppAdapter,
+        private instagramAdapter: InstagramAdapter,
+        private messengerAdapter: MessengerAdapter,
     ) { }
 
     onModuleInit() {
         // Register all available channel adapters
         this.gateway.registerAdapter(this.whatsappAdapter);
-        // Future: this.gateway.registerAdapter(this.instagramAdapter);
-        // Future: this.gateway.registerAdapter(this.messengerAdapter);
+        this.gateway.registerAdapter(this.instagramAdapter);
+        this.gateway.registerAdapter(this.messengerAdapter);
         // Future: this.gateway.registerAdapter(this.telegramAdapter);
     }
 }
+

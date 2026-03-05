@@ -19,6 +19,7 @@ import {
     Contact,
     TrendingUp,
     Megaphone,
+    Package,
 } from "lucide-react";
 
 const navItems = [
@@ -27,6 +28,7 @@ const navItems = [
     { href: "/admin/tenants", label: "Tenants", icon: Building2 },
     { href: "/admin/contacts", label: "Contactos", icon: Contact },
     { href: "/admin/pipeline", label: "Pipeline", icon: TrendingUp },
+    { href: "/admin/inventory", label: "Inventario", icon: Package },
     { href: "/admin/automation", label: "Automatización", icon: Zap },
     { href: "/admin/broadcast", label: "Broadcast", icon: Megaphone },
     { href: "/admin/conversations", label: "Conversaciones", icon: MessageSquare },

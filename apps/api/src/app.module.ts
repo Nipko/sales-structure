@@ -21,6 +21,7 @@ import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AgentAnalyticsModule } from './modules/analytics/agent-analytics.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -69,6 +70,7 @@ import llmConfig from './config/llm.config';
         AgentAnalyticsModule,
         SettingsModule,
         CopilotModule,
+        InventoryModule,
     ],
 })
 export class AppModule { }

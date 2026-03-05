@@ -144,6 +144,26 @@ export const api = {
     getSLAViolations: (tenantId: string) =>
         apiGet(`/pipeline/automation/${tenantId}/sla-violations`),
 
+    // --- Inventory ---
+    getInventoryOverview(tenantId: string) {
+        return apiGet<any>(`/inventory/overview/${tenantId}`);
+    },
+    getInventoryProducts(tenantId: string) {
+        return apiGet<any[]>(`/inventory/products/${tenantId}`);
+    },
+    createInventoryProduct(tenantId: string, data: any) {
+        return apiPost(`/inventory/products/${tenantId}`, data);
+    },
+    updateInventoryProduct(tenantId: string, productId: string, data: any) {
+        return apiPut(`/inventory/products/${tenantId}/${productId}`, data);
+    },
+    adjustInventoryStock(tenantId: string, productId: string, data: { type: 'in' | 'out' | 'adjustment', quantity: number, reason: string }) {
+        return apiPost(`/inventory/products/${tenantId}/${productId}/stock`, data);
+    },
+    createInventoryCategory(tenantId: string, data: { name: string, color: string }) {
+        return apiPost(`/inventory/categories/${tenantId}`, data);
+    },
+
     // --- Analytics ---
     getOverviewStats: (tenantId: string) =>
         apiGet(`/analytics/overview/${tenantId}`),

@@ -4,6 +4,16 @@
 
 ---
 
+## [2.1.0] — 2026-03-04
+
+### 📦 Inventory Management Module
+- **New Dashboard Page** — Added `/admin/inventory` for managing products, categories, stock, and movements.
+- **KPI & Stock Alerts** — Dynamic cards for total value, low stock, out of stock, and active items.
+- **Backend Service** — `InventoryService` for managing CRUD, schema-level tables (`executeInTenantSchema`), and stock movements.
+- **API Endpoints** — New set of `/inventory` protected endpoints.
+
+---
+
 ## [2.0.0] — 2026-03-04
 
 ### 📡 Telegram Integration + Full Channel Settings

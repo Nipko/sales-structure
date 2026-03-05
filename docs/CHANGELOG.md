@@ -4,6 +4,16 @@
 
 ---
 
+## [2.0.0] — 2026-03-04
+
+### 📡 Telegram Integration + Full Channel Settings
+- **TelegramAdapter** — Full `IChannelAdapter` for Telegram Bot API (text, photos, docs, audio, video, voice, locations, contacts, stickers)
+- **Webhook Endpoint** — `POST /channels/webhook/telegram` for receiving bot updates
+- **Settings Page Enhanced** — 7 configuration tabs: LLM, WhatsApp, Instagram, Messenger, Telegram, Chatwoot, General
+- **All 4 Channel Adapters** — WhatsApp, Instagram DM, Facebook Messenger, and Telegram fully registered
+
+---
+
 ## [1.9.0] — 2026-03-04
 
 ### 📱 Multi-Channel: Instagram DM + Facebook Messenger

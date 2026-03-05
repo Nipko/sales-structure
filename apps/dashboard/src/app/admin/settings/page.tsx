@@ -15,11 +15,17 @@ import {
     Key,
     Globe,
     Shield,
+    Instagram,
+    Facebook,
+    Send,
 } from "lucide-react";
 
 const tabs = [
     { id: "llm", label: "LLM Providers", icon: Brain, color: "#6c5ce7" },
     { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, color: "#25d366" },
+    { id: "instagram", label: "Instagram", icon: Instagram, color: "#e1306c" },
+    { id: "messenger", label: "Messenger", icon: Facebook, color: "#0084ff" },
+    { id: "telegram", label: "Telegram", icon: Send, color: "#0088cc" },
     { id: "chatwoot", label: "Chatwoot", icon: Headphones, color: "#1f93ff" },
     { id: "general", label: "General", icon: SettingsIcon, color: "#00b4d8" },
 ];
@@ -50,6 +56,25 @@ const settingsSchema: Record<string, FieldConfig[]> = {
         { key: "whatsapp.business_account_id", label: "Business Account ID (WABA)", description: "ID de tu cuenta WhatsApp Business", type: "text", placeholder: "1234567890" },
         { key: "whatsapp.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks de Meta", type: "password", placeholder: "my-verify-token" },
         { key: "whatsapp.app_secret", label: "App Secret", description: "Secret de la Meta App (verificación de firma)", type: "password", placeholder: "" },
+    ],
+    instagram: [
+        { key: "instagram.ig_user_id", label: "Instagram User ID", description: "ID de tu cuenta de Instagram Business", type: "text", placeholder: "1234567890" },
+        { key: "instagram.access_token", label: "Page Access Token", description: "Token de la Facebook Page vinculada", type: "password", placeholder: "EAAG..." },
+        { key: "instagram.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks de Meta", type: "password", placeholder: "my-ig-verify-token" },
+        { key: "instagram.app_secret", label: "App Secret", description: "Secret de la Meta App", type: "password", placeholder: "" },
+        { key: "instagram.webhook_url", label: "Webhook URL", description: "URL para configurar en Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/instagram" },
+    ],
+    messenger: [
+        { key: "messenger.page_id", label: "Facebook Page ID", description: "ID de tu página de Facebook", type: "text", placeholder: "1234567890" },
+        { key: "messenger.page_access_token", label: "Page Access Token", description: "Token permanente de la página", type: "password", placeholder: "EAAG..." },
+        { key: "messenger.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks", type: "password", placeholder: "my-fb-verify-token" },
+        { key: "messenger.app_secret", label: "App Secret", description: "Secret de la Meta App", type: "password", placeholder: "" },
+        { key: "messenger.webhook_url", label: "Webhook URL", description: "URL para configurar en Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/messenger" },
+    ],
+    telegram: [
+        { key: "telegram.bot_token", label: "Bot Token", description: "Token del bot (obtenido de @BotFather)", type: "password", placeholder: "1234567890:AAHfiqksKZ8WmR2zMn..." },
+        { key: "telegram.bot_username", label: "Bot Username", description: "Username del bot (sin @)", type: "text", placeholder: "mi_bot" },
+        { key: "telegram.webhook_url", label: "Webhook URL", description: "URL para setWebhook", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/telegram" },
     ],
     chatwoot: [
         { key: "chatwoot.url", label: "Chatwoot URL", description: "URL base de tu instancia", type: "text", placeholder: "https://chatwoot.example.com" },

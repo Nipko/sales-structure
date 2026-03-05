@@ -5,6 +5,7 @@ import { ChannelGatewayService } from './channel-gateway.service';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
 import { MessengerAdapter } from './messenger/messenger.adapter';
+import { TelegramAdapter } from './telegram/telegram.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannelType } from '@parallext/shared';
 
@@ -18,6 +19,7 @@ export class ChannelsController {
         private whatsappAdapter: WhatsAppAdapter,
         private instagramAdapter: InstagramAdapter,
         private messengerAdapter: MessengerAdapter,
+        private telegramAdapter: TelegramAdapter,
         private prisma: PrismaService,
     ) { }
 
@@ -148,6 +150,40 @@ export class ChannelsController {
     }
 
     // ==========================================
+    // Telegram
+    // ==========================================
+
+    @Post('webhook/telegram')
+    @ApiOperation({ summary: 'Receive Telegram Bot webhook updates' })
+    async receiveTelegram(@Body() body: any, @Res() res: Response) {
+        res.status(200).send('OK');
+
+        try {
+            // Telegram sends Update objects directly
+            // The bot token is used to identify which tenant owns the bot
+            const botId = body?.message?.from?.is_bot ? body?.message?.from?.id?.toString() : null;
+
+            // Try to find the tenant by any configured telegram channel account
+            const channelAccount = await this.prisma.channelAccount.findFirst({
+                where: { channelType: 'telegram', isActive: true },
+            });
+
+            if (!channelAccount) {
+                this.logger.warn('No tenant configured for Telegram');
+                return;
+            }
+
+            const normalized = await this.gateway.processIncomingWebhook('telegram', body, channelAccount.accountId);
+            if (!normalized) return;
+
+            normalized.tenantId = channelAccount.tenantId;
+            this.logger.log(`Incoming Telegram message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+        } catch (error) {
+            this.logger.error(`Error processing Telegram webhook: ${error}`);
+        }
+    }
+
+    // ==========================================
     // Generic (fallback for future channels)
     // ==========================================
 
@@ -170,4 +206,5 @@ export class ChannelsController {
         }
     }
 }
+
 

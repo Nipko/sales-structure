@@ -4,6 +4,16 @@
 
 ---
 
+## [2.3.0] — 2026-03-08
+
+### 🧾 Quote & Invoice Generation Module
+- **HTML Invoice Rendering** — Endpoint `GET /orders/:tenantId/:orderId/invoice` that renders an A4-optimized HTML invoice/quote.
+- **Dynamic Content** — Displays Tenant Name, Customer Name, Items list, Quantities, Unit Prices, and Total amounts.
+- **Dynamic Title** — Titling changes automatically between "Cotización" (if pending) and "Factura / Recibo" (if paid).
+- **Dashboard Action** — Added a "Ver Recibo" quick-action button in the Orders list.
+
+---
+
 ## [2.2.0] — 2026-03-08
 
 ### 🛒 Order & Reservation Management Module

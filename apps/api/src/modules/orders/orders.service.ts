@@ -312,4 +312,164 @@ export class OrdersService {
             ]
         };
     }
+
+    /**
+     * Generate HTML Document for Order (Invoice / Quote)
+     */
+    async getInvoiceHtml(tenantId: string, orderId: string): Promise<string> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return '<html><body><h1>Tenant not found</h1></body></html>';
+
+        let orderRow: any;
+        let itemsRows: any[] = [];
+        let tenantRow: any;
+
+        if (orderId === 'o1' || orderId === 'o2') {
+            // Mock data fallback
+            const mockData = this.getMockOverview().orders.find(o => o.id === orderId);
+            if (!mockData) return '<html><body><h1>Order not found</h1></body></html>';
+            orderRow = {
+                id: mockData.id,
+                contact_name: mockData.contactName,
+                status: mockData.status,
+                created_at: new Date(mockData.createdAt),
+                total_amount: mockData.totalAmount,
+                notes: mockData.notes,
+                payment_method: mockData.paymentMethod
+            };
+            itemsRows = mockData.items.map(i => ({
+                product_name: i.productName,
+                quantity: i.quantity,
+                unit_price: i.unitPrice,
+                total_price: i.totalPrice
+            }));
+            tenantRow = { name: 'Comercio Local (Demo)' };
+        } else {
+            // Live data
+            const orderRes = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT o.*, c.name as contact_name
+                 FROM orders o LEFT JOIN contacts c ON o.contact_id = c.id
+                 WHERE o.id = $1::uuid LIMIT 1`, [orderId]
+            );
+            if (!orderRes || orderRes.length === 0) return '<html><body><h1>No se encontró la orden</h1></body></html>';
+            orderRow = orderRes[0];
+
+            itemsRows = await this.prisma.executeInTenantSchema<any[]>(
+                schema, `SELECT * FROM order_items WHERE order_id = $1::uuid`, [orderId]
+            ) || [];
+
+            const tenantRes = await this.prisma.$queryRaw<any[]>`SELECT name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1`;
+            tenantRow = tenantRes?.[0] || { name: 'Negocio Local' };
+        }
+
+        const isPaid = orderRow.status === 'paid';
+        const docTitle = isPaid ? 'FACTURA / RECIBO DE PAGO' : 'COTIZACIÓN / ORDEN PENDIENTE';
+        const color = isPaid ? '#2ecc71' : '#6c5ce7';
+
+        const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(parseFloat(n as any));
+        const dateStr = new Date(orderRow.created_at).toLocaleDateString("es-CO", { day: '2-digit', month: 'long', year: 'numeric' });
+
+        return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>${docTitle} - ${orderRow.id.split('-')[0]}</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: 40px auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
+        .business-name { font-size: 24px; font-weight: bold; color: #2d3436; margin: 0; }
+        .doc-title { font-size: 20px; font-weight: bold; color: ${color}; margin: 0; text-align: right; text-transform: uppercase; }
+        .doc-meta { font-size: 14px; color: #636e72; text-align: right; margin-top: 8px; }
+        
+        .info-section { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .info-box { width: 48%; }
+        .info-box h3 { margin: 0 0 10px 0; font-size: 14px; color: #b2bec3; text-transform: uppercase; }
+        .info-box p { margin: 0 0 5px 0; font-size: 15px; font-weight: 500; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { text-align: left; padding: 12px; background: #f8f9fa; color: #2d3436; font-size: 14px; border-bottom: 2px solid #eee; }
+        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        
+        .totals { width: 300px; margin-left: auto; border-top: 2px solid ${color}; padding-top: 15px; }
+        .total-row { display: flex; justify-content: space-between; font-size: 15px; margin-bottom: 10px; }
+        .total-row.grand-total { font-size: 20px; font-weight: bold; color: ${color}; }
+        
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #aaa; text-align: center; }
+        
+        @media print {
+            body { background: white; margin: 0; }
+            .container { box-shadow: none; margin: 0; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1 class="business-name">${tenantRow.name}</h1>
+            </div>
+            <div>
+                <h2 class="doc-title">${docTitle}</h2>
+                <div class="doc-meta">No. ${orderRow.id.split('-')[0].toUpperCase()}</div>
+                <div class="doc-meta">Fecha: ${dateStr}</div>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>Facturar / Cotizar a</h3>
+                <p>${orderRow.contact_name || 'Cliente / Consumidor Final'}</p>
+            </div>
+            <div class="info-box" style="text-align: right;">
+                <h3>Estado</h3>
+                <p style="color: ${color};">${isPaid ? 'Pagado' : (orderRow.status === 'confirmed' ? 'Confirmada (Crédito)' : 'Pendiente')}</p>
+                <p style="font-size: 13px; color: #636e72;">Medio: ${orderRow.payment_method}</p>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Descripción del Producto / Servicio</th>
+                    <th class="text-center">Cant.</th>
+                    <th class="text-right">V. Unitario</th>
+                    <th class="text-right">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${itemsRows.map(i => `
+                <tr>
+                    <td>${i.product_name}</td>
+                    <td class="text-center">${i.quantity}</td>
+                    <td class="text-right">${formatCurrency(i.unit_price)}</td>
+                    <td class="text-right">${formatCurrency(i.total_price)}</td>
+                </tr>
+                `).join('')}
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <div class="total-row grand-total">
+                <span>TOTAL</span>
+                <span>${formatCurrency(orderRow.total_amount)}</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 30px;">
+            <p style="font-size: 13px; color: #636e72;"><strong>Notas:</strong> ${orderRow.notes || 'Ninguna'}</p>
+        </div>
+
+        <div class="footer">
+            Este documento ${isPaid ? 'es un comprobante de pago electrónico' : 'es una cotización sin validez fiscal hasta su cancelación'}.
+            <br>Generado por Parallext Cloud.
+        </div>
+    </div>
+</body>
+</html>`;
+    }
 }

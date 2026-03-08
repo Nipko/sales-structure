@@ -29,4 +29,13 @@ export class OrdersController {
         await this.ordersService.updateOrderStatus(tenantId, orderId, body.status);
         return { success: true, message: 'Status updated' };
     }
+
+    @Get(':tenantId/:orderId/invoice')
+    async getInvoiceHtml(
+        @Param('tenantId') tenantId: string,
+        @Param('orderId') orderId: string
+    ) {
+        const html = await this.ordersService.getInvoiceHtml(tenantId, orderId);
+        return html; // NestJS will return it as content-type: text/html automatically if it's a string, or you can force it, but string return is fine for simple display
+    }
 }

@@ -17,6 +17,7 @@ import {
     X,
     User,
     Check,
+    FileText,
 } from "lucide-react";
 
 // ---- Types ----
@@ -234,19 +235,32 @@ export default function OrdersPage() {
                                         </div>
                                     </td>
                                     <td style={{ padding: "16px 20px" }}>
-                                        <select
-                                            value={order.status}
-                                            onChange={(e) => handleUpdateStatus(order.id, e.target.value)}
-                                            style={{
-                                                padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                                                background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 13, cursor: "pointer", outline: "none",
-                                            }}
-                                        >
-                                            <option value="pending">Pendiente</option>
-                                            <option value="confirmed">Confirmada</option>
-                                            <option value="paid">Pagada</option>
-                                            <option value="cancelled">Cancelada</option>
-                                        </select>
+                                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                            <select
+                                                value={order.status}
+                                                onChange={(e) => handleUpdateStatus(order.id, e.target.value)}
+                                                style={{
+                                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
+                                                    background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 13, cursor: "pointer", outline: "none",
+                                                }}
+                                            >
+                                                <option value="pending">Pendiente</option>
+                                                <option value="confirmed">Confirmada</option>
+                                                <option value="paid">Pagada</option>
+                                                <option value="cancelled">Cancelada</option>
+                                            </select>
+
+                                            <button
+                                                onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1'}/orders/${activeTenantId}/${order.id}/invoice`, '_blank')}
+                                                style={{
+                                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--accent)",
+                                                    background: "rgba(108,92,231,0.1)", color: "var(--accent)", fontSize: 13, fontWeight: 600,
+                                                    cursor: "pointer", display: "flex", alignItems: "center", gap: 6
+                                                }}
+                                            >
+                                                <FileText size={14} /> Ver Recibo
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             );

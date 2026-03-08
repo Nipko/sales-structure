@@ -4,6 +4,16 @@
 
 ---
 
+## [2.2.0] — 2026-03-08
+
+### 🛒 Order & Reservation Management Module
+- **New Dashboard Page** — Added `/admin/orders` to manage customer orders, sales, and reservations.
+- **KPI Dashboards** — Total revenue, pending revenue, order count, and average ticket size.
+- **Backend Service** — `OrdersService` integrating with the inventory module to adjust stock automatically upon order creation.
+- **API Endpoints** — New set of `/orders` protected endpoints.
+
+---
+
 ## [2.1.0] — 2026-03-04
 
 ### 📦 Inventory Management Module

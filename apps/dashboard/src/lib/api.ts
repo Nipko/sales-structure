@@ -164,6 +164,17 @@ export const api = {
         return apiPost(`/inventory/categories/${tenantId}`, data);
     },
 
+    // --- Orders ---
+    getOrdersOverview(tenantId: string) {
+        return apiGet<any>(`/orders/overview/${tenantId}`);
+    },
+    createOrder(tenantId: string, data: any) {
+        return apiPost(`/orders/${tenantId}`, data);
+    },
+    updateOrderStatus(tenantId: string, orderId: string, status: string) {
+        return apiPut(`/orders/${tenantId}/${orderId}/status`, { status });
+    },
+
     // --- Analytics ---
     getOverviewStats: (tenantId: string) =>
         apiGet(`/analytics/overview/${tenantId}`),

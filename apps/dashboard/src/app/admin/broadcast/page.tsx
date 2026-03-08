@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { api } from "@/lib/api";
 import {
     Send, Users, MessageSquare, Calendar, Clock, Plus, X,
     CheckCircle2, AlertCircle, Megaphone, BarChart3, Target,
@@ -13,32 +14,7 @@ import {
 // ============================================
 // MOCK DATA
 // ============================================
-const mockCampaigns = [
-    {
-        id: "c1", name: "Promo Semana Santa 🏖️", status: "sent" as const,
-        channel: "whatsapp", recipientCount: 245, deliveredCount: 238, readCount: 189, repliedCount: 42,
-        scheduledAt: "2026-03-01 09:00", sentAt: "2026-03-01 09:00",
-        template: "¡Hola {{name}}! Esta Semana Santa vive la aventura con 20% OFF en todos nuestros paquetes. 🌊🏔️",
-    },
-    {
-        id: "c2", name: "Follow-up clientes inactivos", status: "sent" as const,
-        channel: "whatsapp", recipientCount: 87, deliveredCount: 84, readCount: 61, repliedCount: 15,
-        scheduledAt: "2026-02-25 14:00", sentAt: "2026-02-25 14:00",
-        template: "¡Hola {{name}}! Te extrañamos en Gecko Aventura. ¿Listo para tu próxima aventura? 🎒",
-    },
-    {
-        id: "c3", name: "Lanzamiento Rafting Nocturno 🌙", status: "scheduled" as const,
-        channel: "whatsapp", recipientCount: 312, deliveredCount: 0, readCount: 0, repliedCount: 0,
-        scheduledAt: "2026-03-10 08:00", sentAt: null,
-        template: "¡NOVEDAD! Rafting bajo las estrellas 🌙 Sé de los primeros en vivir esta experiencia única. Cupos limitados.",
-    },
-    {
-        id: "c4", name: "Encuesta de satisfacción", status: "draft" as const,
-        channel: "whatsapp", recipientCount: 0, deliveredCount: 0, readCount: 0, repliedCount: 0,
-        scheduledAt: null, sentAt: null,
-        template: "¡Hola {{name}}! ¿Cómo fue tu experiencia con nosotros? Tu opinión nos ayuda a mejorar. Responde 1-5 ⭐",
-    },
-];
+// Replaced mock data with API fetching
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
     draft: { label: "Borrador", color: "#95a5a6", icon: FileText },
@@ -51,10 +27,26 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
 export default function BroadcastPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [campaigns, setCampaigns] = useState(mockCampaigns);
+    const [campaigns, setCampaigns] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+
+    const loadCampaigns = async () => {
+        if (!activeTenantId) return;
+        setLoading(true);
+        const res = await api.getCampaigns(activeTenantId);
+        if (res?.success) {
+            setCampaigns(res.data || []);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        loadCampaigns();
+    }, [activeTenantId]);
     const [showNewCampaign, setShowNewCampaign] = useState(false);
-    const [newCampaign, setNewCampaign] = useState({ name: "", template: "", scheduledAt: "" });
-    const [selectedCampaign, setSelectedCampaign] = useState<typeof mockCampaigns[0] | null>(null);
+    const [newCampaign, setNewCampaign] = useState({ name: "", channel: "whatsapp", template: "", targetAudience: "all", scheduledAt: "" });
+    const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
     const [toast, setToast] = useState<string | null>(null);
 
     const stats = {
@@ -65,26 +57,33 @@ export default function BroadcastPage() {
         totalReplies: campaigns.reduce((s, c) => s + c.repliedCount, 0),
     };
 
-    function handleCreateCampaign() {
+    const handleCreateCampaign = async () => {
+        if (!activeTenantId) return;
         if (!newCampaign.name || !newCampaign.template) return;
-        setCampaigns(prev => [...prev, {
-            id: `c${Date.now()}`,
-            name: newCampaign.name,
-            status: (newCampaign.scheduledAt ? "scheduled" : "draft") as any,
-            channel: "whatsapp",
-            recipientCount: 0,
-            deliveredCount: 0,
-            readCount: 0,
-            repliedCount: 0,
-            scheduledAt: newCampaign.scheduledAt || null,
-            sentAt: null,
-            template: newCampaign.template,
-        }]);
-        setShowNewCampaign(false);
-        setNewCampaign({ name: "", template: "", scheduledAt: "" });
-        setToast("Campaña creada exitosamente");
-        setTimeout(() => setToast(null), 2000);
-    }
+
+        setCreating(true);
+        const res = await api.createCampaign(activeTenantId, newCampaign);
+        if (res?.success) {
+            setCreating(false);
+            setNewCampaign({ name: "", channel: "whatsapp", template: "", targetAudience: "all", scheduledAt: "" });
+            loadCampaigns();
+            setShowNewCampaign(false);
+            setToast("Campaña creada exitosamente");
+            setTimeout(() => setToast(null), 2000);
+        } else {
+            setCreating(false);
+            setToast("Error al crear campaña");
+            setTimeout(() => setToast(null), 2000);
+        }
+    };
+
+    const handleSendNow = async (id: string) => {
+        if (!activeTenantId) return;
+        setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "sending" } : c));
+        await api.sendCampaign(activeTenantId, id);
+        // Refresh after a short delay to get the 'sent' status
+        setTimeout(loadCampaigns, 2000);
+    };
 
     return (
         <>

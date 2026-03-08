@@ -175,6 +175,17 @@ export const api = {
         return apiPut(`/orders/${tenantId}/${orderId}/status`, { status });
     },
 
+    // --- Broadcast ---
+    getCampaigns(tenantId: string) {
+        return apiGet<any[]>(`/broadcast/campaigns/${tenantId}`);
+    },
+    createCampaign(tenantId: string, data: { name: string; channel: string; template: string; targetAudience: string }) {
+        return apiPost<{ id: string }>(`/broadcast/campaigns/${tenantId}`, data);
+    },
+    sendCampaign(tenantId: string, campaignId: string) {
+        return apiPost(`/broadcast/campaigns/${tenantId}/${campaignId}/send`, {});
+    },
+
     // --- Analytics ---
     getOverviewStats: (tenantId: string) =>
         apiGet(`/analytics/overview/${tenantId}`),

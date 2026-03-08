@@ -4,6 +4,17 @@
 
 ---
 
+## [2.4.0] — 2026-03-08
+
+### 📣 Broadcast & Campaign Management
+- **Targeted Mass Messaging** — Send templated messages (e.g., WhatsApp, Instagram, Telegram) to all valid contacts simultaneously.
+- **Dynamic Variable Injection** — Automatically replace `{{name}}` with the recipient's name from the CRM.
+- **Campaign Dashboard** — Re-wired `/admin/broadcast` from mock data to live API. View campaign progress, total delivered, and delivery statuses.
+- **Backend Architecture** — New scalable `BroadcastService` taking advantage of `executeInTenantSchema` and generating live `campaigns` and `campaign_logs` tables.
+- **Staggered Dispatch** — Integrated minor delays in dispatch loops to minimize risks of channel rate-limiting.
+
+---
+
 ## [2.3.0] — 2026-03-08
 
 ### 🧾 Quote & Invoice Generation Module

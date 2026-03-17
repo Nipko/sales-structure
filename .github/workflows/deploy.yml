@@ -116,12 +116,12 @@ jobs:
 
             echo "===> Ensuring postgres and redis are healthy..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              --project-name parallext up -d postgres redis
+              --project-name parallext-engine up -d postgres redis
 
             echo "===> Waiting for postgres to be ready..."
             for i in $(seq 1 12); do
               if docker compose -f infra/docker/docker-compose.prod.yml \
-                  --project-name parallext exec -T postgres \
+                  --project-name parallext-engine exec -T postgres \
                   pg_isready -U postgres > /dev/null 2>&1; then
                 echo "  [OK] Postgres ready after ${i}s"
                 break
@@ -132,12 +132,12 @@ jobs:
 
             echo "===> Running Prisma public schema migrations..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              --project-name parallext run --rm \
+              --project-name parallext-engine run --rm \
               api npx prisma migrate deploy --schema=prisma/schema.prisma || true
 
             echo "===> Running tenant schema migration (idempotent)..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              --project-name parallext run --rm --no-deps \
+              --project-name parallext-engine run --rm --no-deps \
               --env-file /opt/parallext-engine/.env \
               api node -e "
                 const { PrismaClient } = require('@prisma/client');
@@ -176,7 +176,7 @@ jobs:
 
             echo "===> Restarting API and Dashboard..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              --project-name parallext up -d --force-recreate api dashboard
+              --project-name parallext-engine up -d --force-recreate api dashboard
 
 
             echo "===> Waiting for API health (max 3 min)..."

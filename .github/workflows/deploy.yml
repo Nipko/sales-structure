@@ -136,11 +136,8 @@ jobs:
               api npx prisma migrate deploy --schema=prisma/schema.prisma || true
 
             echo "===> Running tenant schema migration (idempotent)..."
-            docker run --rm \
-              --network docker_default \
-              --env-file /opt/parallext-engine/.env \
-              ghcr.io/nipko/parallext-api:latest \
-              npm run migrate:tenants
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              run --rm api npm run migrate:tenants
 
             echo "===> Restarting API and Dashboard..."
             docker compose -f infra/docker/docker-compose.prod.yml \

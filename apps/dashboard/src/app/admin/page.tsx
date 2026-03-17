@@ -21,28 +21,15 @@ const statConfig = [
     { key: "llmCostToday",      label: "Costo LLM Hoy",        icon: Brain,         color: "#ffaa00", suffix: "$" },
 ];
 
-const mockActivity = [
-    { tenant: "Gecko Aventura", event: "Nueva conversación iniciada", time: "Hace 2 min", type: "conversation" },
-    { tenant: "Gecko Aventura", event: "Handoff a agente humano", time: "Hace 15 min", type: "handoff" },
-    { tenant: "Demo Corp", event: "Documento RAG procesado", time: "Hace 1 hora", type: "knowledge" },
-    { tenant: "Gecko Aventura", event: "Reserva confirmada #GK-0042", time: "Hace 2 horas", type: "order" },
-    { tenant: "Test Tenant", event: "Persona config actualizada v3", time: "Hace 3 horas", type: "config" },
-];
 
-const mockModels = [
-    { model: "Gemini Flash", tier: "Tier 3", requests: 842, pct: 46, color: "#00d68f" },
-    { model: "GPT-4o-mini", tier: "Tier 2", requests: 534, pct: 29, color: "#00b4d8" },
-    { model: "DeepSeek", tier: "Tier 4", requests: 312, pct: 17, color: "#ffaa00" },
-    { model: "GPT-4o", tier: "Tier 1", requests: 154, pct: 8, color: "#6c5ce7" },
-];
 
 export default function AdminDashboard() {
     const { user } = useAuth();
     const [overview, setOverview] = useState<Record<string, number>>({
         leadsToday: 0, leadsHot: 0, messagesProcessed: 0, llmCostToday: 0,
     });
-    const [activity] = useState(mockActivity);
-    const [modelUsage] = useState(mockModels);
+    const [activity, setActivity] = useState<any[]>([]);
+    const [modelUsage, setModelUsage] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
 
     useEffect(() => {
@@ -56,6 +43,33 @@ export default function AdminDashboard() {
                     llmCostToday:      result.data.llmCostToday,
                 });
                 setIsLive(true);
+            }
+            // Load dashboard details (activity + model usage)
+            try {
+                const dashResult = await api.getOverviewStats('');
+                if (dashResult.success && dashResult.data) {
+                    if (Array.isArray(dashResult.data.recentActivity)) {
+                        setActivity(dashResult.data.recentActivity.map((a: any) => ({
+                            tenant: a.tenant_name || a.tenant || 'Sistema',
+                            event: a.event || a.description || a.event_type || '',
+                            time: a.created_at ? new Date(a.created_at).toLocaleString('es-CO', { hour: '2-digit', minute: '2-digit' }) : a.time || '',
+                            type: a.type || a.event_type || 'conversation',
+                        })));
+                    }
+                    if (Array.isArray(dashResult.data.modelUsage)) {
+                        const total = dashResult.data.modelUsage.reduce((s: number, m: any) => s + (m.requests || m.count || 0), 0) || 1;
+                        const modelColors = ['#00d68f', '#00b4d8', '#ffaa00', '#6c5ce7', '#e74c3c'];
+                        setModelUsage(dashResult.data.modelUsage.map((m: any, i: number) => ({
+                            model: m.model || m.llm_model || 'Unknown',
+                            tier: m.tier || `Tier ${i + 1}`,
+                            requests: m.requests || m.count || 0,
+                            pct: Math.round(((m.requests || m.count || 0) / total) * 100),
+                            color: modelColors[i % modelColors.length],
+                        })));
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load dashboard details:', err);
             }
         }
         loadOverview();
@@ -166,7 +180,7 @@ export default function AdminDashboard() {
                         Actividad Reciente
                     </h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                        {activity.map((item, i) => (
+                        {activity.length > 0 ? activity.map((item, i) => (
                             <div
                                 key={i}
                                 style={{
@@ -220,7 +234,11 @@ export default function AdminDashboard() {
                                     {item.time}
                                 </span>
                             </div>
-                        ))}
+                        )) : (
+                            <div style={{ padding: 20, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
+                                No hay actividad reciente disponible
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -236,7 +254,7 @@ export default function AdminDashboard() {
                         Distribución de Modelos LLM
                     </h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                        {modelUsage.map((model) => (
+                        {modelUsage.length > 0 ? modelUsage.map((model) => (
                             <div key={model.model}>
                                 <div
                                     style={{
@@ -279,7 +297,11 @@ export default function AdminDashboard() {
                                     />
                                 </div>
                             </div>
-                        ))}
+                        )) : (
+                            <div style={{ padding: 20, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
+                                Sin datos de uso de modelos disponibles
+                            </div>
+                        )}
                     </div>
                     <div
                         style={{

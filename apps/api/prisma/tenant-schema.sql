@@ -409,3 +409,85 @@ CREATE TABLE "{{SCHEMA_NAME}}"."stage_history" (
     "created_at"      TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."stage_history" ("lead_id", "created_at");
+
+-- ============================================
+-- PARALLLY — WhatsApp Platform Manager (WABA)
+-- ============================================
+
+-- ---- WhatsApp Channels ----
+CREATE TABLE "{{SCHEMA_NAME}}"."whatsapp_channels" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "provider_type" VARCHAR(50) DEFAULT 'meta_cloud',
+    "meta_business_id" VARCHAR(255),
+    "meta_waba_id" VARCHAR(255),
+    "phone_number_id" VARCHAR(255),
+    "display_phone_number" VARCHAR(50),
+    "display_name" VARCHAR(255),
+    "display_name_status" VARCHAR(50),
+    "quality_rating" VARCHAR(50),
+    "messaging_limit_tier" VARCHAR(50),
+    "access_token_ref" TEXT, -- Encrypted or reference
+    "app_id" VARCHAR(255),
+    "webhook_verify_token_ref" VARCHAR(255),
+    "webhook_callback_url" VARCHAR(500),
+    "webhook_subscription_status" VARCHAR(50),
+    "channel_status" VARCHAR(50) DEFAULT 'pending', -- pending, connected, disconnected, restricted
+    "connected_at" TIMESTAMP,
+    "last_healthcheck_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- WhatsApp Templates ----
+CREATE TABLE "{{SCHEMA_NAME}}"."whatsapp_templates" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "channel_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."whatsapp_channels"("id") ON DELETE CASCADE,
+    "course_id" UUID REFERENCES "{{SCHEMA_NAME}}"."courses"("id") ON DELETE SET NULL,
+    "campaign_id" UUID REFERENCES "{{SCHEMA_NAME}}"."campaigns"("id") ON DELETE SET NULL,
+    "name" VARCHAR(255) NOT NULL,
+    "language" VARCHAR(10) DEFAULT 'es',
+    "category" VARCHAR(50),
+    "components_json" JSONB DEFAULT '[]',
+    "approval_status" VARCHAR(50) DEFAULT 'PENDING',
+    "last_sync_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."whatsapp_templates" ("channel_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."whatsapp_templates" ("name");
+
+-- ---- WhatsApp Webhook Events ----
+CREATE TABLE "{{SCHEMA_NAME}}"."whatsapp_webhook_events" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "channel_id" UUID REFERENCES "{{SCHEMA_NAME}}"."whatsapp_channels"("id") ON DELETE SET NULL,
+    "event_type" VARCHAR(100) NOT NULL,
+    "payload_json" JSONB NOT NULL,
+    "dedupe_key" VARCHAR(255) UNIQUE,
+    "processing_status" VARCHAR(50) DEFAULT 'pending', -- pending, processed, failed
+    "processing_result" TEXT,
+    "processed_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."whatsapp_webhook_events" ("processing_status");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."whatsapp_webhook_events" ("dedupe_key");
+
+-- ---- WhatsApp Message Logs ----
+CREATE TABLE "{{SCHEMA_NAME}}"."whatsapp_message_logs" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "channel_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."whatsapp_channels"("id") ON DELETE CASCADE,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "provider_message_id" VARCHAR(255),
+    "template_name" VARCHAR(255),
+    "direction" VARCHAR(20) NOT NULL, -- inbound, outbound
+    "status" VARCHAR(50) DEFAULT 'pending', -- pending, sent, delivered, read, failed
+    "error_code" VARCHAR(50),
+    "error_message" TEXT,
+    "request_payload_json" JSONB,
+    "response_payload_json" JSONB,
+    "sent_at" TIMESTAMP,
+    "delivered_at" TIMESTAMP,
+    "read_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."whatsapp_message_logs" ("channel_id", "status");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."whatsapp_message_logs" ("provider_message_id");

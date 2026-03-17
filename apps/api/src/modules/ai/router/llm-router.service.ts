@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ModelTier, RoutingFactors, RoutingDecision, RoutingWeights } from '@parallext/shared';
+import { ModelTier, RoutingFactors, RoutingDecision, RoutingWeights, ChatMessage, ToolDefinition, ToolCall } from '@parallext/shared';
+import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
 
 interface ModelConfig {
     id: string;
@@ -13,13 +14,12 @@ interface ModelConfig {
 const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 - Premium
     { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 128000 },
-    { id: 'claude-sonnet-4-20250514', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000 },
+    { id: 'claude-3-5-sonnet-20241022', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000 },
     // Tier 2 - Standard
     { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 128000 },
-    { id: 'gemini-2.0-pro', provider: 'google', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 1000000 },
+    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 1000000 },
     // Tier 3 - Efficient
-    { id: 'gemini-2.0-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 1000000 },
-    { id: 'grok-2', provider: 'xai', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 131072 },
+    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 1000000 },
     // Tier 4 - Budget
     { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.0001, maxContextTokens: 64000 },
 ];
@@ -36,7 +36,76 @@ const DEFAULT_WEIGHTS: RoutingWeights = {
 export class LLMRouterService {
     private readonly logger = new Logger(LLMRouterService.name);
 
-    constructor(private configService: ConfigService) { }
+    constructor(
+        private configService: ConfigService,
+        @Inject('LLM_PROVIDERS') private providers: ILLMProvider[]
+    ) { }
+
+    /**
+     * Get a registered provider by name
+     */
+    getProvider(name: string): ILLMProvider {
+        const provider = this.providers.find(p => p.providerName === name);
+        if (!provider) {
+            throw new Error(`Provider \${name} not found`);
+        }
+        return provider;
+    }
+
+    /**
+     * Execute completion against the dynamically selected model
+     */
+    async execute(options: LLMRequestOptions & { routingFactors?: RoutingFactors, allowedTiers?: ModelTier[] }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
+        let modelConfig: ModelConfig | undefined;
+        let routingDecision: RoutingDecision | undefined;
+
+        if (options.routingFactors) {
+            routingDecision = this.selectModel(options.routingFactors, undefined, options.allowedTiers);
+            modelConfig = MODEL_REGISTRY.find(m => m.id === routingDecision!.selectedModel.id);
+        } else {
+            modelConfig = MODEL_REGISTRY.find(m => m.id === options.model);
+        }
+
+        if (!modelConfig) {
+            // Fallback
+            modelConfig = MODEL_REGISTRY[0];
+            this.logger.warn(`Model config not found, falling back to ${modelConfig.id}`);
+        }
+
+        options.model = modelConfig.id;
+        const provider = this.getProvider(modelConfig.provider);
+        
+        const startTime = Date.now();
+        const response = await provider.generate(options);
+        const durationMs = Date.now() - startTime;
+        
+        this.logger.log(`[LLM] Generated via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
+
+        return { ...response, routingDecision };
+    }
+
+    /**
+     * Execute streamed completion
+     */
+    async *executeStream(options: LLMRequestOptions & { routingFactors?: RoutingFactors, allowedTiers?: ModelTier[] }): AsyncGenerator<string, void, unknown> {
+        let modelConfig: ModelConfig | undefined;
+
+        if (options.routingFactors) {
+            const decision = this.selectModel(options.routingFactors, undefined, options.allowedTiers);
+            modelConfig = MODEL_REGISTRY.find(m => m.id === decision.selectedModel.id);
+        } else {
+            modelConfig = MODEL_REGISTRY.find(m => m.id === options.model);
+        }
+
+        if (!modelConfig) {
+            modelConfig = MODEL_REGISTRY[0];
+        }
+
+        options.model = modelConfig.id;
+        const provider = this.getProvider(modelConfig.provider);
+        
+        yield* provider.generateStream(options);
+    }
 
     /**
      * Select the optimal model based on multi-factor analysis

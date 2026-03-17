@@ -98,6 +98,10 @@ jobs:
           port: ${{ secrets.SERVER_PORT }}
           envs: GHCR_PAT,GITHUB_ACTOR,GIT_SHA
           script_stop: true
+          # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
+          # ↑ command_timeout: tiempo máximo de ejecución del script completo
+          timeout: 120s
+          command_timeout: 20m
           script: |
             set -e
             cd /opt/parallext-engine
@@ -112,7 +116,21 @@ jobs:
 
             echo "===> Ensuring postgres and redis are healthy..."
             docker compose -f infra/docker/docker-compose.prod.yml up -d postgres redis
-            sleep 8
+
+            echo "===> Waiting for postgres to be ready..."
+            for i in $(seq 1 12); do
+              if docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+                  pg_isready -U postgres > /dev/null 2>&1; then
+                echo "  [OK] Postgres ready after ${i}s"
+                break
+              fi
+              echo "  [$i/12] waiting for postgres..."
+              sleep 5
+            done
+
+            echo "===> Running Prisma migrations..."
+            docker compose -f infra/docker/docker-compose.prod.yml run --rm \
+              api npx prisma migrate deploy --schema=prisma/schema.prisma
 
             echo "===> Running tenant schema migration (idempotent)..."
             docker run --rm \
@@ -149,35 +167,35 @@ jobs:
                     console.log('  [OK]', t.schema_name);
                   }
                   await prisma.\$disconnect();
-                  console.log('Migration complete!');
+                  console.log('Tenant migration complete!');
                 }
                 migrate().catch(e => { console.error(e); process.exit(1); });
               "
 
             echo "===> Restarting API and Dashboard..."
-            docker compose -f infra/docker/docker-compose.prod.yml up -d api dashboard
+            docker compose -f infra/docker/docker-compose.prod.yml up -d --force-recreate api dashboard
 
-            echo "===> Waiting for API health (max 2 min)..."
+            echo "===> Waiting for API health (max 3 min)..."
             STATUS="starting"
-            for i in $(seq 1 24); do
+            for i in $(seq 1 36); do
               STATUS=$(docker inspect \
                 --format='{{.State.Health.Status}}' parallext-api 2>/dev/null \
                 || echo "starting")
-              echo "  [$i/24] $STATUS"
+              echo "  [$i/36] $STATUS"
               [ "$STATUS" = "healthy" ] && break
               sleep 5
             done
 
             if [ "$STATUS" != "healthy" ]; then
-              echo "::error::API not healthy after 2 minutes"
-              docker logs parallext-api --tail 80
+              echo "::error::API not healthy after 3 minutes. Last 100 log lines:"
+              docker logs parallext-api --tail 100
               exit 1
             fi
 
             echo "===> Ensuring tunnel is running..."
             docker compose -f infra/docker/docker-compose.prod.yml up -d tunnel
 
-            echo "===> 🚀 Deploy complete!"
+            echo "===> 🚀 Deploy complete! SHA: $GIT_SHA"
 
       - name: Notify — secrets not configured
         if: steps.check_secrets.outputs.configured == 'false'
@@ -186,6 +204,7 @@ jobs:
           echo "SERVER_HOST secret is not set. Images pushed to GHCR only." >> $GITHUB_STEP_SUMMARY
 
       - name: Build summary
+        if: always()
         run: |
           echo "## 🚀 Images Published to GHCR" >> $GITHUB_STEP_SUMMARY
           echo "| Image | SHA |" >> $GITHUB_STEP_SUMMARY

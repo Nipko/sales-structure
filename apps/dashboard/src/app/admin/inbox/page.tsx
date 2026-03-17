@@ -5,27 +5,11 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { io } from "socket.io-client";
 import {
-    Search,
-    Filter,
-    Send,
-    Paperclip,
-    Smile,
-    MoreVertical,
-    Phone,
-    Mail,
-    Tag,
-    Clock,
-    CheckCircle,
-    AlertCircle,
-    Bot,
-    User,
-    MessageSquare,
-    Zap,
-    ArrowRight,
-    StickyNote,
-    Sparkles,
-    Hash,
+    Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
+    Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
+    ArrowRight, StickyNote, Sparkles, Hash,
 } from "lucide-react";
 
 // ============================================
@@ -117,7 +101,7 @@ export default function InboxPage() {
     const { activeTenantId } = useTenant();
     const [filter, setFilter] = useState<InboxFilter>("all");
     const [conversations, setConversations] = useState(mockConversations);
-    const [selectedConv, setSelectedConv] = useState(mockConversations[0]);
+    const [selectedConv, setSelectedConv] = useState<any>(mockConversations[0]);
     const [messageInput, setMessageInput] = useState("");
     const [noteInput, setNoteInput] = useState("");
     const [showNotes, setShowNotes] = useState(false);
@@ -130,12 +114,69 @@ export default function InboxPage() {
             if (!activeTenantId) return;
             const result = await api.getInbox(activeTenantId);
             if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                // Initialize conversations and their real messages if available
                 setConversations(result.data);
-                setSelectedConv(result.data[0]);
-                setIsLive(true);
+                setSelectedConv({ ...result.data[0], messages: mockMessages }); // mock fallback
+            } else {
+                setSelectedConv({ ...mockConversations[0], messages: mockMessages });
             }
         }
         load();
+    }, [activeTenantId]);
+
+    // WebSocket real-time updates
+    useEffect(() => {
+        if (!activeTenantId) return;
+
+        const token = localStorage.getItem("token");
+        const socketUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+        
+        const socket = io(`${socketUrl}/inbox`, {
+            auth: { token }
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to Inbox live updates');
+            setIsLive(true);
+        });
+
+        socket.on('disconnect', () => {
+            setIsLive(false);
+        });
+
+        socket.on('newMessage', (payload) => {
+            const { conversationId, message } = payload;
+            
+            // Normalize message for UI
+            const uiMsg = {
+                id: message.id,
+                content: message.content_text,
+                sender: message.direction === 'inbound' ? 'customer' : 'ai',
+                senderName: message.direction === 'inbound' ? 'Cliente' : 'IA',
+                timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+                type: message.content_type
+            };
+            
+            // Update conversation list with latest message
+            setConversations((prev: any[]) => prev.map(c => {
+                 if (c.id === conversationId) {
+                     return { ...c, lastMessage: uiMsg.content, lastMessageAt: uiMsg.timestamp };
+                 }
+                 return c;
+            }));
+
+            // If the selected conversation received a message, append to chat view
+            setSelectedConv((prev: any) => {
+                if (prev?.id === conversationId) {
+                    return { ...prev, messages: [...(prev.messages || []), uiMsg], lastMessage: uiMsg.content };
+                }
+                return prev;
+            });
+        });
+
+        return () => {
+            socket.disconnect();
+        };
     }, [activeTenantId]);
 
     const filteredConversations = conversations.filter(c => {
@@ -180,10 +221,10 @@ export default function InboxPage() {
 
     const handleResolve = async () => {
         // Optimistic update
-        setConversations(prev => prev.map(c =>
+        setConversations((prev: any[]) => prev.map(c =>
             c.id === selectedConv.id ? { ...c, status: "resolved" as any } : c
         ));
-        setSelectedConv(prev => ({ ...prev, status: "resolved" as any }));
+        setSelectedConv((prev: any) => ({ ...prev, status: "resolved" as any }));
         // API call
         if (activeTenantId && selectedConv.id) {
             await api.resolveConversation(activeTenantId, selectedConv.id);

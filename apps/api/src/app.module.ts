@@ -25,6 +25,8 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { IntakeModule } from './modules/intake/intake.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { CrmModule } from './modules/crm/crm.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -77,7 +79,8 @@ import llmConfig from './config/llm.config';
         OrdersModule,
         BroadcastModule,
         IntakeModule,
+        WhatsappModule,
+        CrmModule,
     ],
 })
 export class AppModule { }
-

@@ -220,4 +220,103 @@ export class AnalyticsService {
             messagesProcessed: parseInt((messages as string) ?? '0'),
         };
     }
+
+    /**
+     * CRM Dashboard: stage funnel, task overdue count, aging
+     */
+    async getCrmStats(tenantId: string) {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return null;
+
+        const [stageFunnel, openTasks, overdueTasksResult] = await Promise.all([
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT stage, COUNT(*) as count, AVG(score) as avg_score
+                 FROM leads WHERE opted_out = false
+                 GROUP BY stage ORDER BY COUNT(*) DESC`, []
+            ),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT status, COUNT(*) as count FROM tasks GROUP BY status`, []
+            ),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT COUNT(*) as count FROM tasks WHERE status != 'done' AND due_at < NOW()`, []
+            ),
+        ]);
+
+        return {
+            stageFunnel,
+            tasksByStatus: openTasks,
+            overdueTasks: parseInt(overdueTasksResult[0]?.count || '0'),
+        };
+    }
+
+    /**
+     * WhatsApp Health Dashboard: message volume, delivery rates
+     */
+    async getWhatsappStats(tenantId: string) {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return null;
+
+        const [msgStats, templateErrors] = await Promise.all([
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT direction, COUNT(*) as count
+                 FROM messages WHERE created_at > NOW() - INTERVAL '7 days'
+                 GROUP BY direction`, []
+            ),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT COUNT(*) as total FROM messages
+                 WHERE metadata->>'wa_status' = 'failed' AND created_at > NOW() - INTERVAL '7 days'`, []
+            ),
+        ]);
+
+        return {
+            messageLast7d: msgStats,
+            failedMessages: parseInt(templateErrors[0]?.total || '0'),
+        };
+    }
+
+    /**
+     * AI Dashboard: handoff rates, avg score, handoffs by date
+     */
+    async getAiStats(tenantId: string) {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return null;
+
+        const today = new Date().toISOString().split('T')[0];
+        const [convStats, avgScore] = await Promise.all([
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE status = 'waiting_human') as handoffs,
+                    COUNT(*) FILTER (WHERE status = 'resolved') as resolved
+                 FROM conversations WHERE created_at > NOW() - INTERVAL '30 days'`, []
+            ),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT AVG(score) as avg_score FROM leads WHERE score IS NOT NULL`, []
+            ),
+        ]);
+
+        const stats = convStats[0] || {};
+        const total = parseInt(stats.total || '0');
+        return {
+            totalConversations: total,
+            handoffs: parseInt(stats.handoffs || '0'),
+            resolved: parseInt(stats.resolved || '0'),
+            handoffRate: total > 0 ? Math.round((parseInt(stats.handoffs || '0') / total) * 100) : 0,
+            avgLeadScore: parseFloat(avgScore[0]?.avg_score || '0').toFixed(1),
+            llmCostToday: parseFloat(await this.redis.get(`analytics:${tenantId}:${today}:cost`) as string || '0'),
+        };
+    }
+
+    private async getSchemaName(tenantId: string): Promise<string | null> {
+        const cached = await this.redis.get(`tenant:${tenantId}:schema`);
+        if (cached) return cached;
+        const tenant = await this.prisma.$queryRaw<any[]>`
+            SELECT schema_name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1
+        `;
+        if (tenant && tenant.length > 0) {
+            await this.redis.set(`tenant:${tenantId}:schema`, tenant[0].schema_name, 3600);
+            return tenant[0].schema_name;
+        }
+        return null;
+    }
 }

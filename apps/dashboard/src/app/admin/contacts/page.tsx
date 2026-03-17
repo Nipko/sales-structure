@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -70,6 +71,7 @@ const segmentColors: Record<string, { bg: string; color: string }> = {
 export default function ContactsPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
+    const router = useRouter();
     const [contacts, setContacts] = useState(mockContacts);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeSegment, setActiveSegment] = useState<string>("all");
@@ -250,10 +252,13 @@ export default function ContactsPage() {
                                         </div>
                                     </td>
                                     <td style={{ padding: "12px 16px" }}>
-                                        <button style={{
-                                            background: "none", border: "none", cursor: "pointer",
-                                            color: "var(--text-secondary)", padding: 4,
-                                        }}>
+                                        <button
+                                            onClick={() => router.push(`/admin/contacts/${contact.id}`)}
+                                            style={{
+                                                background: "none", border: "none", cursor: "pointer",
+                                                color: "var(--text-secondary)", padding: 4,
+                                            }}
+                                        >
                                             <Eye size={16} />
                                         </button>
                                     </td>

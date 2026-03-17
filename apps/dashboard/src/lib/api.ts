@@ -248,6 +248,19 @@ export const api = {
         history: { role: string; content: string }[];
     }) =>
         apiPost<{ reply: string }>("/copilot/chat", data),
+
+    fetch: async (endpoint: string, options: RequestInit = {}) => {
+        const res = await authFetch(endpoint, options);
+        if (!res.ok) {
+            let errorMsg = `HTTP error! status: ${res.status}`;
+            try {
+                const json = await res.json();
+                errorMsg = json.message || errorMsg;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
+        return res.json();
+    }
 };
 
 // ============================================

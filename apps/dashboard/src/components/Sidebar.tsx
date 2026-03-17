@@ -33,6 +33,7 @@ const navItems = [
     { href: "/admin/inventory", label: "Inventario", icon: Package },
     { href: "/admin/automation", label: "Automatización", icon: Zap },
     { href: "/admin/broadcast", label: "Broadcast", icon: Megaphone },
+    { href: "/admin/channels/whatsapp", label: "WhatsApp Setup", icon: MessageSquare },
     { href: "/admin/conversations", label: "Conversaciones", icon: MessageSquare },
     { href: "/admin/ai", label: "AI / LLM Router", icon: Brain },
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },

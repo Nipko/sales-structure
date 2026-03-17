@@ -4,6 +4,7 @@ import { RedisService } from '../redis/redis.service';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
+import { ConversationsGateway } from './conversations.gateway';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class ConversationsService {
         private personaService: PersonaService,
         private llmRouter: LLMRouterService,
         private channelGateway: ChannelGatewayService,
+        private gateway: ConversationsGateway,
     ) { }
 
     /**
@@ -41,9 +43,13 @@ export class ConversationsService {
             return;
         }
 
-        if (conversation.isHandoff) {
+        if (conversation.is_handoff || conversation.status === 'waiting_human' || conversation.status === 'with_human') {
             this.logger.log(`Conversation ${conversation.id} is in HUMAN HANDOFF mode. Skipping AI.`);
-            // TODO: Forward to human CRM (e.g., Chatwoot)
+            
+            // Just save the message, don't generate AI response
+            await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+            
+            // TODO: Ensure notification is sent to WebSockets for live chat
             return;
         }
 
@@ -70,27 +76,27 @@ export class ConversationsService {
 
         // Find or create contact
         let contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM contact WHERE identifier = $1 AND channel = $2`,
+            `SELECT * FROM contacts WHERE external_id = $1 AND channel_type = $2`,
             [contactId, channelType]
         ).then(res => res[0]);
 
         if (!contact) {
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO contact (id, identifier, channel, name) VALUES (uuid_generate_v4(), $1, $2, $3) RETURNING *`,
+                `INSERT INTO contacts (external_id, channel_type, name) VALUES ($1, $2, $3) RETURNING *`,
                 [contactId, channelType, msg.metadata?.contactName || 'Unknown']
             ).then(res => res[0]);
         }
 
         // Find active conversation or create new
         let conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM conversation WHERE contact_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
+            `SELECT * FROM conversations WHERE contact_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
             [contact.id]
         ).then(res => res[0]);
 
         if (!conversation) {
             conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO conversation (id, contact_id, status, stage) VALUES (uuid_generate_v4(), $1, 'active', 'greeting') RETURNING *`,
-                [contact.id]
+                `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage) VALUES ($1, $2, $3, 'active', 'greeting') RETURNING *`,
+                [contact.id, msg.channelType, msg.channelAccountId]
             ).then(res => res[0]);
         }
 
@@ -123,14 +129,29 @@ export class ConversationsService {
     }
 
     private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage) {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`; // simplification
-        // Save to DB (Skipped full SQL for brevity in scaffolding)
+        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        
+        const metadataJson = JSON.stringify(msg.metadata || {});
+        
+        const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata) 
+             VALUES ($1, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
+            [conversationId, msg.content.type, msg.content.text, metadataJson]
+        );
         this.logger.log(`Saved user message to DB: ${msg.content.text}`);
+        this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
     private async saveAiMessage(tenantId: string, conversationId: string, text: string) {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`; // simplification
+        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        
+        const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status) 
+             VALUES ($1, 'outbound', 'text', $2, 'delivered') RETURNING *`,
+            [conversationId, text]
+        );
         this.logger.log(`Saved AI message to DB: ${text}`);
+        this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
     private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage) {
@@ -142,6 +163,8 @@ export class ConversationsService {
             content: { type: 'text', text }
         };
 
+        // In a real scenario we'd fetch the channel auth token from the DB. 
+        // We'll mock the token or use a default for this scaffold.
         await this.channelGateway.sendMessage(outbound, 'MOCK_TOKEN');
     }
 
@@ -160,24 +183,60 @@ export class ConversationsService {
         const sentiment = this.llmRouter.analyzeSentiment(userText);
         const stageScore = this.llmRouter.stageToScore(conversation.stage);
 
-        // 2. Decide Model
-        const decision = this.llmRouter.selectModel({
-            ticketValue: 50000, // mock
-            complexity,
-            conversationStage: stageScore,
-            sentiment,
-            intentType: 50 // mock
-        });
+        this.logger.log(`Routing Factors - Complexity: ${complexity}, Sentiment: ${sentiment}, Stage: ${stageScore}`);
 
-        this.logger.log(`Routing: ${decision.reasoning}`);
+        // Handoff Detection Logic
+        if (complexity > 0.85 || sentiment < 0.3 || userText.toLowerCase().includes('humano') || userText.toLowerCase().includes('asesor')) {
+            this.logger.warn(`HANDOFF TRIGGERED for Conversation ${conversation.id}. Pausing AI.`);
+            
+            const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET status = 'waiting_human', metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff_reason}', '"Sentiment/Complexity threshold or explicit request"') WHERE id = $1`,
+                [conversation.id]
+            );
 
-        // 3. Build Prompt
+            return `Entiendo. Te comunicaré ahora mismo con nuestro equipo de asistencia humana. En un momento te responderán.`;
+        }
+
+        // 2. Build Prompt
         const systemPrompt = this.personaService.buildSystemPrompt(config);
 
-        // 4. Call Model (Mocking the actual LangChain/OpenAI call for this scaffold)
-        // In reality, we'd use decision.selectedModel.id to initialize the correct LangChain LLM
+        // 3. Get Conversation History from DB
+        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20`,
+            [conversation.id]
+        );
 
-        // MOCK RESPONSE
-        return `[Generado via ${decision.selectedTier} - ${decision.selectedModel.id}]\n\n¡Hola! Esta es una respuesta de prueba basada en tu persona ${config.persona.name}. (Complejidad: ${complexity}, Sentimiento: ${sentiment})`;
+        const messages = history.map(h => ({
+            role: h.direction === 'inbound' ? 'user' : 'assistant',
+            content: h.content_text || ''
+        }));
+        
+        // Add current message
+        messages.push({ role: 'user', content: userText });
+
+        // 4. Execute LLM Call using Router
+        const response = await this.llmRouter.execute({
+            model: 'gpt-4o-mini', // Default fallback model if tier is not determined
+            messages: messages as any[],
+            systemPrompt: systemPrompt,
+            temperature: 0.7,
+            routingFactors: {
+                ticketValue: 50000, // mock
+                complexity,
+                conversationStage: stageScore,
+                sentiment,
+                intentType: 50 // mock
+            }
+        });
+
+        const reply = response.content;
+        
+        if (reply) {
+            return reply;
+        }
+
+        return `[Error Generating AI Response]`;
     }
 }

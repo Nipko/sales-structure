@@ -305,3 +305,34 @@ export interface OrderItem {
     unitPrice: number;
     totalPrice: number;
 }
+
+// ---- LLM Provider Types ----
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+
+export interface ChatMessage {
+    role: ChatRole;
+    content: string;
+    name?: string;
+    toolCallId?: string;
+    toolCalls?: ToolCall[];
+}
+
+export interface ToolDefinition {
+    name: string;
+    description: string;
+    parameters: Record<string, any>;
+}
+
+export interface ToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string; // JSON string
+    };
+}
+
+export interface ToolResult {
+    toolCallId: string;
+    result: string;
+}

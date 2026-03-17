@@ -83,32 +83,31 @@ export class AgentConsoleService {
         let statusFilter = '';
         switch (filter) {
             case 'mine':
-                statusFilter = `AND ca.agent_id = '${agentId}'`;
+                statusFilter = `AND c.assigned_to = '${agentId}'`;
                 break;
             case 'unassigned':
-                statusFilter = `AND ca.agent_id IS NULL AND c.status != 'resolved'`;
+                statusFilter = `AND c.assigned_to IS NULL AND c.status = 'waiting_human'`;
                 break;
             case 'handoff':
-                statusFilter = `AND c.status = 'handoff'`;
+                statusFilter = `AND c.status = 'waiting_human'`;
                 break;
         }
 
         const conversations = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT
-        c.id, c.status, c.channel, c.started_at, c.metadata,
+        c.id, c.status, c.channel_type as channel, c.created_at as started_at, c.metadata,
         ct.name as contact_name, ct.phone as contact_phone, ct.email as contact_email,
         ct.tags as contact_tags,
-        m.content as last_message, m.created_at as last_message_at, m.sender as last_sender,
-        ca.agent_id as assigned_agent_id
+        m.content_text as last_message, m.created_at as last_message_at, m.direction as last_sender,
+        c.assigned_to as assigned_agent_id
       FROM conversations c
       LEFT JOIN contacts ct ON c.contact_id = ct.id
       LEFT JOIN LATERAL (
-        SELECT content, created_at, sender FROM messages
+        SELECT content_text, created_at, direction FROM messages
         WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
       ) m ON true
-      LEFT JOIN conversation_assignments ca ON ca.conversation_id = c.id AND ca.resolved_at IS NULL
-      WHERE c.status != 'resolved'
+      WHERE c.status != 'resolved' AND c.status != 'archived'
       ${statusFilter}
       ORDER BY m.created_at DESC NULLS LAST
       LIMIT 100`,
@@ -140,7 +139,7 @@ export class AgentConsoleService {
         const convRows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT c.*, ct.name as contact_name, ct.phone as contact_phone, ct.email as contact_email,
-              ct.tags, ct.segment, ct.custom_fields, ct.lifetime_value, ct.last_interaction, ct.id as contact_id
+              ct.tags, ct.metadata as custom_fields, ct.first_contact_at as last_interaction, ct.id as contact_id
        FROM conversations c
        LEFT JOIN contacts ct ON c.contact_id = ct.id
        WHERE c.id = $1`,
@@ -152,7 +151,7 @@ export class AgentConsoleService {
 
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, content, type, sender, sender_name, created_at, metadata
+            `SELECT id, content_text as content, content_type as type, direction as sender, created_at, metadata
        FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
             [conversationId],
         );
@@ -223,10 +222,10 @@ export class AgentConsoleService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO messages (conversation_id, content, type, sender, sender_name, direction, created_at)
-       VALUES ($1, $2, $3, 'agent', (SELECT name FROM public.users WHERE id = $4), 'outbound', NOW())
-       RETURNING id, content, type, sender, sender_name, created_at`,
-            [conversationId, content, type, agentId],
+            `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, created_at)
+       VALUES ($1, $2, $3, 'outbound', 'delivered', NOW())
+       RETURNING id, content_text, content_type, direction, created_at`,
+            [conversationId, content, type],
         );
 
         const msg = result[0];
@@ -236,10 +235,9 @@ export class AgentConsoleService {
 
         return {
             id: msg.id,
-            content: msg.content,
-            type: msg.type,
+            content: msg.content_text,
+            type: msg.content_type,
             sender: 'agent',
-            senderName: msg.sender_name,
             timestamp: msg.created_at,
         };
     }
@@ -253,17 +251,8 @@ export class AgentConsoleService {
 
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (conversation_id) WHERE resolved_at IS NULL
-       DO UPDATE SET agent_id = $2, assigned_at = NOW()`,
+            `UPDATE conversations SET assigned_to = $2, status = 'with_human' WHERE id = $1`,
             [conversationId, agentId],
-        );
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE conversations SET status = 'assigned' WHERE id = $1`,
-            [conversationId],
         );
 
         this.logger.log(`Conversation ${conversationId} assigned to agent ${agentId}`);
@@ -278,14 +267,7 @@ export class AgentConsoleService {
 
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE conversation_assignments SET resolved_at = NOW()
-       WHERE conversation_id = $1 AND agent_id = $2 AND resolved_at IS NULL`,
-            [conversationId, agentId],
-        );
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE conversations SET status = 'active' WHERE id = $1`,
+            `UPDATE conversations SET status = 'active', assigned_to = NULL WHERE id = $1`,
             [conversationId],
         );
 
@@ -345,21 +327,13 @@ export class AgentConsoleService {
      * Get agent performance metrics
      */
     async getAgentStats(tenantId: string, agentId: string) {
-        const schemaName = await this.getTenantSchema(tenantId);
-        if (!schemaName) return null;
-
-        const stats = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT
-        COUNT(*) FILTER (WHERE resolved_at IS NOT NULL) as resolved,
-        COUNT(*) FILTER (WHERE resolved_at IS NULL) as active,
-        AVG(EXTRACT(EPOCH FROM (COALESCE(first_response_at, NOW()) - assigned_at))) as avg_first_response_secs,
-        AVG(EXTRACT(EPOCH FROM (COALESCE(resolved_at, NOW()) - assigned_at))) as avg_resolution_secs
-       FROM conversation_assignments WHERE agent_id = $1`,
-            [agentId],
-        );
-
-        return stats?.[0] || null;
+        // Obsoleted due to conversation_assignments drop, needs to rethink metrics
+        return {
+            resolved: 0,
+            active: 0,
+            avg_first_response_secs: 0,
+            avg_resolution_secs: 0
+        };
     }
 
     private calculatePriority(conv: any): 'low' | 'normal' | 'high' | 'urgent' {

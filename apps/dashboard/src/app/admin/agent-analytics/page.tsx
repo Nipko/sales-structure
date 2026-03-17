@@ -129,32 +129,53 @@ export default function AnalyticsDashboardPage() {
             case "operativo":
                 return (
                     <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+                            <StatCard title="Win Rate" value={crm?.opportunities?.winRate !== undefined ? `${crm.opportunities.winRate}%` : "—"} icon={TrendingUp} color="#27ae60" />
+                            <StatCard title="Pipeline Activo" value={crm?.opportunities?.total ?? "—"} icon={BarChart2} color="#3498db" />
+                            <StatCard title="Valor Total" value={crm?.opportunities?.totalValue ? `$${crm.opportunities.totalValue.toLocaleString("es-CO")}` : "—"} icon={Activity} color="#f39c12" />
                             <StatCard title="Tareas Vencidas" value={crm?.overdueTasks ?? "—"} icon={AlertTriangle} color="#e74c3c" />
-                            <StatCard title="Etapas en Funnel" value={crm?.stageFunnel?.length ?? "—"} icon={BarChart2} color="#3498db" />
-                            <StatCard title="Tareas Pendientes"
-                                value={crm?.tasksByStatus?.find((t: any) => t.status === 'pending')?.count ?? "0"}
-                                icon={CheckSquare} color="#f39c12" />
                         </div>
-                        {crm?.stageFunnel && crm.stageFunnel.length > 0 && (
-                            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Funnel de Leads por Etapa</h3>
-                                {crm.stageFunnel.map((s: any) => (
-                                    <div key={s.stage} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                                        <span style={{ width: 120, fontSize: 13, fontWeight: 600, color: STAGE_COLORS[s.stage] || "var(--text-primary)" }}>
-                                            {s.stage}
-                                        </span>
-                                        <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
-                                            <div style={{ height: "100%", width: `${Math.min(100, parseInt(s.count) * 5)}%`, background: STAGE_COLORS[s.stage] || "var(--accent)", borderRadius: 4 }} />
+                        
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                            {/* Funnel */}
+                            {crm?.stageFunnel && crm.stageFunnel.length > 0 && (
+                                <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
+                                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Funnel de Leads por Etapa</h3>
+                                    {crm.stageFunnel.map((s: any) => (
+                                        <div key={s.stage} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                                            <span style={{ width: 100, fontSize: 13, fontWeight: 600, color: STAGE_COLORS[s.stage] || "var(--text-primary)" }}>
+                                                {s.stage}
+                                            </span>
+                                            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
+                                                <div style={{ height: "100%", width: `${Math.min(100, parseInt(s.count) * 5)}%`, background: STAGE_COLORS[s.stage] || "var(--accent)", borderRadius: 4 }} />
+                                            </div>
+                                            <span style={{ fontSize: 13, fontWeight: 700, width: 32, textAlign: "right" }}>{s.count}</span>
                                         </div>
-                                        <span style={{ fontSize: 13, fontWeight: 700, width: 32, textAlign: "right" }}>{s.count}</span>
-                                        <span style={{ fontSize: 11, color: "var(--text-secondary)", width: 50 }}>
-                                            Score: {parseFloat(s.avg_score || '0').toFixed(1)}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Leads por Campaña */}
+                            {crm?.leadsByCampaign && crm.leadsByCampaign.length > 0 && (
+                                <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
+                                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Leads por Campaña</h3>
+                                    {crm.leadsByCampaign.map((c: any) => (
+                                        <div key={c.campaign_name} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                                            <span style={{ width: 140, fontSize: 13, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {c.campaign_name}
+                                            </span>
+                                            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
+                                                <div style={{ height: "100%", width: `${Math.min(100, parseInt(c.lead_count) * 5)}%`, background: "#9b59b6", borderRadius: 4 }} />
+                                            </div>
+                                            <span style={{ fontSize: 13, fontWeight: 700, width: 32, textAlign: "right" }}>{c.lead_count}</span>
+                                            <span style={{ fontSize: 11, color: "var(--text-secondary)", width: 50 }}>
+                                                ★ {parseFloat(c.avg_score || '0').toFixed(1)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 );
 

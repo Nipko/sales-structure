@@ -135,49 +135,12 @@ jobs:
               run --rm \
               api npx prisma migrate deploy --schema=prisma/schema.prisma || true
 
-            echo "===> Creating tenant migration script..."
-            cat << 'EOF' > /opt/parallext-engine/migrate-tenants.js
-            const { PrismaClient } = require('@prisma/client');
-            const fs   = require('fs');
-            const path = require('path');
-            const prisma = new PrismaClient();
-
-            async function migrate() {
-              const tpl = fs.readFileSync(
-                path.join(process.cwd(), 'prisma/tenant-schema.sql'), 'utf-8'
-              );
-              const tenants = await prisma.$queryRaw\`
-                SELECT schema_name FROM tenants WHERE is_active = true
-              \`;
-              console.log('Found', tenants.length, 'active tenants');
-              for (const t of tenants) {
-                const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
-                const stmts = sql.split(';')
-                  .map(s => s.trim())
-                  .filter(s => s.length > 0 && !s.startsWith('--'));
-                for (const stmt of stmts) {
-                  try {
-                    await prisma.$executeRawUnsafe(stmt + ';');
-                  } catch (e) {
-                    if (!e.message.includes('already exists') &&
-                        !e.message.includes('duplicate')) throw e;
-                  }
-                }
-                console.log('  [OK]', t.schema_name);
-              }
-              await prisma.$disconnect();
-              console.log('Tenant migration complete!');
-            }
-            migrate().catch(e => { console.error(e); process.exit(1); });
-            EOF
-
             echo "===> Running tenant schema migration (idempotent)..."
             docker run --rm \
               --network docker_default \
               --env-file /opt/parallext-engine/.env \
-              -v /opt/parallext-engine/migrate-tenants.js:/migrate-tenants.js \
               ghcr.io/nipko/parallext-api:latest \
-              node /migrate-tenants.js
+              npm run migrate:tenants
 
             echo "===> Restarting API and Dashboard..."
             docker compose -f infra/docker/docker-compose.prod.yml \

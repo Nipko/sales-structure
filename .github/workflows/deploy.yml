@@ -2,17 +2,20 @@ name: Deploy Parallext Engine
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feature/parallly-commercial-domain
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   API_IMAGE: ghcr.io/nipko/parallext-api
   DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
+  PROJECT_PATH: /opt/parallext-engine
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # JOB 1: Build & push images to GHCR
+  # JOB 1: Build & push Docker images to GHCR
   # ──────────────────────────────────────────────────────────────
   build-and-push:
     runs-on: ubuntu-latest
@@ -59,8 +62,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ──────────────────────────────────────────────────────────────
-  # JOB 2: Deploy to VPS via SSH
-  # Skips gracefully if VPS secrets are not yet configured.
+  # JOB 2: SSH into VPS and deploy
+  # Uses: SERVER_HOST, SERVER_USER, SERVER_PASSWORD, SERVER_PORT
+  # Project lives at /opt/parallext-engine/
   # ──────────────────────────────────────────────────────────────
   deploy:
     runs-on: ubuntu-latest
@@ -68,49 +72,47 @@ jobs:
     environment: production
 
     steps:
-      # Guard: secrets can't be used in `if:` conditions directly,
-      # so we expose VPS_HOST as an env var and check it in bash.
       - name: Check if VPS secrets are configured
         id: check_secrets
         env:
-          VPS_HOST_CHECK: ${{ secrets.VPS_HOST }}
+          HOST_CHECK: ${{ secrets.SERVER_HOST }}
         run: |
-          if [ -z "$VPS_HOST_CHECK" ]; then
-            echo "::warning::VPS_HOST secret is not set — skipping SSH deploy."
+          if [ -z "$HOST_CHECK" ]; then
+            echo "::warning::SERVER_HOST not set — skipping SSH deploy."
             echo "configured=false" >> $GITHUB_OUTPUT
           else
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
 
-      # ── SSH Deploy ──────────────────────────────────────────────
       - name: Deploy to VPS
         if: steps.check_secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT }}
           script_stop: true
           script: |
             set -e
+            cd /opt/parallext-engine
 
-            echo "===> Logging into GHCR on VPS..."
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-              -u ${{ secrets.VPS_GHCR_USER }} --password-stdin
+            echo "===> Logging into GHCR..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
 
             echo "===> Pulling latest images..."
             docker pull ghcr.io/nipko/parallext-api:latest
             docker pull ghcr.io/nipko/parallext-dashboard:latest
 
             echo "===> Ensuring postgres and redis are healthy..."
-            docker compose -f /opt/parallext/docker-compose.prod.yml up -d postgres redis
+            docker compose -f infra/docker/docker-compose.prod.yml up -d postgres redis
             sleep 8
 
             echo "===> Running tenant schema migration (idempotent)..."
             docker run --rm \
-              --network parallext_default \
-              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              --network parallext-engine_default \
+              --env-file /opt/parallext-engine/.env \
               ghcr.io/nipko/parallext-api:latest \
               node -e "
                 const { PrismaClient } = require('@prisma/client');
@@ -119,89 +121,71 @@ jobs:
                 const prisma = new PrismaClient();
 
                 async function migrate() {
-                  const tplPath = path.join(process.cwd(), 'prisma/tenant-schema.sql');
-                  const template = fs.readFileSync(tplPath, 'utf-8');
-
+                  const tpl = fs.readFileSync(
+                    path.join(process.cwd(), 'prisma/tenant-schema.sql'), 'utf-8'
+                  );
                   const tenants = await prisma.\$queryRaw\`
                     SELECT schema_name FROM tenants WHERE is_active = true
                   \`;
-                  console.log('Tenants to migrate:', tenants.length);
-
+                  console.log('Found', tenants.length, 'active tenants');
                   for (const t of tenants) {
-                    const schema = t.schema_name;
-                    const sql = template.replace(/\{\{SCHEMA_NAME\}\}/g, schema);
+                    const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
                     const stmts = sql.split(';')
                       .map(s => s.trim())
                       .filter(s => s.length > 0 && !s.startsWith('--'));
-
                     for (const stmt of stmts) {
                       try {
                         await prisma.\$executeRawUnsafe(stmt + ';');
                       } catch (e) {
-                        if (!e.message.includes('already exists') && !e.message.includes('duplicate')) {
-                          throw e;
-                        }
+                        if (!e.message.includes('already exists') &&
+                            !e.message.includes('duplicate')) throw e;
                       }
                     }
-                    console.log('  OK:', schema);
+                    console.log('  [OK]', t.schema_name);
                   }
-
                   await prisma.\$disconnect();
                   console.log('Migration complete!');
                 }
-
-                migrate().catch(err => { console.error(err); process.exit(1); });
+                migrate().catch(e => { console.error(e); process.exit(1); });
               "
 
             echo "===> Restarting API and Dashboard..."
-            docker compose -f /opt/parallext/docker-compose.prod.yml up -d api dashboard
+            docker compose -f infra/docker/docker-compose.prod.yml up -d api dashboard
 
             echo "===> Waiting for API health (max 2 min)..."
             STATUS="starting"
             for i in $(seq 1 24); do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' parallext-api 2>/dev/null || echo "starting")
-              echo "  Attempt $i/24: $STATUS"
+              STATUS=$(docker inspect \
+                --format='{{.State.Health.Status}}' parallext-api 2>/dev/null \
+                || echo "starting")
+              echo "  [$i/24] $STATUS"
               [ "$STATUS" = "healthy" ] && break
               sleep 5
             done
 
             if [ "$STATUS" != "healthy" ]; then
-              echo "ERROR: API did not become healthy after 2 minutes"
+              echo "::error::API not healthy after 2 minutes"
               docker logs parallext-api --tail 80
               exit 1
             fi
 
             echo "===> Ensuring tunnel is running..."
-            docker compose -f /opt/parallext/docker-compose.prod.yml up -d tunnel
+            docker compose -f infra/docker/docker-compose.prod.yml up -d tunnel
 
-            echo "===> Deploy complete! ✅"
+            echo "===> 🚀 Deploy complete!"
 
-      # ── Skip notice ─────────────────────────────────────────────
-      - name: Notify secrets not configured
+      - name: Notify — secrets not configured
         if: steps.check_secrets.outputs.configured == 'false'
         run: |
-          echo "## ⚠️ SSH Deploy Skipped — secrets not configured" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Images were pushed to GHCR but VPS deploy was **skipped**." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Add the following secrets in **Settings → Secrets → Actions**:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Secret | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`VPS_HOST\` | IP ó hostname del servidor |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`VPS_USER\` | Usuario SSH (ej. \`root\`) |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`VPS_SSH_KEY\` | Contenido de la clave privada SSH |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`VPS_PORT\` | Puerto SSH (por defecto 22) |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`GHCR_TOKEN\` | PAT de GitHub con permiso \`read:packages\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`VPS_GHCR_USER\` | Tu username de GitHub (Nipko) |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`DATABASE_URL\` | PostgreSQL connection string completa |" >> $GITHUB_STEP_SUMMARY
+          echo "## ⚠️ SSH Deploy Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "SERVER_HOST secret is not set. Images pushed to GHCR only." >> $GITHUB_STEP_SUMMARY
 
-      # ── Summary ─────────────────────────────────────────────────
       - name: Build summary
         run: |
-          echo "## 🚀 Images Published" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Images Published to GHCR" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | SHA |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| API | \`${{ env.API_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Dashboard | \`${{ env.DASHBOARD_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: \`${{ github.ref_name }}\` | Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

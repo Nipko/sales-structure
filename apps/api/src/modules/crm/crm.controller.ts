@@ -14,6 +14,24 @@ export class CrmController {
         private activityService: ActivityService,
     ) {}
 
+    // ---- Kanban (Pipeline Board using Opportunities) ----
+
+    @Get('kanban/:tenantId')
+    async getKanban(@Param('tenantId') tenantId: string) {
+        const kanban = await this.contactsService.getKanban(tenantId);
+        return { success: true, data: kanban };
+    }
+
+    @Put('kanban/:tenantId/:opportunityId/move')
+    async moveOpportunity(
+        @Param('tenantId') tenantId: string,
+        @Param('opportunityId') opportunityId: string,
+        @Body() body: { stage: string },
+    ) {
+        await this.contactsService.moveOpportunity(tenantId, opportunityId, body.stage);
+        return { success: true, message: 'Opportunity moved' };
+    }
+
     // ---- Leads / Contacts (CRM list) ----
 
     @Get('leads/:tenantId')

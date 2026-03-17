@@ -296,7 +296,7 @@ export default function InboxPage() {
                             onClick={() => setSelectedConv(conv)}
                             style={{
                                 padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
-                                background: selectedConv.id === conv.id ? "var(--accent-glow)" : "transparent",
+                                background: selectedConv?.id === conv.id ? "var(--accent-glow)" : "transparent",
                                 transition: "background 0.15s ease",
                             }}
                         >
@@ -364,6 +364,8 @@ export default function InboxPage() {
 
             {/* ======== CENTER: Chat Thread ======== */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)" }}>
+                {selectedConv ? (
+                    <>
                 {/* Chat Header */}
                 <div style={{
                     padding: "12px 20px", borderBottom: "1px solid var(--border)",
@@ -560,6 +562,13 @@ export default function InboxPage() {
                         <Send size={18} />
                     </button>
                 </div>
+                    </>
+                ) : (
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", gap: 16 }}>
+                        <MessageSquare size={48} opacity={0.2} />
+                        <span>Selecciona una conversación para ver los mensajes.</span>
+                    </div>
+                )}
             </div>
 
             {/* ======== RIGHT: Contact Panel ======== */}

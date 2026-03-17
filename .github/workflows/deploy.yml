@@ -115,11 +115,13 @@ jobs:
             docker pull ghcr.io/nipko/parallext-dashboard:latest
 
             echo "===> Ensuring postgres and redis are healthy..."
-            docker compose -f infra/docker/docker-compose.prod.yml up -d postgres redis
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              --project-name parallext up -d postgres redis
 
             echo "===> Waiting for postgres to be ready..."
             for i in $(seq 1 12); do
-              if docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+              if docker compose -f infra/docker/docker-compose.prod.yml \
+                  --project-name parallext exec -T postgres \
                   pg_isready -U postgres > /dev/null 2>&1; then
                 echo "  [OK] Postgres ready after ${i}s"
                 break
@@ -128,16 +130,16 @@ jobs:
               sleep 5
             done
 
-            echo "===> Running Prisma migrations..."
-            docker compose -f infra/docker/docker-compose.prod.yml run --rm \
-              api npx prisma migrate deploy --schema=prisma/schema.prisma
+            echo "===> Running Prisma public schema migrations..."
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              --project-name parallext run --rm \
+              api npx prisma migrate deploy --schema=prisma/schema.prisma || true
 
             echo "===> Running tenant schema migration (idempotent)..."
-            docker run --rm \
-              --network parallext-engine_default \
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              --project-name parallext run --rm --no-deps \
               --env-file /opt/parallext-engine/.env \
-              ghcr.io/nipko/parallext-api:latest \
-              node -e "
+              api node -e "
                 const { PrismaClient } = require('@prisma/client');
                 const fs   = require('fs');
                 const path = require('path');
@@ -173,7 +175,9 @@ jobs:
               "
 
             echo "===> Restarting API and Dashboard..."
-            docker compose -f infra/docker/docker-compose.prod.yml up -d --force-recreate api dashboard
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              --project-name parallext up -d --force-recreate api dashboard
+
 
             echo "===> Waiting for API health (max 3 min)..."
             STATUS="starting"

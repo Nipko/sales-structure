@@ -200,3 +200,212 @@ CREATE TABLE "{{SCHEMA_NAME}}"."analytics_events" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."analytics_events" ("event_type", "created_at");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."analytics_events" ("conversation_id");
+
+-- ============================================
+-- PARALLLY — Commercial Domain (Phase 2)
+-- ============================================
+
+-- ---- Courses (Catalog per tenant) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."courses" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name"            VARCHAR(500) NOT NULL,
+    "slug"            VARCHAR(255) NOT NULL UNIQUE,
+    "description"     TEXT,
+    "price"           DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    "currency"        VARCHAR(10) DEFAULT 'COP',
+    "duration_hours"  INTEGER,
+    "modality"        VARCHAR(50) DEFAULT 'presencial',  -- presencial, virtual, hibrido
+    "is_active"       BOOLEAN DEFAULT true,
+    "metadata"        JSONB DEFAULT '{}',
+    "created_at"      TIMESTAMP DEFAULT NOW(),
+    "updated_at"      TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."courses" ("is_active");
+
+-- ---- Campaigns ----
+CREATE TABLE "{{SCHEMA_NAME}}"."campaigns" (
+    "id"                UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name"              VARCHAR(500) NOT NULL,
+    "course_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."courses"("id") ON DELETE SET NULL,
+    "channel"           VARCHAR(50) DEFAULT 'whatsapp',  -- whatsapp, email, mixed
+    "wa_template_name"  VARCHAR(255),                    -- Meta approved template name
+    "status"            VARCHAR(50) DEFAULT 'draft',     -- draft, active, paused, finished
+    "starts_at"         TIMESTAMP,
+    "ends_at"           TIMESTAMP,
+    "office_hours_start" INTEGER DEFAULT 8,              -- hour 0-23
+    "office_hours_end"   INTEGER DEFAULT 20,
+    "max_attempts"      INTEGER DEFAULT 3,
+    "retry_delay_hours" INTEGER DEFAULT 24,
+    "fallback_email"    BOOLEAN DEFAULT false,
+    "metadata"          JSONB DEFAULT '{}',
+    "created_at"        TIMESTAMP DEFAULT NOW(),
+    "updated_at"        TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."campaigns" ("status");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."campaigns" ("course_id");
+
+-- ---- Companies ----
+CREATE TABLE "{{SCHEMA_NAME}}"."companies" (
+    "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name"        VARCHAR(500) NOT NULL,
+    "industry"    VARCHAR(255),
+    "city"        VARCHAR(255),
+    "country"     VARCHAR(100) DEFAULT 'CO',
+    "website"     VARCHAR(500),
+    "metadata"    JSONB DEFAULT '{}',
+    "created_at"  TIMESTAMP DEFAULT NOW(),
+    "updated_at"  TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- Leads (replaces/extends contacts for commercial flows) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."leads" (
+    "id"                  UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id"          UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "company_id"          UUID REFERENCES "{{SCHEMA_NAME}}"."companies"("id") ON DELETE SET NULL,
+    "first_name"          VARCHAR(255),
+    "last_name"           VARCHAR(255),
+    "phone"               VARCHAR(50) NOT NULL,          -- E.164 format
+    "email"               VARCHAR(255),
+    "score"               INTEGER DEFAULT 0 CHECK (score >= 0 AND score <= 10),
+    "stage"               VARCHAR(50) DEFAULT 'nuevo',   -- nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado
+    "primary_intent"      VARCHAR(100),                  -- precio, fecha, modalidad, duracion, certificacion, financiacion, objecion_economica, objecion_tiempo, hablar_humano, no_interesado
+    "secondary_intent"    VARCHAR(100),
+    "is_vip"              BOOLEAN DEFAULT false,          -- grupo, varios cursos o alto valor
+    "preferred_contact"   VARCHAR(50) DEFAULT 'whatsapp', -- whatsapp, email, phone
+    "campaign_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."campaigns"("id") ON DELETE SET NULL,
+    "course_id"           UUID REFERENCES "{{SCHEMA_NAME}}"."courses"("id") ON DELETE SET NULL,
+    -- UTM Attribution
+    "utm_source"          VARCHAR(255),
+    "utm_medium"          VARCHAR(255),
+    "utm_campaign"        VARCHAR(255),
+    "utm_content"         VARCHAR(255),
+    "referrer_url"        VARCHAR(500),
+    "gclid"               VARCHAR(500),
+    "fbclid"              VARCHAR(500),
+    -- Operational
+    "assigned_to"         VARCHAR(255),                  -- agent user id
+    "opted_out"           BOOLEAN DEFAULT false,
+    "opted_out_at"        TIMESTAMP,
+    "last_contacted_at"   TIMESTAMP,
+    "metadata"            JSONB DEFAULT '{}',
+    "created_at"          TIMESTAMP DEFAULT NOW(),
+    "updated_at"          TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("phone");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("stage");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("score");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("campaign_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("course_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("opted_out");
+CREATE UNIQUE INDEX ON "{{SCHEMA_NAME}}"."leads" ("phone", "campaign_id") WHERE campaign_id IS NOT NULL;
+
+-- ---- Opportunities (CRM deal tracking) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."opportunities" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "lead_id"         UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE CASCADE,
+    "course_id"       UUID REFERENCES "{{SCHEMA_NAME}}"."courses"("id") ON DELETE SET NULL,
+    "campaign_id"     UUID REFERENCES "{{SCHEMA_NAME}}"."campaigns"("id") ON DELETE SET NULL,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "stage"           VARCHAR(50) DEFAULT 'nuevo',       -- same stages as lead
+    "score"           INTEGER DEFAULT 0,                 -- snapshot at creation/update
+    "estimated_value" DECIMAL(15, 2),
+    "currency"        VARCHAR(10) DEFAULT 'COP',
+    "sla_deadline"    TIMESTAMP,
+    "won_at"          TIMESTAMP,
+    "lost_at"         TIMESTAMP,
+    "loss_reason"     TEXT,
+    "assigned_to"     VARCHAR(255),
+    "metadata"        JSONB DEFAULT '{}',
+    "created_at"      TIMESTAMP DEFAULT NOW(),
+    "updated_at"      TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."opportunities" ("lead_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."opportunities" ("stage");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."opportunities" ("campaign_id");
+
+-- ---- Consent Records ----
+CREATE TABLE "{{SCHEMA_NAME}}"."consent_records" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "lead_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE SET NULL,
+    "channel"         VARCHAR(50) NOT NULL DEFAULT 'web_form',
+    "legal_version"   VARCHAR(50) NOT NULL,              -- e.g. "v1.0", "2026-01-01"
+    "legal_text_hash" VARCHAR(64),                       -- SHA-256 of the consent text shown
+    "ip_address"      VARCHAR(45),
+    "user_agent"      TEXT,
+    "origin_url"      VARCHAR(500),
+    "created_at"      TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."consent_records" ("lead_id");
+
+-- ---- Opt-Out Records ----
+CREATE TABLE "{{SCHEMA_NAME}}"."opt_out_records" (
+    "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "lead_id"     UUID REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE SET NULL,
+    "phone"       VARCHAR(50),
+    "channel"     VARCHAR(50) NOT NULL DEFAULT 'whatsapp',
+    "trigger_msg" TEXT,                                  -- original message that triggered opt-out
+    "created_at"  TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
+
+-- ---- Tags (controlled catalog per tenant) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."tags" (
+    "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name"        VARCHAR(100) NOT NULL UNIQUE,
+    "color"       VARCHAR(20) DEFAULT '#6c5ce7',
+    "created_at"  TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- Lead Tags (M2M) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."lead_tags" (
+    "lead_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE CASCADE,
+    "tag_id"  UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."tags"("id") ON DELETE CASCADE,
+    PRIMARY KEY ("lead_id", "tag_id")
+);
+
+-- ---- Tasks ----
+CREATE TABLE "{{SCHEMA_NAME}}"."tasks" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "lead_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE CASCADE,
+    "opportunity_id"  UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE CASCADE,
+    "title"           VARCHAR(500) NOT NULL,
+    "description"     TEXT,
+    "type"            VARCHAR(50) DEFAULT 'follow_up',  -- follow_up, call, meeting, email, handoff
+    "status"          VARCHAR(50) DEFAULT 'pending',    -- pending, in_progress, done, cancelled
+    "due_at"          TIMESTAMP,
+    "completed_at"    TIMESTAMP,
+    "assigned_to"     VARCHAR(255),
+    "created_by"      VARCHAR(255),
+    "created_at"      TIMESTAMP DEFAULT NOW(),
+    "updated_at"      TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."tasks" ("lead_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."tasks" ("status");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."tasks" ("due_at");
+
+-- ---- Notes (internal, not visible to lead) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."notes" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "lead_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE CASCADE,
+    "opportunity_id"  UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE CASCADE,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "content"         TEXT NOT NULL,
+    "created_by"      VARCHAR(255),
+    "created_at"      TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."notes" ("lead_id");
+
+-- ---- Stage History (audit trail of pipeline transitions) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."stage_history" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "lead_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE CASCADE,
+    "opportunity_id"  UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE CASCADE,
+    "from_stage"      VARCHAR(50),
+    "to_stage"        VARCHAR(50) NOT NULL,
+    "reason"          TEXT,
+    "triggered_by"    VARCHAR(50) DEFAULT 'system',     -- system, agent, ai
+    "agent_id"        VARCHAR(255),
+    "created_at"      TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."stage_history" ("lead_id", "created_at");

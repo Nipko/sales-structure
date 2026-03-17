@@ -24,6 +24,7 @@ import { CopilotModule } from './modules/copilot/copilot.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { BroadcastModule } from './modules/broadcast/broadcast.module';
+import { IntakeModule } from './modules/intake/intake.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -75,6 +76,7 @@ import llmConfig from './config/llm.config';
         InventoryModule,
         OrdersModule,
         BroadcastModule,
+        IntakeModule,
     ],
 })
 export class AppModule { }

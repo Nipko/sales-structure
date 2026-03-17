@@ -13,12 +13,12 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 
-// Mock data (fallback when API has no data yet)
-const mockStats = [
-    { label: "Tenants Activos", value: "3", change: "+2 este mes", icon: Building2, color: "#6c5ce7" },
-    { label: "Conversaciones Hoy", value: "127", change: "+34% vs ayer", icon: MessageSquare, color: "#00d68f" },
-    { label: "Mensajes Procesados", value: "1,842", change: "Últimas 24h", icon: Activity, color: "#00b4d8" },
-    { label: "Costo LLM Hoy", value: "$2.45", change: "-12% optimizado", icon: Brain, color: "#ffaa00" },
+// Stat card config (icons + colors only — values come from API)
+const statConfig = [
+    { key: "leadsToday",        label: "Leads Hoy",            icon: Building2,     color: "#6c5ce7", suffix: "" },
+    { key: "leadsHot",          label: "Leads Calientes 🔥",   icon: TrendingUp,    color: "#00d68f", suffix: "" },
+    { key: "messagesProcessed", label: "Mensajes Procesados",  icon: Activity,      color: "#00b4d8", suffix: "" },
+    { key: "llmCostToday",      label: "Costo LLM Hoy",        icon: Brain,         color: "#ffaa00", suffix: "$" },
 ];
 
 const mockActivity = [
@@ -38,28 +38,27 @@ const mockModels = [
 
 export default function AdminDashboard() {
     const { user } = useAuth();
-    const [stats, setStats] = useState(mockStats);
+    const [overview, setOverview] = useState<Record<string, number>>({
+        leadsToday: 0, leadsHot: 0, messagesProcessed: 0, llmCostToday: 0,
+    });
     const [activity] = useState(mockActivity);
     const [modelUsage] = useState(mockModels);
     const [isLive, setIsLive] = useState(false);
 
-    // Try to load real tenant count from API
     useEffect(() => {
-        async function loadStats() {
-            const tenantsResult = await api.getTenants();
-            if (tenantsResult.success && tenantsResult.data) {
-                const tenantCount = Array.isArray(tenantsResult.data)
-                    ? tenantsResult.data.length
-                    : typeof tenantsResult.data === "object" && "length" in (tenantsResult.data as any)
-                        ? (tenantsResult.data as any).length
-                        : 0;
-                setStats(prev => prev.map(s =>
-                    s.label === "Tenants Activos" ? { ...s, value: String(tenantCount) } : s
-                ));
+        async function loadOverview() {
+            const result = await api.getCommercialOverview();
+            if (result.success && result.data) {
+                setOverview({
+                    leadsToday:        result.data.leadsToday,
+                    leadsHot:          result.data.leadsHot,
+                    messagesProcessed: result.data.messagesProcessed,
+                    llmCostToday:      result.data.llmCostToday,
+                });
                 setIsLive(true);
             }
         }
-        loadStats();
+        loadOverview();
     }, []);
 
     return (
@@ -86,10 +85,14 @@ export default function AdminDashboard() {
                     marginBottom: 32,
                 }}
             >
-                {stats.map((stat) => {
+                {statConfig.map((stat) => {
                     const Icon = stat.icon;
+                    const rawValue = overview[stat.key] ?? 0;
+                    const displayValue = stat.suffix === "$"
+                        ? `$${rawValue.toFixed(2)}`
+                        : rawValue.toLocaleString("es-CO");
                     return (
-                        <div key={stat.label} className="glass-card">
+                        <div key={stat.key} className="glass-card">
                             <div
                                 style={{
                                     display: "flex",
@@ -108,7 +111,7 @@ export default function AdminDashboard() {
                                         {stat.label}
                                     </p>
                                     <p style={{ fontSize: 32, fontWeight: 800, margin: 0 }}>
-                                        {stat.value}
+                                        {displayValue}
                                     </p>
                                     <p
                                         style={{
@@ -121,7 +124,7 @@ export default function AdminDashboard() {
                                         }}
                                     >
                                         <ArrowUpRight size={14} />
-                                        {stat.change}
+                                        {isLive ? "En vivo" : "Cargando..."}
                                     </p>
                                 </div>
                                 <div

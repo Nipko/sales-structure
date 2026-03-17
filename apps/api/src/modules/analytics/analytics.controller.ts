@@ -22,6 +22,13 @@ export class AnalyticsController {
         return { success: true, data: metrics };
     }
 
+    @Get('overview')
+    @ApiOperation({ summary: 'Get commercial overview: leads, hot leads, cost, handoffs (replaces dashboard mocks)' })
+    async getCommercialOverview(@CurrentTenant() tenantId: string) {
+        const data = await this.analyticsService.getCommercialOverview(tenantId);
+        return { success: true, data };
+    }
+
     @Get('range')
     @ApiOperation({ summary: 'Get metrics for a date range' })
     async getMetricsRange(

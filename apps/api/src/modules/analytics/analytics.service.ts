@@ -157,4 +157,67 @@ export class AnalyticsService {
 
         return events;
     }
+
+    /**
+     * Commercial overview — combines Redis real-time counters + DB lead counts.
+     * Called by the dashboard's main stat cards to replace mock data.
+     */
+    async getCommercialOverview(tenantId: string): Promise<{
+        leadsToday: number;
+        leadsHot: number;
+        leadsReadyToClose: number;
+        conversations: number;
+        handoffs: number;
+        llmCostToday: number;
+        messagesProcessed: number;
+    }> {
+        const today = new Date().toISOString().split('T')[0];
+        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+
+        // Redis counters (real-time, fast path)
+        const [conversations, messages, handoffs, costStr] = await Promise.all([
+            this.redis.get(`analytics:${tenantId}:${today}:conversation_started`),
+            this.redis.get(`analytics:${tenantId}:${today}:total`),
+            this.redis.get(`analytics:${tenantId}:${today}:handoff_triggered`),
+            this.redis.get(`analytics:${tenantId}:${today}:cost`),
+        ]);
+
+        // DB lead counts from commercial domain
+        let leadsToday = 0;
+        let leadsHot = 0;
+        let leadsReadyToClose = 0;
+
+        try {
+            // Leads created today
+            const todayRows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                schemaName,
+                `SELECT COUNT(*) as cnt FROM leads WHERE DATE(created_at) = CURRENT_DATE`
+            );
+            leadsToday = parseInt(todayRows[0]?.cnt ?? '0');
+
+            // Hot leads (score >= 7) and ready-to-close (score >= 9)
+            const stageRows = await this.prisma.executeInTenantSchema<Array<{ stage: string; cnt: string }>>(
+                schemaName,
+                `SELECT stage, COUNT(*) AS cnt FROM leads WHERE stage IN ('caliente', 'listo_cierre') AND opted_out = false GROUP BY stage`
+            );
+            for (const row of stageRows) {
+                const count = parseInt(row.cnt);
+                if (row.stage === 'caliente') leadsHot = count;
+                if (row.stage === 'listo_cierre') leadsReadyToClose = count;
+            }
+        } catch {
+            // Graceful fallback — leads table may not exist in older tenant schemas
+            this.logger.warn(`[Analytics] Could not query leads for tenant ${tenantId} — schema may be outdated.`);
+        }
+
+        return {
+            leadsToday,
+            leadsHot,
+            leadsReadyToClose,
+            conversations: parseInt((conversations as string) ?? '0'),
+            handoffs: parseInt((handoffs as string) ?? '0'),
+            llmCostToday: parseFloat((costStr as string) ?? '0'),
+            messagesProcessed: parseInt((messages as string) ?? '0'),
+        };
+    }
 }

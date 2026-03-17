@@ -187,8 +187,20 @@ export const api = {
     },
 
     // --- Analytics ---
+    /** Commercial overview — real data: leads, hot, ready-to-close, handoffs, LLM cost */
+    getCommercialOverview: () =>
+        apiGet<{
+            leadsToday: number;
+            leadsHot: number;
+            leadsReadyToClose: number;
+            conversations: number;
+            handoffs: number;
+            llmCostToday: number;
+            messagesProcessed: number;
+        }>(`/analytics/overview`),
+
     getOverviewStats: (tenantId: string) =>
-        apiGet(`/analytics/overview/${tenantId}`),
+        apiGet(`/analytics/dashboard`),
 
     getAgentLeaderboard: (tenantId: string) =>
         apiGet(`/analytics/agents/${tenantId}`),

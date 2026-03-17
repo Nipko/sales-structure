@@ -151,7 +151,9 @@ jobs:
                 --format='{{.State.Health.Status}}' parallext-api 2>/dev/null \
                 || echo "starting")
               echo "  [$i/36] $STATUS"
-              [ "$STATUS" = "healthy" ] && break
+              if [ "$STATUS" = "healthy" ]; then
+                break
+              fi
               sleep 5
             done
 

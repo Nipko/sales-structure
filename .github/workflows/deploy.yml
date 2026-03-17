@@ -11,6 +11,9 @@ env:
   DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
 
 jobs:
+  # ──────────────────────────────────────────────────────────────
+  # JOB 1: Build & push images to GHCR
+  # ──────────────────────────────────────────────────────────────
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -55,6 +58,104 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ──────────────────────────────────────────────────────────────
+  # JOB 2: Deploy to VPS via SSH (runs after images are pushed)
+  # ──────────────────────────────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "===> Logging into GHCR..."
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.VPS_GHCR_USER }} --password-stdin
+
+            echo "===> Pulling latest images..."
+            docker pull ghcr.io/nipko/parallext-api:latest
+            docker pull ghcr.io/nipko/parallext-dashboard:latest
+
+            echo "===> Starting services (DB + Redis first)..."
+            docker compose -f /opt/parallext/docker-compose.prod.yml up -d postgres redis
+            sleep 5
+
+            echo "===> Running tenant schema migration..."
+            docker compose -f /opt/parallext/docker-compose.prod.yml run --rm api \
+              node -e "
+                const { PrismaClient } = require('@prisma/client');
+                const fs = require('fs');
+                const path = require('path');
+                const prisma = new PrismaClient();
+
+                async function migrate() {
+                  const template = fs.readFileSync(
+                    path.join(__dirname, 'prisma/tenant-schema.sql'), 'utf-8'
+                  );
+
+                  // Get all active tenant schemas
+                  const tenants = await prisma.\$queryRaw\`
+                    SELECT schema_name FROM tenants WHERE is_active = true
+                  \`;
+
+                  for (const tenant of tenants) {
+                    const schemaName = tenant.schema_name;
+                    const sql = template.replace(/{{SCHEMA_NAME}}/g, schemaName);
+                    const statements = sql.split(';')
+                      .map(s => s.trim())
+                      .filter(s => s.length > 0 && !s.startsWith('--'));
+
+                    for (const statement of statements) {
+                      try {
+                        await prisma.\$executeRawUnsafe(statement + ';');
+                      } catch (e) {
+                        // Skip if already exists (idempotent)
+                        if (!e.message.includes('already exists')) throw e;
+                      }
+                    }
+                    console.log('Migrated schema: ' + schemaName);
+                  }
+
+                  await prisma.\$disconnect();
+                  console.log('Migration complete');
+                }
+
+                migrate().catch(err => { console.error(err); process.exit(1); });
+              "
+
+            echo "===> Restarting API and Dashboard..."
+            docker compose -f /opt/parallext/docker-compose.prod.yml up -d api dashboard
+
+            echo "===> Waiting for API health check..."
+            for i in $(seq 1 24); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' parallext-api 2>/dev/null || echo "starting")
+              echo "  Health: $STATUS (attempt $i/24)"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "===> API is healthy!"
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$STATUS" != "healthy" ]; then
+              echo "ERROR: API did not become healthy after 2 minutes"
+              docker logs parallext-api --tail 50
+              exit 1
+            fi
+
+            echo "===> Ensuring tunnel is running..."
+            docker compose -f /opt/parallext/docker-compose.prod.yml up -d tunnel
+
+            echo "===> Deploy complete!"
+
       - name: Deploy summary
         run: |
           echo "## 🚀 Deploy Summary" >> $GITHUB_STEP_SUMMARY
@@ -64,4 +165,4 @@ jobs:
           echo "| API | \`${{ env.API_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Dashboard | \`${{ env.DASHBOARD_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Images pushed to GHCR. Watchtower on VPS will auto-deploy within 5 minutes." >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deployed directly to VPS via SSH. Schema migration applied." >> $GITHUB_STEP_SUMMARY

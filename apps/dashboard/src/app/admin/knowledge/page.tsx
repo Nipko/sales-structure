@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -10,18 +11,7 @@ import {
     AlertCircle, RefreshCw, Database, Layers,
 } from "lucide-react";
 
-// ============================================
-// MOCK DATA
-// ============================================
-const mockDocuments = [
-    { id: "d1", name: "Catálogo de Servicios Gecko 2026", type: "pdf" as const, size: "2.4 MB", chunks: 48, status: "indexed" as const, uploadedAt: "2026-02-15", lastSynced: "2026-03-01", description: "Catálogo completo de todas las actividades y paquetes." },
-    { id: "d2", name: "FAQ — Preguntas Frecuentes", type: "md" as const, size: "156 KB", chunks: 23, status: "indexed" as const, uploadedAt: "2026-02-10", lastSynced: "2026-03-01", description: "Preguntas frecuentes sobre reservas, cancelaciones, y requisitos." },
-    { id: "d3", name: "Lista de Precios Actualizada", type: "xlsx" as const, size: "340 KB", chunks: 12, status: "indexed" as const, uploadedAt: "2026-02-20", lastSynced: "2026-03-02", description: "Precios de todos los paquetes con descuentos por grupo." },
-    { id: "d4", name: "Políticas de Seguridad", type: "pdf" as const, size: "1.8 MB", chunks: 35, status: "indexed" as const, uploadedAt: "2026-01-30", lastSynced: "2026-02-28", description: "Protocolos de seguridad para todas las actividades de aventura." },
-    { id: "d5", name: "Guía de Ventas (Español)", type: "md" as const, size: "89 KB", chunks: 15, status: "indexed" as const, uploadedAt: "2026-02-05", lastSynced: "2026-03-01", description: "Script y técnicas de venta para agentes de WhatsApp." },
-    { id: "d6", name: "Horarios y Temporadas", type: "pdf" as const, size: "420 KB", chunks: 8, status: "processing" as const, uploadedAt: "2026-03-03", lastSynced: null, description: "Calendario de temporadas altas, horarios de actividades por mes." },
-    { id: "d7", name: "Sitio Web — gecko-aventura.com", type: "url" as const, size: "—", chunks: 62, status: "indexed" as const, uploadedAt: "2026-02-01", lastSynced: "2026-03-03", description: "Contenido scrapeado del sitio web oficial." },
-];
+// No mock data — loaded from API
 
 const typeConfig: Record<string, { icon: any; color: string; label: string }> = {
     pdf: { icon: FileText, color: "#e74c3c", label: "PDF" },
@@ -40,11 +30,39 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
 export default function KnowledgeBasePage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [documents, setDocuments] = useState(mockDocuments);
+    const [documents, setDocuments] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [showUpload, setShowUpload] = useState(false);
     const [newDoc, setNewDoc] = useState({ name: "", description: "", type: "pdf", url: "" });
     const [toast, setToast] = useState<string | null>(null);
+    const [isLive, setIsLive] = useState(false);
+
+    // Load documents from API
+    useEffect(() => {
+        async function load() {
+            if (!activeTenantId) return;
+            try {
+                const result = await api.fetch(`/knowledge/${activeTenantId}`);
+                if (Array.isArray(result?.data) && result.data.length > 0) {
+                    setDocuments(result.data.map((d: any) => ({
+                        id: d.id,
+                        name: d.name || d.title || 'Untitled',
+                        type: d.type || 'pdf',
+                        size: d.size || '—',
+                        chunks: d.chunks || d.chunk_count || 0,
+                        status: d.status || 'indexed',
+                        uploadedAt: d.uploadedAt?.split('T')[0] || d.created_at?.split('T')[0] || '—',
+                        lastSynced: d.lastSynced || d.last_synced || null,
+                        description: d.description || '',
+                    })));
+                    setIsLive(true);
+                }
+            } catch (err) {
+                console.error('Failed to load knowledge docs:', err);
+            }
+        }
+        load();
+    }, [activeTenantId]);
 
     const filtered = documents.filter(d =>
         searchQuery ? `${d.name} ${d.description}`.toLowerCase().includes(searchQuery.toLowerCase()) : true
@@ -90,7 +108,7 @@ export default function KnowledgeBasePage() {
                     <div>
                         <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
                             <BookOpen size={28} color="var(--accent)" /> Knowledge Base
-                            <DataSourceBadge isLive={false} />
+                            <DataSourceBadge isLive={isLive} />
                         </h1>
                         <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
                             {stats.total} documentos · {stats.totalChunks} chunks vectorizados

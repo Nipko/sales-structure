@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
-import { ContactsService } from './services/contacts/contacts.service';
+import { LeadsRepository } from './repositories/leads.repository';
+import { OpportunitiesRepository } from './repositories/opportunities.repository';
+import { CatalogRepository } from './repositories/catalog.repository';
 import { NotesService } from './services/notes/notes.service';
 import { TasksService } from './services/tasks/tasks.service';
 import { ActivityService } from './services/activity/activity.service';
@@ -8,7 +10,9 @@ import { ActivityService } from './services/activity/activity.service';
 export class CrmController {
 
     constructor(
-        private contactsService: ContactsService,
+        private leadsRepo: LeadsRepository,
+        private oppsRepo: OpportunitiesRepository,
+        private catalogRepo: CatalogRepository,
         private notesService: NotesService,
         private tasksService: TasksService,
         private activityService: ActivityService,
@@ -18,7 +22,7 @@ export class CrmController {
 
     @Get('kanban/:tenantId')
     async getKanban(@Param('tenantId') tenantId: string) {
-        const kanban = await this.contactsService.getKanban(tenantId);
+        const kanban = await this.oppsRepo.getKanban(tenantId);
         return { success: true, data: kanban };
     }
 
@@ -28,7 +32,7 @@ export class CrmController {
         @Param('opportunityId') opportunityId: string,
         @Body() body: { stage: string },
     ) {
-        await this.contactsService.moveOpportunity(tenantId, opportunityId, body.stage);
+        await this.oppsRepo.moveOpportunity(tenantId, opportunityId, body.stage);
         return { success: true, message: 'Opportunity moved' };
     }
 
@@ -45,7 +49,7 @@ export class CrmController {
         @Query('page') page?: string,
         @Query('limit') limit?: string,
     ) {
-        const result = await this.contactsService.listLeads(tenantId, {
+        const result = await this.leadsRepo.listLeads(tenantId, {
             search,
             stage,
             assignedTo,
@@ -62,8 +66,17 @@ export class CrmController {
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
     ) {
-        const data = await this.contactsService.getLead360(tenantId, leadId);
+        const data = await this.leadsRepo.getLead360(tenantId, leadId);
         return { success: true, data };
+    }
+
+    @Post('leads/:tenantId')
+    async createLead(
+        @Param('tenantId') tenantId: string,
+        @Body() body: Record<string, any>,
+    ) {
+        const lead = await this.leadsRepo.createLead(tenantId, body);
+        return { success: true, data: lead };
     }
 
     @Put('leads/:tenantId/:leadId')
@@ -72,7 +85,7 @@ export class CrmController {
         @Param('leadId') leadId: string,
         @Body() body: Record<string, any>,
     ) {
-        await this.contactsService.updateLead(tenantId, leadId, body);
+        await this.leadsRepo.updateLead(tenantId, leadId, body);
         return { success: true, message: 'Lead updated' };
     }
 
@@ -152,5 +165,82 @@ export class CrmController {
     ) {
         const timeline = await this.activityService.getTimeline(tenantId, leadId);
         return { success: true, data: timeline };
+    }
+
+    // ---- Opportunities ----
+
+    @Get('opportunities/:tenantId')
+    async listOpportunities(
+        @Param('tenantId') tenantId: string,
+        @Query('stage') stage?: string,
+    ) {
+        const data = await this.oppsRepo.getOpportunities(tenantId, stage);
+        return { success: true, data };
+    }
+
+    @Get('opportunities/:tenantId/:opportunityId')
+    async getOpportunity(
+        @Param('tenantId') tenantId: string,
+        @Param('opportunityId') opportunityId: string,
+    ) {
+        const data = await this.oppsRepo.getOpportunityById(tenantId, opportunityId);
+        return { success: true, data };
+    }
+
+    @Post('opportunities/:tenantId')
+    async createOpportunity(
+        @Param('tenantId') tenantId: string,
+        @Body() body: Record<string, any>,
+    ) {
+        const data = await this.oppsRepo.createOpportunity(tenantId, body);
+        return { success: true, data };
+    }
+
+    @Put('opportunities/:tenantId/:opportunityId')
+    async updateOpportunity(
+        @Param('tenantId') tenantId: string,
+        @Param('opportunityId') opportunityId: string,
+        @Body() body: Record<string, any>,
+    ) {
+        const data = await this.oppsRepo.updateOpportunity(tenantId, opportunityId, body);
+        return { success: true, data };
+    }
+
+    // ---- Catalog (Courses & Campaigns) ----
+
+    @Get('courses/:tenantId')
+    async listCourses(@Param('tenantId') tenantId: string) {
+        const data = await this.catalogRepo.getCourses(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('courses/:tenantId/:courseId')
+    async getCourse(
+        @Param('tenantId') tenantId: string,
+        @Param('courseId') courseId: string,
+    ) {
+        const data = await this.catalogRepo.getCourseById(tenantId, courseId);
+        return { success: true, data };
+    }
+
+    @Get('campaigns/:tenantId')
+    async listCampaigns(@Param('tenantId') tenantId: string) {
+        const data = await this.catalogRepo.getCampaigns(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('campaigns/:tenantId/active')
+    async listActiveCampaigns(@Param('tenantId') tenantId: string) {
+        const data = await this.catalogRepo.getActiveCampaigns(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('campaigns/:tenantId/:campaignId')
+    async getCampaign(
+        @Param('tenantId') tenantId: string,
+        @Param('campaignId') campaignId: string,
+    ) {
+        const data = await this.catalogRepo.getCampaignById(tenantId, campaignId);
+        return { success: true, data };
     }
 }

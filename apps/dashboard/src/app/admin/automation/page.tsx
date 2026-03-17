@@ -21,47 +21,7 @@ import {
     ChevronDown,
 } from "lucide-react";
 
-// ============================================
-// MOCK DATA
-// ============================================
-
-const mockRules = [
-    {
-        id: "r1", name: "Auto-asignar conversaciones nuevas", type: "auto_assign" as const,
-        trigger: "new_conversation", isActive: true, executionCount: 47,
-        lastExecutedAt: "Hace 3 min",
-        description: "Asigna nuevas conversaciones a agentes disponibles usando round-robin",
-        conditions: {}, actions: { method: "round_robin" },
-    },
-    {
-        id: "r2", name: "Etiquetar interesados en rafting", type: "auto_tag" as const,
-        trigger: "new_message", isActive: true, executionCount: 23,
-        lastExecutedAt: "Hace 15 min",
-        description: "Cuando el mensaje menciona rafting, río, chicamocha → agrega tag 'interesado-rafting'",
-        conditions: { keywords: ["rafting", "río", "chicamocha", "rápidos"] }, actions: { tag: "interesado-rafting" },
-    },
-    {
-        id: "r3", name: "Etiquetar interesados en parapente", type: "auto_tag" as const,
-        trigger: "new_message", isActive: true, executionCount: 15,
-        lastExecutedAt: "Hace 42 min",
-        description: "Cuando el mensaje menciona parapente, vuelo, volar → agrega tag 'interesado-parapente'",
-        conditions: { keywords: ["parapente", "vuelo", "volar", "paragliding"] }, actions: { tag: "interesado-parapente" },
-    },
-    {
-        id: "r4", name: "SLA: Responder en 10 minutos", type: "sla_alert" as const,
-        trigger: "conversation_assigned", isActive: true, executionCount: 5,
-        lastExecutedAt: "Hace 2 horas",
-        description: "Si un agente no responde en 10 min → notificación. 20 min → escalación a admin",
-        conditions: { max_response_minutes: 10 }, actions: { notify: "admin", escalate_after_minutes: 20 },
-    },
-    {
-        id: "r5", name: "Follow-up clientes inactivos", type: "follow_up" as const,
-        trigger: "inactivity", isActive: false, executionCount: 0,
-        lastExecutedAt: null,
-        description: "Si un contacto no responde en 48 horas → enviar mensaje de seguimiento automático",
-        conditions: { hours_inactive: 48 }, actions: { message: "¡Hola! ¿Pudiste revisar nuestra propuesta? Estamos aquí para ayudarte 😊" },
-    },
-];
+// No mock data — loaded from API
 
 const typeConfig: Record<string, { icon: any; color: string; label: string }> = {
     auto_assign: { icon: Users, color: "#3498db", label: "Auto-asignación" },
@@ -81,7 +41,7 @@ const triggerLabels: Record<string, string> = {
 export default function AutomationPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [rules, setRules] = useState(mockRules);
+    const [rules, setRules] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
     const [showNewRule, setShowNewRule] = useState(false);
     const [newRule, setNewRule] = useState({ name: "", type: "auto_assign", trigger: "new_conversation", description: "" });

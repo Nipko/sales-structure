@@ -31,6 +31,20 @@ export class ConversationsService {
         const { contact, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
 
+        // Auto-progress stage from 'nuevo' to 'respondio' upon user message
+        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1 AND stage = 'nuevo'`,
+            [conversation.id]
+        );
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE leads 
+             SET stage = 'respondio' 
+             WHERE id = (SELECT lead_id FROM opportunities WHERE conversation_id = $1 LIMIT 1) 
+               AND stage = 'nuevo'`,
+            [conversation.id]
+        );
+
         // 2. Load Persona & Check Business Hours
         const config = await this.personaService.getActivePersona(tenantId);
         if (!config) {
@@ -68,13 +82,13 @@ export class ConversationsService {
     }
 
     /**
-     * Resolve or create contact and conversation
+     * Resolve or create contact, lead, conversation, and opportunity
      */
     private async resolveConversation(tenantId: string, contactId: string, channelType: string, msg: NormalizedMessage) {
         // In a real implementation we would do this using the tenant's schema
         const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`; // simplification, should use tenantsService.getSchemaName
 
-        // Find or create contact
+        // 1. Find or create contact
         let contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT * FROM contacts WHERE external_id = $1 AND channel_type = $2`,
             [contactId, channelType]
@@ -87,7 +101,25 @@ export class ConversationsService {
             ).then(res => res[0]);
         }
 
-        // Find active conversation or create new
+        // 2. Find or create lead for commercial CRM (Epic 1 integration)
+        let lead = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT * FROM leads WHERE contact_id = $1 LIMIT 1`,
+            [contact.id]
+        ).then(res => res[0]);
+
+        if (!lead) {
+            const contactName = (msg.metadata as any)?.contactName as string || '';
+            const nameParts = contactName.split(' ');
+            const firstName = nameParts[0] || 'Unknown';
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+
+            lead = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1, $2, $3, $4, 'nuevo', 10) RETURNING *`,
+                [contact.id, firstName, lastName, contactId]
+            ).then(res => res[0]);
+        }
+
+        // 3. Find active conversation or create new
         let conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT * FROM conversations WHERE contact_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
             [contact.id]
@@ -98,9 +130,15 @@ export class ConversationsService {
                 `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage) VALUES ($1, $2, $3, 'active', 'greeting') RETURNING *`,
                 [contact.id, msg.channelType, msg.channelAccountId]
             ).then(res => res[0]);
+
+            // 4. Create an active opportunity tied to this new conversation
+            await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1, $2, 'nuevo', 10)`,
+                [lead.id, conversation.id]
+            );
         }
 
-        return { contact, conversation };
+        return { contact, lead, conversation };
     }
 
     private isWithinBusinessHours(config: TenantConfig): boolean {

@@ -11,18 +11,7 @@ import {
     Calendar, Hash, Tag,
 } from "lucide-react";
 
-// ============================================
-// MOCK DATA
-// ============================================
-const mockConversations = [
-    { id: "cv1", contactName: "Carlos Medina", contactPhone: "+57 310 456 7890", channel: "whatsapp", status: "active" as const, messageCount: 24, lastMessage: "¿Tienen disponibilidad para el próximo sábado?", lastMessageAt: "Hoy 3:45pm", startedAt: "2026-03-01", assignedAgent: "Sofía Henao", tags: ["rafting", "grupo"], sentiment: "positive" as const },
-    { id: "cv2", contactName: "María Pérez", contactPhone: "+57 301 234 5678", channel: "whatsapp", status: "active" as const, messageCount: 18, lastMessage: "Me interesa el team building para 15 personas", lastMessageAt: "Hoy 2:12pm", startedAt: "2026-03-02", assignedAgent: "Sofía Henao", tags: ["corporativo", "team-building"], sentiment: "positive" as const },
-    { id: "cv3", contactName: "Juan López", contactPhone: "+57 315 789 0123", channel: "whatsapp", status: "resolved" as const, messageCount: 12, lastMessage: "Gracias, ya realicé el pago.", lastMessageAt: "Ayer 5:30pm", startedAt: "2026-02-28", assignedAgent: "—", tags: ["pago"], sentiment: "positive" as const },
-    { id: "cv4", contactName: "Ana García", contactPhone: "+57 320 567 8901", channel: "whatsapp", status: "waiting" as const, messageCount: 8, lastMessage: "Estoy esperando la confirmación del pago", lastMessageAt: "Ayer 11:00am", startedAt: "2026-02-27", assignedAgent: "Sofía Henao", tags: ["seguimiento"], sentiment: "neutral" as const },
-    { id: "cv5", contactName: "Pedro Gómez", contactPhone: "+57 318 345 6789", channel: "whatsapp", status: "resolved" as const, messageCount: 6, lastMessage: "No estoy interesado, gracias.", lastMessageAt: "28 Feb", startedAt: "2026-02-26", assignedAgent: "—", tags: [] as string[], sentiment: "negative" as const },
-    { id: "cv6", contactName: "Laura Martínez", contactPhone: "+57 312 901 2345", channel: "whatsapp", status: "active" as const, messageCount: 31, lastMessage: "¿Tienen descuento para grupos de más de 20?", lastMessageAt: "Hoy 4:10pm", startedAt: "2026-02-25", assignedAgent: "Sofía Henao", tags: ["descuento", "grupo-grande"], sentiment: "positive" as const },
-    { id: "cv7", contactName: "Diego Ruiz", contactPhone: "+57 319 678 9012", channel: "whatsapp", status: "waiting" as const, messageCount: 4, lastMessage: "Voy a consultarlo con mi esposa", lastMessageAt: "Hoy 10:30am", startedAt: "2026-03-03", assignedAgent: "—", tags: ["familia"], sentiment: "neutral" as const },
-];
+// No mock data — all loaded from API
 
 const statusConfig: Record<string, { label: string; color: string }> = {
     active: { label: "Activa", color: "#2ecc71" },
@@ -40,7 +29,7 @@ const sentimentConfig: Record<string, { label: string; emoji: string }> = {
 export default function ConversationsPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [conversations, setConversations] = useState(mockConversations);
+    const [conversations, setConversations] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");

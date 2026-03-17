@@ -222,6 +222,8 @@ export const api = {
         apiDelete(`/settings/api-keys/${provider}`),
 
     // --- Users ---
+    getUsers: () => apiGet("/auth/users"),
+
     registerUser: (data: { email: string; password: string; firstName: string; lastName: string; role?: string; tenantId?: string }) =>
         apiPost("/auth/register", data),
 

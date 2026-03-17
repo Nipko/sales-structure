@@ -222,13 +222,13 @@ export class AnalyticsService {
     }
 
     /**
-     * CRM Dashboard: stage funnel, task overdue count, aging
+     * CRM Dashboard: stage funnel, task overdue count, aging, leads by campaign
      */
     async getCrmStats(tenantId: string) {
         const schemaName = await this.getSchemaName(tenantId);
         if (!schemaName) return null;
 
-        const [stageFunnel, openTasks, overdueTasksResult] = await Promise.all([
+        const [stageFunnel, openTasks, overdueTasksResult, leadsByCampaign, opportunityStats] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT stage, COUNT(*) as count, AVG(score) as avg_score
                  FROM leads WHERE opted_out = false
@@ -240,12 +240,39 @@ export class AnalyticsService {
             this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT COUNT(*) as count FROM tasks WHERE status != 'done' AND due_at < NOW()`, []
             ),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT c.name as campaign_name, COUNT(l.id) as lead_count, AVG(l.score) as avg_score
+                 FROM leads l
+                 JOIN campaigns c ON c.id = l.campaign_id
+                 WHERE l.opted_out = false AND l.campaign_id IS NOT NULL
+                 GROUP BY c.name ORDER BY lead_count DESC LIMIT 10`, []
+            ).catch(() => []),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT 
+                    COUNT(*) as total_opps,
+                    SUM(estimated_value) as total_value,
+                    COUNT(*) FILTER (WHERE stage = 'ganado') as won,
+                    COUNT(*) FILTER (WHERE stage IN ('perdido','no_interesado')) as lost
+                 FROM opportunities`, []
+            ).catch(() => [{ total_opps: 0, total_value: 0, won: 0, lost: 0 }]),
         ]);
+
+        const oppStats = opportunityStats[0] || {};
 
         return {
             stageFunnel,
             tasksByStatus: openTasks,
             overdueTasks: parseInt(overdueTasksResult[0]?.count || '0'),
+            leadsByCampaign,
+            opportunities: {
+                total: parseInt(oppStats.total_opps || '0'),
+                totalValue: parseFloat(oppStats.total_value || '0'),
+                won: parseInt(oppStats.won || '0'),
+                lost: parseInt(oppStats.lost || '0'),
+                winRate: parseInt(oppStats.total_opps || '0') > 0
+                    ? Math.round((parseInt(oppStats.won || '0') / parseInt(oppStats.total_opps || '0')) * 100)
+                    : 0,
+            },
         };
     }
 

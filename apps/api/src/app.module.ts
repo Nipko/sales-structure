@@ -27,6 +27,7 @@ import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { IntakeModule } from './modules/intake/intake.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { EmailModule } from './modules/email/email.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -81,6 +82,7 @@ import llmConfig from './config/llm.config';
         IntakeModule,
         WhatsappModule,
         CrmModule,
+        EmailModule,
     ],
 })
 export class AppModule { }

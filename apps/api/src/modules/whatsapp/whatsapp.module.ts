@@ -7,9 +7,10 @@ import { WhatsappMessagingService } from './services/whatsapp-messaging.service'
 import { PrismaModule } from '../prisma/prisma.module';
 import { HttpModule } from '@nestjs/axios';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
-  imports: [PrismaModule, HttpModule, ConversationsModule],
+  imports: [PrismaModule, HttpModule, ConversationsModule, AnalyticsModule],
   controllers: [WhatsappController],
   providers: [
     WhatsappConnectionService,

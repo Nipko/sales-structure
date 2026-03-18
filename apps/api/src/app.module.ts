@@ -31,7 +31,6 @@ import { AutomationModule } from './modules/automation/automation.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { CarlaModule } from './modules/carla/carla.module';
-import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { EmailModule } from './modules/email/email.module';
 
@@ -96,7 +95,6 @@ import llmConfig from './config/llm.config';
         CatalogModule,
         ComplianceModule,
         CarlaModule,
-        KnowledgeModule,
     ],
 })
 export class AppModule { }

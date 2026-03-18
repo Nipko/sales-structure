@@ -334,6 +334,51 @@ export class AnalyticsService {
         };
     }
 
+    /**
+     * V4 Campaign Analytics: leads, response rate, conversion per campaign
+     */
+    async getCampaignAnalytics(tenantId: string) {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return [];
+
+        return this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT 
+                c.id, c.name, c.status, c.channel,
+                COUNT(l.id) as total_leads,
+                COUNT(l.id) FILTER (WHERE l.score >= 5) as qualified_leads,
+                COUNT(l.id) FILTER (WHERE l.score >= 8) as hot_leads,
+                COUNT(l.id) FILTER (WHERE l.stage = 'ganado') as converted,
+                ROUND(AVG(l.score)::numeric, 1) as avg_score,
+                ROUND(
+                    CASE WHEN COUNT(l.id) > 0 
+                    THEN (COUNT(l.id) FILTER (WHERE l.stage = 'ganado')::numeric / COUNT(l.id) * 100)
+                    ELSE 0 END, 1
+                ) as conversion_rate
+             FROM campaigns c
+             LEFT JOIN leads l ON l.campaign_id = c.id AND l.opted_out = false
+             GROUP BY c.id, c.name, c.status, c.channel
+             ORDER BY total_leads DESC`, []
+        ).catch(() => []);
+    }
+
+    /**
+     * V4 Conversion Funnel: full pipeline from capture to close
+     */
+    async getConversionFunnel(tenantId: string) {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return null;
+
+        const stages = ['nuevo', 'contactado', 'calificado', 'caliente', 'listo_cierre', 'ganado', 'perdido'];
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT stage, COUNT(*) as count FROM leads WHERE opted_out = false GROUP BY stage`, []
+        ).catch(() => []);
+
+        const stageMap: Record<string, number> = {};
+        for (const r of rows) stageMap[r.stage] = parseInt(r.count);
+
+        return stages.map(s => ({ stage: s, count: stageMap[s] || 0 }));
+    }
+
     private async getSchemaName(tenantId: string): Promise<string | null> {
         const cached = await this.redis.get(`tenant:${tenantId}:schema`);
         if (cached) return cached;

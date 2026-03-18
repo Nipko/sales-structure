@@ -1,4 +1,5 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { createHash } from 'crypto';
@@ -17,9 +18,148 @@ const OPT_OUT_KEYWORDS = ['stop', 'baja', 'no quiero', 'eliminar', 'borrar', 'ca
 export class IntakeService {
     private readonly logger = new Logger(IntakeService.name);
 
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly eventEmitter: EventEmitter2
+    ) { }
 
-    // ─── Main entry point ─────────────────────────────────────────────────────
+    // ─── Internal Landing Admin ──────────────────────────────────────────────────
+
+    async createLandingPage(schemaName: string, payload: any): Promise<any> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `INSERT INTO landing_pages (slug, course_id, campaign_id, title, subtitle, status)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+             [
+                 payload.slug,
+                 payload.courseId || null,
+                 payload.campaignId || null,
+                 payload.title,
+                 payload.subtitle || null,
+                 payload.status || 'draft'
+             ]
+        );
+        return rows[0];
+    }
+
+    async findLandingPages(schemaName: string): Promise<any[]> {
+        return this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT lp.*, c.name as course_name, camp.name as campaign_name
+             FROM landing_pages lp
+             LEFT JOIN courses c ON lp.course_id = c.id
+             LEFT JOIN campaigns camp ON lp.campaign_id = camp.id
+             ORDER BY lp.created_at DESC`
+        );
+    }
+
+    // ─── Public Landing Pages ──────────────────────────────────────────────────
+
+    async getLandingPageBySlug(schemaName: string, slug: string): Promise<any> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT lp.*,
+                    c.name as course_name,
+                    c.description as course_description,
+                    c.price as course_price,
+                    c.currency as course_currency,
+                    camp.name as campaign_name,
+                    (
+                        SELECT row_to_json(fd)
+                        FROM form_definitions fd
+                        WHERE fd.landing_page_id = lp.id AND fd.active = true
+                        ORDER BY fd.version DESC LIMIT 1
+                    ) as form_definition
+             FROM landing_pages lp
+             LEFT JOIN courses c ON lp.course_id = c.id
+             LEFT JOIN campaigns camp ON lp.campaign_id = camp.id
+             WHERE lp.slug = $1 AND lp.status = 'published'`,
+            [slug]
+        );
+
+        if (!rows.length) return null;
+        return rows[0];
+    }
+
+    // ─── Main entry point for dynamic forms ────────────────────────────────────
+
+    async processFormSubmission(
+        formDefinitionId: string,
+        payload: any,
+        meta: { ip: string; userAgent: string; originUrl: string; tenantId: string; schemaName: string }
+    ): Promise<IntakeResult> {
+        const { schemaName } = meta;
+
+        // 1. Get form definition to know campaign/course info
+        const definitionRows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT fd.*, lp.campaign_id, lp.course_id, lp.id as landing_page_id
+             FROM form_definitions fd
+             LEFT JOIN landing_pages lp ON fd.landing_page_id = lp.id
+             WHERE fd.id = $1`,
+            [formDefinitionId]
+        );
+
+        const formDef = definitionRows[0];
+        if (!formDef) {
+            throw new NotFoundException('Definición de formulario no encontrada.');
+        }
+
+        // 2. Validate payload vs field definitions (basic validation here, could be extended)
+        if (!payload.phone || !payload.email || !payload.first_name) {
+            throw new BadRequestException('Faltan campos requeridos (nombre, email, teléfono).');
+        }
+        if (!payload.consent) {
+            throw new BadRequestException('El consentimiento es requerido para capturar el lead.');
+        }
+
+        const phone = this.normalizePhone(payload.phone);
+        if (!phone) {
+            throw new BadRequestException('El número de teléfono no tiene un formato válido.');
+        }
+
+        const dto: CreateLeadDto = {
+            firstName: payload.first_name,
+            lastName: payload.last_name || '',
+            email: payload.email,
+            phone: phone,
+            campaignId: formDef.campaign_id,
+            courseId: formDef.course_id,
+            consent: true,
+            legalVersion: formDef.consent_text_version || 'v1.0',
+            utmSource: payload.utm_source,
+            utmMedium: payload.utm_medium,
+            utmCampaign: payload.utm_campaign,
+            utmContent: payload.utm_content,
+            referrerUrl: meta.originUrl
+        };
+
+        // 3. Process lead capture logic (deduplication, opportunity creation)
+        const result = await this.processLeadUpsert(dto, meta);
+
+        // 4. Save raw form submission explicitly
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `INSERT INTO form_submissions (
+                landing_page_id, form_definition_id,
+                campaign_id, course_id, lead_id,
+                raw_payload_json, source_url, referrer,
+                utm_json, ip_address, user_agent
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+                formDef.landing_page_id, formDefinitionId,
+                formDef.campaign_id, formDef.course_id, result.leadId,
+                payload, dto.referrerUrl, meta.originUrl,
+                { source: dto.utmSource, medium: dto.utmMedium, campaign: dto.utmCampaign },
+                meta.ip, meta.userAgent
+            ]
+        );
+
+        return result;
+    }
+
+    // ─── Original simple entry point ──────────────────────────────────────────
 
     async captureFromForm(
         dto: CreateLeadDto,
@@ -34,7 +174,20 @@ export class IntakeService {
             throw new BadRequestException('El número de teléfono no tiene un formato válido.');
         }
 
-        const { schemaName, tenantId } = meta;
+        // Pass normalized phone back
+        dto.phone = phone;
+
+        return this.processLeadUpsert(dto, meta);
+    }
+
+    // ─── Lead logic abstraction ───────────────────────────────────────────────
+
+    private async processLeadUpsert(
+        dto: CreateLeadDto,
+        meta: { ip: string; userAgent: string; originUrl: string; tenantId: string; schemaName: string }
+    ): Promise<IntakeResult> {
+        const { schemaName } = meta;
+        const phone = dto.phone; // Assuming normalized early
 
         // 1. Detect duplicates by phone + campaign
         const existingLead = await this.findExistingLead(schemaName, phone, dto.campaignId);
@@ -43,25 +196,36 @@ export class IntakeService {
         let isNew: boolean;
 
         if (existingLead) {
-            // Update existing lead with new opportunity-level data
             leadId = existingLead.id;
             isNew = false;
             await this.updateLead(schemaName, leadId, dto);
             this.logger.log(`[Intake] Updated existing lead ${leadId} (phone: ${phone})`);
         } else {
-            // Create new lead
             leadId = await this.createLead(schemaName, phone, dto);
             isNew = true;
             this.logger.log(`[Intake] Created new lead ${leadId} (phone: ${phone})`);
         }
 
-        // 2. Save consent record (always, even on update — new submission = new consent)
+        // 2. Save consent record
         await this.saveConsentRecord(schemaName, leadId, dto, meta);
 
-        // 3. Create opportunity (one per form submission)
+        // 3. Create opportunity
         const opportunityId = await this.createOpportunity(schemaName, leadId, dto);
 
         this.logger.log(`[Intake] LeadCaptured: lead=${leadId}, opp=${opportunityId}, isNew=${isNew}`);
+
+        // 4. Emit event for decoupling (e.g. Workflow module handles template sending)
+        this.eventEmitter.emit('lead.captured', {
+            tenantId: meta.tenantId,
+            schemaName: meta.schemaName,
+            leadId,
+            opportunityId,
+            campaignId: dto.campaignId,
+            courseId: dto.courseId,
+            isNew,
+            phone
+        });
+
         return { leadId, opportunityId, isNew, phone };
     }
 

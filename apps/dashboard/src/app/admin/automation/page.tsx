@@ -21,7 +21,7 @@ import {
     ChevronDown,
 } from "lucide-react";
 
-// No mock data — loaded from API
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const typeConfig: Record<string, { icon: any; color: string; label: string }> = {
     auto_assign: { icon: Users, color: "#3498db", label: "Auto-asignación" },
@@ -52,10 +52,26 @@ export default function AutomationPage() {
     useEffect(() => {
         async function load() {
             if (!activeTenantId) return;
-            const result = await api.getAutomationRules(activeTenantId);
-            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                setRules(result.data as any);
-                setIsLive(true);
+            try {
+                const res = await fetch(`${API}/automation/rules/${activeTenantId}`);
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    // Map DB format to UI format
+                    const mapped = data.map(r => ({
+                        id: r.id,
+                        name: r.name,
+                        type: r.trigger_type === 'lead.captured' ? 'auto_reply' : 'auto_assign',
+                        trigger: r.trigger_type,
+                        description: `Rule for ${r.trigger_type}`,
+                        isActive: r.active,
+                        executionCount: 0, // Mock for now until we have an endpoint for executions
+                        lastExecutedAt: null,
+                    }));
+                    setRules(mapped);
+                    setIsLive(true);
+                }
+            } catch (err) {
+                console.error("Error loading rules", err);
             }
         }
         load();
@@ -79,31 +95,42 @@ export default function AutomationPage() {
         try {
             const ruleData = {
                 name: newRule.name,
-                type: newRule.type,
-                trigger: newRule.trigger,
-                conditions: {},
-                actions: {},
+                trigger_type: newRule.trigger,
+                conditions_json: {},
+                actions_json: [
+                    { type: "sendTemplate", config: { templateName: "welcome_message" } }
+                ],
+                active: true
             };
             if (activeTenantId) {
-                await api.createRule(activeTenantId, ruleData);
+                const res = await fetch(`${API}/automation/rules/${activeTenantId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(ruleData)
+                });
+                const created = await res.json();
+                
+                if (created && created.id) {
+                    setRules(prev => [{
+                        id: created.id,
+                        name: created.name,
+                        type: newRule.type,
+                        trigger: created.trigger_type,
+                        description: newRule.description || `Rule for ${created.trigger_type}`,
+                        isActive: created.active,
+                        executionCount: 0,
+                        lastExecutedAt: null as any,
+                        conditions: {},
+                        actions: {},
+                    }, ...prev]);
+                    setShowNewRule(false);
+                    setNewRule({ name: "", type: "auto_assign", trigger: "lead.captured", description: "" });
+                    setToast("Regla creada exitosamente");
+                    setTimeout(() => setToast(null), 2000);
+                }
             }
-            // Optimistic add
-            setRules(prev => [...prev, {
-                id: `r${Date.now()}`,
-                name: newRule.name,
-                type: newRule.type as any,
-                trigger: newRule.trigger,
-                description: newRule.description || `Regla ${newRule.type}`,
-                isActive: true,
-                executionCount: 0,
-                lastExecutedAt: null as any,
-                conditions: {} as any,
-                actions: {} as any,
-            }]);
-            setShowNewRule(false);
-            setNewRule({ name: "", type: "auto_assign", trigger: "new_conversation", description: "" });
-            setToast("Regla creada exitosamente");
-            setTimeout(() => setToast(null), 2000);
+        } catch (err) {
+            console.error(err);
         } finally {
             setSaving(false);
         }
@@ -258,10 +285,10 @@ export default function AutomationPage() {
     ];
 
     const triggerOpts = [
+        { value: "lead.captured", label: "Lead Capturado (Intake)" },
         { value: "new_conversation", label: "Nueva conversación" },
         { value: "message_received", label: "Mensaje recibido" },
         { value: "sla_timeout", label: "Timeout SLA" },
-        { value: "after_hours", label: "Fuera de horario" },
         { value: "inactivity", label: "Inactividad" },
     ];
 

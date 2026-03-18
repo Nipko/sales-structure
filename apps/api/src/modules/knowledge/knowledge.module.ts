@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeController } from './knowledge.controller';
-import { TenantsModule } from '../tenants/tenants.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-    imports: [TenantsModule],
-    providers: [KnowledgeService],
+    imports: [PrismaModule],
     controllers: [KnowledgeController],
-    exports: [KnowledgeService],
+    providers: [KnowledgeService],
+    exports: [KnowledgeService]
 })
-export class KnowledgeModule { }
+export class KnowledgeModule {}

@@ -38,6 +38,18 @@ export class AnalyticsController {
         return { success: true, data };
     }
 
+    @Get('campaigns/:tenantId')
+    async getCampaignAnalytics(@Param('tenantId') tenantId: string) {
+        const data = await this.analyticsService.getCampaignAnalytics(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('funnel/:tenantId')
+    async getConversionFunnel(@Param('tenantId') tenantId: string) {
+        const data = await this.analyticsService.getConversionFunnel(tenantId);
+        return { success: true, data };
+    }
+
     // ---- Compliance ----
 
     @Get('compliance/:tenantId')

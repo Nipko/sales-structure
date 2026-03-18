@@ -1,310 +1,200 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
-import { DataSourceBadge } from "@/hooks/useApiData";
 import {
-    BookOpen, FileText, Upload, Search, Trash2, Eye, Plus, X,
-    File, FileSpreadsheet, Globe, Clock, HardDrive, CheckCircle2,
-    AlertCircle, RefreshCw, Database, Layers,
+    BookOpen, Search, Plus, CheckCircle, Clock, X, FileText, Globe, Key, File
 } from "lucide-react";
 
-// No mock data — loaded from API
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
-const typeConfig: Record<string, { icon: any; color: string; label: string }> = {
-    pdf: { icon: FileText, color: "#e74c3c", label: "PDF" },
-    md: { icon: File, color: "#3498db", label: "Markdown" },
-    xlsx: { icon: FileSpreadsheet, color: "#2ecc71", label: "Excel" },
-    url: { icon: Globe, color: "#9b59b6", label: "Web URL" },
-    txt: { icon: File, color: "#95a5a6", label: "Text" },
+type Tab = "library" | "search";
+
+const iconMap: Record<string, any> = {
+    manual: FileText, pdf: File, url: Globe
+};
+const statusColors: Record<string, string> = {
+    draft: "#f39c12", approved: "#2ecc71", archived: "#95a5a6"
+};
+const statusLabels: Record<string, string> = {
+    draft: "Borrador", approved: "Aprobado", archived: "Archivado"
 };
 
-const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-    indexed: { label: "Indexado", color: "#2ecc71", icon: CheckCircle2 },
-    processing: { label: "Procesando", color: "#f39c12", icon: RefreshCw },
-    failed: { label: "Error", color: "#e74c3c", icon: AlertCircle },
-};
-
-export default function KnowledgeBasePage() {
+export default function KnowledgePage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [documents, setDocuments] = useState<any[]>([]);
+    const [tab, setTab] = useState<Tab>("library");
+    const [resources, setResources] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
-    const [showUpload, setShowUpload] = useState(false);
-    const [newDoc, setNewDoc] = useState({ name: "", description: "", type: "pdf", url: "" });
-    const [toast, setToast] = useState<string | null>(null);
-    const [isLive, setIsLive] = useState(false);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [showModal, setShowModal] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [form, setForm] = useState({ title: "", type: "manual", content: "", source_url: "" });
 
-    // Load documents from API
     useEffect(() => {
-        async function load() {
-            if (!activeTenantId) return;
-            try {
-                const result = await api.fetch(`/knowledge/${activeTenantId}`);
-                if (Array.isArray(result?.data) && result.data.length > 0) {
-                    setDocuments(result.data.map((d: any) => ({
-                        id: d.id,
-                        name: d.name || d.title || 'Untitled',
-                        type: d.type || 'pdf',
-                        size: d.size || '—',
-                        chunks: d.chunks || d.chunk_count || 0,
-                        status: d.status || 'indexed',
-                        uploadedAt: d.uploadedAt?.split('T')[0] || d.created_at?.split('T')[0] || '—',
-                        lastSynced: d.lastSynced || d.last_synced || null,
-                        description: d.description || '',
-                    })));
-                    setIsLive(true);
-                }
-            } catch (err) {
-                console.error('Failed to load knowledge docs:', err);
-            }
-        }
-        load();
+        if (!activeTenantId) return;
+        fetch(`${API}/knowledge/resources/${activeTenantId}`)
+            .then(r => r.json()).then(d => { if (Array.isArray(d)) setResources(d); })
+            .catch(() => []);
     }, [activeTenantId]);
 
-    const filtered = documents.filter(d =>
-        searchQuery ? `${d.name} ${d.description}`.toLowerCase().includes(searchQuery.toLowerCase()) : true
-    );
-
-    const stats = {
-        total: documents.length,
-        indexed: documents.filter(d => d.status === "indexed").length,
-        totalChunks: documents.reduce((s, d) => s + d.chunks, 0),
-        processing: documents.filter(d => d.status === "processing").length,
+    const handleCreate = async () => {
+        if (!form.title || !activeTenantId) return;
+        setSaving(true);
+        try {
+            const res = await fetch(`${API}/knowledge/resources/${activeTenantId}`, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form)
+            });
+            const created = await res.json();
+            if (created?.id) {
+                setResources([created, ...resources]);
+                setShowModal(false);
+                setForm({ title: "", type: "manual", content: "", source_url: "" });
+            }
+        } catch (e) { console.error(e); } finally { setSaving(false); }
     };
 
-    function handleUpload() {
-        if (!newDoc.name) return;
-        setDocuments(prev => [...prev, {
-            id: `d${Date.now()}`,
-            name: newDoc.name,
-            type: newDoc.type as any,
-            size: "—",
-            chunks: 0,
-            status: "processing" as const,
-            uploadedAt: new Date().toISOString().split("T")[0],
-            lastSynced: null,
-            description: newDoc.description,
-        }]);
-        setShowUpload(false);
-        setNewDoc({ name: "", description: "", type: "pdf", url: "" });
-        setToast("Documento agregado — procesando vectorización...");
-        setTimeout(() => setToast(null), 3000);
-    }
+    const handleApprove = async (id: string) => {
+        try {
+            await fetch(`${API}/knowledge/resources/${activeTenantId}/${id}/approve`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ approved_by: user?.email })
+            });
+            setResources(resources.map(r => r.id === id ? { ...r, status: "approved" } : r));
+        } catch (e) { console.error(e); }
+    };
 
-    function handleDelete(id: string) {
-        setDocuments(prev => prev.filter(d => d.id !== id));
-        setToast("Documento eliminado");
-        setTimeout(() => setToast(null), 2000);
-    }
+    const handleSearch = async () => {
+        if (!searchQuery) return setSearchResults([]);
+        try {
+            const res = await fetch(`${API}/knowledge/search/${activeTenantId}?query=${encodeURIComponent(searchQuery)}`);
+            const data = await res.json();
+            setSearchResults(Array.isArray(data) ? data : []);
+        } catch (e) { console.error(e); }
+    };
 
     return (
-        <>
-            <div>
-                {/* Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                    <div>
-                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                            <BookOpen size={28} color="var(--accent)" /> Knowledge Base
-                            <DataSourceBadge isLive={isLive} />
-                        </h1>
-                        <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
-                            {stats.total} documentos · {stats.totalChunks} chunks vectorizados
-                        </p>
-                    </div>
-                    <button onClick={() => setShowUpload(true)} style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-                        borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
-                        fontWeight: 600, fontSize: 14, cursor: "pointer",
-                    }}>
-                        <Upload size={18} /> Subir Documento
-                    </button>
+        <div>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <div>
+                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                        <BookOpen size={28} color="var(--accent)" /> Knowledge Base / RAG
+                    </h1>
+                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>Bases de conocimiento, FAQs y documentos comerciales para Carla AI</p>
                 </div>
+                {tab === "library" && (
+                    <button onClick={() => setShowModal(true)} style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: "var(--accent)", color: "white", fontWeight: 600, fontSize: 14, cursor: "pointer"
+                    }}><Plus size={18} /> Nuevo Recurso</button>
+                )}
+            </div>
 
-                {/* Stats */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-                    {[
-                        { label: "Documentos", value: stats.total, color: "var(--accent)", icon: BookOpen },
-                        { label: "Indexados", value: stats.indexed, color: "#2ecc71", icon: Database },
-                        { label: "Chunks", value: stats.totalChunks, color: "#3498db", icon: Layers },
-                        { label: "Procesando", value: stats.processing, color: "#f39c12", icon: RefreshCw },
-                    ].map(stat => (
-                        <div key={stat.label} style={{ padding: 20, borderRadius: 14, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>{stat.label}</div>
-                                    <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
-                                </div>
-                                <div style={{ width: 44, height: 44, borderRadius: 12, background: `${stat.color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    <stat.icon size={22} color={stat.color} />
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "var(--bg-secondary)", borderRadius: 12, padding: 4, border: "1px solid var(--border)", width: 300 }}>
+                <button onClick={() => setTab("library")} style={{
+                    flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", background: tab === "library" ? "var(--accent)" : "transparent", color: tab === "library" ? "white" : "var(--text-secondary)", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s ease"
+                }}><BookOpen size={16} /> Biblioteca</button>
+                <button onClick={() => setTab("search")} style={{
+                    flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", background: tab === "search" ? "var(--accent)" : "transparent", color: tab === "search" ? "white" : "var(--text-secondary)", fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s ease"
+                }}><Search size={16} /> Buscar en Contexto</button>
+            </div>
 
-                {/* Search */}
-                <div style={{ position: "relative", maxWidth: 400, marginBottom: 20 }}>
-                    <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-secondary)" }} />
-                    <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar documentos..."
-                        style={{ width: "100%", padding: "10px 10px 10px 36px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-                </div>
-
-                {/* Documents Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-                    {filtered.map(doc => {
-                        const tc = typeConfig[doc.type] || typeConfig.txt;
-                        const sc = statusConfig[doc.status];
-                        const TypeIcon = tc.icon;
-                        const StatusIcon = sc.icon;
-
+            {/* Library Tab */}
+            {tab === "library" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {resources.map(r => {
+                        const Icon = iconMap[r.type] || FileText;
                         return (
-                            <div key={doc.id} style={{
-                                padding: 20, borderRadius: 14, background: "var(--bg-secondary)",
-                                border: "1px solid var(--border)", transition: "border-color 0.2s ease",
-                            }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                    <div style={{ display: "flex", gap: 12, flex: 1 }}>
-                                        <div style={{
-                                            width: 44, height: 44, borderRadius: 10, flexShrink: 0,
-                                            background: `${tc.color}15`, display: "flex", alignItems: "center", justifyContent: "center",
-                                        }}>
-                                            <TypeIcon size={22} color={tc.color} />
+                            <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                    <div style={{ width: 44, height: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-primary)" }}>
+                                        <Icon size={20} color="var(--accent)" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
+                                            {r.title}
+                                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "var(--bg-primary)", color: "var(--text-secondary)", fontWeight: 600 }}>v{r.version}</span>
                                         </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>{doc.name}</div>
-                                            <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>{doc.description}</div>
+                                        <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                                            <span style={{ textTransform: "uppercase" }}>{r.type}</span> • {new Date(r.created_at).toLocaleDateString()}
+                                            {r.content_hash && <span>• Hash: {r.content_hash.substring(0,8)}</span>}
                                         </div>
                                     </div>
-                                    <button onClick={() => handleDelete(doc.id)} style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer", padding: 4, opacity: 0.5 }}>
-                                        <Trash2 size={16} />
-                                    </button>
                                 </div>
-
-                                <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 12, color: "var(--text-secondary)", flexWrap: "wrap" }}>
-                                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                        <StatusIcon size={12} color={sc.color} /> <span style={{ color: sc.color, fontWeight: 600 }}>{sc.label}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: statusColors[r.status] || "var(--text-secondary)", padding: "4px 10px", borderRadius: 8, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
+                                        {statusLabels[r.status] || r.status}
                                     </span>
-                                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                        <Layers size={12} /> {doc.chunks} chunks
-                                    </span>
-                                    {doc.size !== "—" && (
-                                        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                            <HardDrive size={12} /> {doc.size}
-                                        </span>
+                                    {r.status === "draft" && (
+                                        <button onClick={() => handleApprove(r.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "none", background: "#2ecc71", color: "white", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                                            <CheckCircle size={14} /> Aprobar
+                                        </button>
                                     )}
-                                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                        <Clock size={12} /> {doc.uploadedAt}
-                                    </span>
-                                    <span style={{ padding: "2px 6px", borderRadius: 4, background: `${tc.color}15`, color: tc.color, fontWeight: 600, fontSize: 10 }}>
-                                        {tc.label}
-                                    </span>
                                 </div>
                             </div>
                         );
                     })}
+                    {resources.length === 0 && <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>No hay recursos en la base de conocimiento.</div>}
                 </div>
+            )}
 
-                {/* RAG Architecture Info */}
-                <div style={{ marginTop: 24, padding: 20, borderRadius: 14, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🧠 Cómo funciona la Knowledge Base</div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                        Los documentos se procesan con <strong>text-embedding-3-small</strong> para generar vectores
-                        almacenados en <strong>pgvector</strong>. Cuando un cliente hace una pregunta, el sistema
-                        busca los chunks más relevantes y los incluye como contexto para que el LLM genere
-                        respuestas precisas basadas en tu información real.
+            {/* Search Tab */}
+            {tab === "search" && (
+                <div>
+                    <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+                        <div style={{ flex: 1, position: "relative" }}>
+                            <Search size={18} color="var(--text-secondary)" style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)" }} />
+                            <input
+                                value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
+                                placeholder="Busca conocimiento tal como lo haría Carla AI (ej. 'medios de pago')..."
+                                style={{ width: "100%", padding: "14px 16px 14px 44px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 15, outline: "none", boxSizing: "border-box" }}
+                            />
+                        </div>
+                        <button onClick={handleSearch} style={{ padding: "0 24px", borderRadius: 12, border: "none", background: "var(--accent)", color: "white", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Buscar</button>
                     </div>
-                    <div style={{ display: "flex", gap: 12, marginTop: 12, fontFamily: "monospace", fontSize: 12, flexWrap: "wrap" }}>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(108,92,231,0.1)", color: "var(--accent)" }}>📄 Upload</span>
-                        <span>→</span>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(52,152,219,0.1)", color: "#3498db" }}>✂️ Chunk</span>
-                        <span>→</span>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(155,89,182,0.1)", color: "#9b59b6" }}>🧮 Embed</span>
-                        <span>→</span>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(46,204,113,0.1)", color: "#2ecc71" }}>💾 pgvector</span>
-                        <span>→</span>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(241,196,15,0.1)", color: "#f1c40f" }}>🔍 RAG Query</span>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {searchResults.map(s => (
+                            <div key={s.id} style={{ padding: "16px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "var(--accent)22", color: "var(--accent)" }}>{s.resource_title}</span>
+                                    <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>Chunk #{s.chunk_index}</span>
+                                </div>
+                                <p style={{ fontSize: 14, color: "var(--text-primary)", margin: 0, lineHeight: 1.5 }}>"{s.content}"</p>
+                            </div>
+                        ))}
+                        {searchResults.length === 0 && searchQuery && <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>No se encontraron coincidencias.</div>}
                     </div>
                 </div>
-            </div>
+            )}
 
-            {/* Upload Modal */}
-            {showUpload && (
-                <div style={{
-                    position: "fixed", inset: 0, zIndex: 1000, display: "flex",
-                    alignItems: "center", justifyContent: "center",
-                    background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-                }} onClick={() => setShowUpload(false)}>
-                    <div onClick={e => e.stopPropagation()} style={{
-                        width: 460, padding: 28, borderRadius: 18,
-                        background: "var(--bg-secondary)", border: "1px solid var(--border)",
-                        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-                    }}>
+            {/* Modal */}
+            {showModal && (
+                <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} onClick={() => setShowModal(false)}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 520, padding: 28, borderRadius: 18, background: "var(--bg-secondary)", border: "1px solid var(--border)", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Subir Documento</h2>
-                            <button onClick={() => setShowUpload(false)} style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}><X size={20} /></button>
+                            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Nuevo Recurso de Conocimiento</h2>
+                            <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}><X size={20} /></button>
                         </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Nombre del documento</label>
-                            <input value={newDoc.name} onChange={e => setNewDoc(p => ({ ...p, name: e.target.value }))} placeholder="Catálogo de precios 2026" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                        
+                        <div style={{ marginBottom: 12 }}>
+                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Título del Recurso</label>
+                            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="FAQ Curso React Native..." style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
                         </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Descripción</label>
-                            <textarea value={newDoc.description} onChange={e => setNewDoc(p => ({ ...p, description: e.target.value }))} placeholder="Descripción breve del contenido..." rows={2} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+                        <div style={{ marginBottom: 12 }}>
+                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Contenido Texto</label>
+                            <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={10} placeholder="Pega el contenido del documento o la respuesta a la FAQ aquí. Se dividirá automáticamente en chunks..." style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
                         </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Tipo</label>
-                            <select value={newDoc.type} onChange={e => setNewDoc(p => ({ ...p, type: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}>
-                                <option value="pdf">📄 PDF</option>
-                                <option value="md">📝 Markdown</option>
-                                <option value="xlsx">📊 Excel</option>
-                                <option value="txt">📃 Texto</option>
-                                <option value="url">🌐 Web URL</option>
-                            </select>
-                        </div>
-                        {newDoc.type === "url" && (
-                            <div style={{ marginBottom: 14 }}>
-                                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>URL</label>
-                                <input value={newDoc.url} onChange={e => setNewDoc(p => ({ ...p, url: e.target.value }))} placeholder="https://example.com" type="url" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-                            </div>
-                        )}
-                        {newDoc.type !== "url" && (
-                            <div style={{ marginBottom: 14, padding: 20, borderRadius: 10, border: "2px dashed var(--border)", textAlign: "center" }}>
-                                <Upload size={24} color="var(--text-secondary)" style={{ marginBottom: 8 }} />
-                                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                                    Arrastra un archivo aquí o haz clic para seleccionar
-                                </div>
-                                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-                                    PDF, XLSX, MD, TXT — máx. 10MB
-                                </div>
-                            </div>
-                        )}
-                        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-                            <button onClick={() => setShowUpload(false)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-primary)", fontSize: 14, cursor: "pointer" }}>Cancelar</button>
-                            <button onClick={handleUpload} disabled={!newDoc.name} style={{
-                                flex: 1, padding: "10px", borderRadius: 10, border: "none",
-                                background: !newDoc.name ? "var(--border)" : "var(--accent)", color: "white",
-                                fontSize: 14, fontWeight: 600, cursor: !newDoc.name ? "not-allowed" : "pointer",
-                            }}>Subir y Procesar</button>
+
+                        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+                            <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-primary)", fontSize: 14, cursor: "pointer", fontWeight: 600 }}>Cancelar</button>
+                            <button onClick={handleCreate} disabled={saving || !form.title || !form.content} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "none", background: saving ? "var(--border)" : "var(--accent)", color: "white", fontSize: 14, fontWeight: 600, cursor: saving ? "wait" : "pointer" }}>{saving ? "Procesando Chunks..." : "Crear e Indexar"}</button>
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* Toast */}
-            {toast && (
-                <div style={{
-                    position: "fixed", bottom: 24, right: 24, zIndex: 1100,
-                    padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-                    background: toast.includes("eliminado") ? "#e74c3c" : "#2ecc71", color: "white",
-                    boxShadow: "0 4px 20px rgba(0,0,0,0.2)", animation: "slideUp 0.3s ease",
-                }}>
-                    ✓ {toast}
-                </div>
-            )}
-            <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-        </>
+        </div>
     );
 }

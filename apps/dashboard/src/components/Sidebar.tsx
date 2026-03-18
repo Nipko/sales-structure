@@ -21,7 +21,6 @@ import {
     Bot,
     UserPlus,
     Workflow,
-    BookOpen,
 } from "lucide-react";
 
 const navItems = [

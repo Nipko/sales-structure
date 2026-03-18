@@ -26,7 +26,7 @@ import {
 const navItems = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/inbox", label: "Inbox", icon: Inbox },
-    { href: "/admin/crm", label: "CRM", icon: Contact },
+    { href: "/admin/contacts", label: "CRM", icon: Contact },
     { href: "/admin/leads", label: "Leads", icon: UserPlus },
     { href: "/admin/automation", label: "Automatización", icon: Workflow },
     { href: "/admin/landings", label: "Landings", icon: Globe },

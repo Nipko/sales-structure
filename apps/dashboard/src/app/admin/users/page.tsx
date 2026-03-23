@@ -10,16 +10,7 @@ import {
     MoreVertical, ChevronDown, Eye, EyeOff, Plus, X,
 } from "lucide-react";
 
-// ============================================
-// MOCK DATA
-// ============================================
-const mockUsers = [
-    { id: "u1", email: "admin@parallext.com", firstName: "Admin", lastName: "Parallext", role: "super_admin" as const, tenantName: "—", isActive: true, createdAt: "2026-01-15" },
-    { id: "u2", email: "carlos@gecko.com", firstName: "Carlos", lastName: "Medina", role: "tenant_admin" as const, tenantName: "Gecko Aventura", isActive: true, createdAt: "2026-02-01" },
-    { id: "u3", email: "sofia@gecko.com", firstName: "Sofía", lastName: "Henao", role: "tenant_agent" as const, tenantName: "Gecko Aventura", isActive: true, createdAt: "2026-02-10" },
-    { id: "u4", email: "maria@realestate.com", firstName: "María", lastName: "López", role: "tenant_admin" as const, tenantName: "InmoVista", isActive: true, createdAt: "2026-02-20" },
-    { id: "u5", email: "pedro@realestate.com", firstName: "Pedro", lastName: "García", role: "tenant_agent" as const, tenantName: "InmoVista", isActive: false, createdAt: "2026-02-25" },
-];
+// No mock data — loaded from API
 
 const roleConfig: Record<string, { label: string; color: string; icon: string }> = {
     super_admin: { label: "Super Admin", color: "#e74c3c", icon: "🛡️" },
@@ -30,7 +21,7 @@ const roleConfig: Record<string, { label: string; color: string; icon: string }>
 export default function UsersPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [users, setUsers] = useState(mockUsers);
+    const [users, setUsers] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -39,6 +30,31 @@ export default function UsersPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
+
+    // Load users from API
+    useEffect(() => {
+        async function load() {
+            try {
+                const result = await api.getUsers();
+                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                    setUsers(result.data.map((u: any) => ({
+                        id: u.id,
+                        email: u.email || '',
+                        firstName: u.firstName || u.first_name || '',
+                        lastName: u.lastName || u.last_name || '',
+                        role: u.role || 'tenant_agent',
+                        tenantName: u.tenantName || u.tenant_name || '—',
+                        isActive: u.isActive ?? u.is_active ?? true,
+                        createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—',
+                    })));
+                    setIsLive(true);
+                }
+            } catch (err) {
+                console.error('Failed to load users:', err);
+            }
+        }
+        load();
+    }, []);
 
     const filtered = users.filter(u => {
         const matchSearch = searchQuery

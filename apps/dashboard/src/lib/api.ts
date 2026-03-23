@@ -187,8 +187,20 @@ export const api = {
     },
 
     // --- Analytics ---
+    /** Commercial overview — real data: leads, hot, ready-to-close, handoffs, LLM cost */
+    getCommercialOverview: () =>
+        apiGet<{
+            leadsToday: number;
+            leadsHot: number;
+            leadsReadyToClose: number;
+            conversations: number;
+            handoffs: number;
+            llmCostToday: number;
+            messagesProcessed: number;
+        }>(`/analytics/overview`),
+
     getOverviewStats: (tenantId: string) =>
-        apiGet(`/analytics/overview/${tenantId}`),
+        apiGet(`/analytics/dashboard`),
 
     getAgentLeaderboard: (tenantId: string) =>
         apiGet(`/analytics/agents/${tenantId}`),
@@ -210,6 +222,8 @@ export const api = {
         apiDelete(`/settings/api-keys/${provider}`),
 
     // --- Users ---
+    getUsers: () => apiGet("/auth/users"),
+
     registerUser: (data: { email: string; password: string; firstName: string; lastName: string; role?: string; tenantId?: string }) =>
         apiPost("/auth/register", data),
 
@@ -236,6 +250,19 @@ export const api = {
         history: { role: string; content: string }[];
     }) =>
         apiPost<{ reply: string }>("/copilot/chat", data),
+
+    fetch: async (endpoint: string, options: RequestInit = {}) => {
+        const res = await authFetch(endpoint, options);
+        if (!res.ok) {
+            let errorMsg = `HTTP error! status: ${res.status}`;
+            try {
+                const json = await res.json();
+                errorMsg = json.message || errorMsg;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
+        return res.json();
+    }
 };
 
 // ============================================

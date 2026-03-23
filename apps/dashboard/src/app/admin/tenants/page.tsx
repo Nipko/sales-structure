@@ -32,21 +32,10 @@ interface Tenant {
     users: number;
 }
 
-const mockTenants: Tenant[] = [
-    {
-        id: "1", name: "Gecko Aventura Extrema", slug: "gecko-aventura",
-        industry: "Turismo", language: "es-CO", plan: "professional",
-        isActive: true, createdAt: "2026-03-01", channels: 1, conversations: 89, users: 3,
-    },
-    {
-        id: "2", name: "Demo Restaurant", slug: "demo-restaurant",
-        industry: "Restaurante", language: "es-CO", plan: "starter",
-        isActive: true, createdAt: "2026-03-02", channels: 1, conversations: 12, users: 1,
-    },
-];
+
 
 export default function TenantsPage() {
-    const [tenants, setTenants] = useState<Tenant[]>(mockTenants);
+    const [tenants, setTenants] = useState<Tenant[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [isLive, setIsLive] = useState(false);

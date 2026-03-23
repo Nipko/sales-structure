@@ -39,6 +39,7 @@ RUN apk add --no-cache openssl
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
+COPY --from=builder /app/apps/api/scripts ./scripts
 COPY --from=builder /app/apps/api/package.json ./
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

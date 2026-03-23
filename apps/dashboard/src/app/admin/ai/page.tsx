@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -10,22 +11,7 @@ import {
     AlertTriangle, CheckCircle2, RefreshCw, Globe, Shield,
 } from "lucide-react";
 
-// ============================================
-// MOCK STATE
-// ============================================
-const mockModels = [
-    { id: "gpt4", name: "GPT-4o", provider: "OpenAI", status: "active" as const, latencyMs: 820, costPer1k: 0.03, accuracy: 94, description: "Modelo principal para conversaciones complejas, cotizaciones y cierre de ventas." },
-    { id: "gpt35", name: "GPT-3.5 Turbo", provider: "OpenAI", status: "standby" as const, latencyMs: 340, costPer1k: 0.002, accuracy: 87, description: "Respuestas rápidas para FAQs y consultas simples. Fallback si GPT-4o falla." },
-    { id: "claude", name: "Claude 3.5 Sonnet", provider: "Anthropic", status: "inactive" as const, latencyMs: 650, costPer1k: 0.015, accuracy: 92, description: "Alternativa para generación de contenido largo y análisis de sentimiento." },
-    { id: "embed", name: "text-embedding-3-small", provider: "OpenAI", status: "active" as const, latencyMs: 120, costPer1k: 0.0001, accuracy: 99, description: "Embeddings para RAG y búsqueda semántica en la Knowledge Base." },
-];
-
-const mockRoutingRules = [
-    { id: "r1", name: "Conversaciones de ventas", condition: "intent = 'compra' OR intent = 'cotización'", model: "GPT-4o", priority: 1 },
-    { id: "r2", name: "Consultas FAQ", condition: "intent = 'pregunta_frecuente'", model: "GPT-3.5 Turbo", priority: 2 },
-    { id: "r3", name: "Soporte técnico", condition: "intent = 'soporte'", model: "GPT-4o", priority: 3 },
-    { id: "r4", name: "Default / Fallback", condition: "default", model: "GPT-3.5 Turbo", priority: 99 },
-];
+// No mock data — loaded from API
 
 const statusColors: Record<string, { label: string; color: string }> = {
     active: { label: "Activo", color: "#2ecc71" },
@@ -36,9 +22,28 @@ const statusColors: Record<string, { label: string; color: string }> = {
 export default function AIRouterPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [models, setModels] = useState(mockModels);
-    const [rules, setRules] = useState(mockRoutingRules);
+    const [models, setModels] = useState<any[]>([]);
+    const [rules, setRules] = useState<any[]>([]);
     const [selectedModel, setSelectedModel] = useState<string | null>(null);
+    const [isLive, setIsLive] = useState(false);
+
+    // Load AI config from API
+    useEffect(() => {
+        async function load() {
+            if (!activeTenantId) return;
+            try {
+                const result = await api.fetch(`/ai/config/${activeTenantId}`);
+                if (result?.data) {
+                    if (Array.isArray(result.data.models)) setModels(result.data.models);
+                    if (Array.isArray(result.data.routingRules)) setRules(result.data.routingRules);
+                    setIsLive(true);
+                }
+            } catch (err) {
+                console.error('Failed to load AI config:', err);
+            }
+        }
+        load();
+    }, [activeTenantId]);
 
     const activeModels = models.filter(m => m.status === "active").length;
     const avgLatency = Math.round(models.filter(m => m.status === "active").reduce((s, m) => s + m.latencyMs, 0) / (activeModels || 1));
@@ -49,7 +54,7 @@ export default function AIRouterPage() {
             <div style={{ marginBottom: 24 }}>
                 <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
                     <Brain size={28} color="var(--accent)" /> AI / LLM Router
-                    <DataSourceBadge isLive={false} />
+                    <DataSourceBadge isLive={isLive} />
                 </h1>
                 <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
                     {activeModels} modelos activos · {avgLatency}ms latencia promedio · {rules.length} reglas de enrutamiento

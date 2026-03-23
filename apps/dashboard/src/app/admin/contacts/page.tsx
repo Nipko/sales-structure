@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -20,44 +21,7 @@ import {
     Eye,
 } from "lucide-react";
 
-const mockContacts = [
-    {
-        id: "c1", name: "Carlos Medina", phone: "+57 310 456 7890", email: "carlos@email.com",
-        tags: ["vip", "turismo", "grupo"], segment: "qualified",
-        conversations: 4, lifetimeValue: 1250000, lastInteraction: "Hoy, 10:38 AM",
-        city: "Bogotá",
-    },
-    {
-        id: "c2", name: "Ana García", phone: "+57 315 789 0123", email: "ana.garcia@gmail.com",
-        tags: ["interesado"], segment: "lead",
-        conversations: 1, lifetimeValue: 0, lastInteraction: "Hoy, 10:30 AM",
-        city: "Medellín",
-    },
-    {
-        id: "c3", name: "Luis Rodríguez", phone: "+57 320 123 4567", email: "luis.r@outlook.com",
-        tags: ["frecuente", "referido"], segment: "customer",
-        conversations: 12, lifetimeValue: 3450000, lastInteraction: "Ayer, 3:22 PM",
-        city: "Bucaramanga",
-    },
-    {
-        id: "c4", name: "María Pérez", phone: "+57 301 234 5678", email: "maria.p@hotmail.com",
-        tags: ["reserva"], segment: "qualified",
-        conversations: 3, lifetimeValue: 650000, lastInteraction: "Hoy, 9:15 AM",
-        city: "Cali",
-    },
-    {
-        id: "c5", name: "Pedro Sánchez", phone: "+57 318 567 8901", email: "",
-        tags: ["pagado", "combo"], segment: "customer",
-        conversations: 7, lifetimeValue: 2100000, lastInteraction: "Hoy, 8:42 AM",
-        city: "San Gil",
-    },
-    {
-        id: "c6", name: "Laura Martínez", phone: "+57 312 890 1234", email: "laura@empresa.co",
-        tags: ["corporativo", "vip"], segment: "customer",
-        conversations: 15, lifetimeValue: 8500000, lastInteraction: "28 Feb, 4:10 PM",
-        city: "Bogotá",
-    },
-];
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const segmentColors: Record<string, { bg: string; color: string }> = {
     new: { bg: "rgba(149, 165, 166, 0.15)", color: "#95a5a6" },
@@ -70,19 +34,54 @@ const segmentColors: Record<string, { bg: string; color: string }> = {
 export default function ContactsPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [contacts, setContacts] = useState(mockContacts);
+    const router = useRouter();
+    const [contacts, setContacts] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeSegment, setActiveSegment] = useState<string>("all");
     const [isLive, setIsLive] = useState(false);
+    const [loading, setLoading] = useState(true);
 
-    // Load contacts from API (reusing inbox data shape)
+    // Load contacts from API
     useEffect(() => {
         async function load() {
-            // Contacts endpoint TBD — for now use mock
-            // When API has /contacts endpoint, uncomment:
-            // if (!activeTenantId) return;
-            // const result = await api.getContacts(activeTenantId);
-            // if (result.success && Array.isArray(result.data)) ...
+            if (!activeTenantId) return;
+            setLoading(true);
+            try {
+                // Fetch leads matching the API model
+                const res = await fetch(`${API}/crm/leads/${activeTenantId}`);
+                const data = await res.json();
+                
+                if (data.success && Array.isArray(data.data)) {
+                    // Map Real Lead data to UI variables we use
+                    const mappedLeads = data.data.map((l: any) => {
+                       // We extrapolate 'customer', 'qualified', 'new' from stages
+                       let segmentType = "new";
+                       if (["calificado", "tibio", "caliente", "listo_cierre"].includes(l.stage)) segmentType = "qualified";
+                       if (["ganado"].includes(l.stage)) segmentType = "customer";
+                       if (["perdido", "no_interesado"].includes(l.stage)) segmentType = "churned";
+                       if (["contactado", "respondio"].includes(l.stage)) segmentType = "lead";
+
+                       return {
+                           id: l.id,
+                           name: `${l.first_name || 'Desconocido'} ${l.last_name || ''}`.trim(),
+                           phone: l.phone || 'Sin número',
+                           email: l.email || '',
+                           tags: l.tags?.map((t:any) => t.name) || [],
+                           segment: segmentType,
+                           conversations: 1, // Fallback if API hasn't aggregate
+                           lifetimeValue: l.score || 0, // Quick hack: show score in the UI as proxy if LTV absent
+                           lastInteraction: l.updated_at ? new Date(l.updated_at).toLocaleDateString("es-CO") : "Reciente",
+                           city: l.company_name || "",
+                       }
+                    });
+                    setContacts(mappedLeads);
+                    setIsLive(true);
+                }
+            } catch (err) {
+                console.error("Failed fetching leads:", err);
+            } finally {
+                setLoading(false);
+            }
         }
         load();
     }, [activeTenantId]);
@@ -97,13 +96,13 @@ export default function ContactsPage() {
     const filtered = contacts.filter(c => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            return c.name.toLowerCase().includes(q) || c.phone.includes(q) || c.email.toLowerCase().includes(q);
+            return c.name.toLowerCase().includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q);
         }
         if (activeSegment !== "all") return c.segment === activeSegment;
         return true;
     });
 
-    const totalValue = contacts.reduce((sum, c) => sum + c.lifetimeValue, 0);
+    const totalValue = 0; // Removing fake COP total value
 
     return (
         <div>
@@ -234,7 +233,7 @@ export default function ContactsPage() {
                                     </td>
                                     <td style={{ padding: "12px 16px" }}>
                                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                            {contact.tags.slice(0, 3).map(tag => (
+                                            {contact.tags.slice(0, 3).map((tag: string) => (
                                                 <span key={tag} style={{
                                                     fontSize: 10, padding: "2px 6px", borderRadius: 4,
                                                     background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
@@ -250,10 +249,13 @@ export default function ContactsPage() {
                                         </div>
                                     </td>
                                     <td style={{ padding: "12px 16px" }}>
-                                        <button style={{
-                                            background: "none", border: "none", cursor: "pointer",
-                                            color: "var(--text-secondary)", padding: 4,
-                                        }}>
+                                        <button
+                                            onClick={() => router.push(`/admin/contacts/${contact.id}`)}
+                                            style={{
+                                                background: "none", border: "none", cursor: "pointer",
+                                                color: "var(--text-secondary)", padding: 4,
+                                            }}
+                                        >
                                             <Eye size={16} />
                                         </button>
                                     </td>

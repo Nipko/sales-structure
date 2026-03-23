@@ -4,6 +4,25 @@
 
 ---
 
+## [3.0.0] — 2026-03-22
+
+### 📱 WhatsApp Embedded Signup v4 — Servicio Independiente
+- **Nuevo servicio `apps/whatsapp`** — NestJS container independiente (puerto 3002) para onboarding de WhatsApp Business
+- **OnboardingService** — Flujo completo de 10 pasos: validación → exchange → discovery → persistencia → webhook → sync
+- **MetaGraphService** — Cliente completo para Meta Graph API con retry exponential backoff
+- **WebhooksController** — Validación HMAC-SHA256, respuesta <5s, procesamiento async
+- **WebhooksService** — Resolución de tenant por phoneNumberId con cache 3 capas
+- **BullMQ Workers** — Colas webhooks, sync, onboarding, ops con prefijo wa:
+- **Cifrado AES-256-GCM** — Tokens de Meta cifrados antes de almacenar
+- **7 endpoints REST** — start, get, status (polling), retry, resync, cancel, list
+- **Dockerfile.whatsapp** — Multi-stage build, Docker Compose y CI/CD actualizados
+- **Prisma** — 2 nuevos modelos: WhatsappOnboarding (17 campos), WhatsappCredential
+- **Fix crítico** — whatsapp-webhook.service.ts: resolución dinámica de tenant
+- **Frontend** — Componente WhatsAppEmbeddedSignup con FB SDK + FB.login()
+- **Documentación** — README, .env.example, CHANGELOG, API_REFERENCE actualizados
+
+---
+
 ## [2.4.0] — 2026-03-08
 
 ### 📣 Broadcast & Campaign Management

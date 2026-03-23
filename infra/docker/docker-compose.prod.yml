@@ -13,6 +13,7 @@ services:
     depends_on:
       - api
       - dashboard
+      - whatsapp
 
   # ---- API Server ----
   api:
@@ -48,6 +49,34 @@ services:
       - "3001"
     depends_on:
       - api
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # ---- WhatsApp Onboarding Service ----
+  whatsapp:
+    image: ghcr.io/nipko/parallext-whatsapp:latest
+    container_name: parallext-whatsapp
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    env_file:
+      - ../../.env
+    expose:
+      - "3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3002/api/v1/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 

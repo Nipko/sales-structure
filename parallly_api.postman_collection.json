@@ -1,0 +1,593 @@
+{
+  "info": {
+    "name": "Parallly API — Complete Collection",
+    "_postman_id": "parallly-api-v1",
+    "description": "Colección completa de la API de Parallly (Parallext Engine). Incluye Auth, Intake (público), Copilot, Analytics, Pipeline, Inbox, Broadcast, Knowledge y Settings.\n\n## Setup rápido\n1. Crear un environment en Postman con las variables del archivo `parallly.postman_environment.json`\n2. Ejecutar **Auth → Login** para obtener el token\n3. El token se guarda automáticamente en `{{accessToken}}`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.parallly-chat.cloud/api/v1", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "tenantId", "value": "", "type": "string" },
+    { "key": "leadId", "value": "", "type": "string" },
+    { "key": "opportunityId", "value": "", "type": "string" },
+    { "key": "conversationId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data) {",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  pm.collectionVariables.set('tenantId', json.data.user?.tenantId || '');",
+                  "  pm.test('Login OK', () => pm.expect(json.success).to.be.true);",
+                  "  console.log('✅ Token guardado:', json.data.accessToken.substring(0,30) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@parallly.com\",\n  \"password\": \"Admin1234!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Me (perfil actual)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"agente1@gecko.com\",\n  \"password\": \"Agent1234!\",\n  \"firstName\": \"Carlos\",\n  \"lastName\": \"Roa\",\n  \"role\": \"agent\",\n  \"tenantId\": \"{{tenantId}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 Tenants",
+      "item": [
+        {
+          "name": "Listar Tenants",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/tenants", "host": ["{{baseUrl}}"], "path": ["tenants"] }
+          }
+        },
+        {
+          "name": "Crear Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data?.id) {",
+                  "  pm.collectionVariables.set('tenantId', json.data.id);",
+                  "  console.log('✅ TenantId guardado:', json.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gecko Aventura Extrema\",\n  \"slug\": \"gecko\",\n  \"industry\": \"education\",\n  \"language\": \"es\",\n  \"plan\": \"starter\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/tenants", "host": ["{{baseUrl}}"], "path": ["tenants"] }
+          }
+        },
+        {
+          "name": "Ver Tenant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/tenants/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["tenants", "{{tenantId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📥 Intake (PÚBLICO — sin auth)",
+      "description": "Módulo de captura de leads desde landing pages. No requiere JWT. Siempre retorna 200.",
+      "item": [
+        {
+          "name": "Capturar Lead desde formulario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Intake retorna 200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "pm.test('Response tiene ok:true', () => {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.ok).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-tenant-id", "value": "{{tenantId}}", "description": "UUID del tenant (requerido)" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Juan\",\n  \"lastName\": \"Pérez\",\n  \"phone\": \"3001234567\",\n  \"email\": \"juan.perez@gmail.com\",\n  \"consent\": true,\n  \"legalVersion\": \"v1.0\",\n  \"utmSource\": \"google\",\n  \"utmMedium\": \"cpc\",\n  \"utmCampaign\": \"curso-ventas-marzo-2026\",\n  \"utmContent\": \"banner-hero\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/intake/lead", "host": ["{{baseUrl}}"], "path": ["intake", "lead"] }
+          }
+        },
+        {
+          "name": "Lead con campaña y curso",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-tenant-id", "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"María\",\n  \"lastName\": \"López\",\n  \"phone\": \"+573001234568\",\n  \"email\": \"maria@empresa.com\",\n  \"courseId\": \"00000000-0000-0000-0000-000000000001\",\n  \"campaignId\": \"00000000-0000-0000-0000-000000000002\",\n  \"consent\": true,\n  \"legalVersion\": \"v1.0\",\n  \"utmSource\": \"facebook\",\n  \"utmMedium\": \"social\",\n  \"utmCampaign\": \"retargeting-abril\",\n  \"fbclid\": \"IwAR3abc123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/intake/lead", "host": ["{{baseUrl}}"], "path": ["intake", "lead"] }
+          }
+        },
+        {
+          "name": "Lead sin consentimiento (debe silenciar y retornar ok)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Siempre retorna 200', () => pm.expect(pm.response.code).to.equal(200));",
+                  "var json = pm.response.json();",
+                  "pm.test('ok:true aunque falle internamente', () => pm.expect(json.ok).to.be.true);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-tenant-id", "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"SinConsentimiento\",\n  \"phone\": \"3009999999\",\n  \"consent\": false\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/intake/lead", "host": ["{{baseUrl}}"], "path": ["intake", "lead"] }
+          }
+        },
+        {
+          "name": "Sin x-tenant-id header",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"SinTenant\",\n  \"phone\": \"3001111111\",\n  \"consent\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/intake/lead", "host": ["{{baseUrl}}"], "path": ["intake", "lead"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Analytics",
+      "item": [
+        {
+          "name": "Commercial Overview (Dashboard real)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "x-tenant-id", "value": "{{tenantId}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/analytics/overview", "host": ["{{baseUrl}}"], "path": ["analytics", "overview"] }
+          }
+        },
+        {
+          "name": "Dashboard Metrics (Redis counters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "x-tenant-id", "value": "{{tenantId}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/analytics/dashboard", "host": ["{{baseUrl}}"], "path": ["analytics", "dashboard"] }
+          }
+        },
+        {
+          "name": "Métricas por rango de fechas",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "x-tenant-id", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/range?start=2026-03-01&end=2026-03-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "range"],
+              "query": [
+                { "key": "start", "value": "2026-03-01" },
+                { "key": "end", "value": "2026-03-31" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🤖 Copilot",
+      "item": [
+        {
+          "name": "Chat — pregunta general",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Qué es el módulo de Pipeline?\",\n  \"context\": {\n    \"page\": \"/admin/pipeline\",\n    \"tenantId\": \"{{tenantId}}\",\n    \"tenantName\": \"Gecko\",\n    \"userName\": \"Admin Gecko\",\n    \"userRole\": \"tenant_admin\"\n  },\n  \"history\": []\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/copilot/chat", "host": ["{{baseUrl}}"], "path": ["copilot", "chat"] }
+          }
+        },
+        {
+          "name": "Chat — con historial de conversación",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Y cómo muevo un deal de etapa?\",\n  \"context\": {\n    \"page\": \"/admin/pipeline\",\n    \"tenantId\": \"{{tenantId}}\",\n    \"tenantName\": \"Gecko\",\n    \"userName\": \"Admin Gecko\",\n    \"userRole\": \"tenant_admin\"\n  },\n  \"history\": [\n    { \"role\": \"user\", \"content\": \"¿Qué es el módulo de Pipeline?\" },\n    { \"role\": \"assistant\", \"content\": \"El Pipeline es tu tablero Kanban de ventas...\" }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/copilot/chat", "host": ["{{baseUrl}}"], "path": ["copilot", "chat"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📈 Pipeline",
+      "item": [
+        {
+          "name": "Kanban del tenant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/pipeline/kanban/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["pipeline", "kanban", "{{tenantId}}"] }
+          }
+        },
+        {
+          "name": "Crear Deal",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Juan Pérez — Curso Ventas\",\n  \"contactName\": \"Juan Pérez\",\n  \"value\": 450000,\n  \"stage\": \"nuevo\",\n  \"notes\": \"Lead caliente de Google Ads\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/pipeline/deals/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["pipeline", "deals", "{{tenantId}}"] }
+          }
+        },
+        {
+          "name": "Mover Deal de etapa",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stageId\": \"calificado\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/pipeline/deals/{{tenantId}}/{{leadId}}/move", "host": ["{{baseUrl}}"], "path": ["pipeline", "deals", "{{tenantId}}", "{{leadId}}", "move"] }
+          }
+        },
+        {
+          "name": "Reglas de Automatización",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/pipeline/automation/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["pipeline", "automation", "{{tenantId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💬 Inbox / Conversations",
+      "item": [
+        {
+          "name": "Inbox del tenant",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/agent-console/inbox/{{tenantId}}?status=active",
+              "host": ["{{baseUrl}}"],
+              "path": ["agent-console", "inbox", "{{tenantId}}"],
+              "query": [{ "key": "status", "value": "active" }]
+            }
+          }
+        },
+        {
+          "name": "Ver Conversación",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/agent-console/conversation/{{tenantId}}/{{conversationId}}", "host": ["{{baseUrl}}"], "path": ["agent-console", "conversation", "{{tenantId}}", "{{conversationId}}"] }
+          }
+        },
+        {
+          "name": "Enviar Mensaje",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Hola! Te contactamos sobre el curso que registraste. ¿Cuándo tienes disponibilidad para una llamada?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/agent-console/conversation/{{tenantId}}/{{conversationId}}/message", "host": ["{{baseUrl}}"], "path": ["agent-console", "conversation", "{{tenantId}}", "{{conversationId}}", "message"] }
+          }
+        },
+        {
+          "name": "Agregar Nota Interna",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lead muy calificado. Tiene presupuesto confirmado. Priorizar para cierre esta semana.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/agent-console/conversation/{{tenantId}}/{{conversationId}}/note", "host": ["{{baseUrl}}"], "path": ["agent-console", "conversation", "{{tenantId}}", "{{conversationId}}", "note"] }
+          }
+        },
+        {
+          "name": "Resolver Conversación",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/agent-console/conversation/{{tenantId}}/{{conversationId}}/resolve", "host": ["{{baseUrl}}"], "path": ["agent-console", "conversation", "{{tenantId}}", "{{conversationId}}", "resolve"] }
+          }
+        },
+        {
+          "name": "Sugerencia IA para el agente",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/agent-console/ai-suggest/{{tenantId}}/{{conversationId}}", "host": ["{{baseUrl}}"], "path": ["agent-console", "ai-suggest", "{{tenantId}}", "{{conversationId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📢 Broadcast",
+      "item": [
+        {
+          "name": "Listar Campañas",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/broadcast/campaigns/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["broadcast", "campaigns", "{{tenantId}}"] }
+          }
+        },
+        {
+          "name": "Crear Campaña",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lanzamiento Curso Ventas Marzo\",\n  \"channel\": \"whatsapp\",\n  \"template\": \"Hola {{name}}, te invitamos a nuestro curso de ventas. ¿Te interesa conocer más?\",\n  \"targetAudience\": \"leads_calientes\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/broadcast/campaigns/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["broadcast", "campaigns", "{{tenantId}}"] }
+          }
+        },
+        {
+          "name": "Enviar Campaña",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/broadcast/campaigns/{{tenantId}}/{{leadId}}/send", "host": ["{{baseUrl}}"], "path": ["broadcast", "campaigns", "{{tenantId}}", "{{leadId}}", "send"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📚 Knowledge Base",
+      "item": [
+        {
+          "name": "Listar Documentos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/knowledge/documents/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["knowledge", "documents", "{{tenantId}}"] }
+          }
+        },
+        {
+          "name": "Crear Documento (URL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Ficha Curso de Ventas B2B\",\n  \"type\": \"url\",\n  \"url\": \"https://gecko.com/cursos/ventas-b2b\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/knowledge/documents/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["knowledge", "documents", "{{tenantId}}"] }
+          }
+        },
+        {
+          "name": "Buscar en Knowledge Base",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"¿Cuánto cuesta el curso de ventas?\",\n  \"limit\": 5\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/knowledge/search/{{tenantId}}", "host": ["{{baseUrl}}"], "path": ["knowledge", "search", "{{tenantId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⚙️ Settings",
+      "item": [
+        {
+          "name": "Ver API Keys configuradas",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/settings/api-keys", "host": ["{{baseUrl}}"], "path": ["settings", "api-keys"] }
+          }
+        },
+        {
+          "name": "Configurar API Key (OpenAI)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"openai\",\n  \"key\": \"sk-proj-...\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/settings/api-keys", "host": ["{{baseUrl}}"], "path": ["settings", "api-keys"] }
+          }
+        },
+        {
+          "name": "Configurar API Key (Gemini)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"gemini\",\n  \"key\": \"AIzaSy...\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/settings/api-keys", "host": ["{{baseUrl}}"], "path": ["settings", "api-keys"] }
+          }
+        },
+        {
+          "name": "Eliminar API Key",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/settings/api-keys/openai", "host": ["{{baseUrl}}"], "path": ["settings", "api-keys", "openai"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 Health Check",
+      "item": [
+        {
+          "name": "API Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('API está viva', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "console.log('✅ API respondió en', pm.response.responseTime, 'ms');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    }
+  ]
+}

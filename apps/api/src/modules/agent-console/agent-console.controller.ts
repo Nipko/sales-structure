@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
 import { AgentConsoleService } from './agent-console.service';
 import { CannedResponsesService } from './canned-responses.service';
 
-@Controller('api/v1/agent-console')
+@Controller('agent-console')
 export class AgentConsoleController {
 
     constructor(

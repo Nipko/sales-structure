@@ -5,87 +5,14 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { io } from "socket.io-client";
 import {
-    Search,
-    Filter,
-    Send,
-    Paperclip,
-    Smile,
-    MoreVertical,
-    Phone,
-    Mail,
-    Tag,
-    Clock,
-    CheckCircle,
-    AlertCircle,
-    Bot,
-    User,
-    MessageSquare,
-    Zap,
-    ArrowRight,
-    StickyNote,
-    Sparkles,
-    Hash,
+    Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
+    Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
+    ArrowRight, StickyNote, Sparkles, Hash,
 } from "lucide-react";
 
-// ============================================
-// MOCK DATA (will be replaced by API calls)
-// ============================================
-
-const mockConversations = [
-    {
-        id: "1", contactName: "Carlos Medina", contactPhone: "+57 310 456 7890",
-        lastMessage: "Hola, quiero info sobre el rafting", lastMessageAt: "Hace 2 min",
-        status: "handoff" as const, channel: "whatsapp", unreadCount: 3,
-        priority: "urgent" as const, tags: ["vip", "turismo"], isAiHandled: false,
-    },
-    {
-        id: "2", contactName: "Ana García", contactPhone: "+57 315 789 0123",
-        lastMessage: "¿Cuál es el precio del combo aventura?", lastMessageAt: "Hace 8 min",
-        status: "open" as const, channel: "whatsapp", unreadCount: 1,
-        priority: "high" as const, tags: ["interesado"], isAiHandled: true,
-    },
-    {
-        id: "3", contactName: "Luis Rodríguez", contactPhone: "+57 320 123 4567",
-        lastMessage: "Gracias, voy a pensarlo", lastMessageAt: "Hace 25 min",
-        status: "assigned" as const, channel: "whatsapp", unreadCount: 0,
-        priority: "normal" as const, tags: [], isAiHandled: false, assignedAgentName: "Sofia",
-    },
-    {
-        id: "4", contactName: "María Pérez", contactPhone: "+57 301 234 5678",
-        lastMessage: "¿Tienen disponibilidad para el sábado?", lastMessageAt: "Hace 1 hora",
-        status: "open" as const, channel: "whatsapp", unreadCount: 2,
-        priority: "normal" as const, tags: ["reserva"], isAiHandled: true,
-    },
-    {
-        id: "5", contactName: "Pedro Sánchez", contactPhone: "+57 318 567 8901",
-        lastMessage: "Ya hice el pago, aquí el comprobante", lastMessageAt: "Hace 2 horas",
-        status: "open" as const, channel: "whatsapp", unreadCount: 0,
-        priority: "low" as const, tags: ["pagado"], isAiHandled: true,
-    },
-];
-
-const mockMessages = [
-    { id: "m1", content: "Hola, buenos días! Me interesa hacer rafting este fin de semana", sender: "customer" as const, senderName: "Carlos Medina", timestamp: "10:32 AM", type: "text" as const },
-    { id: "m2", content: "¡Hola Carlos! 🏔️ ¡Qué bueno que te interese! Tenemos rafting en el Río Chicamocha con salidas sábados y domingos. ¿Cuántas personas serían?", sender: "ai" as const, senderName: "Sofia IA", timestamp: "10:32 AM", type: "text" as const },
-    { id: "m3", content: "Seríamos 6 personas, 4 adultos y 2 niños de 12 y 14 años", sender: "customer" as const, senderName: "Carlos Medina", timestamp: "10:35 AM", type: "text" as const },
-    { id: "m4", content: "Para grupos de 6 el precio es de $150,000 COP por persona (adulto) y $120,000 COP por persona menor de 16 años. ¿Qué día prefieren?", sender: "ai" as const, senderName: "Sofia IA", timestamp: "10:35 AM", type: "text" as const },
-    { id: "m5", content: "Perfecto, sería para el sábado. ¿Los menores de 12 pueden participar? Mi hijo menor tiene miedo al agua", sender: "customer" as const, senderName: "Carlos Medina", timestamp: "10:38 AM", type: "text" as const },
-    { id: "m6", content: "El cliente pregunta sobre menores con miedo al agua — requiere atención personalizada del equipo", sender: "system" as const, senderName: "Sistema", timestamp: "10:38 AM", type: "text" as const },
-    { id: "m7", content: "Carlos, te paso con uno de nuestros guías expertos que puede resolver mejor esa consulta. 😊", sender: "ai" as const, senderName: "Sofia IA", timestamp: "10:38 AM", type: "text" as const },
-];
-
-const mockContact = {
-    id: "c1", name: "Carlos Medina", phone: "+57 310 456 7890", email: "carlos@email.com",
-    tags: ["vip", "turismo", "grupo"], segment: "qualified", lifetimeValue: 1250000,
-    lastInteraction: "Hoy, 10:38 AM", conversationCount: 4,
-    customFields: { empresa: "TechCorp", ciudad: "Bogotá" },
-};
-
-const mockNotes = [
-    { id: "n1", content: "Cliente VIP, siempre trae grupos grandes. Ofrecerle descuento del 15%", agentName: "Admin", createdAt: "28 Feb 2026" },
-    { id: "n2", content: "Última reserva: Combo Aventura Total, 8 personas. Quedó muy satisfecho.", agentName: "Sofia", createdAt: "15 Feb 2026" },
-];
+// No mock arrays — all data fetched from API
 
 // ============================================
 // TYPES
@@ -116,26 +43,143 @@ export default function InboxPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [filter, setFilter] = useState<InboxFilter>("all");
-    const [conversations, setConversations] = useState(mockConversations);
-    const [selectedConv, setSelectedConv] = useState(mockConversations[0]);
+    const [conversations, setConversations] = useState<any[]>([]);
+    const [selectedConv, setSelectedConv] = useState<any>(null);
+    const [messages, setMessages] = useState<any[]>([]);
+    const [notes, setNotes] = useState<any[]>([]);
     const [messageInput, setMessageInput] = useState("");
     const [noteInput, setNoteInput] = useState("");
     const [showNotes, setShowNotes] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isLive, setIsLive] = useState(false);
+    const [loadingConv, setLoadingConv] = useState(true);
 
     // Load conversations from API
     useEffect(() => {
         async function load() {
             if (!activeTenantId) return;
-            const result = await api.getInbox(activeTenantId);
-            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                setConversations(result.data);
-                setSelectedConv(result.data[0]);
-                setIsLive(true);
+            setLoadingConv(true);
+            try {
+                const result = await api.getInbox(activeTenantId);
+                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                    const convs = result.data.map((c: any) => ({
+                        id: c.id,
+                        contactName: c.contact_name || c.contactName || 'Desconocido',
+                        contactPhone: c.contact_phone || c.contactPhone || '',
+                        contactEmail: c.contact_email || c.contactEmail || '',
+                        lastMessage: c.last_message || c.lastMessage || '',
+                        lastMessageAt: c.last_message_at ? new Date(c.last_message_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : c.lastMessageAt || '',
+                        status: c.status || 'open',
+                        channel: c.channel_type || c.channel || 'whatsapp',
+                        unreadCount: c.unread_count || c.unreadCount || 0,
+                        priority: c.priority || 'normal',
+                        tags: c.tags || [],
+                        isAiHandled: c.is_ai_handled ?? c.isAiHandled ?? false,
+                        assignedAgentName: c.assigned_agent_name || c.assignedAgentName || '',
+                        contactId: c.contact_id || c.contactId,
+                        estimatedValue: c.estimated_ticket_value || 0,
+                    }));
+                    setConversations(convs);
+                    setSelectedConv(convs[0]);
+                    setIsLive(true);
+                }
+            } catch (err) {
+                console.error('Failed to load inbox:', err);
+            } finally {
+                setLoadingConv(false);
             }
         }
         load();
+    }, [activeTenantId]);
+
+    // Load messages when selecting a conversation
+    useEffect(() => {
+        async function loadMessages() {
+            if (!activeTenantId || !selectedConv?.id) return;
+            try {
+                const result = await api.getConversation(activeTenantId, selectedConv.id);
+                if (result.success && result.data) {
+                    const conv = result.data;
+                    const msgs = (conv.messages || []).map((m: any) => ({
+                        id: m.id,
+                        content: m.content_text || m.content || '',
+                        sender: m.direction === 'inbound' ? 'customer' : (m.llm_model_used ? 'ai' : 'agent'),
+                        senderName: m.direction === 'inbound' ? selectedConv.contactName : (m.llm_model_used ? 'IA' : 'Agente'),
+                        timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '',
+                        type: m.content_type || 'text',
+                    }));
+                    setMessages(msgs);
+                    // Update notes from conversation data if available
+                    if (conv.notes) {
+                        setNotes(conv.notes.map((n: any) => ({
+                            id: n.id,
+                            content: n.content || n.content_text || '',
+                            agentName: n.created_by || n.agent_name || 'Agente',
+                            createdAt: n.created_at ? new Date(n.created_at).toLocaleDateString('es-CO') : '',
+                        })));
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load conversation:', err);
+                setMessages([]);
+            }
+        }
+        loadMessages();
+    }, [activeTenantId, selectedConv?.id]);
+
+    // WebSocket real-time updates
+    useEffect(() => {
+        if (!activeTenantId) return;
+
+        const token = localStorage.getItem("token");
+        const socketUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+        
+        const socket = io(`${socketUrl}/inbox`, {
+            auth: { token }
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to Inbox live updates');
+            setIsLive(true);
+        });
+
+        socket.on('disconnect', () => {
+            setIsLive(false);
+        });
+
+        socket.on('newMessage', (payload) => {
+            const { conversationId, message } = payload;
+            
+            // Normalize message for UI
+            const uiMsg = {
+                id: message.id,
+                content: message.content_text,
+                sender: message.direction === 'inbound' ? 'customer' : 'ai',
+                senderName: message.direction === 'inbound' ? 'Cliente' : 'IA',
+                timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+                type: message.content_type
+            };
+            
+            // Update conversation list with latest message
+            setConversations((prev: any[]) => prev.map(c => {
+                 if (c.id === conversationId) {
+                     return { ...c, lastMessage: uiMsg.content, lastMessageAt: uiMsg.timestamp };
+                 }
+                 return c;
+            }));
+
+            // If the selected conversation received a message, append to chat view
+            setSelectedConv((prev: any) => {
+                if (prev?.id === conversationId) {
+                    return { ...prev, messages: [...(prev.messages || []), uiMsg], lastMessage: uiMsg.content };
+                }
+                return prev;
+            });
+        });
+
+        return () => {
+            socket.disconnect();
+        };
     }, [activeTenantId]);
 
     const filteredConversations = conversations.filter(c => {
@@ -154,16 +198,16 @@ export default function InboxPage() {
         const content = messageInput.trim();
         setMessageInput("");
         // Optimistic add to local messages
-        setSelectedConv((prev: any) => ({
-            ...prev,
-            messages: [...(prev.messages || []), {
-                id: `msg_${Date.now()}`, sender: "agent" as const, content,
-                timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
-            }],
-            lastMessage: content,
-        }));
+        // Optimistic add to local messages
+        setMessages(prev => [...prev, {
+            id: `msg_${Date.now()}`, sender: "agent" as const, content,
+            senderName: user?.firstName || 'Agente',
+            timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+            type: 'text',
+        }]);
+        setSelectedConv((prev: any) => ({ ...prev, lastMessage: content }));
         // API call
-        if (activeTenantId && selectedConv.id) {
+        if (activeTenantId && selectedConv?.id) {
             await api.sendMessage(activeTenantId, selectedConv.id, content);
         }
     };
@@ -180,10 +224,10 @@ export default function InboxPage() {
 
     const handleResolve = async () => {
         // Optimistic update
-        setConversations(prev => prev.map(c =>
+        setConversations((prev: any[]) => prev.map(c =>
             c.id === selectedConv.id ? { ...c, status: "resolved" as any } : c
         ));
-        setSelectedConv(prev => ({ ...prev, status: "resolved" as any }));
+        setSelectedConv((prev: any) => ({ ...prev, status: "resolved" as any }));
         // API call
         if (activeTenantId && selectedConv.id) {
             await api.resolveConversation(activeTenantId, selectedConv.id);
@@ -252,7 +296,7 @@ export default function InboxPage() {
                             onClick={() => setSelectedConv(conv)}
                             style={{
                                 padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
-                                background: selectedConv.id === conv.id ? "var(--accent-glow)" : "transparent",
+                                background: selectedConv?.id === conv.id ? "var(--accent-glow)" : "transparent",
                                 transition: "background 0.15s ease",
                             }}
                         >
@@ -303,7 +347,7 @@ export default function InboxPage() {
                             </div>
                             {conv.tags.length > 0 && (
                                 <div style={{ display: "flex", gap: 4, marginTop: 6, marginLeft: 50 }}>
-                                    {conv.tags.map(tag => (
+                                    {conv.tags.map((tag: string) => (
                                         <span key={tag} style={{
                                             fontSize: 10, padding: "1px 6px", borderRadius: 4,
                                             background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
@@ -320,6 +364,8 @@ export default function InboxPage() {
 
             {/* ======== CENTER: Chat Thread ======== */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)" }}>
+                {selectedConv ? (
+                    <>
                 {/* Chat Header */}
                 <div style={{
                     padding: "12px 20px", borderBottom: "1px solid var(--border)",
@@ -368,7 +414,7 @@ export default function InboxPage() {
 
                 {/* Messages */}
                 <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
-                    {mockMessages.map(msg => {
+                    {messages.map(msg => {
                         const isCustomer = msg.sender === "customer";
                         const isSystem = msg.sender === "system";
                         const isAi = msg.sender === "ai";
@@ -450,7 +496,7 @@ export default function InboxPage() {
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#ffaa00", marginBottom: 8, display: "flex", gap: 4, alignItems: "center" }}>
                             <StickyNote size={14} /> Notas internas
                         </div>
-                        {mockNotes.map(note => (
+                        {notes.length > 0 ? notes.map(note => (
                             <div key={note.id} style={{
                                 padding: "6px 10px", borderRadius: 6, background: "var(--bg-secondary)",
                                 marginBottom: 6, fontSize: 13,
@@ -458,7 +504,9 @@ export default function InboxPage() {
                                 <div>{note.content}</div>
                                 <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4 }}>— {note.agentName}, {note.createdAt}</div>
                             </div>
-                        ))}
+                        )) : (
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", opacity: 0.6 }}>No hay notas para esta conversación</div>
+                        )}
                         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                             <input
                                 value={noteInput}
@@ -514,6 +562,13 @@ export default function InboxPage() {
                         <Send size={18} />
                     </button>
                 </div>
+                    </>
+                ) : (
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", gap: 16 }}>
+                        <MessageSquare size={48} opacity={0.2} />
+                        <span>Selecciona una conversación para ver los mensajes.</span>
+                    </div>
+                )}
             </div>
 
             {/* ======== RIGHT: Contact Panel ======== */}
@@ -521,95 +576,84 @@ export default function InboxPage() {
                 width: 300, borderLeft: "1px solid var(--border)", overflow: "auto",
                 background: "var(--bg-secondary)", padding: "16px",
             }}>
-                {/* Contact Header */}
-                <div style={{ textAlign: "center", marginBottom: 20 }}>
-                    <div style={{
-                        width: 64, height: 64, borderRadius: "50%", margin: "0 auto 10px",
-                        background: "linear-gradient(135deg, var(--accent), #9b59b6)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 24, fontWeight: 700, color: "white",
-                    }}>
-                        {mockContact.name.charAt(0)}
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{mockContact.name}</div>
-                    <div style={{
-                        padding: "2px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600,
-                        background: "rgba(46, 204, 113, 0.15)", color: "#2ecc71",
-                        display: "inline-block", marginTop: 4,
-                    }}>
-                        {mockContact.segment}
-                    </div>
-                </div>
-
-                {/* Contact Details */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                        <Phone size={14} color="var(--text-secondary)" />
-                        <span>{mockContact.phone}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                        <Mail size={14} color="var(--text-secondary)" />
-                        <span>{mockContact.email}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                        <Clock size={14} color="var(--text-secondary)" />
-                        <span>{mockContact.lastInteraction}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                        <MessageSquare size={14} color="var(--text-secondary)" />
-                        <span>{mockContact.conversationCount} conversaciones</span>
-                    </div>
-                </div>
-
-                {/* Tags */}
-                <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
-                        <Tag size={12} /> Tags
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {mockContact.tags.map(tag => (
-                            <span key={tag} style={{
-                                fontSize: 11, padding: "3px 8px", borderRadius: 6,
-                                background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
-                            }}>
-                                {tag}
-                            </span>
-                        ))}
-                        <button style={{
-                            fontSize: 11, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
-                            background: "transparent", border: "1px dashed var(--border)", color: "var(--text-secondary)",
+                {/* Contact Header — derived from selected conversation */}
+                {selectedConv && (
+                    <>
+                    <div style={{ textAlign: "center", marginBottom: 20 }}>
+                        <div style={{
+                            width: 64, height: 64, borderRadius: "50%", margin: "0 auto 10px",
+                            background: "linear-gradient(135deg, var(--accent), #9b59b6)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 24, fontWeight: 700, color: "white",
                         }}>
-                            + Agregar
-                        </button>
-                    </div>
-                </div>
-
-                {/* Lifetime Value */}
-                <div style={{
-                    padding: "12px", borderRadius: 10, background: "var(--bg-tertiary)",
-                    border: "1px solid var(--border)", marginBottom: 20,
-                }}>
-                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Valor de por vida</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: "#2ecc71" }}>
-                        ${mockContact.lifetimeValue.toLocaleString()} COP
-                    </div>
-                </div>
-
-                {/* Custom Fields */}
-                <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
-                        <Hash size={12} /> Campos personalizados
-                    </div>
-                    {Object.entries(mockContact.customFields).map(([key, value]) => (
-                        <div key={key} style={{
-                            display: "flex", justifyContent: "space-between", padding: "6px 0",
-                            borderBottom: "1px solid var(--border)", fontSize: 13,
-                        }}>
-                            <span style={{ color: "var(--text-secondary)", textTransform: "capitalize" }}>{key}</span>
-                            <span style={{ fontWeight: 500 }}>{value}</span>
+                            {selectedConv.contactName?.charAt(0) || '?'}
                         </div>
-                    ))}
-                </div>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedConv.contactName}</div>
+                        <div style={{
+                            padding: "2px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600,
+                            background: `${statusLabels[selectedConv.status]?.color || '#95a5a6'}22`,
+                            color: statusLabels[selectedConv.status]?.color || '#95a5a6',
+                            display: "inline-block", marginTop: 4,
+                        }}>
+                            {statusLabels[selectedConv.status]?.label || selectedConv.status}
+                        </div>
+                    </div>
+
+                    {/* Contact Details */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                            <Phone size={14} color="var(--text-secondary)" />
+                            <span>{selectedConv.contactPhone || 'Sin teléfono'}</span>
+                        </div>
+                        {selectedConv.contactEmail && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                                <Mail size={14} color="var(--text-secondary)" />
+                                <span>{selectedConv.contactEmail}</span>
+                            </div>
+                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                            <Clock size={14} color="var(--text-secondary)" />
+                            <span>{selectedConv.lastMessageAt || 'Sin interacciones'}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                            <MessageSquare size={14} color="var(--text-secondary)" />
+                            <span>{selectedConv.channel}</span>
+                        </div>
+                    </div>
+
+                    {/* Tags */}
+                    {selectedConv.tags?.length > 0 && (
+                        <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                                <Tag size={12} /> Tags
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {selectedConv.tags.map((tag: string) => (
+                                    <span key={tag} style={{
+                                        fontSize: 11, padding: "3px 8px", borderRadius: 6,
+                                        background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
+                                    }}>
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Estimated Value */}
+                    {selectedConv.estimatedValue > 0 && (
+                        <div style={{
+                            padding: "12px", borderRadius: 10, background: "var(--bg-tertiary)",
+                            border: "1px solid var(--border)", marginBottom: 20,
+                        }}>
+                            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Valor estimado</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: "#2ecc71" }}>
+                                ${selectedConv.estimatedValue.toLocaleString()} COP
+                            </div>
+                        </div>
+                    )}
+                    </>
+                )}
             </div>
         </div>
     );

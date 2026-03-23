@@ -193,10 +193,12 @@ jobs:
             echo "GOOGLE_GENERATIVE_AI_API_KEY=${PROD_GOOGLE_AI_KEY}" >> .env
             echo "XAI_API_KEY=${PROD_XAI_API_KEY}" >> .env
             echo "DEEPSEEK_API_KEY=${PROD_DEEPSEEK_API_KEY}" >> .env
+            echo "# Frontend Defaults" >> .env
             echo "NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1" >> .env
             echo "NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1" >> .env
             echo "NEXT_PUBLIC_META_APP_ID=${PROD_META_APP_ID}" >> .env
             echo "NEXT_PUBLIC_META_CONFIG_ID=${PROD_META_CONFIG_ID}" >> .env
+            echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             echo "CLOUDFLARE_TUNNEL_TOKEN=${PROD_TUNNEL_TOKEN}" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"

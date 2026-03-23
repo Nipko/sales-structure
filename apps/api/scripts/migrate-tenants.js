@@ -62,12 +62,13 @@ async function migrate() {
           }
         }
 
-        const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
+        // First, strip all SQL comments (-- comment) to avoid parser bugs
+        const cleanSql = sql.replace(/--.*$/gm, '');
         
-        const stmts = sql
+        const stmts = cleanSql
           .split(';')
           .map(s => s.trim())
-          .filter(s => s.length > 0 && !s.startsWith('--'));
+          .filter(s => s.length > 0);
           
         for (const stmt of stmts) {
           try {

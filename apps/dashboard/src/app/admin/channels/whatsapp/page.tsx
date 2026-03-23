@@ -8,6 +8,7 @@ import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 export default function WhatsAppSetupPage() {
     const [status, setStatus] = useState<any>(null);
     const [templates, setTemplates] = useState<any[]>([]);
+    const [config, setConfig] = useState<{ webhookUrl?: string, verifyToken?: string } | null>(null);
     
     // Form state
     const [phoneNumberId, setPhoneNumberId] = useState("");
@@ -31,6 +32,11 @@ export default function WhatsAppSetupPage() {
 
             const tplRes = await api.fetch('/channels/whatsapp/templates');
             setTemplates(tplRes || []);
+
+            try {
+                const configRes = await api.getWhatsappConfig();
+                if (configRes && configRes.data) setConfig(configRes.data);
+            } catch (e) { console.error("Could not load config", e); }
         } catch (error) {
             console.error("Failed to load WA setup", error);
         } finally {
@@ -217,10 +223,10 @@ export default function WhatsAppSetupPage() {
                             Configura este webhook en tu App de Meta for Developers para recibir mensajes entrantes y estados de lectura.
                         </p>
                         <div style={{ background: "var(--bg-tertiary)", padding: "12px 16px", borderRadius: 8, border: "1px solid var(--border)", fontFamily: "monospace", fontSize: 12, color: "var(--accent)", wordBreak: "break-all" }}>
-                            https://api.parallly-chat.cloud/api/v1/channels/whatsapp/webhook
+                            {config?.webhookUrl || "Cargando configuración..."}
                         </div>
                         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 16, marginBottom: 8 }}>
-                            <strong>Verify Token:</strong> my_secure_token
+                            <strong>Verify Token:</strong> {config?.verifyToken || "Cargando..."}
                         </p>
                     </div>
                 </div>

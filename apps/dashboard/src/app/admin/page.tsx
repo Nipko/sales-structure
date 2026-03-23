@@ -34,7 +34,9 @@ export default function AdminDashboard() {
 
     useEffect(() => {
         async function loadOverview() {
-            const result = await api.getCommercialOverview();
+            if (!user?.tenantId) return;
+
+            const result = await api.getCommercialOverview(user.tenantId);
             if (result.success && result.data) {
                 setOverview({
                     leadsToday:        result.data.leadsToday,
@@ -46,7 +48,7 @@ export default function AdminDashboard() {
             }
             // Load dashboard details (activity + model usage)
             try {
-                const dashResult = await api.getOverviewStats('');
+                const dashResult = await api.getOverviewStats(user.tenantId);
                 if (dashResult.success && dashResult.data) {
                     if (Array.isArray(dashResult.data.recentActivity)) {
                         setActivity(dashResult.data.recentActivity.map((a: any) => ({

@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { AgentAnalyticsService } from './agent-analytics.service';
 
-@Controller('api/v1/analytics')
+@Controller('analytics')
 export class AgentAnalyticsController {
     constructor(private analyticsService: AgentAnalyticsService) { }
 

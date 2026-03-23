@@ -8,7 +8,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('whatsapp')
-@Controller('v1/channels/whatsapp')
+@Controller('channels/whatsapp')
 export class WhatsappController {
   constructor(
     private readonly connectionService: WhatsappConnectionService,
@@ -23,6 +23,18 @@ export class WhatsappController {
   async getStatus(@Request() req: any) {
     const { schemaName } = req.user;
     return this.connectionService.getChannelStatus(schemaName);
+  }
+
+  @Get('config')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get WhatsApp webhook configuration' })
+  async getConfig() {
+    return {
+      webhookUrl: `${process.env.API_URL || 'https://api.parallly-chat.cloud/api/v1'}/channels/whatsapp/webhook`,
+      verifyToken: process.env.META_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || 'Token no configurado en backend',
+    };
   }
 
   @Post('connect/start')

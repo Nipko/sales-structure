@@ -188,7 +188,7 @@ export const api = {
 
     // --- Analytics ---
     /** Commercial overview — real data: leads, hot, ready-to-close, handoffs, LLM cost */
-    getCommercialOverview: () =>
+    getCommercialOverview: (tenantId: string) =>
         apiGet<{
             leadsToday: number;
             leadsHot: number;
@@ -197,7 +197,7 @@ export const api = {
             handoffs: number;
             llmCostToday: number;
             messagesProcessed: number;
-        }>(`/analytics/overview`),
+        }>(`/analytics/overview/${tenantId}`),
 
     getOverviewStats: (tenantId: string) =>
         apiGet(`/analytics/dashboard`),
@@ -220,6 +220,9 @@ export const api = {
         apiPost("/settings/api-keys", { provider, key }),
     deleteApiKey: (provider: string) =>
         apiDelete(`/settings/api-keys/${provider}`),
+    
+    // --- Channels ---
+    getWhatsappConfig: () => apiGet("/channels/whatsapp/config"),
 
     // --- Users ---
     getUsers: () => apiGet("/auth/users"),

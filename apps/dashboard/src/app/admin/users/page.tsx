@@ -271,7 +271,9 @@ export default function UsersPage() {
                             <select value={newUser.role} onChange={e => setNewUser(p => ({ ...p, role: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}>
                                 <option value="tenant_agent">🎧 Agente</option>
                                 <option value="tenant_admin">👑 Admin Tenant</option>
-                                <option value="super_admin">🛡️ Super Admin</option>
+                                {user?.role === 'super_admin' && (
+                                    <option value="super_admin">🛡️ Super Admin</option>
+                                )}
                             </select>
                         </div>
                         <div style={{ marginBottom: 14 }}>

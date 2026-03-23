@@ -16,7 +16,7 @@
         "db:seed": "ts-node prisma/seed.ts",
         "db:seed:gecko": "psql $DATABASE_URL -f prisma/seed-gecko.sql",
         "db:studio": "prisma studio",
-        "migrate:tenants": "node scripts/migrate-tenants.js"
+        "migrate:tenants": "node scripts/migrate-tenants.js && node scripts/add-missing-tables.js"
     },
     "dependencies": {
         "@anthropic-ai/sdk": "latest",

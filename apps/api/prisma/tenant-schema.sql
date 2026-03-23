@@ -817,3 +817,34 @@ CREATE TABLE "{{SCHEMA_NAME}}"."knowledge_approvals" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."knowledge_approvals" ("resource_id");
 
+-- ============================================
+-- Agent Console — Conversation Assignments & CSAT
+-- ============================================
+
+-- ---- Conversation Assignments ----
+CREATE TABLE "{{SCHEMA_NAME}}"."conversation_assignments" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "conversation_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE CASCADE,
+    "agent_id" UUID NOT NULL,
+    "assigned_at" TIMESTAMP DEFAULT NOW(),
+    "first_response_at" TIMESTAMP,
+    "resolved_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."conversation_assignments" ("conversation_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."conversation_assignments" ("agent_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."conversation_assignments" ("resolved_at");
+
+-- ---- CSAT Surveys ----
+CREATE TABLE "{{SCHEMA_NAME}}"."csat_surveys" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "conversation_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE CASCADE,
+    "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "agent_id" UUID,
+    "rating" INTEGER NOT NULL CHECK ("rating" >= 1 AND "rating" <= 5),
+    "feedback" TEXT,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    UNIQUE ("conversation_id")
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."csat_surveys" ("agent_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."csat_surveys" ("rating");

@@ -21,6 +21,7 @@ import {
     Bot,
     UserPlus,
     Workflow,
+    Phone,
 } from "lucide-react";
 
 const navItems = [
@@ -36,6 +37,7 @@ const navItems = [
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },
     { href: "/admin/carla", label: "Carla AI", icon: Bot },
     { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+    { href: "/admin/channels/whatsapp", label: "WhatsApp Business", icon: Phone },
     { href: "/admin/users", label: "Usuarios", icon: Users },
     { href: "/admin/settings", label: "Configuración", icon: Settings },
 ];

@@ -23,10 +23,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Execute a query in a specific tenant schema
      */
     async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = []): Promise<T> {
-        const result = await this.$queryRawUnsafe<T>(
-            `SET search_path TO "${schemaName}"; ${query}`,
-            ...params,
-        );
+        // SET search_path must be a separate statement — PostgreSQL prepared
+        // statements do not allow multiple commands in a single call.
+        await this.$executeRawUnsafe(`SET search_path TO "${schemaName}"`);
+        const result = await this.$queryRawUnsafe<T>(query, ...params);
         // Reset to public schema
         await this.$executeRawUnsafe('SET search_path TO "public"');
         return result;
@@ -39,8 +39,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         const fs = await import('fs');
         const path = await import('path');
 
-        const templatePath = path.join(__dirname, '..', '..', 'prisma', 'tenant-schema.sql');
-        let template = fs.readFileSync(templatePath, 'utf-8');
+        // Try multiple possible locations for the SQL template
+        const possiblePaths = [
+            path.join(process.cwd(), 'prisma', 'tenant-schema.sql'),
+            path.join(process.cwd(), 'apps', 'api', 'prisma', 'tenant-schema.sql'),
+            path.join(__dirname, '..', '..', 'prisma', 'tenant-schema.sql'),
+        ];
+
+        let template: string | null = null;
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                template = fs.readFileSync(p, 'utf-8');
+                break;
+            }
+        }
+
+        if (!template) {
+            throw new Error(
+                `tenant-schema.sql not found. Searched: ${possiblePaths.join(', ')}`,
+            );
+        }
 
         // Replace placeholder with actual schema name
         template = template.replace(/\{\{SCHEMA_NAME\}\}/g, schemaName);

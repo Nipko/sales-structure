@@ -142,6 +142,11 @@ jobs:
             set -e
             cd /opt/parallext-engine
 
+            echo "===> Pulling latest infrastructure code..."
+            git fetch origin
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+
             echo "===> Logging into GHCR..."
             echo "$GHCR_PAT" | docker login ghcr.io \
               -u "$GITHUB_ACTOR" --password-stdin

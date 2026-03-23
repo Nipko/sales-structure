@@ -1,0 +1,114 @@
+
+> @parallext/whatsapp@0.1.0 build
+> nest build
+
+src/modules/health/health.controller.ts:2:72 - error TS2307: Cannot find module '@nestjs/terminus' or its corresponding type declarations.
+
+2 import { HealthCheck, HealthCheckService, PrismaHealthIndicator } from '@nestjs/terminus';
+                                                                         ~~~~~~~~~~~~~~~~~~
+src/modules/health/health.module.ts:2:32 - error TS2307: Cannot find module '@nestjs/terminus' or its corresponding type declarations.
+
+2 import { TerminusModule } from '@nestjs/terminus';
+                                 ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:41:42 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+41     const onboarding = await this.prisma.whatsappOnboarding.create({
+                                            ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:62:25 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+62       await this.prisma.whatsappOnboarding.update({
+                           ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:102:25 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+102       await this.prisma.whatsappOnboarding.update({
+                            ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:133:27 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+133         await this.prisma.whatsappOnboarding.update({
+                              ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:147:25 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+147       await this.prisma.whatsappOnboarding.update({
+                            ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:175:27 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+175         await this.prisma.whatsappOnboarding.findUnique({ where: { id: onboarding.id } }),
+                              ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:183:25 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+183       await this.prisma.whatsappOnboarding.update({
+                            ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:216:42 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+216     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
+                                             ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:225:42 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+225     const onboarding = await this.prisma.whatsappOnboarding.findUnique({
+                                             ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:246:42 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+246     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
+                                             ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:253:39 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+253     const updated = await this.prisma.whatsappOnboarding.update({
+                                          ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:278:42 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+278     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
+                                             ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:300:23 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+300     await this.prisma.whatsappOnboarding.update({
+                          ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:316:42 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+316     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
+                                             ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:325:42 - error TS2339: Property 'whatsappCredential' does not exist on type 'PrismaService'.
+
+325     const credential = await this.prisma.whatsappCredential.findFirst({
+                                             ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:347:23 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+347     await this.prisma.whatsappOnboarding.update({
+                          ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:372:19 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+372       this.prisma.whatsappOnboarding.findMany({
+                      ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:378:19 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+378       this.prisma.whatsappOnboarding.count({ where }),
+                      ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:424:50 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+424     const existingInProgress = await this.prisma.whatsappOnboarding.findFirst({
+                                                     ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:546:40 - error TS2339: Property 'whatsappCredential' does not exist on type 'PrismaService'.
+
+546     const existing = await this.prisma.whatsappCredential.findFirst({
+                                           ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:551:25 - error TS2339: Property 'whatsappCredential' does not exist on type 'PrismaService'.
+
+551       await this.prisma.whatsappCredential.update({
+                            ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:556:25 - error TS2339: Property 'whatsappCredential' does not exist on type 'PrismaService'.
+
+556       await this.prisma.whatsappCredential.create({
+                            ~~~~~~~~~~~~~~~~~~
+src/modules/onboarding/onboarding.service.ts:674:23 - error TS2339: Property 'whatsappOnboarding' does not exist on type 'PrismaService'.
+
+674     await this.prisma.whatsappOnboarding.update({
+                          ~~~~~~~~~~~~~~~~~~
+
+Found 25 error(s).
+
+npm error Lifecycle script `build` failed with error:
+npm error code 1
+npm error path C:\Users\USER\Desktop\Sales_Structure\apps\whatsapp
+npm error workspace @parallext/whatsapp@0.1.0
+npm error location C:\Users\USER\Desktop\Sales_Structure\apps\whatsapp
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c nest build

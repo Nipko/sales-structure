@@ -62,6 +62,8 @@ async function migrate() {
           }
         }
 
+        const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
+        
         // First, strip all SQL comments (-- comment) to avoid parser bugs
         const cleanSql = sql.replace(/--.*$/gm, '');
         

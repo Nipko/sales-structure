@@ -104,4 +104,4 @@ docker run -p 3002:3002 --env-file .env parallext-whatsapp
 ## 🔗 Dependencias del Monorepo
 
 - `@parallext/shared` — Tipos compartidos (`JwtPayload`, `AuthUser`, `UserRole`)
-- `@prisma/client` — Prisma ORM (schema compartido con `apps/api`)
+- `@prisma/client` — Prisma ORM (schema compartido con `apps/api`) 

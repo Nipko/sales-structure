@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { Lock, Mail, Eye, EyeOff, AlertCircle, Zap } from "lucide-react";
 
@@ -181,9 +182,24 @@ export default function LoginPage() {
                     </form>
                 </div>
 
+                {/* Signup Link */}
+                <div style={{ textAlign: "center", marginTop: 20 }}>
+                    <Link
+                        href="/signup"
+                        style={{
+                            color: "rgba(255,255,255,0.5)", fontSize: 13, textDecoration: "none",
+                            transition: "color 0.2s",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#a29bfe")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                    >
+                        ¿Primera vez? <span style={{ fontWeight: 600 }}>Crea tu cuenta gratuita →</span>
+                    </Link>
+                </div>
+
                 {/* Footer */}
                 <p style={{
-                    textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 20,
+                    textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 12,
                 }}>
                     Parallext Engine v1.0 · ©2026 Nipko
                 </p>

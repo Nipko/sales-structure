@@ -44,6 +44,28 @@ class RefreshTokenDto {
     refreshToken: string;
 }
 
+class SignupDto {
+    @IsString()
+    @MinLength(2)
+    companyName: string;
+
+    @IsString()
+    industry: string;
+
+    @IsEmail()
+    email: string;
+
+    @IsString()
+    @MinLength(6)
+    password: string;
+
+    @IsString()
+    firstName: string;
+
+    @IsString()
+    lastName: string;
+}
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -54,6 +76,21 @@ export class AuthController {
     @ApiOperation({ summary: 'Login with email and password' })
     async login(@Body() dto: LoginDto) {
         const result = await this.authService.login(dto.email, dto.password);
+        return { success: true, data: result };
+    }
+
+    @Post('signup')
+    @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({ summary: 'Self-service signup: create a new company and admin account' })
+    async signup(@Body() dto: SignupDto) {
+        const result = await this.authService.signupWithTenant({
+            companyName: dto.companyName,
+            industry: dto.industry,
+            email: dto.email,
+            password: dto.password,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+        });
         return { success: true, data: result };
     }
 

@@ -56,6 +56,133 @@ export class AuthService {
         return user;
     }
 
+    /**
+     * Self-service signup: creates a tenant AND its admin user atomically.
+     * This is a PUBLIC endpoint — no JWT required.
+     */
+    async signupWithTenant(data: {
+        companyName: string;
+        industry: string;
+        email: string;
+        password: string;
+        firstName: string;
+        lastName: string;
+    }) {
+        // Check if email is already taken
+        const existingUser = await this.prisma.user.findUnique({
+            where: { email: data.email },
+        });
+        if (existingUser) {
+            throw new ConflictException('Email already registered');
+        }
+
+        // Generate slug from company name
+        const slug = data.companyName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+
+        // Check slug uniqueness
+        const existingTenant = await this.prisma.tenant.findUnique({
+            where: { slug },
+        });
+        if (existingTenant) {
+            throw new ConflictException('A company with a similar name already exists');
+        }
+
+        const schemaName = `tenant_${slug.replace(/-/g, '_')}`;
+        const hashedPassword = await bcrypt.hash(data.password, 12);
+
+        // Atomic transaction: create tenant + admin user
+        const result = await this.prisma.$transaction(async (tx) => {
+            // 1. Create tenant
+            const tenant = await tx.tenant.create({
+                data: {
+                    name: data.companyName,
+                    slug,
+                    industry: data.industry,
+                    schemaName,
+                    plan: 'starter',
+                    language: 'es-CO',
+                },
+            });
+
+            // 2. Create owner/admin user
+            const user = await tx.user.create({
+                data: {
+                    email: data.email,
+                    password: hashedPassword,
+                    firstName: data.firstName,
+                    lastName: data.lastName,
+                    role: 'tenant_admin',
+                    tenantId: tenant.id,
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    role: true,
+                    tenantId: true,
+                },
+            });
+
+            // 3. Audit log
+            await tx.auditLog.create({
+                data: {
+                    tenantId: tenant.id,
+                    userId: user.id,
+                    action: 'tenant_self_signup',
+                    resource: 'tenant',
+                    details: { companyName: data.companyName, slug, email: data.email },
+                },
+            });
+
+            return { tenant, user };
+        });
+
+        // 4. Create isolated DB schema (outside transaction — DDL cannot be rolled back)
+        try {
+            await this.prisma.createTenantSchema(result.tenant.schemaName);
+        } catch (error) {
+            // Best-effort: schema creation failed but tenant/user exist.
+            // Logged for manual follow-up; the tenant can still function.
+            console.error(`[Signup] Failed to create schema "${result.tenant.schemaName}":`, error);
+        }
+
+        // 5. Generate JWT tokens — user is immediately authenticated
+        const payload: JwtPayload = {
+            sub: result.user.id,
+            email: result.user.email,
+            role: result.user.role as UserRole,
+            tenantId: result.user.tenantId || undefined,
+        };
+
+        const accessToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
+        });
+
+        const refreshToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
+        });
+
+        return {
+            accessToken,
+            refreshToken,
+            user: {
+                id: result.user.id,
+                email: result.user.email,
+                firstName: result.user.firstName,
+                lastName: result.user.lastName,
+                role: result.user.role,
+                tenantId: result.user.tenantId,
+                tenantName: result.tenant.name,
+            },
+        };
+    }
+
     async login(email: string, password: string) {
         const user = await this.prisma.user.findUnique({
             where: { email },

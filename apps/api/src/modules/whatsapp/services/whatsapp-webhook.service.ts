@@ -9,6 +9,10 @@ import * as crypto from 'crypto';
 export class WhatsappWebhookService {
   private readonly logger = new Logger(WhatsappWebhookService.name);
 
+  // In-memory cache: phoneNumberId → { tenantId, schemaName }
+  private tenantCache = new Map<string, { tenantId: string; expiresAt: number }>();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -27,8 +31,6 @@ export class WhatsappWebhookService {
     this.logger.warn(`Failed webhook verification. Mode: ${mode}, Token passed: ${token}`);
     throw new BadRequestException('Verificación de webhook fallida');
   }
-
-  // TODO: Add Signature verification middleware later
 
   async handleWebhookPayload(payload: any) {
     let handled = false;
@@ -60,10 +62,14 @@ export class WhatsappWebhookService {
      if (value.messages && value.messages.length > 0) {
          const msg = value.messages[0];
          const contact = value.contacts?.[0];
-         
-         // Mocking the tenant lookup for vertical slice 
-         // In production: search tenant by phoneNumberId in a shared registry
-         const tenantId = 'demo-tenant-1'; 
+
+         // === FIX: Dynamic tenant resolution by phoneNumberId ===
+         const tenantId = await this.resolveTenantId(phoneNumberId);
+         if (!tenantId) {
+           this.logger.warn(`No tenant found for phoneNumberId: ${phoneNumberId} — ignoring message`);
+           return;
+         }
+
          const fromPhone = msg.from;
          const messageText = msg.text?.body || '';
 
@@ -95,5 +101,45 @@ export class WhatsappWebhookService {
              this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
          }
      }
+  }
+
+  /**
+   * Resolve tenantId from phone_number_id using channel_accounts table.
+   * Uses in-memory cache with 5-minute TTL to avoid DB hits on every webhook.
+   */
+  private async resolveTenantId(phoneNumberId: string): Promise<string | null> {
+    // Check in-memory cache first
+    const cached = this.tenantCache.get(phoneNumberId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.tenantId;
+    }
+
+    // Query channel_accounts table (public schema)
+    try {
+      const account = await this.prisma.channelAccount.findFirst({
+        where: {
+          channelType: 'whatsapp',
+          accountId: phoneNumberId,
+          isActive: true,
+        },
+        select: { tenantId: true },
+      });
+
+      if (!account) {
+        this.logger.warn(`No active channel_account for phoneNumberId: ${phoneNumberId}`);
+        return null;
+      }
+
+      // Cache for 5 minutes
+      this.tenantCache.set(phoneNumberId, {
+        tenantId: account.tenantId,
+        expiresAt: Date.now() + this.CACHE_TTL,
+      });
+
+      return account.tenantId;
+    } catch (error: any) {
+      this.logger.error(`Error resolving tenant for phoneNumberId ${phoneNumberId}: ${error.message}`);
+      return null;
+    }
   }
 }

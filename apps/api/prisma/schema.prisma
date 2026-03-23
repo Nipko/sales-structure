@@ -98,3 +98,62 @@ model AuditLog {
   @@map("audit_logs")
   @@schema("public")
 }
+
+// ---- WhatsApp Onboarding ----
+model WhatsappOnboarding {
+  id                      String    @id @default(uuid())
+  tenantId                String    @map("tenant_id")
+  configId                String    @map("config_id")
+  mode                    String    @default("new")      // new, existing, coexistence
+  status                  String    @default("CREATED")   // OnboardingStatus enum
+  isCoexistence           Boolean   @default(false) @map("is_coexistence")
+  coexistenceAcknowledged Boolean   @default(false) @map("coexistence_acknowledged")
+
+  // Meta assets discovered
+  metaBusinessId          String?   @map("meta_business_id")
+  wabaId                  String?   @map("waba_id")
+  phoneNumberId           String?   @map("phone_number_id")
+  displayPhoneNumber      String?   @map("display_phone_number")
+  verifiedName            String?   @map("verified_name")
+
+  // Exchange data
+  exchangePayload         Json?     @map("exchange_payload")
+
+  // Error tracking
+  errorCode               String?   @map("error_code")
+  errorMessage            String?   @map("error_message")
+
+  // Who started the onboarding
+  startedByUserId         String?   @map("started_by_user_id")
+
+  // Timestamps
+  codeReceivedAt          DateTime? @map("code_received_at")
+  exchangeCompletedAt     DateTime? @map("exchange_completed_at")
+  assetsSyncedAt          DateTime? @map("assets_synced_at")
+  webhookValidatedAt      DateTime? @map("webhook_validated_at")
+  completedAt             DateTime? @map("completed_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("whatsapp_onboardings")
+  @@schema("public")
+}
+
+// ---- WhatsApp Credentials (encrypted) ----
+model WhatsappCredential {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  credentialType  String   @map("credential_type")     // system_user_token, app_secret
+  encryptedValue  String   @map("encrypted_value")     // AES-256-GCM encrypted
+  rotationState   String   @default("active") @map("rotation_state")  // active, rotating, revoked
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, credentialType])
+  @@map("whatsapp_credentials")
+  @@schema("public")
+}
+

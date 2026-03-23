@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   API_IMAGE: ghcr.io/nipko/parallext-api
   DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
+  WHATSAPP_IMAGE: ghcr.io/nipko/parallext-whatsapp
   PROJECT_PATH: /opt/parallext-engine
 
 jobs:
@@ -58,6 +59,18 @@ jobs:
           tags: |
             ${{ env.DASHBOARD_IMAGE }}:latest
             ${{ env.DASHBOARD_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push WhatsApp image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.whatsapp
+          push: true
+          tags: |
+            ${{ env.WHATSAPP_IMAGE }}:latest
+            ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -113,6 +126,7 @@ jobs:
             echo "===> Pulling latest images..."
             docker pull ghcr.io/nipko/parallext-api:latest
             docker pull ghcr.io/nipko/parallext-dashboard:latest
+            docker pull ghcr.io/nipko/parallext-whatsapp:latest
 
             echo "===> Ensuring postgres and redis are healthy..."
             docker compose -f infra/docker/docker-compose.prod.yml \
@@ -139,9 +153,9 @@ jobs:
             docker compose -f infra/docker/docker-compose.prod.yml \
               run --rm api npm run migrate:tenants
 
-            echo "===> Restarting API and Dashboard..."
+            echo "===> Restarting API, Dashboard, and WhatsApp..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              up -d --force-recreate api dashboard
+              up -d --force-recreate api dashboard whatsapp
 
 
             echo "===> Waiting for API health (max 3 min)..."
@@ -182,5 +196,6 @@ jobs:
           echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| API | \`${{ env.API_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Dashboard | \`${{ env.DASHBOARD_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| WhatsApp | \`${{ env.WHATSAPP_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Branch: \`${{ github.ref_name }}\` | Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

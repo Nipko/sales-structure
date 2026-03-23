@@ -1,7 +1,7 @@
 # 🗂️ Estructura de la API — Parallext Engine
 
 > Referencia rápida de todos los módulos y endpoints del backend.
-> Actualizado: Marzo 3, 2026
+> Actualizado: Marzo 22, 2026
 
 ---
 
@@ -23,6 +23,18 @@
 | Knowledge | `modules/knowledge/` | — | RAG pipeline |
 | Handoff | `modules/handoff/` | — | Escalation triggers |
 | Health | `modules/health/` | 1 | Health check |
+
+### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
+
+| Módulo | Directorio | Endpoints | Descripción |
+|--------|-----------|-----------|------------|
+| Onboarding | `modules/onboarding/` | 7 | Embedded Signup v4 flow |
+| Webhooks | `modules/webhooks/` | 2 | Meta webhook handler (HMAC) |
+| Meta Graph | `modules/meta-graph/` | — | Graph API client with retry |
+| Jobs | `modules/jobs/` | — | BullMQ workers |
+| Assets | `modules/assets/` | — | Template & phone sync |
+| Audit | `modules/audit/` | — | Audit logging |
+| Health | `modules/health/` | 2 | Liveness + readiness probes |
 
 ---
 
@@ -119,3 +131,45 @@
 | 003 | `003_pipeline_automation.sql` | pipeline_stages, deals, automation_rules |
 | 004 | `004_csat_surveys.sql` | csat_surveys |
 | 005 | `005_seed_admin_users.sql` | Seed: admin users |
+
+---
+
+## WhatsApp Onboarding Service (puerto 3002)
+
+> Base URL: `https://wa.parallly-chat.cloud/api/v1`
+
+### Onboarding (`/onboarding`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|------------|
+| POST | `/onboarding/start` | ✅ | super_admin, tenant_admin | Iniciar onboarding WA Embedded Signup |
+| GET | `/onboarding/:id` | ✅ | any | Detalle completo |
+| GET | `/onboarding/:id/status` | ✅ | any | Estado (para polling) |
+| POST | `/onboarding/:id/retry` | ✅ | super_admin, tenant_admin | Reintentar fallido |
+| POST | `/onboarding/:id/resync` | ✅ | super_admin, tenant_admin | Re-sync assets |
+| DELETE | `/onboarding/:id` | ✅ | super_admin, tenant_admin | Cancelar en progreso |
+| GET | `/onboarding` | ✅ | super_admin | Listar todos |
+
+### Webhooks (`/webhooks/whatsapp`)
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|------------|
+| GET | `/webhooks/whatsapp` | Público | Verificación Meta (challenge) |
+| POST | `/webhooks/whatsapp` | HMAC-SHA256 | Recibir webhooks de Meta |
+
+### Health (`/health`)
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|------------|
+| GET | `/health/live` | Público | Liveness probe |
+| GET | `/health/ready` | Público | Readiness probe (DB + Redis) |
+
+### Modelos Prisma (schema público)
+
+| Modelo | Tabla | Propósito |
+|--------|-------|-----------|
+| WhatsappOnboarding | `whatsapp_onboardings` | Registro del flujo de onboarding (17 campos) |
+| WhatsappCredential | `whatsapp_credentials` | Tokens cifrados AES-256-GCM por tenant |
+
+### Tablas Tenant Schema (whatsapp)
+
+| Tabla | Columnas nuevas |
+|-------|----------------|
+| `whatsapp_channels` | `is_coexistence`, `coexistence_status`, `onboarding_id` |

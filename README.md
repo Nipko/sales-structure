@@ -4,10 +4,11 @@
 
 [![Deploy](https://github.com/Nipko/sales-structure/actions/workflows/deploy.yml/badge.svg)](https://github.com/Nipko/sales-structure/actions)
 
-| Servicio | URL |
-|----------|-----|
-| 📊 Dashboard | [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud/admin) |
-| 🔌 API | [api.parallly-chat.cloud](https://api.parallly-chat.cloud) |
+| Servicio | URL | Puerto |
+|----------|-----|--------|
+| 📊 Dashboard | [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud/admin) | 3001 |
+| 🔌 API | [api.parallly-chat.cloud](https://api.parallly-chat.cloud) | 3000 |
+| 📱 WhatsApp Onboarding | [wa.parallly-chat.cloud](https://wa.parallly-chat.cloud) | 3002 |
 
 ### 📚 Documentación
 
@@ -38,11 +39,12 @@ Un motor de IA conversacional que permite a cualquier empresa automatizar sus ve
 
 ```
 Internet → Cloudflare (SSL + Zero Trust Tunnel) → Docker Stack (VPS)
-   ├── 📊 Dashboard   (Next.js 16, port 3001)
-   ├── 🔌 API         (NestJS 10, port 3000)
-   ├── 🐘 PostgreSQL  (pgvector, schema-per-tenant)
-   ├── 🔴 Redis       (caché, contadores, BullMQ)
-   └── 🌐 Tunnel      (cloudflared)
+   ├── 📊 Dashboard         (Next.js 16, port 3001)
+   ├── 🔌 API               (NestJS 10, port 3000)
+   ├── 📱 WhatsApp Service   (NestJS 10, port 3002) ← NEW
+   ├── 🐘 PostgreSQL         (pgvector, schema-per-tenant)
+   ├── 🔴 Redis              (caché, contadores, BullMQ)
+   └── 🌐 Tunnel             (cloudflared)
 ```
 
 ## 📁 Estructura del Monorepo
@@ -67,29 +69,41 @@ Sales_Structure/
 │   │       ├── schema.prisma   # Global tables
 │   │       ├── tenant-schema.sql  # Template para tenant schemas
 │   │       └── seed-gecko.sql  # Seed del piloto Gecko Aventura
-│   └── dashboard/              # Next.js 16 Admin Panel
+│   ├── dashboard/              # Next.js 16 Admin Panel
+│   │   └── src/
+│   │       ├── app/admin/      # 8+ páginas: dashboard, tenants, inbox,
+│   │       │                   #   contacts, pipeline, automation,
+│   │       │                   #   agent-analytics, settings, channels
+│   │       ├── contexts/       # AuthContext + TenantContext
+│   │       ├── hooks/          # useApiData (LIVE/DEMO badge)
+│   │       ├── lib/            # api.ts (centralized HTTP client)
+│   │       └── components/     # Sidebar, UI components
+│   └── whatsapp/               # WhatsApp Onboarding Service (NestJS) ← NEW
 │       └── src/
-│           ├── app/admin/      # 8 páginas: dashboard, tenants, inbox,
-│           │                   #   contacts, pipeline, automation,
-│           │                   #   agent-analytics, settings
-│           ├── contexts/       # AuthContext + TenantContext
-│           ├── hooks/          # useApiData (LIVE/DEMO badge)
-│           ├── lib/            # api.ts (centralized HTTP client)
-│           └── components/     # Sidebar, UI components
+│           ├── modules/
+│           │   ├── onboarding/   # Embedded Signup v4 flow (10 steps)
+│           │   ├── webhooks/     # HMAC-SHA256 validated webhook handler
+│           │   ├── meta-graph/   # Meta Graph API client with retry
+│           │   ├── jobs/         # BullMQ workers for async processing
+│           │   ├── assets/       # Template + phone sync
+│           │   └── audit/        # Audit logging
+│           ├── common/           # Guards, decorators, enums
+│           └── config/           # App, DB, Redis, Meta configs
 ├── packages/
 │   └── shared/                 # Types, interfaces, constants compartidos
 ├── templates/
 │   └── personas/turismo.yaml   # Persona template: Sofia Henao (Gecko)
 ├── infra/
 │   ├── docker/
-│   │   ├── docker-compose.prod.yml  # Stack de producción (5 containers)
+│   │   ├── docker-compose.prod.yml  # Stack de producción (6 containers)
 │   │   ├── Dockerfile.api           # API multi-stage build
-│   │   └── Dockerfile.dashboard     # Dashboard standalone build
+│   │   ├── Dockerfile.dashboard     # Dashboard standalone build
+│   │   └── Dockerfile.whatsapp      # WhatsApp service build ← NEW
 │   ├── nginx/                  # Nginx config (backup, no activo)
 │   └── scripts/
 │       └── setup-vps.sh        # Script automatizado de setup del VPS
 └── .github/workflows/
-    └── deploy.yml              # CI/CD → SSH → Docker Compose
+    └── deploy.yml              # CI/CD → SSH → Docker Compose (3 images)
 ```
 
 ---
@@ -130,7 +144,8 @@ docker compose -f infra/docker/docker-compose.dev.yml up -d
 cd apps/api && npx prisma migrate dev
 
 # 6. Desarrollo
-npm run dev  # Levanta API (:3000) y Dashboard (:3001)
+npm run dev              # Levanta API (:3000), Dashboard (:3001), WhatsApp (:3002)
+npm run dev:whatsapp     # Solo WhatsApp service
 ```
 
 ---
@@ -147,7 +162,7 @@ bash infra/scripts/setup-vps.sh
 El script `setup-vps.sh`:
 1. Genera JWT secrets automáticamente
 2. Crea `.env` de producción
-3. Construye y levanta los 5 contenedores Docker
+3. Construye y levanta los 6 contenedores Docker (API, Dashboard, WhatsApp, Postgres, Redis, Tunnel)
 4. Ejecuta el seed de Gecko Aventura
 
 ---
@@ -185,8 +200,9 @@ El script `setup-vps.sh`:
 
 - [x] **Phase 1**: Foundation (MVP Core) ✅
 - [x] **Phase 1.11**: Frontend → API Integration ✅
-- [ ] **Phase 2**: Extended Features (Instagram, Messenger, Telegram, pagos)
-- [ ] **Phase 3**: Scale & Polish (Kubernetes, analytics avanzados, onboarding portal)
+- [x] **Phase 2.1**: WhatsApp Embedded Signup v4 Onboarding ✅ ← NEW
+- [ ] **Phase 2.2**: Extended Features (Instagram, Messenger, Telegram, pagos)
+- [ ] **Phase 3**: Scale & Polish (Kubernetes, analytics avanzados)
 
 ---
 

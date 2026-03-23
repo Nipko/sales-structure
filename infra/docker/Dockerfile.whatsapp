@@ -1,0 +1,48 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install OpenSSL for Prisma engine build
+RUN apk add --no-cache openssl
+
+# Copy root package files
+COPY package.json package-lock.json* turbo.json ./
+
+# Copy workspace package files
+COPY apps/whatsapp/package.json ./apps/whatsapp/
+COPY packages/shared/package.json ./packages/shared/
+
+# Install ALL dependencies (monorepo hoists to root)
+RUN npm install
+
+# Copy source code
+COPY packages/shared/ ./packages/shared/
+COPY apps/whatsapp/ ./apps/whatsapp/
+
+# Generate Prisma client for linux-musl (Alpine)
+RUN cd apps/whatsapp && npx prisma generate || true
+
+# Build
+RUN npx turbo build --filter=@parallext/whatsapp
+
+# ---- Production image ----
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Prisma needs OpenSSL to run on Alpine
+RUN apk add --no-cache openssl
+
+# Copy the built app with hoisted node_modules
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/whatsapp/dist ./dist
+COPY --from=builder /app/apps/whatsapp/package.json ./
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD node -e "const http = require('http'); http.get('http://localhost:3002/api/v1/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+
+EXPOSE 3002
+
+CMD ["node", "dist/main.js"]

@@ -1,6 +1,6 @@
 # 📖 Parallext Engine — Manual de la Plataforma
 
-> Versión 1.4.1 · Actualizado: Marzo 4, 2026
+> Versión 3.0.0 · Actualizado: Marzo 22, 2026
 
 ---
 
@@ -9,12 +9,13 @@
 1. [Visión General](#visión-general)
 2. [Arquitectura del Sistema](#arquitectura-del-sistema)
 3. [Módulos del Backend (API)](#módulos-del-backend-api)
-4. [Dashboard (Frontend)](#dashboard-frontend)
-5. [Base de Datos](#base-de-datos)
-6. [API Reference](#api-reference)
-7. [Autenticación y Roles](#autenticación-y-roles)
-8. [Despliegue y CI/CD](#despliegue-y-cicd)
-9. [Configuración del Entorno](#configuración-del-entorno)
+4. [WhatsApp Onboarding Service](#whatsapp-onboarding-service)
+5. [Dashboard (Frontend)](#dashboard-frontend)
+6. [Base de Datos](#base-de-datos)
+7. [API Reference](#api-reference)
+8. [Autenticación y Roles](#autenticación-y-roles)
+9. [Despliegue y CI/CD](#despliegue-y-cicd)
+10. [Configuración del Entorno](#configuración-del-entorno)
 
 ---
 
@@ -37,11 +38,12 @@
 
 ```
 Internet → Cloudflare (SSL + Zero Trust Tunnel) → Docker Stack (VPS)
-   ├── 📊 Dashboard   (Next.js 16, port 3001)
-   ├── 🔌 API         (NestJS 10, port 3000)
-   ├── 🐘 PostgreSQL  (pgvector, schema-per-tenant)
-   ├── 🔴 Redis       (caché, contadores, BullMQ)
-   └── 🌐 Tunnel      (cloudflared)
+   ├── 📊 Dashboard         (Next.js 16, port 3001)
+   ├── 🔌 API               (NestJS 10, port 3000)
+   ├── 📱 WhatsApp Service   (NestJS 10, port 3002)
+   ├── 🐘 PostgreSQL         (pgvector, schema-per-tenant)
+   ├── 🔴 Redis              (caché, contadores, BullMQ)
+   └── 🌐 Tunnel             (cloudflared)
 ```
 
 ### Flujo de un mensaje WhatsApp:
@@ -214,7 +216,60 @@ Configuración de API keys y servicios.
 
 ---
 
-## 4. Dashboard (Frontend)
+## 4. WhatsApp Onboarding Service (puerto 3002)
+
+Servicio NestJS independiente que maneja el flujo completo de **WhatsApp Embedded Signup v4**.
+
+**Base URL**: `https://wa.parallly-chat.cloud/api/v1`
+
+### 4.1 Onboarding (`/onboarding`)
+
+| Endpoint | Método | Auth | Descripción |
+|----------|--------|------|------------|
+| `/onboarding/start` | POST | ✅ admin | Iniciar Embedded Signup (10 pasos) |
+| `/onboarding/:id` | GET | ✅ | Detalle completo |
+| `/onboarding/:id/status` | GET | ✅ | Estado para polling |
+| `/onboarding/:id/retry` | POST | ✅ admin | Reintentar fallido |
+| `/onboarding/:id/resync` | POST | ✅ admin | Re-sync templates/phones |
+| `/onboarding/:id` | DELETE | ✅ admin | Cancelar en progreso |
+| `/onboarding` | GET | ✅ super | Listar todos |
+
+### 4.2 Webhooks (`/webhooks/whatsapp`)
+
+| Endpoint | Método | Auth | Descripción |
+|----------|--------|------|------------|
+| `/webhooks/whatsapp` | GET | Público | Verificación Meta (challenge/response) |
+| `/webhooks/whatsapp` | POST | HMAC-SHA256 | Recibir eventos webhook |
+
+### 4.3 Flujo de Onboarding (10 pasos)
+```
+1. Validar pre-condiciones (tenant, config, no duplicados)
+2. Crear registro WhatsappOnboarding
+3. Exchange code → access_token (Meta Graph API)
+4. Descubrir WABAs + phone numbers
+5. Persistir canal en tenant schema
+6. Registrar channel_account público
+7. Almacenar credential cifrada (AES-256-GCM)
+8. Suscribir webhook de la WABA
+9. Sincronizar templates (async, BullMQ)
+10. Marcar COMPLETED
+```
+
+### 4.4 Seguridad
+- **JWT compartido** con API via `INTERNAL_JWT_SECRET`
+- **HMAC-SHA256** validación de firma de webhooks Meta
+- **AES-256-GCM** cifrado de tokens almacenados
+- **Cache 3 capas** para resolución de tenant (memoria + Redis + DB)
+- **Idempotencia** con dedupe keys en Redis
+
+### 4.5 BullMQ Queues (prefijo `wa:`)
+- `webhooks` — mensajes, statuses, template updates, account updates
+- `sync` — sincronización de templates y teléfonos
+- `onboarding` / `ops` — reservadas para futuras tareas
+
+---
+
+## 5. Dashboard (Frontend)
 
 ### Páginas disponibles:
 
@@ -262,11 +317,14 @@ Page → useEffect → api.getXXX(tenantId)
 
 ---
 
-## 5. Base de Datos
+## 6. Base de Datos
 
 ### Esquema Global (public):
 - `tenants` — Empresas clientes
 - `users` — Usuarios del sistema con roles
+- `whatsapp_onboardings` — Registro del flujo de onboarding (17 campos)
+- `whatsapp_credentials` — Tokens cifrados AES-256-GCM por tenant
+- `channel_accounts` — Registro de canales activos para routing de webhooks
 
 ### Esquema por Tenant (ej: `tenant_gecko`):
 - `contacts` — Contactos CRM (tags, segment, custom_fields, lifetime_value)
@@ -280,6 +338,10 @@ Page → useEffect → api.getXXX(tenantId)
 - `automation_rules` — Reglas de automatización
 - `csat_surveys` — Encuestas de satisfacción (1-5 estrellas)
 - `knowledge_chunks` — Trozos de conocimiento con embeddings
+- `whatsapp_channels` — Canales WhatsApp conectados (con campos `is_coexistence`, `onboarding_id`)
+- `whatsapp_templates` — Templates sincronizados desde Meta
+- `whatsapp_webhook_events` — Log de eventos webhook con dedup
+- `whatsapp_message_logs` — Log detallado de mensajes WA
 
 ### Migraciones:
 1. `001_base_schema.sql` — Esquema base (conversations, contacts, messages)
@@ -289,7 +351,7 @@ Page → useEffect → api.getXXX(tenantId)
 
 ---
 
-## 6. API Reference
+## 7. API Reference
 
 ### Formato de respuesta estándar:
 ```json
@@ -315,7 +377,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 7. Autenticación y Roles
+## 8. Autenticación y Roles
 
 ### Flujo de login:
 ```
@@ -347,7 +409,7 @@ POST /auth/refresh { refreshToken }
 
 ---
 
-## 8. Despliegue y CI/CD
+## 9. Despliegue y CI/CD
 
 ### Pipeline automático:
 ```
@@ -360,6 +422,7 @@ Push a main → GitHub Actions → Build Docker images → Push a GHCR
 |-----------|--------|--------|
 | parallext-api | ghcr.io/nipko/parallext-api | 3000 |
 | parallext-dashboard | ghcr.io/nipko/parallext-dashboard | 3001 |
+| parallext-whatsapp | ghcr.io/nipko/parallext-whatsapp | 3002 |
 | parallext-postgres | postgres:16 | 5432 |
 | parallext-redis | redis:7-alpine | 6379 |
 | parallext-tunnel | cloudflare/cloudflared | — |
@@ -375,7 +438,7 @@ docker compose -f infra/docker/docker-compose.prod.yml up -d --build
 
 ---
 
-## 9. Configuración del Entorno
+## 10. Configuración del Entorno
 
 ### Variables de entorno (`.env`):
 ```env
@@ -384,23 +447,31 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/parallext
 DB_PASSWORD=...
 
 # Redis
-REDIS_URL=redis://localhost:6379
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# Auth
-JWT_SECRET=...
-JWT_REFRESH_SECRET=...
-JWT_EXPIRATION=15m
-JWT_REFRESH_EXPIRATION=7d
+# Auth (compartido API + WhatsApp)
+INTERNAL_JWT_SECRET=...
 
-# AI Providers (se gestionan desde /admin/settings)
+# AI Providers
 OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 GOOGLE_AI_KEY=...
 
-# WhatsApp
-WHATSAPP_TOKEN=...
-WHATSAPP_VERIFY_TOKEN=...
-WHATSAPP_PHONE_NUMBER_ID=...
+# WhatsApp Service (puerto 3002)
+ENCRYPTION_KEY=... (64 caracteres hex)
+META_APP_ID=...
+META_APP_SECRET=...
+META_VERIFY_TOKEN=...
+META_CONFIG_ID=...
+META_GRAPH_VERSION=v21.0
+
+# Frontend
+NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1
+NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1
+NEXT_PUBLIC_META_APP_ID=...
+NEXT_PUBLIC_META_CONFIG_ID=...
 
 # Cloudflare
 CLOUDFLARE_TUNNEL_TOKEN=...
@@ -415,7 +486,8 @@ Para dudas técnicas o nuevas funcionalidades, contactar al equipo de desarrollo
 **URLs de producción:**
 - Dashboard: https://admin.parallly-chat.cloud/admin
 - API: https://api.parallly-chat.cloud
+- WhatsApp Service: https://wa.parallly-chat.cloud
 
 ---
 
-*Última actualización: 2026-03-04 — v1.4.1*
+*Última actualización: 2026-03-22 — v3.0.0*

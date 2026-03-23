@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { MessageSquare, Shield, CheckCircle, RefreshCw, Key, Link as LinkIcon } from "lucide-react";
+import { MessageSquare, Shield, CheckCircle, RefreshCw, Key, Link as LinkIcon, Zap } from "lucide-react";
+import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 
 export default function WhatsAppSetupPage() {
     const [status, setStatus] = useState<any>(null);
@@ -107,6 +108,47 @@ export default function WhatsAppSetupPage() {
                     border: message.type === "error" ? "1px solid rgba(231, 76, 60, 0.2)" : "1px solid rgba(46, 204, 113, 0.2)"
                 }}>
                     {message.text}
+                </div>
+            )}
+
+            {/* === Embedded Signup — One-Click Onboarding === */}
+            {!isConnected && (
+                <div style={{
+                    background: "linear-gradient(135deg, rgba(37, 211, 102, 0.05), rgba(18, 140, 126, 0.08))",
+                    border: "1px solid rgba(37, 211, 102, 0.15)",
+                    borderRadius: 16,
+                    padding: 28,
+                    marginBottom: 28,
+                }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                        <div style={{ background: "#25D366", width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Zap size={16} color="white" />
+                        </div>
+                        <div>
+                            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Conexión Rápida — Embedded Signup</h2>
+                            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0" }}>Conecta tu cuenta de WhatsApp Business en un solo clic</p>
+                        </div>
+                    </div>
+
+                    <WhatsAppEmbeddedSignup
+                        tenantId={(() => {
+                            try {
+                                const token = localStorage.getItem("accessToken");
+                                if (token) {
+                                    const payload = JSON.parse(atob(token.split(".")[1]));
+                                    return payload.tenantId || "";
+                                }
+                            } catch {}
+                            return "";
+                        })()}
+                        onSuccess={(result) => {
+                            setMessage({ type: "success", text: `¡Canal WhatsApp conectado exitosamente! Número: ${result.displayPhoneNumber || "N/A"}` });
+                            loadData();
+                        }}
+                        onError={(error) => {
+                            setMessage({ type: "error", text: error });
+                        }}
+                    />
                 </div>
             )}
 

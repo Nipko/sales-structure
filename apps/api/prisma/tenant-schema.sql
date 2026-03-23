@@ -468,6 +468,9 @@ CREATE TABLE "{{SCHEMA_NAME}}"."whatsapp_channels" (
     "webhook_callback_url" VARCHAR(500),
     "webhook_subscription_status" VARCHAR(50),
     "channel_status" VARCHAR(50) DEFAULT 'pending', -- pending, connected, disconnected, restricted
+    "is_coexistence" BOOLEAN DEFAULT false,
+    "coexistence_status" VARCHAR(50), -- null, acknowledged, migrating, active
+    "onboarding_id" UUID, -- references public.whatsapp_onboardings(id)
     "connected_at" TIMESTAMP,
     "last_healthcheck_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT NOW(),

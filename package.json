@@ -16,6 +16,8 @@
     "dev:dashboard": "turbo dev --filter=@parallext/dashboard",
     "build:api": "turbo build --filter=@parallext/api",
     "build:dashboard": "turbo build --filter=@parallext/dashboard",
+    "dev:whatsapp": "turbo dev --filter=@parallext/whatsapp",
+    "build:whatsapp": "turbo build --filter=@parallext/whatsapp",
     "db:migrate": "turbo db:migrate --filter=@parallext/api",
     "db:seed": "turbo db:seed --filter=@parallext/api",
     "docker:dev": "docker compose -f infra/docker/docker-compose.yml up -d",

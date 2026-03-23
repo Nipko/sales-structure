@@ -17,25 +17,49 @@ async function migrate() {
     
     // Get all active tenants
     const tenants = await prisma.$queryRaw`
-      SELECT schema_name FROM tenants WHERE is_active = true
+      SELECT id, schema_name FROM tenants WHERE is_active = true
     `;
     
     console.log(`Found ${tenants.length} active tenants.`);
     let successCount = 0;
     let skipCount = 0;
+    let cleanedCount = 0;
 
     for (const t of tenants) {
       console.log(`Migrating tenant schema: ${t.schema_name}`);
 
       try {
-        // Check if schema exists; if not, create it first
+        // Step 1: Check if schema exists
         const schemaCheck = await prisma.$queryRawUnsafe(
           `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
           t.schema_name,
         );
 
+        // Step 2: If schema doesn't exist, create it explicitly FIRST
         if (schemaCheck.length === 0) {
-          console.log(`  [!] Schema "${t.schema_name}" does not exist — creating it...`);
+          console.log(`  [!] Schema "${t.schema_name}" does not exist — creating it before template...`);
+          try {
+            await prisma.$executeRawUnsafe(
+              `CREATE SCHEMA IF NOT EXISTS "${t.schema_name}"`
+            );
+            console.log(`  [+] Schema "${t.schema_name}" created`);
+          } catch (createErr) {
+            // Schema creation failed entirely — clean up the orphan tenant record
+            console.error(`  [X] Cannot create schema "${t.schema_name}": ${createErr.message}`);
+            console.log(`  [X] Cleaning up orphan tenant record (id: ${t.id})...`);
+            await prisma.$executeRawUnsafe(
+              `DELETE FROM audit_logs WHERE tenant_id = $1`, t.id
+            );
+            await prisma.$executeRawUnsafe(
+              `DELETE FROM users WHERE tenant_id = $1`, t.id
+            );
+            await prisma.$executeRawUnsafe(
+              `DELETE FROM tenants WHERE id = $1`, t.id
+            );
+            console.log(`  [X] Orphan tenant cleaned up`);
+            cleanedCount++;
+            continue; // Skip the rest of migration since the schema couldn't be created
+          }
         }
 
         const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
@@ -65,7 +89,7 @@ async function migrate() {
       }
     }
 
-    console.log(`Results: ${successCount} OK, ${skipCount} skipped`);
+    console.log(`Results: ${successCount} OK, ${skipCount} skipped, ${cleanedCount} orphans cleaned`);
   } catch (error) {
     console.error('Fatal error during tenant migration:', error);
     process.exit(1);

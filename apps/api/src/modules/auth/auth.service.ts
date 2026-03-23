@@ -278,6 +278,9 @@ export class AuthService {
                 role: true,
                 tenantId: true,
                 isActive: true,
+                tenant: {
+                    select: { schemaName: true },
+                },
             },
         });
 
@@ -285,6 +288,13 @@ export class AuthService {
             throw new UnauthorizedException('User not found or inactive');
         }
 
-        return user;
+        return {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            tenantId: user.tenantId,
+            isActive: user.isActive,
+            schemaName: user.tenant?.schemaName, // Flattened for controllers
+        };
     }
 }

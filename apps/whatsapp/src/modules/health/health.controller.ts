@@ -1,7 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService, PrismaHealthIndicator } from '@nestjs/terminus';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { InjectConnection } from '@nestjs/terminus';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as IORedis from 'ioredis';

@@ -23,10 +23,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * Execute a query in a specific tenant schema
    */
   async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = []): Promise<T> {
-    const result = await this.$queryRawUnsafe<T>(
+    const result = (await this.$queryRawUnsafe(
       `SET search_path TO "${schemaName}"; ${query}`,
       ...params,
-    );
+    )) as T;
     await this.$executeRawUnsafe('SET search_path TO "public"');
     return result;
   }
@@ -36,7 +36,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * Used for webhook routing: phone_number_id → tenantId
    */
   async getTenantByPhoneNumberId(phoneNumberId: string): Promise<{ tenantId: string; schemaName: string } | null> {
-    const results = await this.$queryRawUnsafe<Array<{ tenant_id: string; schema_name: string }>>(
+    const results = (await this.$queryRawUnsafe(
       `SELECT ca.tenant_id, t.schema_name
        FROM channel_accounts ca
        JOIN tenants t ON t.id = ca.tenant_id
@@ -45,7 +45,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
          AND ca.is_active = true
        LIMIT 1`,
       phoneNumberId,
-    );
+    )) as Array<{ tenant_id: string; schema_name: string }>;
 
     if (!results || results.length === 0) return null;
     return { tenantId: results[0].tenant_id, schemaName: results[0].schema_name };

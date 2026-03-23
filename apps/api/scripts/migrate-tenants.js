@@ -28,6 +28,22 @@ async function migrate() {
     for (const t of tenants) {
       console.log(`Migrating tenant schema: ${t.schema_name}`);
 
+      // ONE-TIME PURGE FOR CORRUPTED TEST TENANT
+      if (t.schema_name === 'tenant_fundaci_n_beta') {
+        console.log(`  [X] Purging corrupted tenant_fundaci_n_beta...`);
+        try {
+          await prisma.$executeRawUnsafe('DROP SCHEMA IF EXISTS "tenant_fundaci_n_beta" CASCADE');
+          await prisma.$executeRawUnsafe('DELETE FROM audit_logs WHERE tenant_id = $1', t.id);
+          await prisma.$executeRawUnsafe('DELETE FROM users WHERE tenant_id = $1', t.id);
+          await prisma.$executeRawUnsafe('DELETE FROM tenants WHERE id = $1', t.id);
+          console.log(`  [X] Successfully purged tenant_fundaci_n_beta`);
+          cleanedCount++;
+          continue;
+        } catch (e) {
+          console.error(`  [X] Failed to purge tenant_fundaci_n_beta:`, e.message);
+        }
+      }
+
       try {
         // Step 1: Check if schema exists
         const schemaCheck = await prisma.$queryRawUnsafe(
@@ -74,12 +90,17 @@ async function migrate() {
           
         for (const stmt of stmts) {
           try {
+            // Temporary debug logging
+            if (stmt.includes('consent_records')) console.log(`  [DEBUG] Executing: ${stmt.substring(0, 100)}...`);
             await prisma.$executeRawUnsafe(stmt + ';');
           } catch (e) {
+            if (stmt.includes('consent_records')) console.log(`  [DEBUG] Failed: ${e.message}`);
             // Ignore "already exists" and "duplicate" errors for idempotency
             if (!e.message.includes('already exists') && 
                 !e.message.includes('duplicate')) {
               throw e;
+            } else {
+              if (stmt.includes('consent_records')) console.log(`  [DEBUG] SWALLOWED error!`);
             }
           }
         }

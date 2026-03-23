@@ -659,35 +659,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."legal_text_versions" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."legal_text_versions" ("tenant_id", "channel", "active");
 
--- ---- Consent Records ----
-CREATE TABLE "{{SCHEMA_NAME}}"."consent_records" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id" VARCHAR(255) NOT NULL,
-    "lead_id" UUID,
-    "channel" VARCHAR(50) NOT NULL DEFAULT 'web',
-    "legal_text_version" INTEGER,
-    "legal_text_snapshot" TEXT,
-    "ip_address" VARCHAR(45),
-    "user_agent" TEXT,
-    "source_url" VARCHAR(500),
-    "granted_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX ON "{{SCHEMA_NAME}}"."consent_records" ("lead_id");
-CREATE INDEX ON "{{SCHEMA_NAME}}"."consent_records" ("granted_at");
-
--- ---- Opt-Out Records ----
-CREATE TABLE "{{SCHEMA_NAME}}"."opt_out_records" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id" VARCHAR(255) NOT NULL,
-    "lead_id" UUID,
-    "channel" VARCHAR(50) NOT NULL,
-    "scope" VARCHAR(50) DEFAULT 'marketing',
-    "reason" TEXT,
-    "detected_from" VARCHAR(100),
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
-CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("channel");
+-- (consent_records and opt_out_records already defined above in CRM section)
 
 -- ---- Deletion Requests ----
 CREATE TABLE "{{SCHEMA_NAME}}"."deletion_requests" (

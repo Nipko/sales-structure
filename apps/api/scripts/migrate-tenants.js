@@ -33,9 +33,9 @@ async function migrate() {
         console.log(`  [X] Purging corrupted tenant_fundaci_n_beta...`);
         try {
           await prisma.$executeRawUnsafe('DROP SCHEMA IF EXISTS "tenant_fundaci_n_beta" CASCADE');
-          await prisma.$executeRawUnsafe('DELETE FROM audit_logs WHERE tenant_id = $1', t.id);
-          await prisma.$executeRawUnsafe('DELETE FROM users WHERE tenant_id = $1', t.id);
-          await prisma.$executeRawUnsafe('DELETE FROM tenants WHERE id = $1', t.id);
+          await prisma.$executeRawUnsafe(`DELETE FROM audit_logs WHERE tenant_id = '${t.id}'::uuid`);
+          await prisma.$executeRawUnsafe(`DELETE FROM users WHERE tenant_id = '${t.id}'::uuid`);
+          await prisma.$executeRawUnsafe(`DELETE FROM tenants WHERE id = '${t.id}'::uuid`);
           console.log(`  [X] Successfully purged tenant_fundaci_n_beta`);
           cleanedCount++;
           continue;

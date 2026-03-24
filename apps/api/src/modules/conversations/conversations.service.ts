@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PersonaService } from '../persona/persona.service';
@@ -19,6 +19,7 @@ export class ConversationsService {
         private llmRouter: LLMRouterService,
         private channelGateway: ChannelGatewayService,
         private gateway: ConversationsGateway,
+        @Inject(forwardRef(() => WhatsappConnectionService))
         private whatsappConnection: WhatsappConnectionService,
     ) { }
 

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappConnectionService } from './services/whatsapp-connection.service';
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
@@ -11,7 +11,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
 
 @Module({
-  imports: [PrismaModule, HttpModule, ConversationsModule, AnalyticsModule],
+  imports: [PrismaModule, HttpModule, forwardRef(() => ConversationsModule), AnalyticsModule],
   controllers: [WhatsappController],
   providers: [
     WhatsappCryptoService,

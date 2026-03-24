@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
@@ -13,7 +13,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         PersonaModule,
         AIModule,
         ChannelsModule,
-        WhatsappModule,
+        forwardRef(() => WhatsappModule),
         JwtModule.register({}),
     ],
     providers: [ConversationsService, ConversationsGateway],

@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConversationsService } from '../../conversations/conversations.service';
@@ -16,6 +16,7 @@ export class WhatsappWebhookService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ConversationsService))
     private readonly conversationsService: ConversationsService,
     private readonly complianceService: ComplianceService,
   ) {}

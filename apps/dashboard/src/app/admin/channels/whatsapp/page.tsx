@@ -22,6 +22,8 @@ export default function WhatsAppSetupPage() {
 
     const loadData = async () => {
         setLoading(true);
+
+        // Each call is independent — if one fails, the others still work
         try {
             const statusRes = await api.fetch('/channels/whatsapp/status');
             setStatus(statusRes);
@@ -29,19 +31,19 @@ export default function WhatsAppSetupPage() {
                 setPhoneNumberId(statusRes.channel.display_phone_number || statusRes.channel.phone_number_id || "");
                 setWabaId(statusRes.channel.meta_waba_id || "");
             }
+        } catch (e) { console.error("Failed to load WA status", e); }
 
+        try {
             const tplRes = await api.fetch('/channels/whatsapp/templates');
             setTemplates(tplRes || []);
+        } catch (e) { console.error("Failed to load WA templates", e); }
 
-            try {
-                const configRes = await api.getWhatsappConfig();
-                if (configRes && configRes.data) setConfig(configRes.data);
-            } catch (e) { console.error("Could not load config", e); }
-        } catch (error) {
-            console.error("Failed to load WA setup", error);
-        } finally {
-            setLoading(false);
-        }
+        try {
+            const configRes = await api.getWhatsappConfig();
+            if (configRes && configRes.data) setConfig(configRes.data);
+        } catch (e) { console.error("Failed to load WA config", e); }
+
+        setLoading(false);
     };
 
     useEffect(() => {

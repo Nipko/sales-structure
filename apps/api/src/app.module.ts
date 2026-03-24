@@ -33,6 +33,7 @@ import { ComplianceModule } from './modules/compliance/compliance.module';
 import { CarlaModule } from './modules/carla/carla.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { EmailModule } from './modules/email/email.module';
+import { InternalModule } from './modules/internal/internal.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -95,6 +96,7 @@ import llmConfig from './config/llm.config';
         CatalogModule,
         ComplianceModule,
         CarlaModule,
+        InternalModule,
     ],
 })
 export class AppModule { }

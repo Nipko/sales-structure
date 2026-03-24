@@ -6,12 +6,14 @@ import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { ConversationsGateway } from './conversations.gateway';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
     imports: [
-        PersonaModule, 
-        AIModule, 
+        PersonaModule,
+        AIModule,
         ChannelsModule,
+        WhatsappModule,
         JwtModule.register({}),
     ],
     providers: [ConversationsService, ConversationsGateway],
@@ -19,3 +21,4 @@ import { ConversationsGateway } from './conversations.gateway';
     exports: [ConversationsService, ConversationsGateway],
 })
 export class ConversationsModule { }
+

@@ -5,6 +5,7 @@ import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { ConversationsGateway } from './conversations.gateway';
+import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class ConversationsService {
         private llmRouter: LLMRouterService,
         private channelGateway: ChannelGatewayService,
         private gateway: ConversationsGateway,
+        private whatsappConnection: WhatsappConnectionService,
     ) { }
 
     /**
@@ -142,11 +144,36 @@ export class ConversationsService {
     }
 
     private isWithinBusinessHours(config: TenantConfig): boolean {
-        if (!config.hours || !config.hours.schedule) return true; // Always open if not configured
+        if (!config.hours || !config.hours.schedule) return true;
 
-        // Simplification for the scaffolding. Real logic would use luxon/moment-timezone
-        // to check current time against config.hours.timezone and the schedule.
-        return true;
+        const now = new Date();
+        const timezone = config.hours.timezone || 'America/Bogota';
+
+        // Get current day and time in tenant's timezone
+        const localTime = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        }).formatToParts(now);
+
+        const dayPart = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase();
+        const hourPart = localTime.find(p => p.type === 'hour')?.value || '0';
+        const minutePart = localTime.find(p => p.type === 'minute')?.value || '0';
+        const currentMinutes = parseInt(hourPart) * 60 + parseInt(minutePart);
+
+        const schedule: Record<string, { start: string; end: string } | string> = config.hours.schedule as any;
+        const todaySchedule = schedule[dayPart || ''];
+
+        if (!todaySchedule || typeof todaySchedule === 'string') return false; // day not in schedule = closed
+
+        const [startH, startM] = todaySchedule.start.split(':').map(Number);
+        const [endH, endM] = todaySchedule.end.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+
+        return currentMinutes >= startMinutes && currentMinutes < endMinutes;
     }
 
     private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig) {
@@ -162,8 +189,8 @@ export class ConversationsService {
             content: { type: 'text', text: config.hours.afterHoursMessage }
         };
 
-        // Need access token logic here - mock for now
-        await this.channelGateway.sendMessage(outbound, 'MOCK_TOKEN');
+        const accessToken = await this.resolveAccessToken(tenantId);
+        await this.channelGateway.sendMessage(outbound, accessToken);
     }
 
     private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage) {
@@ -201,9 +228,23 @@ export class ConversationsService {
             content: { type: 'text', text }
         };
 
-        // In a real scenario we'd fetch the channel auth token from the DB. 
-        // We'll mock the token or use a default for this scaffold.
-        await this.channelGateway.sendMessage(outbound, 'MOCK_TOKEN');
+        const accessToken = await this.resolveAccessToken(tenantId);
+        await this.channelGateway.sendMessage(outbound, accessToken);
+    }
+
+    /**
+     * Resolve real Meta access token for a given tenantId.
+     * Looks up schema → decrypts token from whatsapp_credentials.
+     */
+    private async resolveAccessToken(tenantId: string): Promise<string> {
+        try {
+            const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+            const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
+            return creds.accessToken;
+        } catch (e: any) {
+            this.logger.warn(`Could not resolve WhatsApp token for tenant ${tenantId}: ${e.message}`);
+            return '';
+        }
     }
 
     /**
@@ -255,17 +296,19 @@ export class ConversationsService {
         messages.push({ role: 'user', content: userText });
 
         // 4. Execute LLM Call using Router
+        // ticketValue: use default 50 (medium) until CRM integration provides real value
+        // intentType: use complexity as proxy until intent classification is implemented
         const response = await this.llmRouter.execute({
-            model: 'gpt-4o-mini', // Default fallback model if tier is not determined
+            model: 'gpt-4o-mini',
             messages: messages as any[],
             systemPrompt: systemPrompt,
             temperature: 0.7,
             routingFactors: {
-                ticketValue: 50000, // mock
+                ticketValue: 50,
                 complexity,
                 conversationStage: stageScore,
                 sentiment,
-                intentType: 50 // mock
+                intentType: complexity, // proxy until dedicated intent classifier
             }
         });
 

@@ -1,13 +1,20 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
+import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Processor('webhooks')
 export class WebhookProcessor extends WorkerHost {
   private readonly logger = new Logger(WebhookProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
     super();
   }
 
@@ -27,15 +34,17 @@ export class WebhookProcessor extends WorkerHost {
   }
 
   /**
-   * Procesar un mensaje entrante
-   * Persiste en el tenant schema (whatsapp_webhook_events + upsert contacto)
+   * Procesar un mensaje entrante:
+   * 1. Persiste en el tenant schema para auditoría
+   * 2. Upsert contacto
+   * 3. Reenvía al ConversationsService de la API para procesamiento por IA
    */
   private async processMessage(data: any) {
-    const { tenantId, schemaName, phoneNumberId, message, contacts } = data;
+    const { tenantId, schemaName, phoneNumberId, message, contacts, channelAccountId } = data;
     this.logger.log(`Processing message ${message.id} for tenant ${tenantId}`);
 
     try {
-      // Guardar evento de webhook para auditoría (matches real table schema)
+      // 1. Guardar evento de webhook para auditoría
       await this.prisma.executeInTenantSchema(
         schemaName,
         `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status, processed_at)
@@ -44,11 +53,10 @@ export class WebhookProcessor extends WorkerHost {
         ['message', JSON.stringify({ phoneNumberId, message, contacts }), `msg:${message.id}`],
       );
 
-      // Extraer contacto
+      // 2. Extraer y upsert contacto
       const contact = contacts?.[0] || {};
       const fromPhone = message.from;
 
-      // Upsert contacto
       await this.prisma.executeInTenantSchema(
         schemaName,
         `INSERT INTO contacts (external_id, channel_type, name, phone, first_contact_at, last_contact_at, updated_at)
@@ -58,7 +66,26 @@ export class WebhookProcessor extends WorkerHost {
         [fromPhone, contact.profile?.name || null, fromPhone],
       );
 
-      this.logger.debug(`Message ${message.id} processed for tenant ${tenantId}`);
+      // 3. Construir NormalizedMessage y enviar a la API interna para procesamiento por IA
+      await this.forwardToConversationsService({
+        id: `wh-${message.id}`,
+        tenantId,
+        channelType: 'whatsapp',
+        channelAccountId: channelAccountId || phoneNumberId,
+        contactId: fromPhone,
+        conversationId: '',
+        direction: 'inbound',
+        content: this.parseContent(message),
+        timestamp: new Date(parseInt(message.timestamp) * 1000),
+        status: 'pending',
+        metadata: {
+          waMessageId: message.id,
+          contactName: contact.profile?.name,
+          phoneNumberId,
+        },
+      });
+
+      this.logger.debug(`Message ${message.id} processed and forwarded for tenant ${tenantId}`);
     } catch (error: any) {
       this.logger.error(`Failed to process message ${message.id}: ${error.message}`);
       throw error; // Re-throw para que BullMQ haga retry
@@ -66,14 +93,47 @@ export class WebhookProcessor extends WorkerHost {
   }
 
   /**
+   * Reenviar el mensaje normalizado al endpoint interno de la API
+   * para que ConversationsService lo procese y genere respuesta de IA.
+   */
+  private async forwardToConversationsService(normalizedMsg: any): Promise<void> {
+    const apiUrl = this.configService.get<string>('API_INTERNAL_URL') || 'http://api:3000/api/v1';
+    const secret = this.configService.get<string>('INTERNAL_JWT_SECRET');
+
+    if (!secret) {
+      this.logger.warn('INTERNAL_JWT_SECRET not set — skipping AI forwarding');
+      return;
+    }
+
+    try {
+      await firstValueFrom(
+        this.httpService.post(
+          `${apiUrl}/internal/inbound-message`,
+          normalizedMsg,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-internal-secret': secret,
+            },
+            timeout: 5000,
+          },
+        ),
+      );
+      this.logger.log(`Forwarded message from ${normalizedMsg.contactId} to ConversationsService`);
+    } catch (err: any) {
+      // No re-throw — la auditoría ya fue guardada; si la IA falla, no perdemos el mensaje
+      this.logger.error(`Failed to forward message to API: ${err.message}`);
+    }
+  }
+
+  /**
    * Procesar status update (sent, delivered, read, failed)
    */
   private async processStatus(data: any) {
-    const { tenantId, schemaName, status } = data;
+    const { schemaName, status } = data;
     this.logger.debug(`Processing status update: ${status.status} for message ${status.id}`);
 
     try {
-      // Actualizar estado del mensaje en la BD del tenant
       await this.prisma.executeInTenantSchema(
         schemaName,
         `UPDATE messages SET status = $1, updated_at = NOW()
@@ -81,7 +141,6 @@ export class WebhookProcessor extends WorkerHost {
         [status.status, status.id],
       );
 
-      // Log como webhook event
       await this.prisma.executeInTenantSchema(
         schemaName,
         `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status, processed_at)
@@ -95,33 +154,87 @@ export class WebhookProcessor extends WorkerHost {
   }
 
   /**
-   * Template status update (APPROVED, REJECTED, etc.)
+   * Template status update — actualiza el estado en todos los tenants afectados
    */
   private async processTemplateUpdate(data: any) {
     this.logger.log(`Template status update: ${data.messageTemplateName} → ${data.newStatus}`);
 
-    // Actualizar en todos los tenant schemas que tengan este template
-    // En v1 solo loguea — en futuras versiones se buscan los tenants afectados
     try {
-      // Podrían ser múltiples tenants con el mismo template name
-      // Por ahora solo loguear para visibilidad
-      this.logger.log(`Template ${data.messageTemplateName} status: ${data.newStatus}`);
+      // Buscar todos los tenants que tienen este template y actualizar su estado
+      const tenants = await this.prisma.$queryRaw<{ schema_name: string }[]>`
+        SELECT schema_name FROM public.tenants WHERE schema_name IS NOT NULL
+      `;
+
+      for (const tenant of tenants) {
+        try {
+          await this.prisma.executeInTenantSchema(
+            tenant.schema_name,
+            `UPDATE whatsapp_templates
+             SET approval_status = $1, last_sync_at = NOW()
+             WHERE name = $2`,
+            [data.newStatus, data.messageTemplateName],
+          );
+        } catch (e) {
+          // Tenant may not have this template, ignore
+        }
+      }
+
+      this.logger.log(`Updated template ${data.messageTemplateName} to ${data.newStatus} across tenants`);
     } catch (error: any) {
       this.logger.warn(`Template update processing failed: ${error.message}`);
     }
   }
 
   /**
-   * Account update (ban, restrict, etc.)
+   * Account update — actualiza el channel_status del tenant afectado
    */
   private async processAccountUpdate(data: any) {
     this.logger.log(`Account update for WABA ${data.wabaId}: ${data.event}`);
 
-    // En v1 solo loguear — en futuras versiones actualizar channel_status
     try {
-      this.logger.log(`Account event: ${JSON.stringify(data.payload)}`);
+      // Mapear WABA ID → tenant y actualizar estado del canal
+      const tenants = await this.prisma.$queryRaw<{ schema_name: string }[]>`
+        SELECT schema_name FROM public.tenants WHERE schema_name IS NOT NULL
+      `;
+
+      for (const tenant of tenants) {
+        try {
+          await this.prisma.executeInTenantSchema(
+            tenant.schema_name,
+            `UPDATE whatsapp_channels
+             SET channel_status = $1, updated_at = NOW()
+             WHERE meta_waba_id = $2`,
+            [data.event === 'FLAGGED' ? 'flagged' : data.event === 'DISABLED' ? 'disconnected' : 'connected', data.wabaId],
+          );
+        } catch (e) {
+          // Tenant may not have this WABA, ignore
+        }
+      }
     } catch (error: any) {
       this.logger.warn(`Account update processing failed: ${error.message}`);
+    }
+  }
+
+  private parseContent(message: any): any {
+    switch (message.type) {
+      case 'text':
+        return { type: 'text', text: message.text?.body || '' };
+      case 'image':
+        return { type: 'image', mediaUrl: message.image?.id, caption: message.image?.caption, mimeType: message.image?.mime_type };
+      case 'audio':
+        return { type: 'audio', mediaUrl: message.audio?.id, mimeType: message.audio?.mime_type };
+      case 'video':
+        return { type: 'video', mediaUrl: message.video?.id, caption: message.video?.caption, mimeType: message.video?.mime_type };
+      case 'document':
+        return { type: 'document', mediaUrl: message.document?.id, filename: message.document?.filename, mimeType: message.document?.mime_type };
+      case 'location':
+        return { type: 'location', latitude: message.location?.latitude, longitude: message.location?.longitude, text: message.location?.name };
+      case 'button':
+        return { type: 'text', text: message.button?.text || '' };
+      case 'interactive':
+        return { type: 'text', text: message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '' };
+      default:
+        return { type: 'text', text: `[${message.type}]` };
     }
   }
 }

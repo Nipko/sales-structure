@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { ChannelGatewayService } from '../channels/channel-gateway.service';
+import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
 
 export interface InboxConversation {
     id: string;
@@ -67,6 +70,9 @@ export class AgentConsoleService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private channelGateway: ChannelGatewayService,
+        private whatsappConnection: WhatsappConnectionService,
+        private llmRouter: LLMRouterService,
     ) { }
 
     /**
@@ -230,8 +236,37 @@ export class AgentConsoleService {
 
         const msg = result[0];
 
-        // TODO: Send via channel gateway (WhatsApp, etc.)
-        // await this.channelGateway.sendMessage(tenantId, conversationId, content, type);
+        // Obtener token real y enviar via el canal (WhatsApp, etc.)
+        try {
+            const schemaName = await this.getTenantSchema(tenantId);
+            if (schemaName) {
+                // Buscar el canal activo de la conversación para saber a qué número enviar
+                const convRows = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT c.channel_type, ct.phone, c.channel_account_id
+                     FROM conversations c
+                     LEFT JOIN contacts ct ON c.contact_id = ct.id
+                     WHERE c.id = $1 LIMIT 1`,
+                    [conversationId],
+                );
+                if (convRows?.[0]) {
+                    const conv = convRows[0];
+                    const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
+                    await this.channelGateway.sendMessage(
+                        {
+                            tenantId,
+                            channelType: conv.channel_type || 'whatsapp',
+                            channelAccountId: conv.channel_account_id || creds.phoneNumberId,
+                            to: conv.phone,
+                            content: { type: 'text', text: content },
+                        },
+                        creds.accessToken,
+                    );
+                }
+            }
+        } catch (e: any) {
+            this.logger.warn(`Could not send agent message via channel: ${e.message}`);
+        }
 
         return {
             id: msg.id,
@@ -319,21 +354,52 @@ export class AgentConsoleService {
             .map((m: any) => `${m.sender}: ${m.content}`)
             .join('\n');
 
-        // TODO: Use LLM Router for actual suggestion
-        return `Basado en la conversación, el cliente preguntó: "${messages[0]?.content}". Sugiero responder con información relevante.`;
+        // Usar LLM Router para generar sugerencia real
+        try {
+            const response = await this.llmRouter.execute({
+                model: 'gpt-4o-mini',
+                messages: messages.map((m: any) => ({
+                    role: (m.direction === 'inbound' ? 'user' : 'assistant') as any,
+                    content: m.content_text || '',
+                })) as any,
+                systemPrompt: `Eres un asistente que ayuda a agentes humanos de atención al cliente.
+Basándote en el historial de conversación, sugiere UNA respuesta corta y profesional que el agente debería enviar.
+Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
+                temperature: 0.5,
+            });
+            return response.content || 'No se pudo generar una sugerencia.';
+        } catch (e: any) {
+            this.logger.warn(`LLM suggestion failed: ${e.message}`);
+            return `El cliente preguntó: "${messages[messages.length - 1]?.content_text}". Puedes ayudarle con información relevante.`;
+        }
     }
 
     /**
      * Get agent performance metrics
      */
     async getAgentStats(tenantId: string, agentId: string) {
-        // Obsoleted due to conversation_assignments drop, needs to rethink metrics
-        return {
-            resolved: 0,
-            active: 0,
-            avg_first_response_secs: 0,
-            avg_resolution_secs: 0
-        };
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return { resolved: 0, active: 0, avg_first_response_secs: 0, avg_resolution_secs: 0 };
+
+        try {
+            const stats = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT
+                   SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved,
+                   SUM(CASE WHEN status = 'with_human' AND assigned_to = $1 THEN 1 ELSE 0 END) as active
+                 FROM conversations
+                 WHERE assigned_to = $1`,
+                [agentId],
+            );
+            return {
+                resolved: parseInt(stats?.[0]?.resolved || '0'),
+                active: parseInt(stats?.[0]?.active || '0'),
+                avg_first_response_secs: 0,
+                avg_resolution_secs: 0,
+            };
+        } catch (e) {
+            return { resolved: 0, active: 0, avg_first_response_secs: 0, avg_resolution_secs: 0 };
+        }
     }
 
     private calculatePriority(conv: any): 'low' | 'normal' | 'high' | 'urgent' {

@@ -1,7 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import { WhatsappConnectionService } from './whatsapp-connection.service';
+
+const META_GRAPH_VERSION = 'v20.0';
 
 @Injectable()
 export class WhatsappTemplateService {
@@ -10,7 +13,7 @@ export class WhatsappTemplateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    private readonly connectionService: WhatsappConnectionService,
   ) {}
 
   async getTemplates(schemaName: string) {
@@ -21,69 +24,77 @@ export class WhatsappTemplateService {
   }
 
   async syncTemplatesFromMeta(schemaName: string) {
-    // 1. Get channel WABA ID and Token
-    const channels = await this.prisma.executeInTenantSchema<any[]>(
-      schemaName,
-      `SELECT id, meta_waba_id, access_token_ref FROM whatsapp_channels LIMIT 1`
-    );
+    // 1. Obtener token real descifrado y datos del canal
+    const { accessToken, wabaId, channelId } = await this.connectionService.getValidAccessToken(schemaName);
 
-    if (!channels || channels.length === 0) {
-      throw new BadRequestException('No hay canal de WhatsApp conectado');
+    this.logger.log(`Syncing templates from Meta for WABA: ${wabaId}`);
+
+    // 2. Fetch templates reales desde Meta Graph API
+    let allTemplates: any[] = [];
+    let url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${wabaId}/message_templates?limit=100`;
+
+    try {
+      while (url) {
+        const response = await firstValueFrom(
+          this.httpService.get(url, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+        );
+
+        const data = response.data;
+        if (data?.data) {
+          allTemplates = allTemplates.concat(data.data);
+        }
+
+        // Paginación de Meta
+        url = data?.paging?.next || null;
+      }
+    } catch (error: any) {
+      const metaError = error?.response?.data?.error;
+      this.logger.error(`Meta API error syncing templates: ${metaError?.message || error.message}`);
+      throw new BadRequestException(
+        `Error al sincronizar plantillas: ${metaError?.message || error.message}`
+      );
     }
 
-    const { id: channelId, meta_waba_id, access_token_ref } = channels[0];
-    
-    // 2. Fetch templates from Meta API
-    // Using simple logic for implementation guide MVP. 
-    this.logger.log(`Syncing templates for WABA: ${meta_waba_id}`);
-    
-    // We would make a GET req to graph.facebook.com/v20.0/${wabaId}/message_templates
-    // However, since we don't have real credentials, we'll simulate the sync for now
-    
-    const mockTemplates = [
-      {
-        name: 'hello_world',
-        language: 'en_US',
-        status: 'APPROVED',
-        category: 'UTILITY',
-        components: [{ type: 'BODY', text: 'Hello World' }]
-      },
-      {
-        name: 'bienvenida_estudiante',
-        language: 'es',
-        status: 'APPROVED',
-        category: 'MARKETING',
-        components: [
-          { type: 'BODY', text: '¡Hola {{1}}! Gracias por tu interés en el curso de {{2}}.' }
-        ]
-      }
-    ];
+    this.logger.log(`Fetched ${allTemplates.length} templates from Meta`);
 
-    // 3. Upsert into database
-    for (const t of mockTemplates) {
-      // Basic insert, handling conflict is usually done via unique name+language constraints
-      // But for this example we'll just insert and ignore conflicts
+    // 3. Upsert cada template en la BD del tenant
+    let synced = 0;
+    for (const t of allTemplates) {
       try {
         await this.prisma.executeInTenantSchema(
           schemaName,
           `INSERT INTO whatsapp_templates (
             channel_id, name, language, category, approval_status, components_json, last_sync_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          ON CONFLICT (channel_id, name, language)
+          DO UPDATE SET
+            category = EXCLUDED.category,
+            approval_status = EXCLUDED.approval_status,
+            components_json = EXCLUDED.components_json,
+            last_sync_at = NOW()`,
           [channelId, t.name, t.language, t.category, t.status, JSON.stringify(t.components)]
         );
-      } catch (e) {
-        // Assume duplicate template, handle nicely in real app (UPDATE)
-        await this.prisma.executeInTenantSchema(
+        synced++;
+      } catch (e: any) {
+        // Si no hay constraint ON CONFLICT, hacemos fallback
+        try {
+          await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE whatsapp_templates 
-             SET approval_status = $2, components_json = $3, last_sync_at = NOW() 
-             WHERE channel_id = $1 AND name = $4 AND language = $5`,
-             [channelId, t.status, JSON.stringify(t.components), t.name, t.language]
-        );
+            `UPDATE whatsapp_templates
+             SET approval_status = $2, components_json = $3, category = $4, last_sync_at = NOW()
+             WHERE channel_id = $1 AND name = $5 AND language = $6`,
+            [channelId, t.status, JSON.stringify(t.components), t.category, t.name, t.language]
+          );
+          synced++;
+        } catch (updateErr: any) {
+          this.logger.warn(`Failed to upsert template ${t.name}: ${updateErr.message}`);
+        }
       }
     }
 
-    this.logger.log(`Synced ${mockTemplates.length} templates for WABA: ${meta_waba_id}`);
-    return { success: true, count: mockTemplates.length };
+    this.logger.log(`Synced ${synced}/${allTemplates.length} templates for WABA: ${wabaId}`);
+    return { success: true, count: synced, total: allTemplates.length };
   }
 }

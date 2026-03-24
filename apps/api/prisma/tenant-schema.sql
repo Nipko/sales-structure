@@ -4,9 +4,7 @@
 -- Replace {{SCHEMA_NAME}} with the actual tenant schema name.
 -- ============================================
 
--- Enable required extensions (idempotent)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "vector";
+-- Enable required extensions manually or globally via primary migrations
 
 -- Create tenant schema
 CREATE SCHEMA IF NOT EXISTS "{{SCHEMA_NAME}}";

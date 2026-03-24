@@ -70,51 +70,55 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
 
   // ---- Handle FB.login() response ----
   const handleFBResponse = useCallback(
-    async (response: any) => {
-      if (!response.authResponse?.code) {
-        onError("No se recibió código de autorización de Meta. El usuario canceló el flujo o hubo un error.");
-        setLaunching(false);
-        return;
-      }
-
-      const code = response.authResponse.code;
-      setLaunching(false);
-      setProcessing(true);
-      setStep("Intercambiando código con Meta...");
-
-      try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-
-        const res = await fetch(`${WA_SERVICE_URL}/onboarding/start`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            tenantId,
-            configId: META_CONFIG_ID,
-            code,
-            mode: "new",
-            source: "embedded_signup",
-            coexistenceAcknowledged: false,
-          }),
-        });
-
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.userMessage || errorData.message || `Error ${res.status}`);
+    (response: any) => {
+      const processResponse = async () => {
+        if (!response.authResponse?.code) {
+          onError("No se recibió código de autorización de Meta. El usuario canceló el flujo o hubo un error.");
+          setLaunching(false);
+          return;
         }
 
-        const result = await res.json();
-        setStep("¡Conexión exitosa!");
-        onSuccess(result);
-      } catch (err: any) {
-        onError(err.message || "Error al procesar el onboarding");
-      } finally {
-        setProcessing(false);
-        setStep("");
-      }
+        const code = response.authResponse.code;
+        setLaunching(false);
+        setProcessing(true);
+        setStep("Intercambiando código con Meta...");
+
+        try {
+          const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+
+          const res = await fetch(`${WA_SERVICE_URL}/onboarding/start`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              tenantId,
+              configId: META_CONFIG_ID,
+              code,
+              mode: "new",
+              source: "embedded_signup",
+              coexistenceAcknowledged: false,
+            }),
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.userMessage || errorData.message || `Error ${res.status}`);
+          }
+
+          const result = await res.json();
+          setStep("¡Conexión exitosa!");
+          onSuccess(result);
+        } catch (err: any) {
+          onError(err.message || "Error al procesar el onboarding");
+        } finally {
+          setProcessing(false);
+          setStep("");
+        }
+      };
+      
+      processResponse();
     },
     [tenantId, onSuccess, onError],
   );

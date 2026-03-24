@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { WhatsappConnectionService } from './services/whatsapp-connection.service';
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
@@ -22,6 +22,9 @@ export class WhatsappController {
   @ApiOperation({ summary: 'Get WhatsApp channel status' })
   async getStatus(@Request() req: any) {
     const { schemaName } = req.user;
+    if (!schemaName) {
+      return { status: 'disconnected', channel: null, error: 'User does not belong to a tenant' };
+    }
     return this.connectionService.getChannelStatus(schemaName);
   }
 
@@ -53,6 +56,9 @@ export class WhatsappController {
   @ApiOperation({ summary: 'Complete WhatsApp connection onboarding' })
   async completeConnection(@Request() req: any, @Body() data: any) {
     const { schemaName } = req.user;
+    if (!schemaName) {
+      throw new BadRequestException('User does not belong to a tenant');
+    }
     return this.connectionService.saveConnection(schemaName, data);
   }
 
@@ -62,6 +68,9 @@ export class WhatsappController {
   @ApiOperation({ summary: 'Get synced WhatsApp templates' })
   async getTemplates(@Request() req: any) {
     const { schemaName } = req.user;
+    if (!schemaName) {
+      return { success: true, data: [] };
+    }
     return this.templateService.getTemplates(schemaName);
   }
 
@@ -72,6 +81,9 @@ export class WhatsappController {
   @ApiOperation({ summary: 'Force sync templates from Meta' })
   async syncTemplates(@Request() req: any) {
     const { schemaName } = req.user;
+    if (!schemaName) {
+      throw new BadRequestException('User does not belong to a tenant');
+    }
     return this.templateService.syncTemplatesFromMeta(schemaName);
   }
 

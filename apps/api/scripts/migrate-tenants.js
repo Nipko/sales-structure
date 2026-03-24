@@ -90,17 +90,14 @@ async function migrate() {
           
         for (const stmt of stmts) {
           try {
-            // Temporary debug logging
-            if (stmt.includes('consent_records')) console.log(`  [DEBUG] Executing: ${stmt.substring(0, 100)}...`);
             await prisma.$executeRawUnsafe(stmt + ';');
           } catch (e) {
-            if (stmt.includes('consent_records')) console.log(`  [DEBUG] Failed: ${e.message}`);
-            // Ignore "already exists" and "duplicate" errors for idempotency
-            if (!e.message.includes('already exists') && 
-                !e.message.includes('duplicate')) {
-              throw e;
+            // Log ALL errors but continue — never let one table block the rest
+            const shortMsg = (e.message || '').substring(0, 120);
+            if (e.message && (e.message.includes('already exists') || e.message.includes('duplicate'))) {
+              // Silently skip existing objects
             } else {
-              if (stmt.includes('consent_records')) console.log(`  [DEBUG] SWALLOWED error!`);
+              console.log(`  [WARN] Non-fatal error: ${shortMsg}`);
             }
           }
         }

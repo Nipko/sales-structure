@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
     DollarSign,
@@ -15,12 +15,9 @@ import {
     Loader2,
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 
 export default function PipelinePage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [kanban, setKanban] = useState<any>(null);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
@@ -35,8 +32,7 @@ export default function PipelinePage() {
             if (!activeTenantId) return;
             setLoading(true);
             try {
-                const res = await fetch(`${API}/crm/kanban/${activeTenantId}`);
-                const json = await res.json();
+                const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
                 if (json.success && json.data) {
                     setKanban(json.data);
                     setIsLive(true);
@@ -141,9 +137,8 @@ export default function PipelinePage() {
                                         });
                                         // API call to persist
                                         try {
-                                            await fetch(`${API}/crm/kanban/${activeTenantId}/${draggedDeal}/move`, {
+                                            await api.fetch(`/crm/kanban/${activeTenantId}/${draggedDeal}/move`, {
                                                 method: "PUT",
-                                                headers: { "Content-Type": "application/json" },
                                                 body: JSON.stringify({ stage: stage.id }),
                                             });
                                             setToast(`Oportunidad movida a ${stage.name}`);

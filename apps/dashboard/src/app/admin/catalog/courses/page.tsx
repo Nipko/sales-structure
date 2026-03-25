@@ -1,16 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     BookOpen, Plus, Edit2, Power, DollarSign, Clock, Globe, X
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-
 export default function CoursesPage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [courses, setCourses] = useState<any[]>([]);
     const [showModal, setShowModal] = useState(false);
@@ -22,8 +19,7 @@ export default function CoursesPage() {
         async function load() {
             if (!activeTenantId) return;
             try {
-                const res = await fetch(`${API}/catalog/courses/${activeTenantId}`);
-                const data = await res.json();
+                const data = await api.fetch(`/catalog/courses/${activeTenantId}`);
                 if (Array.isArray(data)) setCourses(data);
             } catch (err) { console.error(err); }
         }
@@ -34,17 +30,15 @@ export default function CoursesPage() {
         if (!form.name || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/catalog/courses/${activeTenantId}`, {
+            const created = await api.fetch(`/catalog/courses/${activeTenantId}`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...form,
                     price: parseFloat(form.price) || 0,
                     duration_hours: parseInt(form.duration_hours) || null,
                     slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-')
-                })
+                }),
             });
-            const created = await res.json();
             if (created?.id) {
                 setCourses(prev => [created, ...prev]);
                 setShowModal(false);

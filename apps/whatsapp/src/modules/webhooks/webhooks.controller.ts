@@ -87,7 +87,11 @@ export class WebhooksController {
     const appSecret = this.config.get<string>('meta.appSecret')
       || this.config.get<string>('WHATSAPP_APP_SECRET');
     if (!appSecret) {
-      this.logger.warn('META_APP_SECRET not configured — skipping signature validation (DEV ONLY)');
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error('WHATSAPP_APP_SECRET is required in production for webhook signature validation');
+        return false;
+      }
+      this.logger.warn('WHATSAPP_APP_SECRET not configured — skipping signature validation (DEV ONLY)');
       return true;
     }
 

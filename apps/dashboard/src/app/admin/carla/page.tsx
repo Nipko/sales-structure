@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     Bot, UserCircle, FileText, Plus, Edit2, Power, X, Sparkles, MessageSquare
 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 type Tab = "profiles" | "prompts" | "contexts";
 
@@ -16,7 +14,6 @@ const toneLabels: Record<string, string> = {
 };
 
 export default function CarlaPage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("profiles");
     const [profiles, setProfiles] = useState<any[]>([]);
@@ -32,9 +29,9 @@ export default function CarlaPage() {
     useEffect(() => {
         if (!activeTenantId) return;
         Promise.all([
-            fetch(`${API}/carla/profiles/${activeTenantId}`).then(r => r.json()).catch(() => []),
-            fetch(`${API}/carla/prompts/${activeTenantId}`).then(r => r.json()).catch(() => []),
-            fetch(`${API}/carla/context/${activeTenantId}`).then(r => r.json()).catch(() => []),
+            api.fetch(`/carla/profiles/${activeTenantId}`).catch(() => []),
+            api.fetch(`/carla/prompts/${activeTenantId}`).catch(() => []),
+            api.fetch(`/carla/context/${activeTenantId}`).catch(() => []),
         ]).then(([p, t, c]) => {
             if (Array.isArray(p)) setProfiles(p);
             if (Array.isArray(t)) setPrompts(t);
@@ -46,11 +43,10 @@ export default function CarlaPage() {
         if (!profileForm.name || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/carla/profiles/${activeTenantId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(profileForm)
+            const created = await api.fetch(`/carla/profiles/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify(profileForm),
             });
-            const created = await res.json();
             if (created?.id) { setProfiles(prev => [created, ...prev]); setShowModal(false); setToast("Perfil creado"); setTimeout(() => setToast(null), 2500); }
         } catch (e) { console.error(e); } finally { setSaving(false); }
     };
@@ -59,11 +55,10 @@ export default function CarlaPage() {
         if (!promptForm.name || !promptForm.content || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/carla/prompts/${activeTenantId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(promptForm)
+            const created = await api.fetch(`/carla/prompts/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify(promptForm),
             });
-            const created = await res.json();
             if (created?.id) { setPrompts(prev => [created, ...prev]); setShowModal(false); setToast("Prompt creado"); setTimeout(() => setToast(null), 2500); }
         } catch (e) { console.error(e); } finally { setSaving(false); }
     };

@@ -1,8 +1,12 @@
-import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { AgentConsoleService } from './agent-console.service';
 import { CannedResponsesService } from './canned-responses.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('agent-console')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class AgentConsoleController {
 
     constructor(

@@ -208,7 +208,7 @@ export default function InboxPage() {
         setSelectedConv((prev: any) => ({ ...prev, lastMessage: content }));
         // API call
         if (activeTenantId && selectedConv?.id) {
-            await api.sendMessage(activeTenantId, selectedConv.id, content);
+            await api.sendMessage(activeTenantId, selectedConv.id, content, user?.id);
         }
     };
 
@@ -218,7 +218,7 @@ export default function InboxPage() {
         setNoteInput("");
         // API call
         if (activeTenantId && selectedConv.id) {
-            await api.addNote(activeTenantId, selectedConv.id, content);
+            await api.addNote(activeTenantId, selectedConv.id, content, user?.id);
         }
     };
 
@@ -230,7 +230,7 @@ export default function InboxPage() {
         setSelectedConv((prev: any) => ({ ...prev, status: "resolved" as any }));
         // API call
         if (activeTenantId && selectedConv.id) {
-            await api.resolveConversation(activeTenantId, selectedConv.id);
+            await api.resolveConversation(activeTenantId, selectedConv.id, user?.id);
         }
     };
 

@@ -1,10 +1,14 @@
-import { Controller, Get, Post, Body, Param, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { IntakeService } from './intake.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('admin-landings')
 @Controller('intake/admin/landings')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class AdminLandingController {
     private readonly logger = new Logger(AdminLandingController.name);
 

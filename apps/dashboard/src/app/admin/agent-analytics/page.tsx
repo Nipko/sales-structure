@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     TrendingUp, Users, MessageSquare, CheckSquare, Bot,
     AlertTriangle, Phone, Shield, Clock, Zap, BarChart2,
     ArrowUpRight, ArrowDownRight, Activity, RefreshCw,
 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const STAGE_COLORS: Record<string, string> = {
     nuevo: "#95a5a6", contactado: "#3498db", respondio: "#9b59b6",
@@ -72,21 +71,20 @@ export default function AnalyticsDashboardPage() {
         if (!tenantId) return;
         setLoading(true);
         try {
-            const [r1, r2, r3, r4, r5, r6] = await Promise.all([
-                fetch(`${API}/analytics/dashboard/${tenantId}`),
-                fetch(`${API}/analytics/crm/${tenantId}`),
-                fetch(`${API}/analytics/whatsapp/${tenantId}`),
-                fetch(`${API}/analytics/ai/${tenantId}`),
-                fetch(`${API}/analytics/compliance/${tenantId}`),
-                fetch(`${API}/analytics/audit/${tenantId}?limit=30`),
+            const [d1, d2, d3, d4, d5, d6] = await Promise.all([
+                api.fetch(`/analytics/dashboard/${tenantId}`),
+                api.fetch(`/analytics/crm/${tenantId}`),
+                api.fetch(`/analytics/whatsapp/${tenantId}`),
+                api.fetch(`/analytics/ai/${tenantId}`),
+                api.fetch(`/analytics/compliance/${tenantId}`),
+                api.fetch(`/analytics/audit/${tenantId}?limit=30`),
             ]);
-            const [d1, d2, d3, d4, d5, d6] = await Promise.all([r1.json(), r2.json(), r3.json(), r4.json(), r5.json(), r6.json()]);
             setExec(d1.data);
             setCrm(d2.data);
             setWa(d3.data);
             setAi(d4.data);
             setCompliance(d5.data);
-            setAuditLogs(d6.data || []);
+            setAuditLogs(Array.isArray(d6.data) ? d6.data : []);
         } catch (e) {
             console.error("Error loading analytics:", e);
         } finally {

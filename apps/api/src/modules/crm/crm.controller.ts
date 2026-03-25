@@ -1,12 +1,16 @@
-import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
 import { CatalogRepository } from './repositories/catalog.repository';
 import { NotesService } from './services/notes/notes.service';
 import { TasksService } from './services/tasks/tasks.service';
 import { ActivityService } from './services/activity/activity.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('crm')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CrmController {
 
     constructor(

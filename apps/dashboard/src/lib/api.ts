@@ -85,32 +85,32 @@ export const api = {
     getTenant: (id: string) => apiGet(`/tenants/${id}`),
 
     // --- Agent Console ---
-    getInbox: (tenantId: string, status?: string) =>
-        apiGet(`/agent-console/inbox/${tenantId}${status ? `?status=${status}` : ""}`),
+    getInbox: (tenantId: string, filter?: string) =>
+        apiGet(`/agent-console/inbox/${tenantId}${filter ? `?filter=${filter}` : ""}`),
 
     getConversation: (tenantId: string, id: string) =>
         apiGet(`/agent-console/conversation/${tenantId}/${id}`),
 
-    sendMessage: (tenantId: string, id: string, content: string) =>
-        apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content }),
+    sendMessage: (tenantId: string, id: string, content: string, agentId?: string) =>
+        apiPost(`/agent-console/conversation/${tenantId}/${id}/message`, { content, agentId }),
 
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         apiPut(`/agent-console/conversation/${tenantId}/${id}/assign`, { agentId }),
 
-    resolveConversation: (tenantId: string, id: string) =>
-        apiPut(`/agent-console/conversation/${tenantId}/${id}/resolve`, {}),
+    resolveConversation: (tenantId: string, id: string, agentId?: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${id}/resolve`, { agentId }),
 
-    addNote: (tenantId: string, id: string, content: string) =>
-        apiPost(`/agent-console/conversation/${tenantId}/${id}/note`, { content }),
+    addNote: (tenantId: string, id: string, content: string, agentId?: string) =>
+        apiPost(`/agent-console/conversation/${tenantId}/${id}/note`, { content, agentId }),
 
-    getStats: (tenantId: string) =>
-        apiGet(`/agent-console/stats/${tenantId}`),
+    getStats: (tenantId: string, agentId: string) =>
+        apiGet(`/agent-console/stats/${tenantId}/${agentId}`),
 
     getCannedResponses: (tenantId: string) =>
-        apiGet(`/agent-console/canned-responses/${tenantId}`),
+        apiGet(`/agent-console/canned/${tenantId}`),
 
     getAISuggestion: (tenantId: string, id: string) =>
-        apiGet(`/agent-console/ai-suggest/${tenantId}/${id}`),
+        apiGet(`/agent-console/conversation/${tenantId}/${id}/suggest`),
 
     // --- Pipeline ---
     getKanban: (tenantId: string) =>
@@ -168,6 +168,9 @@ export const api = {
     getOrdersOverview(tenantId: string) {
         return apiGet<any>(`/orders/overview/${tenantId}`);
     },
+    getOrderContacts(tenantId: string) {
+        return apiGet<any[]>(`/orders/contacts/${tenantId}`);
+    },
     createOrder(tenantId: string, data: any) {
         return apiPost(`/orders/${tenantId}`, data);
     },
@@ -215,6 +218,9 @@ export const api = {
         apiPost(`/analytics/csat/${tenantId}`, data),
 
     // --- Settings ---
+    getSettings: () => apiGet("/settings"),
+    updateSettings: (updates: Record<string, string>) =>
+        apiPut("/settings", updates),
     getApiKeys: () => apiGet("/settings/api-keys"),
     setApiKey: (provider: string, key: string) =>
         apiPost("/settings/api-keys", { provider, key }),

@@ -131,7 +131,7 @@ export default function InboxPage() {
     useEffect(() => {
         if (!activeTenantId) return;
 
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("accessToken");
         const socketUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
         
         const socket = io(`${socketUrl}/inbox`, {

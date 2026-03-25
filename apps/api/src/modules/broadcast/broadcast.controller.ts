@@ -1,7 +1,13 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { BroadcastService } from './broadcast.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
-@Controller('api/v1/broadcast')
+@Controller('broadcast')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class BroadcastController {
     constructor(private broadcastService: BroadcastService) { }
 

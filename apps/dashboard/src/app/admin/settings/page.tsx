@@ -132,7 +132,7 @@ export default function SettingsPage() {
         try {
             // Save API keys through the centralized client
             for (const [key, value] of Object.entries(values)) {
-                if (value && key.includes("api_key") || key.includes("token") || key.includes("secret")) {
+                if (value && (key.includes("api_key") || key.includes("token") || key.includes("secret"))) {
                     await api.setApiKey(key, value);
                 }
             }

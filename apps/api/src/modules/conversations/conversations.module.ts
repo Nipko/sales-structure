@@ -12,7 +12,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
     imports: [
         PersonaModule,
         AIModule,
-        ChannelsModule,
+        forwardRef(() => ChannelsModule),
         forwardRef(() => WhatsappModule),
         JwtModule.register({}),
     ],

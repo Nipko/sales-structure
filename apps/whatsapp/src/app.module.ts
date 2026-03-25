@@ -44,9 +44,7 @@ import { AuditModule } from './modules/audit/audit.module';
 
     // HTTP client global
     HttpModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      useFactory: () => ({
         timeout: 30000,
         maxRedirects: 3,
         headers: {

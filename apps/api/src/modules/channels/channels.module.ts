@@ -1,12 +1,14 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { ChannelsController } from './channels.controller';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
 import { MessengerAdapter } from './messenger/messenger.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
+import { ConversationsModule } from '../conversations/conversations.module';
 
 @Module({
+    imports: [forwardRef(() => ConversationsModule)],
     controllers: [ChannelsController],
     providers: [ChannelGatewayService, WhatsAppAdapter, InstagramAdapter, MessengerAdapter, TelegramAdapter],
     exports: [ChannelGatewayService],

@@ -1,8 +1,14 @@
-import { Controller, Get, Post, Put, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 
 import { InventoryService } from './inventory.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
-@Controller('api/v1/inventory')
+@Controller('inventory')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class InventoryController {
     constructor(private inventoryService: InventoryService) { }
 

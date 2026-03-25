@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -90,5 +90,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             schemaName,
         );
         return tables.map((t) => t.table_name);
+    }
+
+    /**
+     * Resolve canonical tenant schema name from the public tenants table.
+     * Avoid deriving schema from UUID since schema names are slug-based.
+     */
+    async getTenantSchemaName(tenantId: string): Promise<string> {
+        const tenant = await this.tenant.findUnique({
+            where: { id: tenantId },
+            select: { schemaName: true },
+        });
+
+        if (!tenant) {
+            throw new NotFoundException(`Tenant ${tenantId} not found`);
+        }
+
+        return tenant.schemaName;
     }
 }

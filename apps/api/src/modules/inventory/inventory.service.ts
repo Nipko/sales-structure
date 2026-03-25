@@ -77,20 +77,11 @@ export class InventoryService {
     async getOverview(tenantId: string): Promise<InventoryOverview> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) {
-            return this.getMockOverview();
+            return this.buildEmptyOverview();
         }
 
         try {
-            // Check if inventory tables exist
-            const tableCheck = await this.prisma.$queryRawUnsafe<any[]>(
-                `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '${schema}' AND table_name = 'products') as exists`
-            );
-
-            if (!tableCheck?.[0]?.exists) {
-                // Create inventory tables if they don't exist
-                await this.ensureInventoryTables(schema);
-                return this.getMockOverview();
-            }
+            await this.ensureInventoryTables(schema);
 
             const products = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
@@ -136,7 +127,7 @@ export class InventoryService {
             };
         } catch (error) {
             this.logger.error(`Error getting inventory overview: ${error}`);
-            return this.getMockOverview();
+            return this.buildEmptyOverview();
         }
     }
 
@@ -372,33 +363,16 @@ export class InventoryService {
         };
     }
 
-    private getMockOverview(): InventoryOverview {
+    private buildEmptyOverview(): InventoryOverview {
         return {
-            totalProducts: 24,
-            activeProducts: 21,
-            totalValue: 4850000,
-            lowStockAlerts: 3,
-            outOfStockCount: 1,
-            categories: [
-                { id: '1', name: 'Tours', color: '#6c5ce7', productCount: 8 },
-                { id: '2', name: 'Equipamiento', color: '#00b4d8', productCount: 6 },
-                { id: '3', name: 'Transporte', color: '#2ecc71', productCount: 5 },
-                { id: '4', name: 'Alimentación', color: '#e17055', productCount: 3 },
-                { id: '5', name: 'Alojamiento', color: '#fdcb6e', productCount: 2 },
-            ],
-            products: [
-                { id: 'p1', name: 'Tour Rafting Río Fonce', sku: 'TOUR-RAFT-001', description: 'Descenso en río clase III-IV', category: 'Tours', price: 120000, cost: 45000, currency: 'COP', stock: 50, minStock: 10, maxStock: 200, unit: 'cupo', imageUrl: null, isActive: true, tags: ['aventura', 'agua'], metadata: {}, createdAt: '2026-02-15', updatedAt: '2026-03-04' },
-                { id: 'p2', name: 'Tour Cueva del Indio', sku: 'TOUR-CUEV-001', description: 'Exploración espeleológica guiada', category: 'Tours', price: 85000, cost: 30000, currency: 'COP', stock: 30, minStock: 5, maxStock: 100, unit: 'cupo', imageUrl: null, isActive: true, tags: ['aventura', 'cuevas'], metadata: {}, createdAt: '2026-02-15', updatedAt: '2026-03-04' },
-                { id: 'p3', name: 'Chaleco Salvavidas Premium', sku: 'EQUIP-CHALEC-001', description: 'Chaleco NRS talla M/L', category: 'Equipamiento', price: 350000, cost: 180000, currency: 'COP', stock: 15, minStock: 5, maxStock: 50, unit: 'unidad', imageUrl: null, isActive: true, tags: ['seguridad'], metadata: {}, createdAt: '2026-01-10', updatedAt: '2026-03-03' },
-                { id: 'p4', name: 'Casco Kayak Pro', sku: 'EQUIP-CASC-001', description: 'Casco certificado para deportes acuáticos', category: 'Equipamiento', price: 180000, cost: 90000, currency: 'COP', stock: 8, minStock: 10, maxStock: 30, unit: 'unidad', imageUrl: null, isActive: true, tags: ['seguridad'], metadata: {}, createdAt: '2026-01-10', updatedAt: '2026-03-01' },
-                { id: 'p5', name: 'Transporte VIP (8 personas)', sku: 'TRANS-VIP-001', description: 'Van 4x4 con aire acondicionado', category: 'Transporte', price: 250000, cost: 80000, currency: 'COP', stock: 3, minStock: 2, maxStock: 10, unit: 'viaje', imageUrl: null, isActive: true, tags: ['transporte'], metadata: {}, createdAt: '2026-02-01', updatedAt: '2026-03-04' },
-                { id: 'p6', name: 'Almuerzo Campestre', sku: 'ALIM-ALMZ-001', description: 'Almuerzo típico con trucha', category: 'Alimentación', price: 35000, cost: 15000, currency: 'COP', stock: 0, minStock: 10, maxStock: 100, unit: 'porción', imageUrl: null, isActive: true, tags: ['comida'], metadata: {}, createdAt: '2026-02-20', updatedAt: '2026-03-04' },
-            ],
-            recentMovements: [
-                { id: 'm1', productId: 'p1', productName: 'Tour Rafting Río Fonce', type: 'out', quantity: 4, previousStock: 54, newStock: 50, reason: 'Venta reserva #GK-0058', createdAt: '2026-03-04T15:00:00Z', createdBy: 'Sistema' },
-                { id: 'm2', productId: 'p4', productName: 'Casco Kayak Pro', type: 'in', quantity: 12, previousStock: 8, newStock: 20, reason: 'Compra proveedor NRS', createdAt: '2026-03-03T10:00:00Z', createdBy: 'Admin' },
-                { id: 'm3', productId: 'p6', productName: 'Almuerzo Campestre', type: 'out', quantity: 10, previousStock: 10, newStock: 0, reason: 'Evento corporativo grupo Alpina', createdAt: '2026-03-02T08:00:00Z', createdBy: 'Sistema' },
-            ],
+            totalProducts: 0,
+            activeProducts: 0,
+            totalValue: 0,
+            lowStockAlerts: 0,
+            outOfStockCount: 0,
+            categories: [],
+            products: [],
+            recentMovements: [],
         };
     }
 

@@ -17,6 +17,12 @@ export class OrdersController {
         return { success: true, data };
     }
 
+    @Get('contacts/:tenantId')
+    async getContacts(@Param('tenantId') tenantId: string) {
+        const data = await this.ordersService.getContacts(tenantId);
+        return { success: true, data };
+    }
+
     @Post(':tenantId')
     async createOrder(
         @Param('tenantId') tenantId: string,

@@ -37,6 +37,12 @@ export interface OrdersOverview {
     orders: Order[];
 }
 
+export interface OrderContact {
+    id: string;
+    name: string;
+    phone: string;
+}
+
 // ============================================
 // Service
 // ============================================
@@ -55,7 +61,7 @@ export class OrdersService {
      */
     async getOverview(tenantId: string): Promise<OrdersOverview> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return this.getMockOverview();
+        if (!schema) return this.buildEmptyOverview();
 
         try {
             await this.ensureOrdersTables(schema);
@@ -101,7 +107,34 @@ export class OrdersService {
             };
         } catch (error) {
             this.logger.error(`Error getting orders overview: ${error}`);
-            return this.getMockOverview();
+            return this.buildEmptyOverview();
+        }
+    }
+
+    /**
+     * List contacts available for order creation
+     */
+    async getContacts(tenantId: string): Promise<OrderContact[]> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return [];
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT id, name, phone
+                 FROM contacts
+                 ORDER BY created_at DESC
+                 LIMIT 200`,
+            );
+
+            return (rows || []).map((row: any) => ({
+                id: row.id,
+                name: row.name || 'Cliente',
+                phone: row.phone || '',
+            }));
+        } catch (error) {
+            this.logger.warn(`Could not load order contacts for tenant ${tenantId}: ${error}`);
+            return [];
         }
     }
 
@@ -109,7 +142,7 @@ export class OrdersService {
      * Create real order decrementing stock accordingly
      */
     async createOrder(tenantId: string, data: {
-        contactId: string;
+        contactId?: string | null;
         status?: 'pending' | 'confirmed' | 'paid' | 'cancelled';
         paymentMethod?: string;
         notes?: string;
@@ -128,7 +161,7 @@ export class OrdersService {
             schema,
             `INSERT INTO orders (id, contact_id, status, total_amount, currency, payment_method, notes, created_at, updated_at)
              VALUES (gen_random_uuid(), $1::uuid, $2, $3, 'COP', $4, $5, NOW(), NOW()) RETURNING id`,
-            [data.contactId, data.status || 'pending', totalAmount, data.paymentMethod || 'cash', data.notes || '']
+            [data.contactId || null, data.status || 'pending', totalAmount, data.paymentMethod || 'cash', data.notes || '']
         );
 
         const orderId = orderRes?.[0]?.id;
@@ -271,45 +304,13 @@ export class OrdersService {
         return null;
     }
 
-    private getMockOverview(): OrdersOverview {
+    private buildEmptyOverview(): OrdersOverview {
         return {
-            totalRevenue: 2500000,
-            pendingRevenue: 850000,
-            orderCount: 15,
-            pendingCount: 4,
-            orders: [
-                {
-                    id: 'o1',
-                    contactId: 'c1',
-                    contactName: 'Juan Pérez',
-                    status: 'paid',
-                    totalAmount: 350000,
-                    currency: 'COP',
-                    paymentMethod: 'credit_card',
-                    notes: 'Reserva para 2.',
-                    createdAt: new Date(Date.now() - 86400000).toISOString(),
-                    updatedAt: new Date(Date.now() - 40000000).toISOString(),
-                    items: [
-                        { id: 'i1', productId: 'p1', productName: 'Tour Rafting', quantity: 2, unitPrice: 120000, totalPrice: 240000 },
-                        { id: 'i2', productId: 'p2', productName: 'Almuerzo', quantity: 2, unitPrice: 55000, totalPrice: 110000 }
-                    ]
-                },
-                {
-                    id: 'o2',
-                    contactId: 'c2',
-                    contactName: 'Maria Rodriguez',
-                    status: 'pending',
-                    totalAmount: 180000,
-                    currency: 'COP',
-                    paymentMethod: 'transfer',
-                    notes: 'Pago adelantado del 50%.',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    items: [
-                        { id: 'i3', productId: 'p3', productName: 'Tour Cueva', quantity: 2, unitPrice: 90000, totalPrice: 180000 }
-                    ]
-                }
-            ]
+            totalRevenue: 0,
+            pendingRevenue: 0,
+            orderCount: 0,
+            pendingCount: 0,
+            orders: [],
         };
     }
 
@@ -320,48 +321,21 @@ export class OrdersService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return '<html><body><h1>Tenant not found</h1></body></html>';
 
-        let orderRow: any;
-        let itemsRows: any[] = [];
-        let tenantRow: any;
+        const orderRes = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT o.*, c.name as contact_name
+             FROM orders o LEFT JOIN contacts c ON o.contact_id = c.id
+             WHERE o.id = $1::uuid LIMIT 1`, [orderId]
+        );
+        if (!orderRes || orderRes.length === 0) return '<html><body><h1>No se encontró la orden</h1></body></html>';
+        const orderRow = orderRes[0];
 
-        if (orderId === 'o1' || orderId === 'o2') {
-            // Mock data fallback
-            const mockData = this.getMockOverview().orders.find(o => o.id === orderId);
-            if (!mockData) return '<html><body><h1>Order not found</h1></body></html>';
-            orderRow = {
-                id: mockData.id,
-                contact_name: mockData.contactName,
-                status: mockData.status,
-                created_at: new Date(mockData.createdAt),
-                total_amount: mockData.totalAmount,
-                notes: mockData.notes,
-                payment_method: mockData.paymentMethod
-            };
-            itemsRows = mockData.items.map(i => ({
-                product_name: i.productName,
-                quantity: i.quantity,
-                unit_price: i.unitPrice,
-                total_price: i.totalPrice
-            }));
-            tenantRow = { name: 'Comercio Local (Demo)' };
-        } else {
-            // Live data
-            const orderRes = await this.prisma.executeInTenantSchema<any[]>(
-                schema,
-                `SELECT o.*, c.name as contact_name
-                 FROM orders o LEFT JOIN contacts c ON o.contact_id = c.id
-                 WHERE o.id = $1::uuid LIMIT 1`, [orderId]
-            );
-            if (!orderRes || orderRes.length === 0) return '<html><body><h1>No se encontró la orden</h1></body></html>';
-            orderRow = orderRes[0];
+        const itemsRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema, `SELECT * FROM order_items WHERE order_id = $1::uuid`, [orderId]
+        ) || [];
 
-            itemsRows = await this.prisma.executeInTenantSchema<any[]>(
-                schema, `SELECT * FROM order_items WHERE order_id = $1::uuid`, [orderId]
-            ) || [];
-
-            const tenantRes = await this.prisma.$queryRaw<any[]>`SELECT name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1`;
-            tenantRow = tenantRes?.[0] || { name: 'Negocio Local' };
-        }
+        const tenantRes = await this.prisma.$queryRaw<any[]>`SELECT name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1`;
+        const tenantRow = tenantRes?.[0] || { name: 'Negocio Local' };
 
         const isPaid = orderRow.status === 'paid';
         const docTitle = isPaid ? 'FACTURA / RECIBO DE PAGO' : 'COTIZACIÓN / ORDEN PENDIENTE';

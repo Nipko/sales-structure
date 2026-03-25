@@ -73,15 +73,17 @@ export default function OrdersPage() {
             if (result.success && result.data) {
                 setData(result.data);
                 setIsLive(true);
+            } else {
+                setData({ totalRevenue: 0, pendingRevenue: 0, orderCount: 0, pendingCount: 0, orders: [] });
             }
 
             // Prefetch Contacts and Products for the Create Order Modal
             Promise.all([
-                Promise.resolve({ success: true, data: [] }), // Placeholder for getContacts API
+                api.getOrderContacts(activeTenantId),
                 api.getInventoryProducts(activeTenantId)
             ]).then(([contactsRes, productsRes]) => {
+                if (contactsRes?.success) setContacts(contactsRes.data || []);
                 if (productsRes?.success) setProducts(productsRes.data || []);
-                // If a dedicated getContacts API exists, we should use it. For now, we will handle empty.
             }).catch(console.error);
 
             setLoading(false);
@@ -101,6 +103,23 @@ export default function OrdersPage() {
                 };
             });
         }
+    };
+
+    const handleOpenInvoice = async (orderId: string) => {
+        if (!activeTenantId) return;
+        const token = localStorage.getItem("accessToken");
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+
+        const res = await fetch(`${baseUrl}/orders/${activeTenantId}/${orderId}/invoice`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+
+        const html = await res.text();
+        const blob = new Blob([html], { type: "text/html" });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, "_blank", "noopener,noreferrer");
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     };
 
     if (loading || !data) {
@@ -251,7 +270,7 @@ export default function OrdersPage() {
                                             </select>
 
                                             <button
-                                                onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1'}/orders/${activeTenantId}/${order.id}/invoice`, '_blank')}
+                                                onClick={() => handleOpenInvoice(order.id)}
                                                 style={{
                                                     padding: "6px 12px", borderRadius: 8, border: "1px solid var(--accent)",
                                                     background: "rgba(108,92,231,0.1)", color: "var(--accent)", fontSize: 13, fontWeight: 600,
@@ -273,21 +292,19 @@ export default function OrdersPage() {
             </div>
 
             {/* Create Order Modal */}
-            {showCreateModal && <CreateOrderModal onClose={() => setShowCreateModal(false)} tenantId={activeTenantId || ""} products={products} onCreated={() => { setShowCreateModal(false); window.location.reload(); }} />}
+            {showCreateModal && <CreateOrderModal onClose={() => setShowCreateModal(false)} tenantId={activeTenantId || ""} products={products} contacts={contacts} onCreated={() => { setShowCreateModal(false); window.location.reload(); }} />}
         </div>
     );
 }
 
 // ---- Create Order Modal ----
-function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; onCreated: () => void }) {
+function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; contacts: Contact[]; onCreated: () => void }) {
     const [status, setStatus] = useState("pending");
     const [paymentMethod, setPaymentMethod] = useState("transfer");
     const [notes, setNotes] = useState("");
+    const [contactId, setContactId] = useState("");
     const [selectedItems, setSelectedItems] = useState<{ productId: string; productName: string; quantity: number; unitPrice: number; maxStock: number }[]>([]);
     const [saving, setSaving] = useState(false);
-
-    // Hardcoded dummy contact ID for UI demonstration. In production, we wire a ContactSelector component.
-    const contactId = "00000000-0000-0000-0000-000000000000";
 
     const handleAddItem = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const id = e.target.value;
@@ -312,7 +329,7 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
         if (selectedItems.length === 0) return;
         setSaving(true);
         await api.createOrder(tenantId, {
-            contactId, status, paymentMethod, notes,
+            contactId: contactId || undefined, status, paymentMethod, notes,
             items: selectedItems.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }))
         });
         onCreated();
@@ -330,6 +347,15 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                     <div>
+                        <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Cliente</label>
+                        <select value={contactId} onChange={e => setContactId(e.target.value)} style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
+                            <option value="">Consumidor final</option>
+                            {contacts.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ""}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
                         <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Estado de la Orden</label>
                         <select value={status} onChange={e => setStatus(e.target.value)} style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
                             <option value="pending">Pendiente de pago</option>
@@ -337,7 +363,7 @@ function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose:
                             <option value="paid">Pagada / Completada</option>
                         </select>
                     </div>
-                    <div>
+                    <div style={{ gridColumn: "1 / span 2" }}>
                         <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Método de pago</label>
                         <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
                             <option value="cash">Efectivo / Contraentrega</option>

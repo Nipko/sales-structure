@@ -80,6 +80,7 @@ const settingsSchema: Record<string, FieldConfig[]> = {
         { key: "chatwoot.url", label: "Chatwoot URL", description: "URL base de tu instancia", type: "text", placeholder: "https://chatwoot.example.com" },
         { key: "chatwoot.api_token", label: "API Token", description: "Token de API para integraciones", type: "password", placeholder: "" },
         { key: "chatwoot.account_id", label: "Account ID", description: "ID de la cuenta en Chatwoot", type: "text", placeholder: "1" },
+        { key: "chatwoot.inbox_id", label: "Inbox ID", description: "ID del inbox para handoff a agente humano", type: "text", placeholder: "1" },
     ],
     general: [
         { key: "general.platform_name", label: "Nombre de plataforma", description: "Nombre visible en el dashboard", type: "text", placeholder: "Parallext Engine" },
@@ -98,7 +99,8 @@ export default function SettingsPage() {
         "llm.default_model": "gpt-4o-mini",
         "llm.default_temperature": "0.7",
         "llm.max_tokens": "800",
-        "chatwoot.account_id": "1",
+        "chatwoot.account_id": "",
+        "chatwoot.inbox_id": "",
         "general.platform_name": "Parallext Engine",
         "general.default_language": "es-CO",
         "general.default_timezone": "America/Bogota",
@@ -130,12 +132,7 @@ export default function SettingsPage() {
     const handleSave = async () => {
         setSaving(true);
         try {
-            // Save API keys through the centralized client
-            for (const [key, value] of Object.entries(values)) {
-                if (value && (key.includes("api_key") || key.includes("token") || key.includes("secret"))) {
-                    await api.setApiKey(key, value);
-                }
-            }
+            await api.updateSettings(values);
             setSaved(true);
             setIsLive(true);
             setTimeout(() => setSaved(false), 3000);

@@ -1,18 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     Shield, FileText, UserCheck, UserX, Trash2, Plus, X, Eye, Check
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-
 type Tab = "legal" | "consents" | "optouts" | "deletions";
 
 export default function CompliancePage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("legal");
     const [legalTexts, setLegalTexts] = useState<any[]>([]);
@@ -36,10 +33,10 @@ export default function CompliancePage() {
     async function loadAll() {
         try {
             const [lt, co, oo, dr] = await Promise.all([
-                fetch(`${API}/compliance/legal-texts/${activeTenantId}`).then(r => r.json()),
-                fetch(`${API}/compliance/consents/${activeTenantId}`).then(r => r.json()),
-                fetch(`${API}/compliance/opt-outs/${activeTenantId}`).then(r => r.json()),
-                fetch(`${API}/compliance/deletion-requests/${activeTenantId}`).then(r => r.json()),
+                api.fetch(`/compliance/legal-texts/${activeTenantId}`),
+                api.fetch(`/compliance/consents/${activeTenantId}`),
+                api.fetch(`/compliance/opt-outs/${activeTenantId}`),
+                api.fetch(`/compliance/deletion-requests/${activeTenantId}`),
             ]);
             if (Array.isArray(lt)) setLegalTexts(lt);
             if (Array.isArray(co)) setConsents(co);
@@ -52,11 +49,10 @@ export default function CompliancePage() {
         if (!legalForm.text || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/compliance/legal-texts/${activeTenantId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(legalForm)
+            const created = await api.fetch(`/compliance/legal-texts/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify(legalForm),
             });
-            const created = await res.json();
             if (created?.id) { setLegalTexts(prev => [created, ...prev]); setShowModal(false); setToast("Texto legal creado"); setTimeout(() => setToast(null), 2500); }
         } catch (err) { console.error(err); } finally { setSaving(false); }
     };
@@ -65,18 +61,17 @@ export default function CompliancePage() {
         if (!optOutForm.lead_id || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/compliance/opt-outs/${activeTenantId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(optOutForm)
+            const created = await api.fetch(`/compliance/opt-outs/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify(optOutForm),
             });
-            const created = await res.json();
             if (created?.id) { setOptOuts(prev => [created, ...prev]); setShowModal(false); setToast("Opt-out registrado"); setTimeout(() => setToast(null), 2500); }
         } catch (err) { console.error(err); } finally { setSaving(false); }
     };
 
     const handleProcessDeletion = async (id: string) => {
         try {
-            await fetch(`${API}/compliance/deletion-requests/${activeTenantId}/${id}/process`, { method: "PUT" });
+            await api.fetch(`/compliance/deletion-requests/${activeTenantId}/${id}/process`, { method: "PUT" });
             setDeletions(prev => prev.map(d => d.id === id ? { ...d, status: "processed", processed_at: new Date().toISOString() } : d));
             setToast("Solicitud procesada"); setTimeout(() => setToast(null), 2500);
         } catch (err) { console.error(err); }

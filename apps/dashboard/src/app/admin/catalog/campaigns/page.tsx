@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     Megaphone, Plus, Edit2, Power, Clock, Layers, X, Play, Pause
 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
     draft: { bg: "#95a5a622", text: "#95a5a6", label: "Borrador" },
@@ -17,7 +15,6 @@ const statusColors: Record<string, { bg: string; text: string; label: string }> 
 };
 
 export default function CampaignsPage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [courses, setCourses] = useState<any[]>([]);
@@ -31,11 +28,11 @@ export default function CampaignsPage() {
             if (!activeTenantId) return;
             try {
                 const [campRes, courseRes] = await Promise.all([
-                    fetch(`${API}/catalog/campaigns/${activeTenantId}`),
-                    fetch(`${API}/catalog/courses/${activeTenantId}`)
+                    api.fetch(`/catalog/campaigns/${activeTenantId}`),
+                    api.fetch(`/catalog/courses/${activeTenantId}`),
                 ]);
-                const campData = await campRes.json();
-                const courseData = await courseRes.json();
+                const campData = campRes;
+                const courseData = courseRes;
                 if (Array.isArray(campData)) setCampaigns(campData);
                 if (Array.isArray(courseData)) setCourses(courseData);
             } catch (err) { console.error(err); }
@@ -47,12 +44,10 @@ export default function CampaignsPage() {
         if (!form.name || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/catalog/campaigns/${activeTenantId}`, {
+            const created = await api.fetch(`/catalog/campaigns/${activeTenantId}`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form)
+                body: JSON.stringify(form),
             });
-            const created = await res.json();
             if (created?.id) {
                 setCampaigns(prev => [created, ...prev]);
                 setShowModal(false);

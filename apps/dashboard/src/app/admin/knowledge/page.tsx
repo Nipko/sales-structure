@@ -3,11 +3,10 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     BookOpen, Search, Plus, CheckCircle, Clock, X, FileText, Globe, Key, File
 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 type Tab = "library" | "search";
 
@@ -34,8 +33,8 @@ export default function KnowledgePage() {
 
     useEffect(() => {
         if (!activeTenantId) return;
-        fetch(`${API}/knowledge/resources/${activeTenantId}`)
-            .then(r => r.json()).then(d => { if (Array.isArray(d)) setResources(d); })
+        api.fetch(`/knowledge/resources/${activeTenantId}`)
+            .then(d => { if (Array.isArray(d)) setResources(d); })
             .catch(() => []);
     }, [activeTenantId]);
 
@@ -43,10 +42,10 @@ export default function KnowledgePage() {
         if (!form.title || !activeTenantId) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/knowledge/resources/${activeTenantId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form)
+            const created = await api.fetch(`/knowledge/resources/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify(form),
             });
-            const created = await res.json();
             if (created?.id) {
                 setResources([created, ...resources]);
                 setShowModal(false);
@@ -57,8 +56,8 @@ export default function KnowledgePage() {
 
     const handleApprove = async (id: string) => {
         try {
-            await fetch(`${API}/knowledge/resources/${activeTenantId}/${id}/approve`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
+            await api.fetch(`/knowledge/resources/${activeTenantId}/${id}/approve`, {
+                method: "POST",
                 body: JSON.stringify({ approved_by: user?.email })
             });
             setResources(resources.map(r => r.id === id ? { ...r, status: "approved" } : r));
@@ -68,8 +67,7 @@ export default function KnowledgePage() {
     const handleSearch = async () => {
         if (!searchQuery) return setSearchResults([]);
         try {
-            const res = await fetch(`${API}/knowledge/search/${activeTenantId}?query=${encodeURIComponent(searchQuery)}`);
-            const data = await res.json();
+            const data = await api.fetch(`/knowledge/search/${activeTenantId}?query=${encodeURIComponent(searchQuery)}`);
             setSearchResults(Array.isArray(data) ? data : []);
         } catch (e) { console.error(e); }
     };

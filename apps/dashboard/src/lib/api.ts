@@ -218,6 +218,9 @@ export const api = {
         apiPost(`/analytics/csat/${tenantId}`, data),
 
     // --- Settings ---
+    getSettings: () => apiGet("/settings"),
+    updateSettings: (updates: Record<string, string>) =>
+        apiPut("/settings", updates),
     getApiKeys: () => apiGet("/settings/api-keys"),
     setApiKey: (provider: string, key: string) =>
         apiPost("/settings/api-keys", { provider, key }),

@@ -106,7 +106,20 @@ export class AutomationService {
     async getRules(schemaName: string) {
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM automation_rules ORDER BY created_at DESC`
+            `SELECT
+                r.*,
+                COALESCE(exec.execution_count, 0) AS execution_count,
+                exec.last_executed_at
+             FROM automation_rules r
+             LEFT JOIN (
+                SELECT
+                    rule_id,
+                    COUNT(*)::int AS execution_count,
+                    MAX(COALESCE(finished_at, started_at)) AS last_executed_at
+                FROM automation_executions
+                GROUP BY rule_id
+             ) exec ON exec.rule_id = r.id
+             ORDER BY r.created_at DESC`
         );
     }
 

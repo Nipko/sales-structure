@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     Search,
     Plus,
@@ -15,10 +15,7 @@ import {
     LayoutTemplate
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-
 export default function LandingsPage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const router = useRouter();
 
@@ -38,8 +35,7 @@ export default function LandingsPage() {
             if (!activeTenantId) return;
             setLoading(true);
             try {
-                const res = await fetch(`${API}/intake/admin/landings/${activeTenantId}`);
-                const data = await res.json();
+                const data = await api.fetch(`/intake/admin/landings/${activeTenantId}`);
                 
                 if (Array.isArray(data)) {
                     setLandings(data);
@@ -56,18 +52,16 @@ export default function LandingsPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const res = await fetch(`${API}/intake/admin/landings/${activeTenantId}`, {
+            const created = await api.fetch(`/intake/admin/landings/${activeTenantId}`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     title: newTitle,
                     slug: newSlug || newTitle.toLowerCase().replace(/\s+/g, '-'),
                     courseId: newCourseId || null,
                     campaignId: newCampaignId || null,
                     status: 'draft'
-                })
+                }),
             });
-            const created = await res.json();
             if (created && created.id) {
                 setLandings([created, ...landings]);
                 setShowCreateModal(false);

@@ -21,6 +21,108 @@ export class HandoffService {
         private configService: ConfigService,
     ) { }
 
+    private pickString(...values: Array<unknown>): string | null {
+        for (const value of values) {
+            if (typeof value === 'string' && value.trim().length > 0) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private parseInteger(value: unknown): number | null {
+        if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+            return value;
+        }
+        if (typeof value === 'string' && value.trim().length > 0) {
+            const parsed = Number.parseInt(value.trim(), 10);
+            if (Number.isInteger(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+        return null;
+    }
+
+    private async getPlatformSettings(keys: string[]): Promise<Record<string, string>> {
+        try {
+            const rows = await this.prisma.$queryRaw<Array<{ key: string; value: string }>>`
+                SELECT key, value
+                FROM platform_settings
+                WHERE key LIKE 'chatwoot.%'
+            `;
+
+            return rows.reduce<Record<string, string>>((acc, row) => {
+                if (row?.key && keys.includes(row.key)) {
+                    acc[row.key] = row.value ?? '';
+                }
+                return acc;
+            }, {});
+        } catch (error) {
+            this.logger.warn(`Failed to read platform settings for Chatwoot handoff: ${error}`);
+            return {};
+        }
+    }
+
+    private async resolveChatwootConfig(tenantId: string): Promise<{
+        url: string;
+        token: string;
+        accountId: string;
+        inboxId: number;
+    } | null> {
+        const [tenant, platform] = await Promise.all([
+            this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            }),
+            this.getPlatformSettings([
+                'chatwoot.url',
+                'chatwoot.api_token',
+                'chatwoot.account_id',
+                'chatwoot.inbox_id',
+            ]),
+        ]);
+
+        const tenantSettings =
+            tenant?.settings && typeof tenant.settings === 'object'
+                ? (tenant.settings as Record<string, any>)
+                : {};
+        const tenantChatwoot = (tenantSettings.chatwoot ?? {}) as Record<string, any>;
+
+        const url = this.pickString(
+            tenantChatwoot.url,
+            platform['chatwoot.url'],
+            this.configService.get<string>('CHATWOOT_URL'),
+        );
+        const token = this.pickString(
+            tenantChatwoot.api_token,
+            tenantChatwoot.apiToken,
+            platform['chatwoot.api_token'],
+            this.configService.get<string>('CHATWOOT_API_TOKEN'),
+        );
+        const accountId = this.pickString(
+            tenantChatwoot.account_id,
+            tenantChatwoot.accountId,
+            platform['chatwoot.account_id'],
+            this.configService.get<string>('CHATWOOT_ACCOUNT_ID'),
+        );
+        const inboxId = this.parseInteger(
+            tenantChatwoot.inbox_id ??
+            tenantChatwoot.inboxId ??
+            platform['chatwoot.inbox_id'] ??
+            this.configService.get<string>('CHATWOOT_INBOX_ID'),
+        );
+
+        if (!url || !token || !accountId || !inboxId) {
+            this.logger.warn(
+                `Chatwoot handoff config incomplete for tenant ${tenantId}. ` +
+                `Required: url, api_token, account_id, inbox_id.`
+            );
+            return null;
+        }
+
+        return { url, token, accountId, inboxId };
+    }
+
     /**
      * Evaluate if a conversation should be escalated to a human agent.
      * Checks trigger conditions from the tenant's persona config.
@@ -132,27 +234,23 @@ export class HandoffService {
         contactId: string,
         summary: string,
     ): Promise<{ conversationId: string } | null> {
-        const chatwootUrl = this.configService.get<string>('CHATWOOT_URL');
-        const chatwootToken = this.configService.get<string>('CHATWOOT_API_TOKEN');
-
-        if (!chatwootUrl || !chatwootToken) {
+        const config = await this.resolveChatwootConfig(tenantId);
+        if (!config) {
             this.logger.warn('Chatwoot not configured, skipping external handoff');
             return null;
         }
 
         try {
-            const accountId = this.configService.get<string>('CHATWOOT_ACCOUNT_ID') || '1';
-
             // Create contact in Chatwoot if not exists
-            const response = await fetch(`${chatwootUrl}/api/v1/accounts/${accountId}/conversations`, {
+            const response = await fetch(`${config.url}/api/v1/accounts/${config.accountId}/conversations`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'api_access_token': chatwootToken,
+                    'api_access_token': config.token,
                 },
                 body: JSON.stringify({
                     source_id: contactId,
-                    inbox_id: 1, // TODO: Map to tenant's inbox
+                    inbox_id: config.inboxId,
                     contact_id: null, // Will auto-create
                     status: 'open',
                     additional_attributes: {
@@ -171,11 +269,11 @@ export class HandoffService {
             const data = await response.json();
 
             // Send summary as first message
-            await fetch(`${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${data.id}/messages`, {
+            await fetch(`${config.url}/api/v1/accounts/${config.accountId}/conversations/${data.id}/messages`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'api_access_token': chatwootToken,
+                    'api_access_token': config.token,
                 },
                 body: JSON.stringify({
                     content: `🤖 **Resumen de IA (Handoff Automático)**\n\n${summary}`,

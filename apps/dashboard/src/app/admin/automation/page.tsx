@@ -60,8 +60,10 @@ export default function AutomationPage() {
                         trigger: r.trigger_type,
                         description: `Rule for ${r.trigger_type}`,
                         isActive: r.active,
-                        executionCount: 0, // Mock for now until we have an endpoint for executions
-                        lastExecutedAt: null,
+                        executionCount: Number(r.execution_count ?? 0),
+                        lastExecutedAt: r.last_executed_at
+                            ? new Date(r.last_executed_at).toLocaleString("es-CO")
+                            : null,
                     }));
                     setRules(mapped);
                     setIsLive(true);
@@ -112,8 +114,10 @@ export default function AutomationPage() {
                         trigger: created.trigger_type,
                         description: newRule.description || `Rule for ${created.trigger_type}`,
                         isActive: created.active,
-                        executionCount: 0,
-                        lastExecutedAt: null as any,
+                        executionCount: Number(created.execution_count ?? 0),
+                        lastExecutedAt: created.last_executed_at
+                            ? new Date(created.last_executed_at).toLocaleString("es-CO")
+                            : null,
                         conditions: {},
                         actions: {},
                     }, ...prev]);

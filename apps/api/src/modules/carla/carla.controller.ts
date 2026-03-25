@@ -1,10 +1,14 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { CarlaService } from './carla.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('carla')
 @Controller('carla')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CarlaController {
     private readonly logger = new Logger(CarlaController.name);
 

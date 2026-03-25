@@ -1,9 +1,13 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { ComplianceService } from './compliance.service';
 import { AuditService } from './audit.service';
 import { AnalyticsService } from './analytics.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('analytics')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class AnalyticsController {
 
     constructor(

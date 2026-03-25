@@ -1,10 +1,14 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { KnowledgeService } from './knowledge.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('knowledge')
 @Controller('knowledge')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class KnowledgeController {
     private readonly logger = new Logger(KnowledgeController.name);
 

@@ -27,26 +27,103 @@ export class WhatsappConnectionService {
     return { status: channels[0].channel_status, channel: channels[0] };
   }
 
-  async saveConnection(schemaName: string, data: any) {
+  async saveConnection(schemaName: string, tenantId: string, data: any) {
     const { phoneNumberId, wabaId, accessToken } = data;
 
     if (!phoneNumberId || !wabaId || !accessToken) {
       throw new BadRequestException('Faltan datos de conexión de WhatsApp');
     }
 
-    // Usamos UPSERT para que si ya hay un canal, lo actualice en lugar de duplicarlo
-    // Pero asumiendo 1 canal por tenant para MVP, borramos existentes
-    await this.prisma.executeInTenantSchema(schemaName, 'DELETE FROM whatsapp_channels');
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, schemaName: true },
+    });
+    if (!tenant || tenant.schemaName !== schemaName) {
+      throw new BadRequestException('Tenant inválido para este usuario');
+    }
+
+    const encryptedToken = this.cryptoService.encryptToken(accessToken);
+
+    // Upsert del canal en schema tenant.
+    await this.prisma.executeInTenantSchema(
+      schemaName,
+      `DELETE FROM whatsapp_channels WHERE phone_number_id = $1`,
+      [phoneNumberId],
+    );
 
     const rows = await this.prisma.executeInTenantSchema<any[]>(
       schemaName,
       `INSERT INTO whatsapp_channels (
-        provider_type, meta_waba_id, phone_number_id, access_token_ref, channel_status, connected_at
+        provider_type, meta_waba_id, phone_number_id, access_token_ref,
+        display_phone_number, display_name, channel_status, connected_at
       ) VALUES (
-        'meta_cloud', $1, $2, $3, 'connected', NOW()
+        'meta_cloud', $1, $2, 'credential_ref', $3, $4, 'connected', NOW()
       ) RETURNING id`,
-      [wabaId, phoneNumberId, accessToken]
+      [
+        wabaId,
+        phoneNumberId,
+        data.displayPhoneNumber || phoneNumberId,
+        data.verifiedName || data.displayName || null,
+      ],
     );
+
+    // Upsert routing account (public schema) para que webhooks inbound resuelvan tenant.
+    const existingAccount = await this.prisma.channelAccount.findFirst({
+      where: { channelType: 'whatsapp', accountId: phoneNumberId },
+    });
+    if (existingAccount) {
+      await this.prisma.channelAccount.update({
+        where: { id: existingAccount.id },
+        data: {
+          tenantId,
+          displayName: data.verifiedName || data.displayName || data.displayPhoneNumber || phoneNumberId,
+          accessToken: 'encrypted_ref',
+          isActive: true,
+          metadata: {
+            ...(existingAccount.metadata as Record<string, unknown>),
+            wabaId,
+            phoneNumberId,
+            source: 'manual_connect',
+          },
+        },
+      });
+    } else {
+      await this.prisma.channelAccount.create({
+        data: {
+          tenantId,
+          channelType: 'whatsapp',
+          accountId: phoneNumberId,
+          displayName: data.verifiedName || data.displayName || data.displayPhoneNumber || phoneNumberId,
+          accessToken: 'encrypted_ref',
+          isActive: true,
+          metadata: {
+            wabaId,
+            phoneNumberId,
+            source: 'manual_connect',
+          },
+        },
+      });
+    }
+
+    // Upsert credencial cifrada.
+    const existingCredential = await this.prisma.whatsappCredential.findFirst({
+      where: { tenantId, credentialType: 'system_user_token' },
+    });
+    if (existingCredential) {
+      await this.prisma.whatsappCredential.update({
+        where: { id: existingCredential.id },
+        data: { encryptedValue: encryptedToken, rotationState: 'active' },
+      });
+    } else {
+      await this.prisma.whatsappCredential.create({
+        data: {
+          tenantId,
+          credentialType: 'system_user_token',
+          encryptedValue: encryptedToken,
+          rotationState: 'active',
+        },
+      });
+    }
 
     this.logger.log(`WhatsApp channel connected for schema ${schemaName}`);
     return { success: true, channelId: rows[0].id };

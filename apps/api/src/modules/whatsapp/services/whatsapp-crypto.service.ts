@@ -5,6 +5,21 @@ import * as crypto from 'crypto';
 export class WhatsappCryptoService {
   private readonly logger = new Logger(WhatsappCryptoService.name);
 
+  encryptToken(plaintext: string): string {
+    const key = process.env.ENCRYPTION_KEY;
+    if (!key || key.length < 32) {
+      this.logger.warn('ENCRYPTION_KEY not set or too short — storing token as base64 (DEV ONLY)');
+      return Buffer.from(plaintext).toString('base64');
+    }
+
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(key, 'hex').subarray(0, 32), iv);
+    let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const tag = cipher.getAuthTag().toString('hex');
+    return `${iv.toString('hex')}:${tag}:${encrypted}`;
+  }
+
   decryptToken(ciphertext: string): string {
     const key = process.env.ENCRYPTION_KEY;
     if (!key || key.length < 32) {

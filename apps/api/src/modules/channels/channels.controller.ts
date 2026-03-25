@@ -1,4 +1,18 @@
-import { Controller, Get, Post, Body, Query, Param, Req, Res, Logger, Inject, forwardRef } from '@nestjs/common';
+import {
+    Controller,
+    Get,
+    Post,
+    Body,
+    Query,
+    Param,
+    Res,
+    Logger,
+    Inject,
+    forwardRef,
+    Headers,
+    Req,
+    RawBodyRequest,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { ChannelGatewayService } from './channel-gateway.service';
@@ -9,6 +23,7 @@ import { TelegramAdapter } from './telegram/telegram.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannelType } from '@parallext/shared';
 import { ConversationsService } from '../conversations/conversations.service';
+import { WhatsappWebhookService } from '../whatsapp/services/whatsapp-webhook.service';
 
 @ApiTags('channels')
 @Controller('channels')
@@ -24,6 +39,8 @@ export class ChannelsController {
         private prisma: PrismaService,
         @Inject(forwardRef(() => ConversationsService))
         private conversationsService: ConversationsService,
+        @Inject(forwardRef(() => WhatsappWebhookService))
+        private whatsappWebhookService: WhatsappWebhookService,
     ) { }
 
     // ==========================================
@@ -42,31 +59,21 @@ export class ChannelsController {
 
     @Post('webhook/whatsapp')
     @ApiOperation({ summary: 'Receive WhatsApp webhook events' })
-    async receiveWhatsApp(@Body() body: any, @Res() res: Response) {
-        res.status(200).send('OK');
-
-        try {
-            const phoneNumberId = body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-            if (!phoneNumberId) return;
-
-            const channelAccount = await this.prisma.channelAccount.findFirst({
-                where: { channelType: 'whatsapp', accountId: phoneNumberId, isActive: true },
-            });
-
-            if (!channelAccount) {
-                this.logger.warn(`No tenant found for WhatsApp phone_number_id: ${phoneNumberId}`);
-                return;
-            }
-
-            const normalized = await this.gateway.processIncomingWebhook('whatsapp', body, phoneNumberId);
-            if (!normalized) return;
-
-            normalized.tenantId = channelAccount.tenantId;
-            this.logger.log(`Incoming WhatsApp message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
-            await this.conversationsService.processIncomingMessage(normalized);
-        } catch (error) {
-            this.logger.error(`Error processing WhatsApp webhook: ${error}`);
+    async receiveWhatsApp(
+        @Body() body: any,
+        @Headers('x-hub-signature-256') signature: string,
+        @Req() req: RawBodyRequest<Request>,
+        @Res() res: Response,
+    ) {
+        if (!this.whatsappWebhookService.validateSignature(req.rawBody, signature)) {
+            return res.status(401).send('Invalid signature');
         }
+
+        this.whatsappWebhookService.handleWebhookPayload(body).catch((error) => {
+            this.logger.error(`Error processing WhatsApp webhook: ${error}`);
+        });
+
+        return res.status(200).send('OK');
     }
 
     // ==========================================
@@ -201,6 +208,10 @@ export class ChannelsController {
         @Body() body: any,
         @Res() res: Response,
     ) {
+        if (channelType === 'whatsapp') {
+            return res.status(400).send('Use /channels/webhook/whatsapp');
+        }
+
         res.status(200).send('OK');
 
         try {

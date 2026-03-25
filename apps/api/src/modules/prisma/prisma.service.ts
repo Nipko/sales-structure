@@ -23,13 +23,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Execute a query in a specific tenant schema
      */
     async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = []): Promise<T> {
-        // SET search_path must be a separate statement — PostgreSQL prepared
-        // statements do not allow multiple commands in a single call.
-        await this.$executeRawUnsafe(`SET search_path TO "${schemaName}"`);
-        const result = await this.$queryRawUnsafe<T>(query, ...params);
-        // Reset to public schema
-        await this.$executeRawUnsafe('SET search_path TO "public"');
-        return result;
+        if (!/^[a-zA-Z0-9_]+$/.test(schemaName)) {
+            throw new Error(`Invalid schema name: ${schemaName}`);
+        }
+
+        // Use a transaction + SET LOCAL so search_path is guaranteed to be scoped
+        // to this query lifecycle and cannot leak across pooled connections.
+        return this.$transaction(async (tx) => {
+            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}"`);
+            return tx.$queryRawUnsafe<T>(query, ...params);
+        });
     }
 
     /**

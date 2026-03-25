@@ -1,4 +1,11 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetaGraphService, MetaApiError } from '../meta-graph/meta-graph.service';
@@ -16,6 +23,12 @@ import {
 } from '../../common/enums/onboarding-error.enum';
 import * as crypto from 'crypto';
 
+interface RequestUser {
+  sub: string;
+  role: string;
+  tenantId?: string;
+}
+
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
@@ -31,16 +44,18 @@ export class OnboardingService {
    * === FLUJO PRINCIPAL DE ONBOARDING ===
    * Ejecuta la secuencia completa: code → exchange → discovery → webhook → sync
    */
-  async startOnboarding(dto: StartOnboardingDto, userId: string) {
-    this.logger.log(`Starting onboarding for tenant: ${dto.tenantId}, mode: ${dto.mode}`);
+  async startOnboarding(dto: StartOnboardingDto, user: RequestUser) {
+    const tenantId = this.resolveTenantIdForAction(dto.tenantId, user);
+    const userId = user.sub;
+    this.logger.log(`Starting onboarding for tenant: ${tenantId}, mode: ${dto.mode}`);
 
     // ---- 1. Validaciones previas ----
-    await this.validatePreConditions(dto);
+    await this.validatePreConditions(tenantId, dto);
 
     // ---- 2. Crear registro de onboarding ----
     const onboarding = await this.prisma.whatsappOnboarding.create({
       data: {
-        tenantId: dto.tenantId,
+        tenantId,
         configId: dto.configId,
         mode: dto.mode,
         status: OnboardingStatus.CODE_RECEIVED,
@@ -115,13 +130,13 @@ export class OnboardingService {
       this.logger.log(`Assets discovered: WABA=${waba.id}, Phone=${primaryPhone.id}`);
 
       // ---- 5. Persistir canal en el tenant schema ----
-      await this.persistWhatsAppChannel(dto.tenantId, onboarding.id, waba, primaryPhone, exchangeResult.accessToken, dto.mode === OnboardingMode.COEXISTENCE);
+      await this.persistWhatsAppChannel(tenantId, onboarding.id, waba, primaryPhone, exchangeResult.accessToken, dto.mode === OnboardingMode.COEXISTENCE);
 
       // ---- 6. Registrar en channel_accounts (público) para routing de webhooks ----
-      await this.registerChannelAccount(dto.tenantId, primaryPhone);
+      await this.registerChannelAccount(tenantId, primaryPhone);
 
       // ---- 7. Guardar credenciales cifradas ----
-      await this.storeEncryptedCredential(dto.tenantId, exchangeResult.accessToken);
+      await this.storeEncryptedCredential(tenantId, exchangeResult.accessToken);
 
       // ---- 8. Suscribir webhook ----
       await this.updateStatus(onboarding.id, OnboardingStatus.WEBHOOK_VALIDATION_IN_PROGRESS);
@@ -137,7 +152,7 @@ export class OnboardingService {
       }
 
       // ---- 9. Sync templates en background (no bloquea) ----
-      this.syncTemplatesInBackground(dto.tenantId, waba.id, exchangeResult.accessToken, onboarding.id);
+      this.syncTemplatesInBackground(tenantId, waba.id, exchangeResult.accessToken, onboarding.id);
 
       // ---- 10. Marcar completado ----
       const finalStatus = webhookSuccess
@@ -156,7 +171,7 @@ export class OnboardingService {
       // Audit log
       await this.audit.log({
         action: 'onboarding_completed',
-        tenantId: dto.tenantId,
+        tenantId,
         userId,
         entityType: 'whatsapp_onboarding',
         entityId: onboarding.id,
@@ -169,7 +184,7 @@ export class OnboardingService {
         },
       });
 
-      this.logger.log(`Onboarding ${finalStatus} for tenant: ${dto.tenantId}`);
+      this.logger.log(`Onboarding ${finalStatus} for tenant: ${tenantId}`);
 
       return this.formatOnboardingResponse(
         await this.prisma.whatsappOnboarding.findUnique({ where: { id: onboarding.id } }),
@@ -193,7 +208,7 @@ export class OnboardingService {
 
       await this.audit.log({
         action: 'onboarding_failed',
-        tenantId: dto.tenantId,
+        tenantId,
         userId,
         entityType: 'whatsapp_onboarding',
         entityId: onboarding.id,
@@ -212,20 +227,22 @@ export class OnboardingService {
   /**
    * Obtener detalle completo de un onboarding
    */
-  async getOnboarding(id: string) {
+  async getOnboarding(id: string, user: RequestUser) {
     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
+    this.assertTenantAccess(user, onboarding.tenantId);
     return this.formatOnboardingResponse(onboarding);
   }
 
   /**
    * Obtener solo el estado (para polling desde frontend)
    */
-  async getOnboardingStatus(id: string) {
+  async getOnboardingStatus(id: string, user: RequestUser) {
     const onboarding = await this.prisma.whatsappOnboarding.findUnique({
       where: { id },
       select: {
         id: true,
+        tenantId: true,
         status: true,
         errorCode: true,
         errorMessage: true,
@@ -236,15 +253,18 @@ export class OnboardingService {
       },
     });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
+    this.assertTenantAccess(user, onboarding.tenantId);
     return onboarding;
   }
 
   /**
    * Cancelar un onboarding en progreso
    */
-  async cancelOnboarding(id: string, userId: string) {
+  async cancelOnboarding(id: string, user: RequestUser) {
+    const userId = user.sub;
     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
+    this.assertTenantAccess(user, onboarding.tenantId);
 
     if (TERMINAL_STATUSES.includes(onboarding.status as OnboardingStatus)) {
       throw new BadRequestException(`El onboarding ya está en estado terminal: ${onboarding.status}`);
@@ -274,9 +294,11 @@ export class OnboardingService {
   /**
    * Reintentar un onboarding fallido (retoma desde el punto de fallo)
    */
-  async retryOnboarding(id: string, userId: string) {
+  async retryOnboarding(id: string, user: RequestUser) {
+    const userId = user.sub;
     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
+    this.assertTenantAccess(user, onboarding.tenantId);
 
     if (onboarding.status !== OnboardingStatus.FAILED) {
       throw new BadRequestException(`Solo se puede reintentar un onboarding con status FAILED. Actual: ${onboarding.status}`);
@@ -312,9 +334,11 @@ export class OnboardingService {
   /**
    * Re-sincronizar assets de un onboarding completado
    */
-  async resyncAssets(id: string, userId: string) {
+  async resyncAssets(id: string, user: RequestUser) {
+    const userId = user.sub;
     const onboarding = await this.prisma.whatsappOnboarding.findUnique({ where: { id } });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
+    this.assertTenantAccess(user, onboarding.tenantId);
 
     if (onboarding.status !== OnboardingStatus.COMPLETED &&
         onboarding.status !== OnboardingStatus.COMPLETED_WITH_WARNINGS) {
@@ -364,8 +388,11 @@ export class OnboardingService {
   /**
    * Lista todos los onboardings (admin panel)
    */
-  async listOnboardings(page = 1, limit = 20, tenantId?: string) {
-    const where = tenantId ? { tenantId } : {};
+  async listOnboardings(user: RequestUser, page = 1, limit = 20, tenantId?: string) {
+    const scopedTenantId = user.role === 'super_admin'
+      ? tenantId
+      : this.resolveTenantIdForAction(tenantId, user);
+    const where = scopedTenantId ? { tenantId: scopedTenantId } : {};
     const skip = (page - 1) * limit;
 
     const [items, total] = await Promise.all([
@@ -390,17 +417,17 @@ export class OnboardingService {
   // PRIVATE HELPERS
   // ==========================================
 
-  private async validatePreConditions(dto: StartOnboardingDto) {
+  private async validatePreConditions(tenantId: string, dto: StartOnboardingDto) {
     // Verificar que el tenant existe
     const tenant = await this.prisma.tenant.findUnique({
-      where: { id: dto.tenantId },
+      where: { id: tenantId },
       select: { id: true, schemaName: true, isActive: true },
     });
 
     if (!tenant) {
       throw new BadRequestException({
         code: OnboardingErrorCode.TENANT_NOT_FOUND,
-        userMessage: `El tenant ${dto.tenantId} no existe`,
+        userMessage: `El tenant ${tenantId} no existe`,
       });
     }
 
@@ -423,7 +450,7 @@ export class OnboardingService {
     // Verificar que no hay onboarding en progreso para este tenant
     const existingInProgress = await this.prisma.whatsappOnboarding.findFirst({
       where: {
-        tenantId: dto.tenantId,
+        tenantId,
         status: { in: IN_PROGRESS_STATUSES },
       },
     });
@@ -601,9 +628,18 @@ export class OnboardingService {
     for (const t of templates) {
       await this.prisma.executeInTenantSchema(
         tenant.schemaName,
-        `INSERT INTO whatsapp_templates (channel_id, name, language, category, components_json, approval_status, last_sync_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
-         ON CONFLICT (channel_id, name) DO NOTHING`,
+        `WITH updated AS (
+           UPDATE whatsapp_templates
+           SET category = $4,
+               components_json = $5::jsonb,
+               approval_status = $6,
+               last_sync_at = NOW()
+           WHERE channel_id = $1 AND name = $2 AND language = $3
+           RETURNING id
+         )
+         INSERT INTO whatsapp_templates (channel_id, name, language, category, components_json, approval_status, last_sync_at)
+         SELECT $1, $2, $3, $4, $5::jsonb, $6, NOW()
+         WHERE NOT EXISTS (SELECT 1 FROM updated)`,
         [channelId, t.name, t.language, t.category, JSON.stringify(t.components), t.status],
       );
     }
@@ -669,6 +705,32 @@ export class OnboardingService {
   }
 
   // ---- Helpers ----
+
+  private resolveTenantIdForAction(requestedTenantId: string | undefined, user: RequestUser): string {
+    if (user.role === 'super_admin') {
+      if (!requestedTenantId) {
+        throw new BadRequestException('tenantId es requerido para super_admin');
+      }
+      return requestedTenantId;
+    }
+
+    if (!user.tenantId) {
+      throw new ForbiddenException('Usuario sin tenant asignado');
+    }
+
+    if (requestedTenantId && requestedTenantId !== user.tenantId) {
+      throw new ForbiddenException('No puedes operar onboarding de otro tenant');
+    }
+
+    return user.tenantId;
+  }
+
+  private assertTenantAccess(user: RequestUser, onboardingTenantId: string) {
+    if (user.role === 'super_admin') return;
+    if (!user.tenantId || user.tenantId !== onboardingTenantId) {
+      throw new ForbiddenException('No tienes permisos para acceder a este onboarding');
+    }
+  }
 
   private async updateStatus(id: string, status: OnboardingStatus) {
     await this.prisma.whatsappOnboarding.update({

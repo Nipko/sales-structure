@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
@@ -21,8 +20,6 @@ import {
     ChevronDown,
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-
 const typeConfig: Record<string, { icon: any; color: string; label: string }> = {
     auto_assign: { icon: Users, color: "#3498db", label: "Auto-asignación" },
     auto_tag: { icon: Tag, color: "#9b59b6", label: "Auto-etiqueta" },
@@ -39,7 +36,6 @@ const triggerLabels: Record<string, string> = {
 };
 
 export default function AutomationPage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [rules, setRules] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
@@ -53,9 +49,9 @@ export default function AutomationPage() {
         async function load() {
             if (!activeTenantId) return;
             try {
-                const res = await fetch(`${API}/automation/rules/${activeTenantId}`);
-                const data = await res.json();
-                if (Array.isArray(data)) {
+                const result = await api.getAutomationRules(activeTenantId);
+                const data = result.success && Array.isArray(result.data) ? result.data : [];
+                if (result.success) {
                     // Map DB format to UI format
                     const mapped = data.map(r => ({
                         id: r.id,
@@ -78,8 +74,10 @@ export default function AutomationPage() {
     }, [activeTenantId]);
 
     const toggleRule = async (id: string) => {
-        setRules(prev => prev.map(r => r.id === id ? { ...r, isActive: !r.isActive } : r));
-        if (activeTenantId) await api.toggleRule(activeTenantId, id);
+        const current = rules.find(r => r.id === id);
+        const nextState = !(current?.isActive ?? false);
+        setRules(prev => prev.map(r => r.id === id ? { ...r, isActive: nextState } : r));
+        if (activeTenantId) await api.toggleRule(activeTenantId, id, nextState);
     };
 
     const deleteRule = async (id: string) => {
@@ -103,12 +101,8 @@ export default function AutomationPage() {
                 active: true
             };
             if (activeTenantId) {
-                const res = await fetch(`${API}/automation/rules/${activeTenantId}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(ruleData)
-                });
-                const created = await res.json();
+                const result = await api.createRule(activeTenantId, ruleData);
+                const created = result.success ? result.data : null;
                 
                 if (created && created.id) {
                     setRules(prev => [{

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, Req, Res, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Req, Res, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { ChannelGatewayService } from './channel-gateway.service';
@@ -8,6 +8,7 @@ import { MessengerAdapter } from './messenger/messenger.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannelType } from '@parallext/shared';
+import { ConversationsService } from '../conversations/conversations.service';
 
 @ApiTags('channels')
 @Controller('channels')
@@ -21,6 +22,8 @@ export class ChannelsController {
         private messengerAdapter: MessengerAdapter,
         private telegramAdapter: TelegramAdapter,
         private prisma: PrismaService,
+        @Inject(forwardRef(() => ConversationsService))
+        private conversationsService: ConversationsService,
     ) { }
 
     // ==========================================
@@ -60,6 +63,7 @@ export class ChannelsController {
 
             normalized.tenantId = channelAccount.tenantId;
             this.logger.log(`Incoming WhatsApp message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
             this.logger.error(`Error processing WhatsApp webhook: ${error}`);
         }
@@ -102,6 +106,7 @@ export class ChannelsController {
 
             normalized.tenantId = channelAccount.tenantId;
             this.logger.log(`Incoming Instagram DM for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
             this.logger.error(`Error processing Instagram webhook: ${error}`);
         }
@@ -144,6 +149,7 @@ export class ChannelsController {
 
             normalized.tenantId = channelAccount.tenantId;
             this.logger.log(`Incoming Messenger message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
             this.logger.error(`Error processing Messenger webhook: ${error}`);
         }
@@ -178,6 +184,7 @@ export class ChannelsController {
 
             normalized.tenantId = channelAccount.tenantId;
             this.logger.log(`Incoming Telegram message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
+            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
             this.logger.error(`Error processing Telegram webhook: ${error}`);
         }
@@ -200,6 +207,12 @@ export class ChannelsController {
             const normalized = await this.gateway.processIncomingWebhook(channelType as ChannelType, body, '');
             if (!normalized) return;
 
+            if (!normalized.tenantId) {
+                this.logger.warn(`Skipping ${channelType} inbound message without tenant context`);
+                return;
+            }
+
+            await this.conversationsService.processIncomingMessage(normalized);
             this.logger.log(`Incoming ${channelType} message: ${normalized.contactId}`);
         } catch (error) {
             this.logger.error(`Error processing ${channelType} webhook: ${error}`);

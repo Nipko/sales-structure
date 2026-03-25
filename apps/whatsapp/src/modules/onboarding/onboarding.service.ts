@@ -118,7 +118,7 @@ export class OnboardingService {
       await this.persistWhatsAppChannel(dto.tenantId, onboarding.id, waba, primaryPhone, exchangeResult.accessToken, dto.mode === OnboardingMode.COEXISTENCE);
 
       // ---- 6. Registrar en channel_accounts (público) para routing de webhooks ----
-      await this.registerChannelAccount(dto.tenantId, primaryPhone, exchangeResult.accessToken);
+      await this.registerChannelAccount(dto.tenantId, primaryPhone);
 
       // ---- 7. Guardar credenciales cifradas ----
       await this.storeEncryptedCredential(dto.tenantId, exchangeResult.accessToken);
@@ -497,7 +497,7 @@ export class OnboardingService {
   /**
    * Registrar en channel_accounts público para routing de webhooks
    */
-  private async registerChannelAccount(tenantId: string, phone: any, accessToken: string) {
+  private async registerChannelAccount(tenantId: string, phone: any) {
     // Upsert — actualiza si ya existe
     const existing = await this.prisma.channelAccount.findFirst({
       where: {

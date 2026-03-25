@@ -1,8 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { PipelineService } from './pipeline.service';
 import { AutomationService } from './automation.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
-@Controller('api/v1/pipeline')
+@Controller('pipeline')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class PipelineController {
     constructor(
         private pipelineService: PipelineService,

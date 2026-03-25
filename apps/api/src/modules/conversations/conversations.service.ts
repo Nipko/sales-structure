@@ -29,13 +29,13 @@ export class ConversationsService {
     async processIncomingMessage(normalizedMsg: NormalizedMessage): Promise<void> {
         const { tenantId, contactId, channelType, content } = normalizedMsg;
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         // 1. Resolve Contact & Conversation
-        const { contact, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
+        const { contact, conversation } = await this.resolveConversation(schemaName, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
 
         // Auto-progress stage from 'nuevo' to 'respondio' upon user message
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1 AND stage = 'nuevo'`,
             [conversation.id]
@@ -56,7 +56,7 @@ export class ConversationsService {
         }
 
         if (!this.isWithinBusinessHours(config)) {
-            await this.sendAfterHoursMessage(tenantId, normalizedMsg, config);
+            await this.sendAfterHoursMessage(tenantId, schemaName, normalizedMsg, config);
             return;
         }
 
@@ -64,33 +64,30 @@ export class ConversationsService {
             this.logger.log(`Conversation ${conversation.id} is in HUMAN HANDOFF mode. Skipping AI.`);
             
             // Just save the message, don't generate AI response
-            await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+            await this.saveMessage(schemaName, tenantId, conversation.id, normalizedMsg);
             
             // TODO: Ensure notification is sent to WebSockets for live chat
             return;
         }
 
         // 3. Save User Message
-        await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+        await this.saveMessage(schemaName, tenantId, conversation.id, normalizedMsg);
 
         // 4. Generate AI Response
-        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config);
+        const response = await this.generateResponse(schemaName, tenantId, conversation, normalizedMsg, config);
 
         // 5. Send Response via Channel Gateway
         if (response) {
-            await this.sendResponse(tenantId, response, normalizedMsg);
+            await this.sendResponse(tenantId, schemaName, response, normalizedMsg);
             // Save AI Message
-            await this.saveAiMessage(tenantId, conversation.id, response);
+            await this.saveAiMessage(schemaName, tenantId, conversation.id, response);
         }
     }
 
     /**
      * Resolve or create contact, lead, conversation, and opportunity
      */
-    private async resolveConversation(tenantId: string, contactId: string, channelType: string, msg: NormalizedMessage) {
-        // In a real implementation we would do this using the tenant's schema
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`; // simplification, should use tenantsService.getSchemaName
-
+    private async resolveConversation(schemaName: string, contactId: string, channelType: string, msg: NormalizedMessage) {
         // 1. Find or create contact
         let contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT * FROM contacts WHERE external_id = $1 AND channel_type = $2`,
@@ -177,7 +174,7 @@ export class ConversationsService {
         return currentMinutes >= startMinutes && currentMinutes < endMinutes;
     }
 
-    private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig) {
+    private async sendAfterHoursMessage(tenantId: string, schemaName: string, msg: NormalizedMessage, config: TenantConfig) {
         if (!config.hours?.afterHoursMessage) return;
 
         this.logger.log(`Sending after hours message to ${msg.contactId}`);
@@ -190,13 +187,11 @@ export class ConversationsService {
             content: { type: 'text', text: config.hours.afterHoursMessage }
         };
 
-        const accessToken = await this.resolveAccessToken(tenantId);
+        const accessToken = await this.resolveAccessToken(tenantId, schemaName);
         await this.channelGateway.sendMessage(outbound, accessToken);
     }
 
-    private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage) {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
-        
+    private async saveMessage(schemaName: string, tenantId: string, conversationId: string, msg: NormalizedMessage) {
         const metadataJson = JSON.stringify(msg.metadata || {});
         
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -208,9 +203,7 @@ export class ConversationsService {
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
-    private async saveAiMessage(tenantId: string, conversationId: string, text: string) {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
-        
+    private async saveAiMessage(schemaName: string, tenantId: string, conversationId: string, text: string) {
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status) 
              VALUES ($1, 'outbound', 'text', $2, 'delivered') RETURNING *`,
@@ -220,7 +213,7 @@ export class ConversationsService {
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
-    private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage) {
+    private async sendResponse(tenantId: string, schemaName: string, text: string, inboundMsg: NormalizedMessage) {
         const outbound: OutboundMessage = {
             tenantId,
             channelType: inboundMsg.channelType,
@@ -229,7 +222,7 @@ export class ConversationsService {
             content: { type: 'text', text }
         };
 
-        const accessToken = await this.resolveAccessToken(tenantId);
+        const accessToken = await this.resolveAccessToken(tenantId, schemaName);
         await this.channelGateway.sendMessage(outbound, accessToken);
     }
 
@@ -237,9 +230,8 @@ export class ConversationsService {
      * Resolve real Meta access token for a given tenantId.
      * Looks up schema → decrypts token from whatsapp_credentials.
      */
-    private async resolveAccessToken(tenantId: string): Promise<string> {
+    private async resolveAccessToken(tenantId: string, schemaName: string): Promise<string> {
         try {
-            const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
             const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
             return creds.accessToken;
         } catch (e: any) {
@@ -251,7 +243,7 @@ export class ConversationsService {
     /**
      * Orchestrate the LLM call using the Router and Persona System Prompt
      */
-    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig): Promise<string> {
+    private async generateResponse(schemaName: string, tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig): Promise<string> {
         if (msg.content.type !== 'text') {
             return `He recibido tu mensaje multimedia, pero por ahora solo puedo procesar texto. ¿Puedes describirlo?`;
         }
@@ -266,10 +258,17 @@ export class ConversationsService {
         this.logger.log(`Routing Factors - Complexity: ${complexity}, Sentiment: ${sentiment}, Stage: ${stageScore}`);
 
         // Handoff Detection Logic
-        if (complexity > 0.85 || sentiment < 0.3 || userText.toLowerCase().includes('humano') || userText.toLowerCase().includes('asesor')) {
+        const complexityThreshold = 85;
+        const frustrationThreshold = 70;
+
+        if (
+            complexity >= complexityThreshold ||
+            sentiment >= frustrationThreshold ||
+            userText.toLowerCase().includes('humano') ||
+            userText.toLowerCase().includes('asesor')
+        ) {
             this.logger.warn(`HANDOFF TRIGGERED for Conversation ${conversation.id}. Pausing AI.`);
             
-            const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
             await this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations SET status = 'waiting_human', metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff_reason}', '"Sentiment/Complexity threshold or explicit request"') WHERE id = $1`,
                 [conversation.id]
@@ -282,7 +281,6 @@ export class ConversationsService {
         const systemPrompt = this.personaService.buildSystemPrompt(config);
 
         // 3. Get Conversation History from DB
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20`,
             [conversation.id]

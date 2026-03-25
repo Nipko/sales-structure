@@ -126,4 +126,25 @@ export class AutomationService {
         );
         return rows[0];
     }
+
+    async toggleRule(schemaName: string, ruleId: string, isActive?: boolean) {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE automation_rules
+             SET active = COALESCE($2, NOT active), updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1
+             RETURNING *`,
+            [ruleId, isActive ?? null]
+        );
+
+        return rows[0] || null;
+    }
+
+    async deleteRule(schemaName: string, ruleId: string) {
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM automation_rules WHERE id = $1`,
+            [ruleId]
+        );
+    }
 }

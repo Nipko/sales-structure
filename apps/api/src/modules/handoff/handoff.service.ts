@@ -78,20 +78,20 @@ export class HandoffService {
         message: NormalizedMessage,
         aiSummary: string,
     ): Promise<HandoffResult> {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         // 1. Mark conversation as waiting for human
         await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversation SET status = 'waiting_human', updated_at = NOW() WHERE id = $1`,
+            `UPDATE conversations SET status = 'waiting_human', updated_at = NOW() WHERE id = $1`,
             [conversationId]
         );
 
         // 2. Create handoff record
         const handoff = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO conversation (id, contact_id, status, stage, metadata)
-       SELECT gen_random_uuid(), contact_id, 'with_human', stage, 
+            `INSERT INTO conversations (id, contact_id, channel_type, channel_account_id, status, stage, metadata)
+       SELECT gen_random_uuid(), contact_id, channel_type, channel_account_id, 'with_human', stage, 
               jsonb_build_object('handoff_reason', $2, 'ai_summary', $3, 'original_conversation', $1)
-       FROM conversation WHERE id = $1
+       FROM conversations WHERE id = $1
        RETURNING *`,
             [conversationId, 'auto_escalation', aiSummary]
         ).then(res => res?.[0]);
@@ -195,10 +195,10 @@ export class HandoffService {
      * Complete handoff: return conversation back to AI
      */
     async completeHandoff(tenantId: string, conversationId: string): Promise<void> {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversation SET status = 'active', updated_at = NOW() WHERE id = $1`,
+            `UPDATE conversations SET status = 'active', updated_at = NOW() WHERE id = $1`,
             [conversationId]
         );
 

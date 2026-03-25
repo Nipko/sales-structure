@@ -1,16 +1,20 @@
 import { Controller, Get, Post, Put, Body, Param, Query, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { KnowledgeService } from './knowledge.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('knowledge')
 @Controller('knowledge')
 export class KnowledgeController {
     private readonly logger = new Logger(KnowledgeController.name);
 
-    constructor(private readonly knowledgeService: KnowledgeService) {}
+    constructor(
+        private readonly knowledgeService: KnowledgeService,
+        private readonly prisma: PrismaService,
+    ) {}
 
-    private schemaFor(tenantId: string) {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    private async schemaFor(tenantId: string) {
+        return this.prisma.getTenantSchemaName(tenantId);
     }
 
     // ─── Resources ────────────────────────────────────────────────────────────
@@ -21,13 +25,13 @@ export class KnowledgeController {
         @Param('tenantId') tenantId: string,
         @Query('status') status?: string
     ) {
-        return this.knowledgeService.getResources(this.schemaFor(tenantId), status);
+        return this.knowledgeService.getResources(await this.schemaFor(tenantId), status);
     }
 
     @Post('resources/:tenantId')
     @ApiOperation({ summary: 'Create a new knowledge resource (auto-chunks)' })
     async createResource(@Param('tenantId') tenantId: string, @Body() payload: any) {
-        return this.knowledgeService.createResource(this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
+        return this.knowledgeService.createResource(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
     }
 
     @Put('resources/:tenantId/:id/status')
@@ -37,7 +41,7 @@ export class KnowledgeController {
         @Param('id') id: string,
         @Body() payload: { status: string }
     ) {
-        return this.knowledgeService.updateResourceStatus(this.schemaFor(tenantId), id, payload.status);
+        return this.knowledgeService.updateResourceStatus(await this.schemaFor(tenantId), id, payload.status);
     }
 
     // ─── Approvals ────────────────────────────────────────────────────────────
@@ -49,19 +53,19 @@ export class KnowledgeController {
         @Param('id') id: string,
         @Body() payload: { approved_by: string, notes?: string }
     ) {
-        return this.knowledgeService.approveResource(this.schemaFor(tenantId), id, payload.approved_by, payload.notes);
+        return this.knowledgeService.approveResource(await this.schemaFor(tenantId), id, payload.approved_by, payload.notes);
     }
 
     @Get('resources/:tenantId/:id/approvals')
     async getApprovals(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-        return this.knowledgeService.getApprovals(this.schemaFor(tenantId), id);
+        return this.knowledgeService.getApprovals(await this.schemaFor(tenantId), id);
     }
 
     // ─── Chunks & Search ──────────────────────────────────────────────────────
 
     @Get('resources/:tenantId/:id/chunks')
     async getChunks(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-        return this.knowledgeService.getChunks(this.schemaFor(tenantId), id);
+        return this.knowledgeService.getChunks(await this.schemaFor(tenantId), id);
     }
 
     @Get('search/:tenantId')
@@ -72,6 +76,6 @@ export class KnowledgeController {
         @Query('limit') limit?: number
     ) {
         if (!query) return [];
-        return this.knowledgeService.searchChunks(this.schemaFor(tenantId), query, limit ? Number(limit) : 5);
+        return this.knowledgeService.searchChunks(await this.schemaFor(tenantId), query, limit ? Number(limit) : 5);
     }
 }

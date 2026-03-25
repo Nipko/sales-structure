@@ -44,7 +44,7 @@ export class AnthropicProvider implements ILLMProvider {
             
             // Parse response content
             let textContent = '';
-            let toolCalls = [];
+            const toolCalls = [];
             
             for (const block of response.content) {
                 if (block.type === 'text') {

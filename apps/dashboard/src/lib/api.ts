@@ -130,16 +130,16 @@ export const api = {
 
     // --- Automation ---
     getAutomationRules: (tenantId: string) =>
-        apiGet(`/pipeline/automation/${tenantId}`),
+        apiGet(`/automation/rules/${tenantId}`),
 
     createRule: (tenantId: string, data: any) =>
-        apiPost(`/pipeline/automation/${tenantId}`, data),
+        apiPost(`/automation/rules/${tenantId}`, data),
 
-    toggleRule: (tenantId: string, ruleId: string) =>
-        apiPut(`/pipeline/automation/${tenantId}/${ruleId}/toggle`, {}),
+    toggleRule: (tenantId: string, ruleId: string, isActive?: boolean) =>
+        apiPut(`/automation/rules/${tenantId}/${ruleId}/toggle`, { isActive }),
 
     deleteRule: (tenantId: string, ruleId: string) =>
-        apiDelete(`/pipeline/automation/${tenantId}/${ruleId}`),
+        apiDelete(`/automation/rules/${tenantId}/${ruleId}`),
 
     getSLAViolations: (tenantId: string) =>
         apiGet(`/pipeline/automation/${tenantId}/sla-violations`),
@@ -200,7 +200,7 @@ export const api = {
         }>(`/analytics/overview/${tenantId}`),
 
     getOverviewStats: (tenantId: string) =>
-        apiGet(`/analytics/dashboard`),
+        apiGet(`/analytics/dashboard/${tenantId}`),
 
     getAgentLeaderboard: (tenantId: string) =>
         apiGet(`/analytics/agents/${tenantId}`),

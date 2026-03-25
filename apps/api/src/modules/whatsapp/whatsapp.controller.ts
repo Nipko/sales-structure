@@ -1,4 +1,17 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  UseGuards,
+  Request,
+  BadRequestException,
+  Headers,
+  Req,
+  UnauthorizedException,
+  RawBodyRequest,
+} from '@nestjs/common';
 import { WhatsappConnectionService } from './services/whatsapp-connection.service';
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
@@ -7,6 +20,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Request as ExpressRequest } from 'express';
 
 @ApiTags('whatsapp')
 @Controller('channels/whatsapp')
@@ -38,9 +52,12 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get WhatsApp webhook configuration' })
   async getConfig() {
+    const apiBase = (process.env.API_URL || 'https://api.parallly-chat.cloud').replace(/\/$/, '');
+    const apiBaseWithPrefix = apiBase.endsWith('/api/v1') ? apiBase : `${apiBase}/api/v1`;
+
     return {
-      webhookUrl: `${process.env.API_URL || 'https://api.parallly-chat.cloud/api/v1'}/channels/whatsapp/webhook`,
-      verifyToken: process.env.META_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || 'Token no configurado en backend',
+      webhookUrl: `${apiBaseWithPrefix}/channels/whatsapp/webhook`,
+      verifyToken: this.webhookService.getVerifyToken() || 'Token no configurado en backend',
     };
   }
 
@@ -50,7 +67,15 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Start WhatsApp connection onboarding' })
   async startConnection() {
-    return { status: 'pending_onboarding' };
+    return {
+      status: 'ready',
+      provider: 'meta_cloud',
+      onboarding: {
+        mode: 'embedded_signup',
+        metaAppIdConfigured: Boolean(process.env.META_APP_ID),
+        metaConfigIdConfigured: Boolean(process.env.META_CONFIG_ID),
+      },
+    };
   }
 
   @Post('connect/complete')
@@ -59,11 +84,11 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Complete WhatsApp connection onboarding' })
   async completeConnection(@Request() req: any, @Body() data: any) {
-    const { schemaName } = req.user;
-    if (!schemaName) {
+    const { schemaName, tenantId } = req.user;
+    if (!schemaName || !tenantId) {
       throw new BadRequestException('User does not belong to a tenant');
     }
-    return this.connectionService.saveConnection(schemaName, data);
+    return this.connectionService.saveConnection(schemaName, tenantId, data);
   }
 
   // ======================== TEMPLATES ========================
@@ -201,7 +226,15 @@ export class WhatsappController {
 
   @Post('webhook')
   @ApiOperation({ summary: 'Receive messages and status from Meta' })
-  async handleWebhook(@Body() payload: any) {
+  async handleWebhook(
+    @Body() payload: any,
+    @Headers('x-hub-signature-256') signature: string,
+    @Req() req: RawBodyRequest<ExpressRequest>,
+  ) {
+    if (!this.webhookService.validateSignature(req.rawBody, signature)) {
+      throw new UnauthorizedException('Invalid webhook signature');
+    }
+
     this.webhookService.handleWebhookPayload(payload).catch(console.error);
     return 'EVENT_RECEIVED';
   }

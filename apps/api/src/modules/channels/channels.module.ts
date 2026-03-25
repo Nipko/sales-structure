@@ -6,9 +6,10 @@ import { InstagramAdapter } from './instagram/instagram.adapter';
 import { MessengerAdapter } from './messenger/messenger.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
-    imports: [forwardRef(() => ConversationsModule)],
+    imports: [forwardRef(() => ConversationsModule), forwardRef(() => WhatsappModule)],
     controllers: [ChannelsController],
     providers: [ChannelGatewayService, WhatsAppAdapter, InstagramAdapter, MessengerAdapter, TelegramAdapter],
     exports: [ChannelGatewayService],

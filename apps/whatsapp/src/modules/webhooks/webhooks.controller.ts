@@ -1,4 +1,17 @@
-import { Controller, Get, Post, Query, Body, Headers, Req, Res, Logger, RawBodyRequest, HttpCode } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  Body,
+  Headers,
+  Req,
+  Res,
+  Logger,
+  RawBodyRequest,
+  HttpCode,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
@@ -26,7 +39,8 @@ export class WebhooksController {
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
   ) {
-    const verifyToken = this.config.get<string>('meta.verifyToken');
+    const verifyToken = this.config.get<string>('meta.verifyToken')
+      || this.config.get<string>('WHATSAPP_VERIFY_TOKEN');
 
     if (mode === 'subscribe' && token === verifyToken) {
       this.logger.log('Webhook verification successful');
@@ -52,7 +66,7 @@ export class WebhooksController {
     // 1. Validar firma HMAC-SHA256
     if (!this.validateSignature(req, signature)) {
       this.logger.warn('Invalid webhook signature — rejecting');
-      return { status: 'rejected', reason: 'invalid_signature' };
+      throw new UnauthorizedException('invalid_signature');
     }
 
     // 2. Responder 200 inmediatamente y procesar en background
@@ -70,7 +84,8 @@ export class WebhooksController {
   private validateSignature(req: RawBodyRequest<Request>, signature: string): boolean {
     if (!signature) return false;
 
-    const appSecret = this.config.get<string>('meta.appSecret');
+    const appSecret = this.config.get<string>('meta.appSecret')
+      || this.config.get<string>('WHATSAPP_APP_SECRET');
     if (!appSecret) {
       this.logger.warn('META_APP_SECRET not configured — skipping signature validation (DEV ONLY)');
       return true;

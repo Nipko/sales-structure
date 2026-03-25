@@ -78,9 +78,9 @@ export class ConversationsService {
 
         // 5. Send Response via Channel Gateway
         if (response) {
-            await this.sendResponse(tenantId, schemaName, response, normalizedMsg);
+            const providerMessageId = await this.sendResponse(tenantId, schemaName, response, normalizedMsg);
             // Save AI Message
-            await this.saveAiMessage(schemaName, tenantId, conversation.id, response);
+            await this.saveAiMessage(schemaName, tenantId, conversation.id, response, providerMessageId || undefined);
         }
     }
 
@@ -193,27 +193,30 @@ export class ConversationsService {
 
     private async saveMessage(schemaName: string, tenantId: string, conversationId: string, msg: NormalizedMessage) {
         const metadataJson = JSON.stringify(msg.metadata || {});
+        const externalId = typeof (msg.metadata as any)?.waMessageId === 'string'
+            ? (msg.metadata as any).waMessageId
+            : null;
         
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata) 
-             VALUES ($1, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
-            [conversationId, msg.content.type, msg.content.text, metadataJson]
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id, metadata) 
+             VALUES ($1, 'inbound', $2, $3, 'delivered', $4, $5::jsonb) RETURNING *`,
+            [conversationId, msg.content.type, msg.content.text || null, externalId, metadataJson]
         );
         this.logger.log(`Saved user message to DB: ${msg.content.text}`);
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
-    private async saveAiMessage(schemaName: string, tenantId: string, conversationId: string, text: string) {
+    private async saveAiMessage(schemaName: string, tenantId: string, conversationId: string, text: string, externalId?: string) {
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status) 
-             VALUES ($1, 'outbound', 'text', $2, 'delivered') RETURNING *`,
-            [conversationId, text]
+            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id) 
+             VALUES ($1, 'outbound', 'text', $2, 'delivered', $3) RETURNING *`,
+            [conversationId, text, externalId || null]
         );
         this.logger.log(`Saved AI message to DB: ${text}`);
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
-    private async sendResponse(tenantId: string, schemaName: string, text: string, inboundMsg: NormalizedMessage) {
+    private async sendResponse(tenantId: string, schemaName: string, text: string, inboundMsg: NormalizedMessage): Promise<string | null> {
         const outbound: OutboundMessage = {
             tenantId,
             channelType: inboundMsg.channelType,
@@ -223,7 +226,7 @@ export class ConversationsService {
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, schemaName);
-        await this.channelGateway.sendMessage(outbound, accessToken);
+        return this.channelGateway.sendMessage(outbound, accessToken);
     }
 
     /**

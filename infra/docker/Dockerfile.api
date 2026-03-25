@@ -35,8 +35,11 @@ ENV NODE_ENV=production
 # Prisma needs OpenSSL to run on Alpine
 RUN apk add --no-cache openssl
 
-# Copy the built app with hoisted node_modules
+# Copy runtime dependencies:
+# - root node_modules (hoisted)
+# - workspace node_modules (non-hoisted, e.g. @nestjs/axios)
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
 COPY --from=builder /app/apps/api/scripts ./scripts

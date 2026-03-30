@@ -78,6 +78,20 @@ ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQue
 | Dashboard API client | `apps/dashboard/src/lib/api.ts` |
 | Dashboard auth | `apps/dashboard/src/contexts/AuthContext.tsx` |
 
+## Verification before pushing
+
+```bash
+# Type check (catches type errors)
+cd apps/api && npx tsc --noEmit
+
+# Bootstrap test (catches circular deps, missing providers — RUNTIME errors)
+cd apps/api && npm run test:bootstrap
+```
+
+**IMPORTANT**: Always run `test:bootstrap` before pushing. `tsc --noEmit` does NOT catch
+NestJS circular dependency errors because they're runtime DI failures, not type errors.
+The CI pipeline runs both checks before building Docker images.
+
 ## Build & run
 
 ```bash

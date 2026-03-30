@@ -28,6 +28,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check (API)
+        run: cd apps/api && npx tsc --noEmit
+
+      - name: TypeScript check (WhatsApp)
+        run: cd apps/whatsapp && npx tsc --noEmit
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -50,10 +65,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test API image modules
+      - name: Smoke test API — verify NestJS DI container boots
         run: |
-          docker pull ${{ env.API_IMAGE }}:${{ github.sha }}
-          docker run --rm --entrypoint node ${{ env.API_IMAGE }}:${{ github.sha }} -e "require('@nestjs/axios'); console.log('API image module check OK')"
+          docker run --rm \
+            -e DATABASE_URL="postgresql://test:test@localhost:5432/test" \
+            -e REDIS_HOST="localhost" \
+            -e NODE_ENV="test" \
+            --entrypoint node \
+            ${{ env.API_IMAGE }}:${{ github.sha }} \
+            -e "
+              const { NestFactory } = require('@nestjs/core');
+              const { AppModule } = require('./app.module');
+              NestFactory.create(AppModule, { logger: ['error'], abortOnError: true })
+                .then(app => { console.log('✅ NestJS DI container OK'); app.close(); process.exit(0); })
+                .catch(e => { console.error('❌ DI FAILED:', e.message); process.exit(1); });
+            "
+        timeout-minutes: 2
 
       - name: Build and push Dashboard image
         uses: docker/build-push-action@v5

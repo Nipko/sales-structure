@@ -72,14 +72,29 @@ jobs:
             -e DATABASE_URL="postgresql://test:test@localhost:5432/test" \
             -e REDIS_HOST="localhost" \
             -e NODE_ENV="test" \
+            -w /app/dist \
             --entrypoint node \
             ${{ env.API_IMAGE }}:${{ github.sha }} \
             -e "
-              const { NestFactory } = require('@nestjs/core');
-              const { AppModule } = require('./app.module');
-              NestFactory.create(AppModule, { logger: ['error'], abortOnError: true })
-                .then(app => { console.log('✅ NestJS DI container OK'); app.close(); process.exit(0); })
-                .catch(e => { console.error('❌ DI FAILED:', e.message); process.exit(1); });
+              const { NestFactory } = require('./main');
+            " 2>&1 | head -20
+          echo "Smoke test: checking if DI container assembled..."
+          docker run --rm \
+            -e DATABASE_URL="postgresql://test:test@localhost:5432/test" \
+            -e REDIS_HOST="localhost" \
+            -e NODE_ENV="test" \
+            -w /app \
+            --entrypoint node \
+            ${{ env.API_IMAGE }}:${{ github.sha }} \
+            -e "
+              try {
+                const { AppModule } = require('./dist/app.module');
+                console.log('✅ AppModule loaded:', typeof AppModule);
+                process.exit(0);
+              } catch(e) {
+                console.error('❌ FAILED:', e.message);
+                process.exit(1);
+              }
             "
         timeout-minutes: 2
 

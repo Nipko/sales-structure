@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
@@ -16,12 +16,12 @@ import { AutomationModule } from '../automation/automation.module';
     imports: [
         PersonaModule,
         AIModule,
-        ChannelsModule,
+        forwardRef(() => ChannelsModule),
         HandoffModule,
         KnowledgeModule,
         CrmModule,
         PipelineModule,
-        AutomationModule,
+        forwardRef(() => AutomationModule),
         JwtModule.register({}),
     ],
     providers: [ConversationsService, ConversationsGateway],
@@ -29,4 +29,3 @@ import { AutomationModule } from '../automation/automation.module';
     exports: [ConversationsService, ConversationsGateway],
 })
 export class ConversationsModule {}
-

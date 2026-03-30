@@ -17,7 +17,7 @@ import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
     HttpModule,
     forwardRef(() => ConversationsModule),
     AnalyticsModule,
-    ChannelsModule,
+    forwardRef(() => ChannelsModule),
   ],
   controllers: [WhatsappController],
   providers: [

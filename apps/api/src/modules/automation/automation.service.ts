@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActionExecutorService } from './action-executor.service';
 
@@ -13,12 +12,9 @@ export class AutomationService {
     ) {}
 
     // ─── Event Listeners ──────────────────────────────────────────────────────
-
-    @OnEvent('lead.captured')
-    async handleLeadCaptured(payload: any) {
-        this.logger.log(`[Automation] Received lead.captured event for lead: ${payload.leadId}`);
-        await this.evaluateEvent(payload.tenantId, payload.schemaName, 'lead.captured', payload);
-    }
+    // NOTA: El manejo de 'lead.captured' se delega a AutomationListenerService
+    // que programa las acciones con delay via BullMQ para que el saludo AI
+    // llegue primero antes de enviar la plantilla.
 
     // ─── Core Rules Engine ────────────────────────────────────────────────────
 

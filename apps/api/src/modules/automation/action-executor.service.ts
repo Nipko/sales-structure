@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-// import { WhatsappService } from '../whatsapp/whatsapp.service'; // Adjust if WhatsappModule has an exposed service
+import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 
 @Injectable()
 export class ActionExecutorService {
@@ -8,7 +8,7 @@ export class ActionExecutorService {
 
     constructor(
         private readonly prisma: PrismaService,
-        // private readonly whatsappService: WhatsappService
+        private readonly whatsappMessaging: WhatsappMessagingService,
     ) {}
 
     async executeActions(schemaName: string, actions: any[], eventPayload: any) {
@@ -45,17 +45,25 @@ export class ActionExecutorService {
     }
 
     private async executeSendTemplate(schemaName: string, config: any, payload: any) {
-        this.logger.log(`[ActionExecutor] Sending WhatsApp Template ${config.templateName} to +${payload.phone}`);
-        // In a real implementation:
-        // await this.whatsappService.sendTemplate({
-        //     tenantId: payload.tenantId,
-        //     to: payload.phone,
-        //     templateName: config.templateName,
-        //     parameters: config.parameters
-        // });
-        
-        // Let's pretend we sent it
-        await new Promise(resolve => setTimeout(resolve, 100));
+        const templateName = config.templateName || config.template_name;
+        const language = config.language || 'es';
+        const components = config.components || config.parameters || [];
+        const phone = payload.phone;
+
+        if (!templateName || !phone) {
+            this.logger.warn(`[ActionExecutor] Faltan datos para enviar plantilla: template=${templateName}, phone=${phone}`);
+            return;
+        }
+
+        this.logger.log(`[ActionExecutor] Enviando plantilla WhatsApp '${templateName}' a ${phone}`);
+
+        await this.whatsappMessaging.sendTemplate(
+            schemaName,
+            phone,
+            templateName,
+            language,
+            components,
+        );
     }
 
     private async executeSendEmail(schemaName: string, config: any, payload: any) {

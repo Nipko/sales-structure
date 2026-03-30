@@ -200,10 +200,21 @@ export const api = {
             handoffs: number;
             llmCostToday: number;
             messagesProcessed: number;
-        }>(`/analytics/overview/${tenantId}`),
+        }>(`/analytics/commercial-overview/${tenantId}`),
 
+    /** Dashboard overview — includes recentActivity, modelUsage, and agent stats */
     getOverviewStats: (tenantId: string) =>
+        apiGet(`/analytics/overview/${tenantId}`),
+
+    /** Dashboard executive metrics — conversations, handoffs, messages, LLM cost, hourly volume */
+    getDashboardMetrics: (tenantId: string) =>
         apiGet(`/analytics/dashboard/${tenantId}`),
+
+    getPipelineFunnel: (tenantId: string) =>
+        apiGet(`/analytics/pipeline/${tenantId}`),
+
+    getConversationMetrics: (tenantId: string, days = 30) =>
+        apiGet(`/analytics/conversations/${tenantId}?days=${days}`),
 
     getAgentLeaderboard: (tenantId: string) =>
         apiGet(`/analytics/agents/${tenantId}`),

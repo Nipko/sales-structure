@@ -18,9 +18,30 @@ export class AnalyticsController {
 
     // ---- Dashboard Endpoints ----
 
+    @Get('commercial-overview/:tenantId')
+    async getCommercialOverview(@Param('tenantId') tenantId: string) {
+        const data = await this.analyticsService.getCommercialOverview(tenantId);
+        return { success: true, data };
+    }
+
     @Get('dashboard/:tenantId')
     async getDashboard(@Param('tenantId') tenantId: string) {
         const data = await this.analyticsService.getDashboardMetrics(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('pipeline/:tenantId')
+    async getPipelineFunnel(@Param('tenantId') tenantId: string) {
+        const data = await this.analyticsService.getPipelineFunnel(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('conversations/:tenantId')
+    async getConversationMetrics(
+        @Param('tenantId') tenantId: string,
+        @Query('days') days?: string,
+    ) {
+        const data = await this.analyticsService.getConversationMetrics(tenantId, parseInt(days || '30'));
         return { success: true, data };
     }
 

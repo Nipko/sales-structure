@@ -28,6 +28,8 @@ export interface OverviewStats {
     csatTrend: number;
     activeAgents: number;
     handoffRate: number;
+    recentActivity: Array<{ event_type: string; description: string; tenant_name: string; created_at: string; type: string }>;
+    modelUsage: Array<{ model: string; count: number }>;
 }
 
 export interface CSATEntry {
@@ -81,6 +83,46 @@ export class AgentAnalyticsService {
         const csatWeek = parseFloat(s.csat_week) || 0;
         const csatPrev = parseFloat(s.csat_prev_week) || 0;
 
+        // Fetch recent activity from analytics_events or conversations
+        let recentActivity: OverviewStats['recentActivity'] = [];
+        try {
+            const activityRows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `(SELECT 'conversation' as type, 'Nueva conversación' as description,
+                         '' as tenant_name, created_at
+                  FROM conversations
+                  ORDER BY created_at DESC LIMIT 5)
+                 UNION ALL
+                 (SELECT 'handoff' as type, 'Handoff activado' as description,
+                         '' as tenant_name, updated_at as created_at
+                  FROM conversations
+                  WHERE status IN ('waiting_human', 'with_human')
+                  ORDER BY updated_at DESC LIMIT 5)
+                 ORDER BY created_at DESC LIMIT 10`,
+            );
+            recentActivity = (activityRows || []).map((r: any) => ({
+                event_type: r.type,
+                description: r.description,
+                tenant_name: '',
+                created_at: r.created_at,
+                type: r.type,
+            }));
+        } catch {
+            // Table may not exist
+        }
+
+        // Fetch model usage from Redis
+        const today = new Date().toISOString().split('T')[0];
+        const modelNames = ['gpt-4o', 'gpt-4o-mini', 'gemini-flash', 'gemini-pro', 'deepseek', 'grok', 'claude-sonnet'];
+        const modelUsage: OverviewStats['modelUsage'] = [];
+        for (const model of modelNames) {
+            const countStr = await this.redis.get(`analytics:${tenantId}:${today}:model:${model}`);
+            const count = parseInt(countStr as string || '0');
+            if (count > 0) {
+                modelUsage.push({ model, count });
+            }
+        }
+
         return {
             totalConversations: parseInt(s.total_conversations) || 0,
             resolvedToday: parseInt(s.resolved_today) || 0,
@@ -90,6 +132,8 @@ export class AgentAnalyticsService {
             csatTrend: csatPrev > 0 ? ((csatWeek - csatPrev) / csatPrev) * 100 : 0,
             activeAgents: parseInt(s.active_agents) || 0,
             handoffRate: parseFloat(s.handoff_rate) || 0,
+            recentActivity,
+            modelUsage,
         };
     }
 
@@ -201,7 +245,7 @@ export class AgentAnalyticsService {
     }
 
     private emptyOverview(): OverviewStats {
-        return { totalConversations: 0, resolvedToday: 0, avgResponseTime: '0s', avgResolutionTime: '0s', csatAvg: 0, csatTrend: 0, activeAgents: 0, handoffRate: 0 };
+        return { totalConversations: 0, resolvedToday: 0, avgResponseTime: '0s', avgResolutionTime: '0s', csatAvg: 0, csatTrend: 0, activeAgents: 0, handoffRate: 0, recentActivity: [], modelUsage: [] };
     }
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {

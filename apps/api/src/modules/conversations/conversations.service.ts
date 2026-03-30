@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PersonaService } from '../persona/persona.service';
@@ -10,6 +11,8 @@ import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
+import { PipelineService } from '../pipeline/pipeline.service';
+import { NurturingService } from '../automation/nurturing.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
@@ -31,6 +34,9 @@ export class ConversationsService {
         private handoffService: HandoffService,
         private knowledgeService: KnowledgeService,
         private leadScoring: LeadScoringService,
+        private pipelineService: PipelineService,
+        private eventEmitter: EventEmitter2,
+        private nurturingService: NurturingService,
     ) {}
 
     /**
@@ -41,8 +47,13 @@ export class ConversationsService {
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
 
         // 1. Resolve Contact & Conversation
-        const { contact, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
+        const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
+
+        // Cancel any pending nurturing follow-ups — customer responded
+        this.nurturingService.cancelFollowUp(tenantId, conversation.id).catch(e =>
+            this.logger.warn(`Nurturing cancel failed (non-fatal): ${e.message}`),
+        );
 
         // Auto-progress stage from 'nuevo' to 'respondio' upon user message
         const schemaName = this.tenantSchema(tenantId);
@@ -95,6 +106,8 @@ export class ConversationsService {
         }
 
         // 6. Generate AI Response
+        const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
+        const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config);
 
         // 7. Send Response via Channel Gateway
@@ -103,10 +116,28 @@ export class ConversationsService {
             await this.saveAiMessage(tenantId, conversation.id, response);
         }
 
-        // 8. Fire-and-forget scoring update
+        // 8. Auto-progress pipeline stage based on conversation signals
+        this.pipelineService.autoProgressFromConversation(tenantId, conversation.id, {
+            complexity,
+            sentiment,
+            messageText: content?.text || '',
+            isFirstAiResponse: !!response,
+            isCustomerReply: true,
+        }).catch(e =>
+            this.logger.warn(`Pipeline auto-progress failed (non-fatal): ${e.message}`),
+        );
+
+        // 9. Fire-and-forget scoring update
         this.leadScoring.scoreAfterMessage(tenantId, conversation.id).catch(e =>
             this.logger.warn(`Scoring update failed: ${e.message}`),
         );
+
+        // 10. Schedule nurturing follow-up in case customer doesn't respond
+        if (response) {
+            this.nurturingService.scheduleFollowUp(tenantId, conversation.id, lead.id).catch(e =>
+                this.logger.warn(`Nurturing schedule failed (non-fatal): ${e.message}`),
+            );
+        }
     }
 
     /**
@@ -134,6 +165,7 @@ export class ConversationsService {
             [contact.id],
         ).then(res => res[0]);
 
+        let isNewLead = false;
         if (!lead) {
             const contactName = (msg.metadata as any)?.contactName as string || '';
             const nameParts = contactName.split(' ');
@@ -144,6 +176,7 @@ export class ConversationsService {
                 `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1, $2, $3, $4, 'nuevo', 10) RETURNING *`,
                 [contact.id, firstName, lastName, contactId],
             ).then(res => res[0]);
+            isNewLead = true;
         }
 
         // 3. Find active conversation or create new
@@ -163,6 +196,22 @@ export class ConversationsService {
                 `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1, $2, 'nuevo', 10)`,
                 [lead.id, conversation.id],
             );
+        }
+
+        // Emit lead.captured event for new leads so automation rules can fire
+        if (isNewLead) {
+            this.eventEmitter.emit('lead.captured', {
+                tenantId,
+                schemaName,
+                leadId: lead.id,
+                contactId: contact.id,
+                conversationId: conversation.id,
+                phone: contactId,
+                name: contact.name,
+                channel: channelType,
+                source: 'whatsapp_inbound',
+            });
+            this.logger.log(`Emitted lead.captured for new lead ${lead.id}`);
         }
 
         return { contact, lead, conversation };

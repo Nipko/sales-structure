@@ -10,6 +10,7 @@ import { HandoffModule } from '../handoff/handoff.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { CrmModule } from '../crm/crm.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { AutomationModule } from '../automation/automation.module';
 
 @Module({
     imports: [
@@ -20,6 +21,7 @@ import { PipelineModule } from '../pipeline/pipeline.module';
         KnowledgeModule,
         CrmModule,
         PipelineModule,
+        AutomationModule,
         JwtModule.register({}),
     ],
     providers: [ConversationsService, ConversationsGateway],

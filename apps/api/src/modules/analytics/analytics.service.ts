@@ -96,18 +96,50 @@ export class AnalyticsService {
     }
 
     /**
-     * Get dashboard metrics for a tenant (fast path via Redis)
+     * Get dashboard metrics for a tenant (Redis fast path + DB fallback)
      */
     async getDashboardMetrics(tenantId: string): Promise<DashboardMetrics> {
         const today = new Date().toISOString().split('T')[0];
 
-        // 1. Today's counters
-        const [conversations, messages, handoffs, costStr] = await Promise.all([
+        // 1. Today's counters from Redis
+        const [redisConvos, redisMessages, redisHandoffs, costStr] = await Promise.all([
             this.redis.get(`analytics:${tenantId}:${today}:conversation_started`) || '0',
             this.redis.get(`analytics:${tenantId}:${today}:total`) || '0',
             this.redis.get(`analytics:${tenantId}:${today}:handoff_triggered`) || '0',
             this.redis.get(`analytics:${tenantId}:${today}:cost`) || '0',
         ]);
+
+        let conversations = parseInt(redisConvos as string);
+        let messages = parseInt(redisMessages as string);
+        let handoffs = parseInt(redisHandoffs as string);
+
+        // DB fallback if Redis counters are zero
+        if (conversations === 0 || messages === 0) {
+            const schemaName = await this.getSchemaName(tenantId);
+            if (schemaName) {
+                try {
+                    const [convoRows, msgRows, handoffRows] = await Promise.all([
+                        this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                            schemaName,
+                            `SELECT COUNT(*) as cnt FROM conversations WHERE created_at >= CURRENT_DATE`
+                        ),
+                        this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                            schemaName,
+                            `SELECT COUNT(*) as cnt FROM messages WHERE created_at >= CURRENT_DATE`
+                        ),
+                        this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                            schemaName,
+                            `SELECT COUNT(*) as cnt FROM conversations WHERE status IN ('waiting_human', 'with_human') AND updated_at >= CURRENT_DATE`
+                        ),
+                    ]);
+                    conversations = Math.max(conversations, parseInt(convoRows[0]?.cnt ?? '0'));
+                    messages = Math.max(messages, parseInt(msgRows[0]?.cnt ?? '0'));
+                    handoffs = Math.max(handoffs, parseInt(handoffRows[0]?.cnt ?? '0'));
+                } catch {
+                    // Schema may be outdated
+                }
+            }
+        }
 
         // 2. Model usage distribution
         const modelNames = ['gpt-4o', 'gpt-4o-mini', 'gemini-flash', 'gemini-pro', 'deepseek', 'grok', 'claude-sonnet'];
@@ -132,9 +164,9 @@ export class AnalyticsService {
 
         return {
             today: {
-                conversations: parseInt(conversations as string),
-                messages: parseInt(messages as string),
-                handoffs: parseInt(handoffs as string),
+                conversations,
+                messages,
+                handoffs,
                 llmCost: parseFloat(costStr as string),
             },
             models: models.filter(m => m.requests > 0),
@@ -162,8 +194,8 @@ export class AnalyticsService {
     }
 
     /**
-     * Commercial overview — combines Redis real-time counters + DB lead counts.
-     * Called by the dashboard's main stat cards to replace mock data.
+     * Commercial overview — combines Redis real-time counters + DB queries.
+     * Falls back to direct DB counts when Redis counters are zero (e.g. events not tracked yet).
      */
     async getCommercialOverview(tenantId: string): Promise<{
         leadsToday: number;
@@ -189,50 +221,187 @@ export class AnalyticsService {
         }
 
         // Redis counters (real-time, fast path)
-        const [conversations, messages, handoffs, costStr] = await Promise.all([
+        const [redisConvos, redisMessages, redisHandoffs, costStr] = await Promise.all([
             this.redis.get(`analytics:${tenantId}:${today}:conversation_started`),
             this.redis.get(`analytics:${tenantId}:${today}:total`),
             this.redis.get(`analytics:${tenantId}:${today}:handoff_triggered`),
             this.redis.get(`analytics:${tenantId}:${today}:cost`),
         ]);
 
-        // DB lead counts from commercial domain
+        // DB lead counts + fallback counts for conversations/handoffs/messages
         let leadsToday = 0;
         let leadsHot = 0;
         let leadsReadyToClose = 0;
+        let dbConversations = 0;
+        let dbHandoffs = 0;
+        let dbMessages = 0;
 
         try {
-            // Leads created today
-            const todayRows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
-                schemaName,
-                `SELECT COUNT(*) as cnt FROM leads WHERE DATE(created_at) = CURRENT_DATE`
-            );
+            const [todayRows, scoreRows, convoRows, handoffRows, msgRows] = await Promise.all([
+                // Leads created today
+                this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                    schemaName,
+                    `SELECT COUNT(*) as cnt FROM leads WHERE created_at >= CURRENT_DATE`
+                ),
+                // Hot leads (score >= 7) and ready-to-close (score >= 9)
+                this.prisma.executeInTenantSchema<Array<{ bucket: string; cnt: string }>>(
+                    schemaName,
+                    `SELECT
+                        CASE WHEN score >= 9 THEN 'ready' WHEN score >= 7 THEN 'hot' END as bucket,
+                        COUNT(*) as cnt
+                     FROM leads
+                     WHERE score >= 7 AND opted_out = false
+                     GROUP BY bucket`
+                ),
+                // Conversations today (DB fallback)
+                this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                    schemaName,
+                    `SELECT COUNT(*) as cnt FROM conversations WHERE created_at >= CURRENT_DATE`
+                ),
+                // Handoffs today (DB fallback)
+                this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                    schemaName,
+                    `SELECT COUNT(*) as cnt FROM conversations WHERE status IN ('waiting_human', 'with_human') AND updated_at >= CURRENT_DATE`
+                ),
+                // Messages today (DB fallback)
+                this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                    schemaName,
+                    `SELECT COUNT(*) as cnt FROM messages WHERE created_at >= CURRENT_DATE`
+                ),
+            ]);
+
             leadsToday = parseInt(todayRows[0]?.cnt ?? '0');
 
-            // Hot leads (score >= 7) and ready-to-close (score >= 9)
-            const stageRows = await this.prisma.executeInTenantSchema<Array<{ stage: string; cnt: string }>>(
-                schemaName,
-                `SELECT stage, COUNT(*) AS cnt FROM leads WHERE stage IN ('caliente', 'listo_cierre') AND opted_out = false GROUP BY stage`
-            );
-            for (const row of stageRows) {
+            for (const row of scoreRows) {
                 const count = parseInt(row.cnt);
-                if (row.stage === 'caliente') leadsHot = count;
-                if (row.stage === 'listo_cierre') leadsReadyToClose = count;
+                if (row.bucket === 'hot') leadsHot = count;
+                if (row.bucket === 'ready') leadsReadyToClose = count;
             }
+            // "ready" leads are also "hot", so add them
+            leadsHot += leadsReadyToClose;
+
+            dbConversations = parseInt(convoRows[0]?.cnt ?? '0');
+            dbHandoffs = parseInt(handoffRows[0]?.cnt ?? '0');
+            dbMessages = parseInt(msgRows[0]?.cnt ?? '0');
         } catch {
-            // Graceful fallback — leads table may not exist in older tenant schemas
-            this.logger.warn(`[Analytics] Could not query leads for tenant ${tenantId} — schema may be outdated.`);
+            this.logger.warn(`[Analytics] Could not query leads/conversations for tenant ${tenantId} — schema may be outdated.`);
         }
+
+        // Use Redis counters when available, fall back to DB counts
+        const redisConvoCount = parseInt((redisConvos as string) ?? '0');
+        const redisMessageCount = parseInt((redisMessages as string) ?? '0');
+        const redisHandoffCount = parseInt((redisHandoffs as string) ?? '0');
 
         return {
             leadsToday,
             leadsHot,
             leadsReadyToClose,
-            conversations: parseInt((conversations as string) ?? '0'),
-            handoffs: parseInt((handoffs as string) ?? '0'),
+            conversations: Math.max(redisConvoCount, dbConversations),
+            handoffs: Math.max(redisHandoffCount, dbHandoffs),
             llmCostToday: parseFloat((costStr as string) ?? '0'),
-            messagesProcessed: parseInt((messages as string) ?? '0'),
+            messagesProcessed: Math.max(redisMessageCount, dbMessages),
         };
+    }
+
+    /**
+     * Pipeline funnel — real opportunity stage counts with average lead scores.
+     */
+    async getPipelineFunnel(tenantId: string): Promise<Array<{
+        stage: string;
+        count: number;
+        avgScore: number;
+        totalValue: number;
+    }>> {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return [];
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT
+                    o.stage,
+                    COUNT(*) as count,
+                    COALESCE(AVG(l.score), 0) as avg_score,
+                    COALESCE(SUM(o.estimated_value), 0) as total_value
+                 FROM opportunities o
+                 LEFT JOIN leads l ON o.lead_id = l.id
+                 WHERE o.stage NOT IN ('ganado', 'perdido', 'no_interesado')
+                 GROUP BY o.stage
+                 ORDER BY count DESC`, []
+            );
+
+            return (rows || []).map(r => ({
+                stage: r.stage,
+                count: parseInt(r.count) || 0,
+                avgScore: parseFloat(parseFloat(r.avg_score).toFixed(1)) || 0,
+                totalValue: parseFloat(r.total_value) || 0,
+            }));
+        } catch {
+            this.logger.warn(`[Analytics] Could not query pipeline for tenant ${tenantId}`);
+            return [];
+        }
+    }
+
+    /**
+     * Conversation metrics — daily counts, resolution rate, avg response time over N days.
+     */
+    async getConversationMetrics(tenantId: string, days = 30): Promise<{
+        daily: Array<{ date: string; total: number; resolved: number; handoffs: number }>;
+        resolutionRate: number;
+        avgResponseTimeSecs: number;
+        totalConversations: number;
+    }> {
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) {
+            return { daily: [], resolutionRate: 0, avgResponseTimeSecs: 0, totalConversations: 0 };
+        }
+
+        try {
+            const [dailyRows, aggregateRows] = await Promise.all([
+                this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT
+                        DATE(created_at) as date,
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE status = 'resolved') as resolved,
+                        COUNT(*) FILTER (WHERE status IN ('waiting_human', 'with_human')) as handoffs
+                     FROM conversations
+                     WHERE created_at >= CURRENT_DATE - make_interval(days => $1::int)
+                     GROUP BY DATE(created_at)
+                     ORDER BY date ASC`,
+                    [days]
+                ),
+                this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE status = 'resolved') as resolved,
+                        AVG(EXTRACT(EPOCH FROM (
+                            COALESCE(ca.first_response_at, NOW()) - ca.assigned_at
+                        ))) FILTER (WHERE ca.first_response_at IS NOT NULL) as avg_response_time
+                     FROM conversations c
+                     LEFT JOIN conversation_assignments ca ON ca.conversation_id = c.id
+                     WHERE c.created_at >= CURRENT_DATE - make_interval(days => $1::int)`,
+                    [days]
+                ),
+            ]);
+
+            const agg = aggregateRows[0] || {};
+            const total = parseInt(agg.total || '0');
+            const resolved = parseInt(agg.resolved || '0');
+
+            return {
+                daily: (dailyRows || []).map(r => ({
+                    date: r.date,
+                    total: parseInt(r.total) || 0,
+                    resolved: parseInt(r.resolved) || 0,
+                    handoffs: parseInt(r.handoffs) || 0,
+                })),
+                resolutionRate: total > 0 ? Math.round((resolved / total) * 100) : 0,
+                avgResponseTimeSecs: parseFloat(agg.avg_response_time) || 0,
+                totalConversations: total,
+            };
+        } catch (err) {
+            this.logger.warn(`[Analytics] Could not query conversation metrics for tenant ${tenantId}: ${err}`);
+            return { daily: [], resolutionRate: 0, avgResponseTimeSecs: 0, totalConversations: 0 };
+        }
     }
 
     /**

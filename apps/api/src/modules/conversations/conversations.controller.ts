@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Param, UseGuards, Logger, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConversationsService } from './conversations.service';
@@ -22,6 +22,10 @@ export class ConversationsController {
         @CurrentTenant() tenantId: string,
         @Body() body: { text: string; contactId: string; channelType: 'whatsapp' | 'instagram' }
     ) {
+        if (process.env.NODE_ENV === 'production') {
+            throw new ForbiddenException('This endpoint is disabled in production');
+        }
+
         const mockMsg: NormalizedMessage = {
             id: 'mock-' + Date.now(),
             tenantId,

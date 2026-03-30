@@ -57,7 +57,8 @@ export class WhatsAppAdapter implements IChannelAdapter {
         const token = query['hub.verify_token'];
         const challenge = query['hub.challenge'];
 
-        const verifyToken = this.configService.get<string>('WHATSAPP_VERIFY_TOKEN');
+        const verifyToken = this.configService.get<string>('META_VERIFY_TOKEN')
+            || this.configService.get<string>('WHATSAPP_VERIFY_TOKEN');
 
         if (mode === 'subscribe' && token === verifyToken) {
             this.logger.log('WhatsApp webhook verified');

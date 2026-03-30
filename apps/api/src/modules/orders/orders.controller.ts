@@ -1,13 +1,25 @@
-import { Controller, Get, Post, Put, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
-@Controller('api/v1/orders')
+@Controller('orders')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class OrdersController {
     constructor(private ordersService: OrdersService) { }
 
     @Get('overview/:tenantId')
     async getOverview(@Param('tenantId') tenantId: string) {
         const data = await this.ordersService.getOverview(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('contacts/:tenantId')
+    async getContacts(@Param('tenantId') tenantId: string) {
+        const data = await this.ordersService.getContacts(tenantId);
         return { success: true, data };
     }
 

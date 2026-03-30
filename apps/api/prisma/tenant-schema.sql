@@ -444,6 +444,76 @@ CREATE TABLE "{{SCHEMA_NAME}}"."stage_history" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."stage_history" ("lead_id", "created_at");
 
+-- ---- Pipeline Stages (configurable per tenant) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."pipeline_stages" (
+    "id"                  UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id"           UUID NOT NULL,
+    "name"                VARCHAR(100) NOT NULL,
+    "slug"                VARCHAR(100),
+    "color"               VARCHAR(20) DEFAULT '#3498db',
+    "position"            INTEGER NOT NULL DEFAULT 0,
+    "default_probability" INTEGER DEFAULT 0,
+    "sla_hours"           INTEGER,
+    "is_terminal"         BOOLEAN DEFAULT false,
+    "created_at"          TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."pipeline_stages" ("tenant_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."pipeline_stages" ("position");
+
+-- ---- Deals (sales pipeline tracking) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."deals" (
+    "id"                  UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id"          UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id"),
+    "title"               VARCHAR(255) NOT NULL,
+    "value"               DECIMAL(14,2) DEFAULT 0,
+    "currency"            VARCHAR(10) DEFAULT 'COP',
+    "stage_id"            UUID REFERENCES "{{SCHEMA_NAME}}"."pipeline_stages"("id"),
+    "probability"         INTEGER DEFAULT 0,
+    "expected_close_date" DATE,
+    "assigned_agent_id"   UUID,
+    "notes"               TEXT DEFAULT '',
+    "tags"                TEXT[] DEFAULT '{}',
+    "status"              VARCHAR(20) DEFAULT 'open',
+    "sla_deadline"        TIMESTAMPTZ,
+    "sla_status"          VARCHAR(20) DEFAULT 'on_track',
+    "stage_entered_at"    TIMESTAMP DEFAULT NOW(),
+    "created_at"          TIMESTAMP DEFAULT NOW(),
+    "updated_at"          TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."deals" ("stage_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."deals" ("contact_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."deals" ("status");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."deals" ("sla_deadline") WHERE status = 'open' AND sla_deadline IS NOT NULL;
+
+-- ---- Stage Transitions (audit trail for deal pipeline moves) ----
+CREATE TABLE "{{SCHEMA_NAME}}"."stage_transitions" (
+    "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "deal_id"     UUID REFERENCES "{{SCHEMA_NAME}}"."deals"("id") ON DELETE CASCADE,
+    "from_stage"  TEXT,
+    "to_stage"    TEXT NOT NULL,
+    "changed_by"  TEXT NOT NULL DEFAULT 'system',
+    "reason"      TEXT,
+    "created_at"  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."stage_transitions" ("deal_id", "created_at");
+
+-- ---- Automation Rules ----
+CREATE TABLE "{{SCHEMA_NAME}}"."automation_rules" (
+    "id"                UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id"         UUID NOT NULL,
+    "name"              VARCHAR(255) NOT NULL,
+    "type"              VARCHAR(50) NOT NULL,
+    "trigger_event"     VARCHAR(100) NOT NULL,
+    "conditions"        JSONB DEFAULT '{}',
+    "actions"           JSONB DEFAULT '{}',
+    "is_active"         BOOLEAN DEFAULT true,
+    "execution_count"   INTEGER DEFAULT 0,
+    "last_executed_at"  TIMESTAMP,
+    "created_at"        TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."automation_rules" ("tenant_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."automation_rules" ("type");
+
 -- ============================================
 -- PARALLLY — WhatsApp Platform Manager (WABA)
 -- ============================================

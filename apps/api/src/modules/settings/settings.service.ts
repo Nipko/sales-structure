@@ -24,6 +24,7 @@ export interface PlatformSettings {
         url?: string;
         api_token?: string;
         account_id?: string;
+        inbox_id?: string;
     };
     general: {
         platform_name?: string;

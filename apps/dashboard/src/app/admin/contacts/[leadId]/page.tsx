@@ -3,14 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
     ChevronDown, CheckCircle, Circle, AlertCircle, Briefcase,
     TrendingUp, Calendar, Zap, Send,
 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const STAGES: Record<string, { label: string; color: string }> = {
     nuevo: { label: "Nuevo", color: "#95a5a6" },
@@ -58,13 +57,12 @@ export default function Lead360Page() {
         if (!tenantId || !leadId) return;
         setLoading(true);
         try {
-            const [r1, r2, r3, r4] = await Promise.all([
-                fetch(`${API}/crm/leads/${tenantId}/${leadId}`),
-                fetch(`${API}/crm/timeline/${tenantId}/${leadId}`),
-                fetch(`${API}/crm/notes/${tenantId}/${leadId}`),
-                fetch(`${API}/crm/tasks/${tenantId}?leadId=${leadId}`),
+            const [d1, d2, d3, d4] = await Promise.all([
+                api.fetch(`/crm/leads/${tenantId}/${leadId}`),
+                api.fetch(`/crm/timeline/${tenantId}/${leadId}`),
+                api.fetch(`/crm/notes/${tenantId}/${leadId}`),
+                api.fetch(`/crm/tasks/${tenantId}?leadId=${leadId}`),
             ]);
-            const [d1, d2, d3, d4] = await Promise.all([r1.json(), r2.json(), r3.json(), r4.json()]);
             setLead360(d1.data);
             setTimeline(d2.data || []);
             setNotes(d3.data || []);
@@ -81,9 +79,8 @@ export default function Lead360Page() {
     const handleAddNote = async () => {
         if (!newNote.trim() || !tenantId) return;
         setAddingNote(true);
-        await fetch(`${API}/crm/notes/${tenantId}`, {
+        await api.fetch(`/crm/notes/${tenantId}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ leadId, content: newNote }),
         });
         setNewNote("");
@@ -94,9 +91,8 @@ export default function Lead360Page() {
     const handleAddTask = async () => {
         if (!newTask.title.trim() || !tenantId) return;
         setAddingTask(true);
-        await fetch(`${API}/crm/tasks/${tenantId}`, {
+        await api.fetch(`/crm/tasks/${tenantId}`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ leadId, ...newTask }),
         });
         setNewTask({ title: "", dueAt: "", type: "follow_up" });
@@ -106,9 +102,8 @@ export default function Lead360Page() {
 
     const handleCompleteTask = async (taskId: string) => {
         if (!tenantId) return;
-        await fetch(`${API}/crm/tasks/${tenantId}/${taskId}/status`, {
+        await api.fetch(`/crm/tasks/${tenantId}/${taskId}/status`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: "done" }),
         });
         load();

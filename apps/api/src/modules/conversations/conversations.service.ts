@@ -9,6 +9,7 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
@@ -29,6 +30,7 @@ export class ConversationsService {
         private gateway: ConversationsGateway,
         private handoffService: HandoffService,
         private knowledgeService: KnowledgeService,
+        private leadScoring: LeadScoringService,
     ) {}
 
     /**
@@ -100,6 +102,11 @@ export class ConversationsService {
             await this.sendResponse(tenantId, response, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, response);
         }
+
+        // 8. Fire-and-forget scoring update
+        this.leadScoring.scoreAfterMessage(tenantId, conversation.id).catch(e =>
+            this.logger.warn(`Scoring update failed: ${e.message}`),
+        );
     }
 
     /**

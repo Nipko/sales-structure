@@ -85,7 +85,9 @@ export class AnalyticsService {
         data?: Record<string, unknown>,
         timestamp?: string,
     ): Promise<void> {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return;
+
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO analytics_events (id, event_type, conversation_id, contact_id, data, created_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
@@ -144,7 +146,8 @@ export class AnalyticsService {
      * Get metrics for a date range (from database)
      */
     async getMetricsRange(tenantId: string, startDate: string, endDate: string) {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) return [];
 
         const events = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT event_type, COUNT(*) as count, DATE(created_at) as date
@@ -172,7 +175,18 @@ export class AnalyticsService {
         messagesProcessed: number;
     }> {
         const today = new Date().toISOString().split('T')[0];
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.getSchemaName(tenantId);
+        if (!schemaName) {
+            return {
+                leadsToday: 0,
+                leadsHot: 0,
+                leadsReadyToClose: 0,
+                conversations: 0,
+                handoffs: 0,
+                llmCostToday: 0,
+                messagesProcessed: 0,
+            };
+        }
 
         // Redis counters (real-time, fast path)
         const [conversations, messages, handoffs, costStr] = await Promise.all([
@@ -382,13 +396,13 @@ export class AnalyticsService {
     private async getSchemaName(tenantId: string): Promise<string | null> {
         const cached = await this.redis.get(`tenant:${tenantId}:schema`);
         if (cached) return cached;
-        const tenant = await this.prisma.$queryRaw<any[]>`
-            SELECT schema_name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1
-        `;
-        if (tenant && tenant.length > 0) {
-            await this.redis.set(`tenant:${tenantId}:schema`, tenant[0].schema_name, 3600);
-            return tenant[0].schema_name;
+
+        try {
+            const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+            await this.redis.set(`tenant:${tenantId}:schema`, schemaName, 3600);
+            return schemaName;
+        } catch {
+            return null;
         }
-        return null;
     }
 }

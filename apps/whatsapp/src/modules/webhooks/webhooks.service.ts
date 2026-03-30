@@ -81,9 +81,6 @@ export class WebhooksService {
         continue;
       }
 
-      // Marcar como procesando (TTL 24h)
-      await this.redis.setex(dedupeKey, 86400, '1');
-
       // Encolar para procesamiento
       await this.webhookQueue.add('process-message', {
         tenantId: tenantInfo.tenantId,
@@ -97,9 +94,13 @@ export class WebhooksService {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
+        jobId: `process-message:${msg.id}`,
         removeOnComplete: 100,
         removeOnFail: 1000,
       });
+
+      // Marcar dedupe solo después de encolar exitosamente.
+      await this.redis.setex(dedupeKey, 86400, '1');
     }
 
     // También procesar status updates (delivered, read, etc.)
@@ -108,8 +109,6 @@ export class WebhooksService {
       const dedupeKey = `wa:status:${status.id}:${status.status}`;
       const exists = await this.redis.get(dedupeKey);
       if (exists) continue;
-
-      await this.redis.setex(dedupeKey, 86400, '1');
 
       await this.webhookQueue.add('process-status', {
         tenantId: tenantInfo.tenantId,
@@ -120,8 +119,11 @@ export class WebhooksService {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
+        jobId: `process-status:${status.id}:${status.status}`,
         removeOnComplete: 100,
       });
+
+      await this.redis.setex(dedupeKey, 86400, '1');
     }
   }
 

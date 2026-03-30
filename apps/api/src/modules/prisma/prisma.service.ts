@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -23,13 +23,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Execute a query in a specific tenant schema
      */
     async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = []): Promise<T> {
-        // SET search_path must be a separate statement — PostgreSQL prepared
-        // statements do not allow multiple commands in a single call.
-        await this.$executeRawUnsafe(`SET search_path TO "${schemaName}"`);
-        const result = await this.$queryRawUnsafe<T>(query, ...params);
-        // Reset to public schema
-        await this.$executeRawUnsafe('SET search_path TO "public"');
-        return result;
+        if (!/^[a-zA-Z0-9_]+$/.test(schemaName)) {
+            throw new Error(`Invalid schema name: ${schemaName}`);
+        }
+
+        // Use a transaction + SET LOCAL so search_path is guaranteed to be scoped
+        // to this query lifecycle and cannot leak across pooled connections.
+        return this.$transaction(async (tx) => {
+            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}"`);
+            return tx.$queryRawUnsafe<T>(query, ...params);
+        });
     }
 
     /**
@@ -90,5 +93,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             schemaName,
         );
         return tables.map((t) => t.table_name);
+    }
+
+    /**
+     * Resolve canonical tenant schema name from the public tenants table.
+     * Avoid deriving schema from UUID since schema names are slug-based.
+     */
+    async getTenantSchemaName(tenantId: string): Promise<string> {
+        const tenant = await this.tenant.findUnique({
+            where: { id: tenantId },
+            select: { schemaName: true },
+        });
+
+        if (!tenant) {
+            throw new NotFoundException(`Tenant ${tenantId} not found`);
+        }
+
+        return tenant.schemaName;
     }
 }

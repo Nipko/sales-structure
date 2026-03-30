@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import {
     BarChart3, TrendingUp, Users, Megaphone, Zap, Target, ArrowRight
 } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const stageLabels: Record<string, string> = {
     nuevo: "Nuevo", contactado: "Contactado", calificado: "Calificado",
@@ -19,7 +17,6 @@ const stageColors: Record<string, string> = {
 };
 
 export default function AnalyticsV4Page() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [overview, setOverview] = useState<any>(null);
     const [funnel, setFunnel] = useState<any[]>([]);
@@ -30,11 +27,19 @@ export default function AnalyticsV4Page() {
     useEffect(() => {
         if (!activeTenantId) return;
         setLoading(true);
+        const safeFetch = async (endpoint: string, fallback: any) => {
+            try {
+                return await api.fetch(endpoint);
+            } catch {
+                return fallback;
+            }
+        };
+
         Promise.all([
-            fetch(`${API}/analytics/crm/${activeTenantId}`).then(r => r.json()).catch(() => ({ data: null })),
-            fetch(`${API}/analytics/funnel/${activeTenantId}`).then(r => r.json()).catch(() => ({ data: [] })),
-            fetch(`${API}/analytics/campaigns/${activeTenantId}`).then(r => r.json()).catch(() => ({ data: [] })),
-            fetch(`${API}/analytics/dashboard/${activeTenantId}`).then(r => r.json()).catch(() => ({ data: null })),
+            safeFetch(`/analytics/crm/${activeTenantId}`, { data: null }),
+            safeFetch(`/analytics/funnel/${activeTenantId}`, { data: [] }),
+            safeFetch(`/analytics/campaigns/${activeTenantId}`, { data: [] }),
+            safeFetch(`/analytics/dashboard/${activeTenantId}`, { data: null }),
         ]).then(([crm, fun, camp, dash]) => {
             setCrmStats(crm.data);
             setFunnel(fun.data || []);

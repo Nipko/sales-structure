@@ -1,13 +1,19 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { PipelineService } from './pipeline.service';
 import { AutomationService } from './automation.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
-@Controller('api/v1/pipeline')
+@Controller('pipeline')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class PipelineController {
     constructor(
         private pipelineService: PipelineService,
         private automationService: AutomationService,
-    ) { }
+    ) {}
 
     // ---- Kanban ----
 
@@ -28,13 +34,40 @@ export class PipelineController {
     @Post('stages/:tenantId')
     async createStage(
         @Param('tenantId') tenantId: string,
-        @Body() body: { name: string; color: string; defaultProbability?: number },
+        @Body() body: {
+            name: string; color: string; defaultProbability?: number;
+            slug?: string; slaHours?: number; isTerminal?: boolean;
+        },
     ) {
         await this.pipelineService.createStage(tenantId, body);
         return { success: true, message: 'Stage created' };
     }
 
     // ---- Deals ----
+
+    @Get('deals/:tenantId')
+    async getDeals(
+        @Param('tenantId') tenantId: string,
+        @Query('stageId') stageId?: string,
+        @Query('status') status?: string,
+        @Query('assignedAgentId') assignedAgentId?: string,
+        @Query('slaStatus') slaStatus?: 'on_track' | 'at_risk' | 'breached',
+    ) {
+        const deals = await this.pipelineService.getDeals(tenantId, {
+            stageId, status, assignedAgentId, slaStatus,
+        });
+        return { success: true, data: deals };
+    }
+
+    @Get('deals/:tenantId/:dealId')
+    async getDealDetail(
+        @Param('tenantId') tenantId: string,
+        @Param('dealId') dealId: string,
+    ) {
+        const detail = await this.pipelineService.getDealDetail(tenantId, dealId);
+        if (!detail) return { success: false, message: 'Deal not found' };
+        return { success: true, data: detail };
+    }
 
     @Post('deals/:tenantId')
     async createDeal(
@@ -52,9 +85,9 @@ export class PipelineController {
     async moveDeal(
         @Param('tenantId') tenantId: string,
         @Param('dealId') dealId: string,
-        @Body() body: { stageId: string },
+        @Body() body: { stageId: string; agentId?: string; reason?: string },
     ) {
-        await this.pipelineService.moveDeal(tenantId, dealId, body.stageId);
+        await this.pipelineService.moveToStage(tenantId, dealId, body.stageId, body.agentId, body.reason);
         return { success: true, message: 'Deal moved' };
     }
 
@@ -66,6 +99,20 @@ export class PipelineController {
     ) {
         await this.pipelineService.updateDeal(tenantId, dealId, body);
         return { success: true, message: 'Deal updated' };
+    }
+
+    // ---- Analytics ----
+
+    @Get('analytics/:tenantId')
+    async getStageAnalytics(@Param('tenantId') tenantId: string) {
+        const analytics = await this.pipelineService.getStageAnalytics(tenantId);
+        return { success: true, data: analytics };
+    }
+
+    @Get('sla-violations/:tenantId')
+    async getSLAViolations(@Param('tenantId') tenantId: string) {
+        const deals = await this.pipelineService.getDeals(tenantId, { slaStatus: 'breached' });
+        return { success: true, data: deals };
     }
 
     // ---- Automation Rules ----
@@ -108,7 +155,7 @@ export class PipelineController {
     }
 
     @Get('automation/:tenantId/sla-violations')
-    async getSLAViolations(@Param('tenantId') tenantId: string) {
+    async getAutomationSLAViolations(@Param('tenantId') tenantId: string) {
         const violations = await this.automationService.checkSLAViolations(tenantId);
         return { success: true, data: violations };
     }

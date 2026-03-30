@@ -30,6 +30,38 @@ export class WhatsappWebhookService {
     private readonly redis: RedisService,
   ) {}
 
+  /**
+   * Get the configured verify token for webhook setup display
+   */
+  getVerifyToken(): string {
+    return this.configService.get<string>('WHATSAPP_VERIFY_TOKEN')
+      || this.configService.get<string>('META_VERIFY_TOKEN')
+      || '';
+  }
+
+  /**
+   * Validate HMAC-SHA256 signature from Meta webhook
+   */
+  validateSignature(rawBody: Buffer | undefined, signature: string | undefined): boolean {
+    if (!rawBody || !signature) return false;
+
+    const appSecret = this.configService.get<string>('META_APP_SECRET');
+    if (!appSecret) {
+      this.logger.warn('META_APP_SECRET not configured — skipping signature validation');
+      return true; // Allow in dev if secret not set
+    }
+
+    const expectedSignature = 'sha256=' + crypto
+      .createHmac('sha256', appSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature),
+    );
+  }
+
   verifyWebhook(mode: string, token: string, challenge: string) {
     const verifyToken = this.configService.get<string>('WHATSAPP_VERIFY_TOKEN');
 

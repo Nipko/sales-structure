@@ -175,7 +175,7 @@ export class WebhookProcessor extends WorkerHost {
              WHERE name = $2`,
             [data.newStatus, data.messageTemplateName],
           );
-        } catch (e) {
+        } catch {
           // Tenant may not have this template, ignore
         }
       }
@@ -207,7 +207,7 @@ export class WebhookProcessor extends WorkerHost {
              WHERE meta_waba_id = $2`,
             [data.event === 'FLAGGED' ? 'flagged' : data.event === 'DISABLED' ? 'disconnected' : 'connected', data.wabaId],
           );
-        } catch (e) {
+        } catch {
           // Tenant may not have this WABA, ignore
         }
       }

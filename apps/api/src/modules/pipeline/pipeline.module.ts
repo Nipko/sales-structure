@@ -8,4 +8,4 @@ import { PipelineController } from './pipeline.controller';
     controllers: [PipelineController],
     exports: [PipelineService, AutomationService],
 })
-export class PipelineModule { }
+export class PipelineModule {}

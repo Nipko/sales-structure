@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
@@ -21,8 +20,6 @@ import {
     Eye,
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-
 const segmentColors: Record<string, { bg: string; color: string }> = {
     new: { bg: "rgba(149, 165, 166, 0.15)", color: "#95a5a6" },
     lead: { bg: "rgba(52, 152, 219, 0.15)", color: "#3498db" },
@@ -32,7 +29,6 @@ const segmentColors: Record<string, { bg: string; color: string }> = {
 };
 
 export default function ContactsPage() {
-    const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [contacts, setContacts] = useState<any[]>([]);
@@ -48,8 +44,7 @@ export default function ContactsPage() {
             setLoading(true);
             try {
                 // Fetch leads matching the API model
-                const res = await fetch(`${API}/crm/leads/${activeTenantId}`);
-                const data = await res.json();
+                const data = await api.fetch(`/crm/leads/${activeTenantId}`);
                 
                 if (data.success && Array.isArray(data.data)) {
                     // Map Real Lead data to UI variables we use
@@ -68,8 +63,8 @@ export default function ContactsPage() {
                            email: l.email || '',
                            tags: l.tags?.map((t:any) => t.name) || [],
                            segment: segmentType,
-                           conversations: 1, // Fallback if API hasn't aggregate
-                           lifetimeValue: l.score || 0, // Quick hack: show score in the UI as proxy if LTV absent
+                           conversations: Number(l.conversations_count ?? 0),
+                           lifetimeValue: Number(l.lifetime_value ?? 0),
                            lastInteraction: l.updated_at ? new Date(l.updated_at).toLocaleDateString("es-CO") : "Reciente",
                            city: l.company_name || "",
                        }
@@ -102,7 +97,7 @@ export default function ContactsPage() {
         return true;
     });
 
-    const totalValue = 0; // Removing fake COP total value
+    const totalValue = contacts.reduce((sum, contact) => sum + Number(contact.lifetimeValue || 0), 0);
 
     return (
         <div>

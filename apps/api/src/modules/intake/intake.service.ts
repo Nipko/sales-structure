@@ -233,7 +233,7 @@ export class IntakeService {
 
     normalizePhone(raw: string): string | null {
         // Remove all non-digits
-        let digits = raw.replace(/\D/g, '');
+        const digits = raw.replace(/\D/g, '');
 
         // Colombia: 10-digit numbers starting with 3xx
         if (digits.length === 10 && digits.startsWith('3')) {

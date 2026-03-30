@@ -8,6 +8,8 @@ import { ChannelsModule } from '../channels/channels.module';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffModule } from '../handoff/handoff.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { CrmModule } from '../crm/crm.module';
+import { PipelineModule } from '../pipeline/pipeline.module';
 
 @Module({
     imports: [
@@ -16,6 +18,8 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
         ChannelsModule,
         HandoffModule,
         KnowledgeModule,
+        CrmModule,
+        PipelineModule,
         JwtModule.register({}),
     ],
     providers: [ConversationsService, ConversationsGateway],

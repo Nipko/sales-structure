@@ -10,6 +10,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AgentConsoleService } from './agent-console.service';
+import { CopilotService } from '../copilot/copilot.service';
 import { HandoffEscalatedEvent } from '../handoff/handoff.service';
 
 @WebSocketGateway({
@@ -24,7 +25,10 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
     private connectedAgents = new Map<string, string>(); // agentId -> socketId
     private socketMeta = new Map<string, { agentId: string; tenantId: string }>();
 
-    constructor(private agentConsoleService: AgentConsoleService) { }
+    constructor(
+        private agentConsoleService: AgentConsoleService,
+        private copilotService: CopilotService,
+    ) { }
 
     async handleConnection(client: any) {
         this.logger.log(`Agent connected: ${client.id}`);
@@ -150,6 +154,26 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
             agentId: meta?.agentId,
             typing: data.typing,
         });
+    }
+
+    @SubscribeMessage('copilot:suggest')
+    async handleCopilotSuggest(
+        @ConnectedSocket() client: any,
+        @MessageBody() data: { conversationId: string },
+    ) {
+        const meta = this.socketMeta.get(client.id);
+        if (!meta) return;
+
+        try {
+            const suggestions = await this.copilotService.getSuggestions(
+                meta.tenantId,
+                data.conversationId,
+            );
+            client.emit('copilot:suggestions', { conversationId: data.conversationId, suggestions });
+        } catch (error: any) {
+            this.logger.error(`Copilot suggest failed: ${error.message}`);
+            client.emit('copilot:suggestions', { conversationId: data.conversationId, suggestions: [] });
+        }
     }
 
     /**

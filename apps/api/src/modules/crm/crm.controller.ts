@@ -1,12 +1,17 @@
-import { Controller, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
 import { CatalogRepository } from './repositories/catalog.repository';
 import { NotesService } from './services/notes/notes.service';
 import { TasksService } from './services/tasks/tasks.service';
 import { ActivityService } from './services/activity/activity.service';
+import { LeadScoringService } from './services/lead-scoring/lead-scoring.service';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('crm')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CrmController {
 
     constructor(
@@ -16,6 +21,7 @@ export class CrmController {
         private notesService: NotesService,
         private tasksService: TasksService,
         private activityService: ActivityService,
+        private leadScoring: LeadScoringService,
     ) {}
 
     // ---- Kanban (Pipeline Board using Opportunities) ----
@@ -87,6 +93,26 @@ export class CrmController {
     ) {
         await this.leadsRepo.updateLead(tenantId, leadId, body);
         return { success: true, message: 'Lead updated' };
+    }
+
+    // ---- Lead Scoring ----
+
+    @Get('leads/:tenantId/:leadId/score')
+    async getLeadScore(
+        @Param('tenantId') tenantId: string,
+        @Param('leadId') leadId: string,
+    ) {
+        const result = await this.leadScoring.calculateScore(tenantId, leadId);
+        return { success: true, data: result };
+    }
+
+    @Post('leads/:tenantId/:leadId/rescore')
+    async rescoreLead(
+        @Param('tenantId') tenantId: string,
+        @Param('leadId') leadId: string,
+    ) {
+        const result = await this.leadScoring.updateLeadScore(tenantId, leadId);
+        return { success: true, data: result };
     }
 
     // ---- Notes ----

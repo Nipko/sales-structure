@@ -6,6 +6,7 @@ import { CatalogRepository } from './repositories/catalog.repository';
 import { NotesService } from './services/notes/notes.service';
 import { TasksService } from './services/tasks/tasks.service';
 import { ActivityService } from './services/activity/activity.service';
+import { LeadScoringService } from './services/lead-scoring/lead-scoring.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 
@@ -13,20 +14,22 @@ import { RedisModule } from '../redis/redis.module';
     imports: [PrismaModule, RedisModule],
     controllers: [CrmController],
     providers: [
-        NotesService, 
-        TasksService, 
+        NotesService,
+        TasksService,
         ActivityService,
         LeadsRepository,
         OpportunitiesRepository,
-        CatalogRepository
+        CatalogRepository,
+        LeadScoringService,
     ],
     exports: [
-        NotesService, 
-        TasksService, 
+        NotesService,
+        TasksService,
         ActivityService,
         LeadsRepository,
         OpportunitiesRepository,
-        CatalogRepository
+        CatalogRepository,
+        LeadScoringService,
     ],
 })
 export class CrmModule {}

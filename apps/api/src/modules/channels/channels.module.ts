@@ -1,4 +1,4 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { ChannelsController } from './channels.controller';
@@ -9,10 +9,14 @@ import { TelegramAdapter } from './telegram/telegram.adapter';
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.processor';
 import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
+import { ConversationsModule } from '../conversations/conversations.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
     imports: [
         BullModule.registerQueue({ name: OUTBOUND_QUEUE }),
+        forwardRef(() => ConversationsModule),
+        forwardRef(() => WhatsappModule),
     ],
     controllers: [ChannelsController],
     providers: [

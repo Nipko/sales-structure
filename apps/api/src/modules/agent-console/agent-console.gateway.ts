@@ -8,7 +8,9 @@ import {
     MessageBody,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { AgentConsoleService } from './agent-console.service';
+import { HandoffEscalatedEvent } from '../handoff/handoff.service';
 
 @WebSocketGateway({
     cors: { origin: '*' },
@@ -161,5 +163,35 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         this.server
             ?.to(`conversation:${conversationId}`)
             .emit('conversation:message', message);
+    }
+
+    /**
+     * Listen for handoff escalation events from HandoffService.
+     * Notifies all agents in the tenant via WebSocket.
+     */
+    @OnEvent('handoff.escalated')
+    handleHandoffEscalated(event: HandoffEscalatedEvent) {
+        this.logger.log(`Handoff event received for conversation ${event.conversationId} in tenant ${event.tenantId}`);
+
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:handoff', {
+            conversationId: event.conversationId,
+            reason: event.reason,
+            summary: event.summary,
+            assignedTo: event.assignedTo,
+        });
+
+        // Also refresh inbox for all agents
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+    }
+
+    /**
+     * Listen for handoff completed events.
+     */
+    @OnEvent('handoff.completed')
+    handleHandoffCompleted(event: { tenantId: string; conversationId: string }) {
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:handoff_completed', {
+            conversationId: event.conversationId,
+        });
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
     }
 }

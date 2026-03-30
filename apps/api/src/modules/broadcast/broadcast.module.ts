@@ -1,13 +1,21 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { BroadcastController } from './broadcast.controller';
-import { BroadcastService } from './broadcast.service';
+import { BroadcastService, BROADCAST_QUEUE } from './broadcast.service';
+import { BroadcastQueueProcessor } from './broadcast-queue.processor';
 import { RedisModule } from '../redis/redis.module';
-import { ChannelsModule } from '../channels/channels.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
-    imports: [RedisModule, ChannelsModule],
+    imports: [
+        RedisModule,
+        WhatsappModule,
+        BullModule.registerQueue({
+            name: BROADCAST_QUEUE,
+        }),
+    ],
     controllers: [BroadcastController],
-    providers: [BroadcastService],
+    providers: [BroadcastService, BroadcastQueueProcessor],
     exports: [BroadcastService],
 })
-export class BroadcastModule { }
+export class BroadcastModule {}

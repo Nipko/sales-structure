@@ -1,3 +1,6 @@
+> **DEPRECATED** — Este fue el plan de implementación para v3. La implementación real difiere en varios aspectos.
+> Ver [MANUAL.md](../../MANUAL.md) para la arquitectura actual. Se conserva solo como referencia histórica.
+
 # Parallly V3 — Guía Detallada de Implementación para Agente de Código
 
 ## 0. Propósito del documento

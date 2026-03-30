@@ -4,7 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 
-const META_GRAPH_VERSION = 'v20.0';
+const META_GRAPH_VERSION = 'v21.0';
 
 @Injectable()
 export class WhatsappMessagingService {

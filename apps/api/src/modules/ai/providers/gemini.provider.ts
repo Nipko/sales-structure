@@ -23,8 +23,8 @@ export class GeminiProvider implements ILLMProvider {
             const requestParams: any = {
                 contents,
                 generationConfig: {
-                    temperature: options.temperature ?? 0.7,
-                    maxOutputTokens: options.maxTokens,
+                    temperature: Number(options.temperature ?? 0.7),
+                    maxOutputTokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
                 }
             };
 
@@ -65,8 +65,8 @@ export class GeminiProvider implements ILLMProvider {
             const requestParams: any = {
                 contents,
                 generationConfig: {
-                    temperature: options.temperature ?? 0.7,
-                    maxOutputTokens: options.maxTokens,
+                    temperature: Number(options.temperature ?? 0.7),
+                    maxOutputTokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
                 }
             };
 

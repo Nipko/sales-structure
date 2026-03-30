@@ -8,10 +8,17 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { HttpModule } from '@nestjs/axios';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { ChannelsModule } from '../channels/channels.module';
 import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
 
 @Module({
-  imports: [PrismaModule, HttpModule, forwardRef(() => ConversationsModule), AnalyticsModule],
+  imports: [
+    PrismaModule,
+    HttpModule,
+    forwardRef(() => ConversationsModule),
+    AnalyticsModule,
+    ChannelsModule,
+  ],
   controllers: [WhatsappController],
   providers: [
     WhatsappCryptoService,

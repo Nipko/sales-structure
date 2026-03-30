@@ -4,6 +4,43 @@
 
 ---
 
+## [3.1.0] — 2026-03-30
+
+### Pipeline de mensajes
+- **Read receipts (checks azules)** — Llamada fire-and-forget a Meta API al recibir webhook
+- **Idempotencia de webhooks** — Redis key `idem:wa:{waMessageId}` con TTL 24h
+- **BullMQ outbound queue** — Cola `outbound-messages` con 3 reintentos y backoff exponencial
+- **Context window truncation** — Historial limitado a 12K chars antes de enviar al LLM
+- **Numeric casting** — `Number()` en temperature/maxTokens en los 4 LLM providers
+
+### Handoff interno (sin Chatwoot)
+- **HandoffService reescrito** — Usa EventEmitter2 (`handoff.escalated`, `handoff.completed`)
+- **AgentConsoleGateway** — Escucha eventos via `@OnEvent`, notifica agentes por WebSocket
+- **Auto-assign** — Asigna al agente con menos conversaciones activas
+
+### Broadcast/Campaigns
+- **BroadcastService** — Crear campañas, resolver recipients por tags/segmentos
+- **BullMQ worker** — Rate limited 80 msg/s (límite Meta API), 3 reintentos
+- **campaign_recipients** — Tracking por recipient: pending → queued → sent → delivered → read/failed
+
+### Knowledge Base (RAG)
+- **KnowledgeService** — Ingesta de documentos, chunking por párrafos, embeddings OpenAI text-embedding-3-small
+- **pgvector** — Búsqueda semántica por cosine similarity en knowledge_chunks
+- **Integración en ConversationsService** — Contexto RAG inyectado automáticamente en system prompt
+
+### Arquitectura
+- **ChannelTokenService** — Rompe circular dep Conversations↔WhatsApp, cache Redis 5min
+- **InternalAuthGuard** — Auth dual JWT/x-internal-key para comunicación service-to-service
+- **Meta Graph API v21.0** — Estandarizado en todos los servicios
+- **Defensive webhook extraction** — Optional chaining en todo el payload de Meta
+
+### Documentación
+- **CLAUDE.md** — Archivos de contexto para raíz, API, Dashboard y WhatsApp service
+- **Docs reorganizados** — `docs/specs/`, `docs/roadmap/`, `docs/archive/` con índice
+- **MANUAL.md, SECURITY.md, API_REFERENCE.md** — Actualizados al estado actual
+
+---
+
 ## [3.0.0] — 2026-03-22
 
 ### 📱 WhatsApp Embedded Signup v4 — Servicio Independiente
@@ -69,7 +106,7 @@
 ### 📡 Telegram Integration + Full Channel Settings
 - **TelegramAdapter** — Full `IChannelAdapter` for Telegram Bot API (text, photos, docs, audio, video, voice, locations, contacts, stickers)
 - **Webhook Endpoint** — `POST /channels/webhook/telegram` for receiving bot updates
-- **Settings Page Enhanced** — 7 configuration tabs: LLM, WhatsApp, Instagram, Messenger, Telegram, Chatwoot, General
+- **Settings Page Enhanced** — 7 configuration tabs: LLM, WhatsApp, Instagram, Messenger, Telegram, General
 - **All 4 Channel Adapters** — WhatsApp, Instagram DM, Facebook Messenger, and Telegram fully registered
 
 ---

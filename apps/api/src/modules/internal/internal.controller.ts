@@ -1,12 +1,16 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, Logger } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Logger } from '@nestjs/common';
 import { ConversationsService } from '../conversations/conversations.service';
 import { NormalizedMessage } from '@parallext/shared';
+import { InternalAuthGuard } from '../../common/guards/internal-auth.guard';
 
 /**
- * Internal endpoints — only callable by trusted internal microservices.
- * Protected by INTERNAL_JWT_SECRET shared header.
+ * Internal endpoints — callable by trusted internal microservices (via
+ * x-internal-key) **or** by authenticated dashboard users (via JWT).
+ *
+ * Protected by InternalAuthGuard (dual-auth: API key OR JWT).
  */
 @Controller('internal')
+@UseGuards(InternalAuthGuard)
 export class InternalController {
   private readonly logger = new Logger(InternalController.name);
 
@@ -19,21 +23,19 @@ export class InternalController {
    * Called by: apps/whatsapp/src/modules/jobs/webhook.processor.ts
    */
   @Post('inbound-message')
-  async receiveInboundMessage(
-    @Body() payload: NormalizedMessage,
-    @Headers('x-internal-secret') secret: string,
-  ) {
-    const expectedSecret = process.env.INTERNAL_JWT_SECRET;
-    if (!expectedSecret || secret !== expectedSecret) {
-      throw new UnauthorizedException('Invalid internal secret');
-    }
-
-    this.logger.log(`[Internal] Received inbound message for tenant ${payload.tenantId} from ${payload.contactId}`);
+  async receiveInboundMessage(@Body() payload: NormalizedMessage) {
+    this.logger.log(
+      `[Internal] Received inbound message for tenant ${payload.tenantId} from ${payload.contactId}`,
+    );
 
     // Fire-and-forget — respond 200 immediately, process async
-    this.conversationsService.processIncomingMessage(payload).catch((err) =>
-      this.logger.error(`[Internal] Error processing inbound message: ${err.message}`)
-    );
+    this.conversationsService
+      .processIncomingMessage(payload)
+      .catch((err) =>
+        this.logger.error(
+          `[Internal] Error processing inbound message: ${err.message}`,
+        ),
+      );
 
     return { received: true };
   }

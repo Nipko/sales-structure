@@ -1,5 +1,10 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Logger } from '@nestjs/common';
+import {
+    Controller, Get, Post, Delete, Body, Param, Query,
+    Logger, UseGuards, Req, HttpCode, HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { KnowledgeService } from './knowledge.service';
 
 @ApiTags('knowledge')
@@ -9,69 +14,72 @@ export class KnowledgeController {
 
     constructor(private readonly knowledgeService: KnowledgeService) {}
 
-    private schemaFor(tenantId: string) {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    // ─── Document RAG Endpoints ──────────────────────────────────────────────
+
+    @Post('documents')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Upload / ingest a document into the knowledge base' })
+    async uploadDocument(@Req() req: any, @Body() payload: { name: string; content: string; mimeType?: string }) {
+        const tenantId = req.user?.tenantId;
+        return this.knowledgeService.ingestDocument(tenantId, {
+            name: payload.name,
+            content: payload.content,
+            mimeType: payload.mimeType,
+        });
     }
 
-    // ─── Resources ────────────────────────────────────────────────────────────
+    @Get('documents')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'List all knowledge documents for the tenant' })
+    async listDocuments(@Req() req: any) {
+        const tenantId = req.user?.tenantId;
+        return this.knowledgeService.listDocuments(tenantId);
+    }
+
+    @Delete('documents/:id')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Delete a document and all its embeddings' })
+    async deleteDocument(@Req() req: any, @Param('id') id: string) {
+        const tenantId = req.user?.tenantId;
+        await this.knowledgeService.deleteDocument(tenantId, id);
+    }
+
+    @Post('search')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Search the knowledge base (vector similarity)' })
+    async searchKnowledge(
+        @Req() req: any,
+        @Body() payload: { query: string; topK?: number },
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!payload.query) return [];
+        return this.knowledgeService.searchRelevant(tenantId, payload.query, payload.topK || 5);
+    }
+
+    // ─── Legacy Resource Endpoints ───────────────────────────────────────────
 
     @Get('resources/:tenantId')
-    @ApiOperation({ summary: 'List knowledge resources' })
+    @ApiOperation({ summary: 'List knowledge resources (legacy)' })
     async getResources(
         @Param('tenantId') tenantId: string,
-        @Query('status') status?: string
+        @Query('status') status?: string,
     ) {
         return this.knowledgeService.getResources(this.schemaFor(tenantId), status);
     }
 
-    @Post('resources/:tenantId')
-    @ApiOperation({ summary: 'Create a new knowledge resource (auto-chunks)' })
-    async createResource(@Param('tenantId') tenantId: string, @Body() payload: any) {
-        return this.knowledgeService.createResource(this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
-    }
-
-    @Put('resources/:tenantId/:id/status')
-    @ApiOperation({ summary: 'Update resource status' })
-    async updateStatus(
-        @Param('tenantId') tenantId: string,
-        @Param('id') id: string,
-        @Body() payload: { status: string }
-    ) {
-        return this.knowledgeService.updateResourceStatus(this.schemaFor(tenantId), id, payload.status);
-    }
-
-    // ─── Approvals ────────────────────────────────────────────────────────────
-
-    @Post('resources/:tenantId/:id/approve')
-    @ApiOperation({ summary: 'Approve a resource for Carla consumption' })
-    async approveResource(
-        @Param('tenantId') tenantId: string,
-        @Param('id') id: string,
-        @Body() payload: { approved_by: string, notes?: string }
-    ) {
-        return this.knowledgeService.approveResource(this.schemaFor(tenantId), id, payload.approved_by, payload.notes);
-    }
-
-    @Get('resources/:tenantId/:id/approvals')
-    async getApprovals(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-        return this.knowledgeService.getApprovals(this.schemaFor(tenantId), id);
-    }
-
-    // ─── Chunks & Search ──────────────────────────────────────────────────────
-
-    @Get('resources/:tenantId/:id/chunks')
-    async getChunks(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-        return this.knowledgeService.getChunks(this.schemaFor(tenantId), id);
-    }
-
     @Get('search/:tenantId')
-    @ApiOperation({ summary: 'Search approved knowledge resources (RAG Retrieval)' })
+    @ApiOperation({ summary: 'Search approved knowledge resources (legacy ILIKE)' })
     async searchChunks(
         @Param('tenantId') tenantId: string,
         @Query('query') query: string,
-        @Query('limit') limit?: number
+        @Query('limit') limit?: number,
     ) {
         if (!query) return [];
         return this.knowledgeService.searchChunks(this.schemaFor(tenantId), query, limit ? Number(limit) : 5);
+    }
+
+    private schemaFor(tenantId: string) {
+        return `tenant_${tenantId.replace(/-/g, '_')}`;
     }
 }

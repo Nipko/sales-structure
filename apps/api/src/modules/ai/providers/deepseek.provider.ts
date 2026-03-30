@@ -23,8 +23,8 @@ export class DeepSeekProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                temperature: options.temperature ?? 0.7,
-                max_tokens: options.maxTokens,
+                temperature: Number(options.temperature ?? 0.7),
+                max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
             };
 
             if (options.tools && options.tools.length > 0) {
@@ -76,8 +76,8 @@ export class DeepSeekProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                temperature: options.temperature ?? 0.7,
-                max_tokens: options.maxTokens,
+                temperature: Number(options.temperature ?? 0.7),
+                max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
                 stream: true,
             };
 

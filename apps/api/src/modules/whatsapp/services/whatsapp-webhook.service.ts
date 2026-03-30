@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { ComplianceService } from '../../analytics/compliance.service';
+import { WhatsappConnectionService } from './whatsapp-connection.service';
+import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
+import { RedisService } from '../../redis/redis.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -13,12 +16,18 @@ export class WhatsappWebhookService {
   private tenantCache = new Map<string, { tenantId: string; expiresAt: number }>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // Idempotency: processed message IDs (Redis-backed, see checkIdempotency)
+  private readonly IDEMPOTENCY_TTL = 86400; // 24h
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ConversationsService))
     private readonly conversationsService: ConversationsService,
     private readonly complianceService: ComplianceService,
+    private readonly whatsappConnection: WhatsappConnectionService,
+    private readonly whatsappAdapter: WhatsAppAdapter,
+    private readonly redis: RedisService,
   ) {}
 
   verifyWebhook(mode: string, token: string, challenge: string) {
@@ -36,13 +45,15 @@ export class WhatsappWebhookService {
   async handleWebhookPayload(payload: any) {
     let handled = false;
 
-    if (payload.object === 'whatsapp_business_account') {
-      for (const entry of payload.entry) {
-        for (const change of entry.changes) {
-          if (change.field === 'messages') {
-            const value = change.value;
-            const phoneNumberId = value.metadata?.phone_number_id;
-            
+    if (payload?.object === 'whatsapp_business_account') {
+      const entries = payload?.entry ?? [];
+      for (const entry of entries) {
+        const changes = entry?.changes ?? [];
+        for (const change of changes) {
+          if (change?.field === 'messages') {
+            const value = change?.value;
+            const phoneNumberId = value?.metadata?.phone_number_id;
+
             if (phoneNumberId) {
                await this.processMessageEvent(phoneNumberId, value);
                handled = true;
@@ -59,49 +70,83 @@ export class WhatsappWebhookService {
 
   private async processMessageEvent(phoneNumberId: string, value: any) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
-     
-     if (value.messages && value.messages.length > 0) {
-         const msg = value.messages[0];
-         const contact = value.contacts?.[0];
 
-         // === FIX: Dynamic tenant resolution by phoneNumberId ===
-         const tenantId = await this.resolveTenantId(phoneNumberId);
-         if (!tenantId) {
-           this.logger.warn(`No tenant found for phoneNumberId: ${phoneNumberId} — ignoring message`);
-           return;
-         }
+     if (!value?.messages || value.messages.length === 0) return;
 
-         const fromPhone = msg.from;
-         const messageText = msg.text?.body || '';
+     const msg = value.messages[0];
+     const contact = value?.contacts?.[0];
+     const waMessageId = msg?.id; // wamid.xxx
 
-         // ---- Compliance: Opt-out detection ----
-         if (messageText && this.complianceService.detectOptOut(messageText)) {
-             this.logger.warn(`OptOut detected from ${fromPhone}: "${messageText}"`);
-             await this.complianceService.processOptOut(tenantId, {
-                 phone: fromPhone,
-                 channel: 'whatsapp',
-                 triggerMessage: messageText,
-                 detectedFrom: 'keyword',
-             });
-             // Do NOT pass this message to AI/Conversations — respecting opt-out
-             return;
-         }
-
-         const normalizedMsg = {
-             tenantId,
-             contactId: fromPhone,
-             channelType: 'whatsapp',
-             channelAccountId: phoneNumberId,
-             content: { type: msg.type, text: messageText },
-             metadata: { contactName: contact?.profile?.name }
-         };
-         
-         try {
-             await this.conversationsService.processIncomingMessage(normalizedMsg as any);
-         } catch (error: any) {
-             this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
-         }
+     // === Idempotency check (Blueprint Paso 7) ===
+     const idempotencyKey = `idem:wa:${waMessageId}`;
+     const alreadyProcessed = await this.redis.get(idempotencyKey);
+     if (alreadyProcessed) {
+         this.logger.debug(`Duplicate webhook for message ${waMessageId}, skipping`);
+         return;
      }
+     // Mark as processing immediately to prevent race conditions
+     await this.redis.set(idempotencyKey, '1', this.IDEMPOTENCY_TTL);
+
+     // === Dynamic tenant resolution ===
+     const tenantId = await this.resolveTenantId(phoneNumberId);
+     if (!tenantId) {
+         this.logger.warn(`No tenant found for phoneNumberId: ${phoneNumberId} — ignoring message`);
+         return;
+     }
+
+     // === Read receipt — checks azules (Blueprint Paso 6) ===
+     // Fire immediately, don't await — don't block message processing
+     if (waMessageId) {
+         this.resolveAccessTokenAndMarkRead(tenantId, phoneNumberId, waMessageId);
+     }
+
+     const fromPhone = msg?.from;
+     const messageText = msg?.text?.body || '';
+
+     // === Compliance: Opt-out detection ===
+     if (messageText && this.complianceService.detectOptOut(messageText)) {
+         this.logger.warn(`OptOut detected from ${fromPhone}: "${messageText}"`);
+         await this.complianceService.processOptOut(tenantId, {
+             phone: fromPhone,
+             channel: 'whatsapp',
+             triggerMessage: messageText,
+             detectedFrom: 'keyword',
+         });
+         return;
+     }
+
+     const normalizedMsg = {
+         tenantId,
+         contactId: fromPhone,
+         channelType: 'whatsapp',
+         channelAccountId: phoneNumberId,
+         content: { type: msg.type, text: messageText },
+         metadata: {
+             contactName: contact?.profile?.name,
+             waMessageId,
+         },
+     };
+
+     try {
+         await this.conversationsService.processIncomingMessage(normalizedMsg as any);
+     } catch (error: any) {
+         this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
+     }
+  }
+
+  /**
+   * Resolve access token for a tenant and send read receipt.
+   * Fire-and-forget — errors are logged but don't block processing.
+   */
+  private resolveAccessTokenAndMarkRead(tenantId: string, phoneNumberId: string, waMessageId: string): void {
+      const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+      this.whatsappConnection.getValidAccessToken(schemaName)
+          .then(creds => {
+              this.whatsappAdapter.markAsRead(phoneNumberId, waMessageId, creds.accessToken);
+          })
+          .catch(e => {
+              this.logger.warn(`Could not send read receipt for ${waMessageId}: ${e.message}`);
+          });
   }
 
   /**

@@ -15,9 +15,11 @@
 | Documento | Descripción |
 |-----------|------------|
 | [MANUAL.md](MANUAL.md) | Manual completo de la plataforma |
-| [docs/SECURITY.md](docs/SECURITY.md) | Autenticación, JWT, roles, permisos |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Todos los endpoints y WebSocket events |
+| [docs/](docs/README.md) | Índice completo de documentación |
+| [docs/SECURITY.md](docs/SECURITY.md) | Autenticación, JWT, RBAC, cifrado |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Endpoints REST, WebSocket events, BullMQ queues |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios por versión |
+| [CLAUDE.md](CLAUDE.md) | Contexto de arquitectura para desarrollo |
 
 ## 📋 ¿Qué es Parallext?
 
@@ -29,7 +31,7 @@ Un motor de IA conversacional que permite a cualquier empresa automatizar sus ve
 - 📱 **WhatsApp Cloud API**: Integración directa con Meta, 6 tipos de contenido
 - 👤 **Personas configurables**: Define tono, reglas y comportamiento por YAML
 - 📚 **RAG Pipeline**: Ingesta de documentos, chunking, embeddings con pgvector
-- 🤝 **Handoff a humanos**: Integración con Chatwoot, detección de 5 tipos de triggers
+- 🤝 **Handoff a humanos**: Agent Console interno con WebSocket, detección automática de 5 tipos de triggers
 - 📊 **Analytics dual**: Redis para tiempo real + PostgreSQL para históricos
 - 🛡️ **Cloudflare Tunnel**: Zero puertos abiertos, todo el tráfico vía Zero Trust
 

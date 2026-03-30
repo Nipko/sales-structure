@@ -1,6 +1,6 @@
 # 📖 Parallext Engine — Manual de la Plataforma
 
-> Versión 3.0.0 · Actualizado: Marzo 22, 2026
+> Versión 3.1.0 · Actualizado: Marzo 29, 2026
 
 ---
 
@@ -10,12 +10,14 @@
 2. [Arquitectura del Sistema](#arquitectura-del-sistema)
 3. [Módulos del Backend (API)](#módulos-del-backend-api)
 4. [WhatsApp Onboarding Service](#whatsapp-onboarding-service)
-5. [Dashboard (Frontend)](#dashboard-frontend)
-6. [Base de Datos](#base-de-datos)
-7. [API Reference](#api-reference)
-8. [Autenticación y Roles](#autenticación-y-roles)
-9. [Despliegue y CI/CD](#despliegue-y-cicd)
-10. [Configuración del Entorno](#configuración-del-entorno)
+5. [Handoff y Agent Console](#handoff-y-agent-console)
+6. [Broadcast y Campañas](#broadcast-y-campañas)
+7. [Dashboard (Frontend)](#dashboard-frontend)
+8. [Base de Datos](#base-de-datos)
+9. [API Reference](#api-reference)
+10. [Autenticación y Roles](#autenticación-y-roles)
+11. [Despliegue y CI/CD](#despliegue-y-cicd)
+12. [Configuración del Entorno](#configuración-del-entorno)
 
 ---
 
@@ -48,10 +50,27 @@ Internet → Cloudflare (SSL + Zero Trust Tunnel) → Docker Stack (VPS)
 
 ### Flujo de un mensaje WhatsApp:
 ```
-WhatsApp → Meta Cloud API → Webhook → Channel Gateway → Conversation Orchestrator
-    → Persona Engine → LLM Router → Respuesta → WhatsApp
-    → (si handoff) → Agent Console WebSocket → Agente humano
+WhatsApp → Meta Cloud API → WhatsApp Service (port 3002) → API (port 3000)
+  → ConversationsService → PersonaService → LLMRouter
+  → OutboundQueue (BullMQ, 3 retries, exponential backoff) → Meta API → WhatsApp
+  → (si handoff) → EventEmitter2 (handoff.escalated) → AgentConsoleGateway WebSocket → Agente humano
 ```
+
+### Cola de mensajes salientes:
+Los mensajes salientes se procesan a través de `OutboundQueueService` (BullMQ, cola `outbound-messages`).
+Cada job tiene 3 reintentos con backoff exponencial. Al recibir el webhook de estado de Meta,
+se marcan read receipts (checks azules) via la Meta API.
+
+### Idempotencia de webhooks:
+Cada webhook entrante se deduplica con una clave Redis `idem:wa:{waMessageId}` con TTL de 24 horas.
+
+### Ventana de contexto LLM:
+El historial de conversación enviado al LLM se trunca a un máximo de 12,000 caracteres.
+Todos los providers LLM castean parámetros numéricos con `Number()` para evitar errores de tipo.
+
+### Resolución de tokens WhatsApp:
+`ChannelTokenService` (en `ChannelsModule`) resuelve tokens de WhatsApp con caché Redis,
+rompiendo la dependencia circular entre `ConversationsModule` y `WhatsappModule`.
 
 ---
 
@@ -211,7 +230,7 @@ Configuración de API keys y servicios.
 | **Conversations** | Orquestador principal de conversaciones |
 | **Persona** | Motor de personalidades configurables via YAML |
 | **Knowledge** | RAG pipeline con pgvector para embeddings |
-| **Handoff** | Detección de 5 tipos de triggers para escalación humana |
+| **Handoff** | Escalación a Agent Console interno via EventEmitter2 (5 tipos de triggers) |
 | **Health** | Health check endpoint |
 
 ---
@@ -269,7 +288,54 @@ Servicio NestJS independiente que maneja el flujo completo de **WhatsApp Embedde
 
 ---
 
-## 5. Dashboard (Frontend)
+## 5. Handoff y Agent Console
+
+### Patrón EventEmitter:
+El módulo `HandoffService` utiliza `EventEmitter2` para desacoplar la escalación del transporte WebSocket:
+
+1. **Detección**: `HandoffService` detecta triggers de escalación (keyword, sentiment, tool_failure, explicit_request, loop_detected)
+2. **Evento `handoff.escalated`**: Se emite con datos de la conversación, motivo y metadata
+3. **Escucha**: `AgentConsoleGateway` escucha via decoradores `@OnEvent('handoff.escalated')` y emite `inbox:handoff` a los agentes conectados por WebSocket
+4. **Resolución**: Cuando el agente completa el handoff, se emite `handoff.completed` y el gateway envía `inbox:handoff_completed`
+
+```
+HandoffService.escalate()
+  → EventEmitter2.emit('handoff.escalated', payload)
+  → AgentConsoleGateway @OnEvent('handoff.escalated')
+  → WebSocket emit 'inbox:handoff' a agentes del tenant
+```
+
+No hay dependencia directa entre HandoffService y el gateway WebSocket.
+
+---
+
+## 6. Broadcast y Campañas
+
+Módulo para envío masivo de templates WhatsApp con rate limiting.
+
+### Funcionalidad:
+- Creación de campañas con selección de template y segmento de destinatarios
+- Envío via BullMQ (cola `broadcast-messages`) con rate limit de 80 msg/s
+- Tracking de estado por destinatario en tabla `campaign_recipients`
+- Estadísticas de entrega: enviados, entregados, leídos, fallidos
+
+### Endpoints:
+| Endpoint | Método | Descripción |
+|----------|--------|------------|
+| `/broadcast/campaigns` | POST | Crear campaña |
+| `/broadcast/campaigns` | GET | Listar campañas |
+| `/broadcast/campaigns/:id/launch` | POST | Lanzar campaña |
+| `/broadcast/campaigns/:id/stats` | GET | Estadísticas de la campaña |
+
+### Cola BullMQ:
+- Cola: `broadcast-messages`
+- Rate limit: 80 mensajes por segundo
+- Cada mensaje se procesa individualmente con reintentos
+- Los status webhooks de Meta actualizan el estado de cada `campaign_recipient`
+
+---
+
+## 7. Dashboard (Frontend)
 
 ### Páginas disponibles:
 
@@ -317,7 +383,7 @@ Page → useEffect → api.getXXX(tenantId)
 
 ---
 
-## 6. Base de Datos
+## 8. Base de Datos
 
 ### Esquema Global (public):
 - `tenants` — Empresas clientes
@@ -351,7 +417,7 @@ Page → useEffect → api.getXXX(tenantId)
 
 ---
 
-## 7. API Reference
+## 9. API Reference
 
 ### Formato de respuesta estándar:
 ```json
@@ -377,7 +443,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-## 8. Autenticación y Roles
+## 10. Autenticación y Roles
 
 ### Flujo de login:
 ```
@@ -409,12 +475,19 @@ POST /auth/refresh { refreshToken }
 
 ---
 
-## 9. Despliegue y CI/CD
+## 11. Despliegue y CI/CD
+
+### Infraestructura:
+- **VPS**: Hostinger Ubuntu con Docker
+- **CI/CD**: GitHub Actions builds → push a GHCR (GitHub Container Registry)
+- **Deploy automático**: Watchtower detecta nuevas imágenes en GHCR y actualiza contenedores
+- **Red**: Cloudflare Tunnel expone los servicios sin puertos abiertos
 
 ### Pipeline automático:
 ```
 Push a main → GitHub Actions → Build Docker images → Push a GHCR
-→ Watchtower (VPS) → Pull automático → Deploy sin downtime
+→ Watchtower (Hostinger Ubuntu VPS) → Pull automático → Deploy sin downtime
+→ Cloudflare Tunnel expone servicios
 ```
 
 ### Contenedores en producción:
@@ -438,7 +511,7 @@ docker compose -f infra/docker/docker-compose.prod.yml up -d --build
 
 ---
 
-## 10. Configuración del Entorno
+## 12. Configuración del Entorno
 
 ### Variables de entorno (`.env`):
 ```env
@@ -453,6 +526,7 @@ REDIS_PASSWORD=
 
 # Auth (compartido API + WhatsApp)
 INTERNAL_JWT_SECRET=...
+INTERNAL_API_KEY=... (para header x-internal-key entre servicios)
 
 # AI Providers
 OPENAI_API_KEY=...
@@ -490,4 +564,4 @@ Para dudas técnicas o nuevas funcionalidades, contactar al equipo de desarrollo
 
 ---
 
-*Última actualización: 2026-03-22 — v3.0.0*
+*Última actualización: 2026-03-29 — v3.1.0*

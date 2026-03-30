@@ -1,3 +1,6 @@
+> **ROADMAP** — Especificaciones de módulos v4. No todos están implementados aún.
+> Estado de progreso en [backlog.md](backlog.md).
+
 # Parallly V4 — Guía de Implementación de Módulos Complementarios
 
 > Propósito: complementar la guía previa enfocada en **CRM + WhatsApp Platform Manager** y detallar los demás módulos del producto para que un agente de código pueda empezar a implementarlos sin ambigüedad.

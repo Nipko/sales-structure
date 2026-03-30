@@ -14,7 +14,40 @@ export class WhatsAppAdapter implements IChannelAdapter {
     private readonly logger = new Logger(WhatsAppAdapter.name);
     private readonly apiUrl = 'https://graph.facebook.com/v21.0';
 
-    constructor(private configService: ConfigService) { }
+    constructor(private configService: ConfigService) {}
+
+    /**
+     * Mark a message as read (blue checks) via Meta API.
+     * Call this immediately when receiving a webhook, before processing.
+     * Blueprint Paso 6: Read receipts.
+     */
+    async markAsRead(phoneNumberId: string, messageId: string, accessToken: string): Promise<void> {
+        if (!messageId || !phoneNumberId) return;
+
+        try {
+            const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    status: 'read',
+                    message_id: messageId,
+                }),
+            });
+
+            if (!response.ok) {
+                const data = await response.json() as any;
+                this.logger.warn(`markAsRead failed for ${messageId}: ${data.error?.message || response.status}`);
+            }
+        } catch (e: any) {
+            // Fire-and-forget: don't block message processing
+            this.logger.warn(`markAsRead error: ${e.message}`);
+        }
+    }
 
     /**
      * Verify webhook subscription (Meta verification challenge)

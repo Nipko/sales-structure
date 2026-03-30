@@ -1,6 +1,6 @@
 # 🔐 Seguridad y Autenticación — Parallext Engine
 
-> Versión 1.0 · Actualizado: Marzo 3, 2026
+> Versión 1.1 · Actualizado: Marzo 29, 2026
 
 ---
 
@@ -13,8 +13,10 @@
 5. [Guards y Decoradores](#5-guards-y-decoradores)
 6. [Protección del Dashboard](#6-protección-del-dashboard)
 7. [Infraestructura de Seguridad](#7-infraestructura-de-seguridad)
-8. [Gestión de Usuarios](#8-gestión-de-usuarios)
-9. [Buenas Prácticas](#9-buenas-prácticas)
+8. [Seguridad del Servicio WhatsApp](#8-seguridad-del-servicio-whatsapp)
+9. [Idempotencia y Protección contra Duplicados](#9-idempotencia-y-protección-contra-duplicados)
+10. [Gestión de Usuarios](#10-gestión-de-usuarios)
+11. [Buenas Prácticas](#11-buenas-prácticas)
 
 ---
 
@@ -288,7 +290,44 @@ App start → AuthProvider lee localStorage
 
 ---
 
-## 8. Gestión de Usuarios
+## 8. Seguridad del Servicio WhatsApp
+
+### HMAC-SHA256 — Validación de Webhooks:
+Cada webhook entrante de Meta incluye un header `X-Hub-Signature-256` con la firma HMAC del body.
+El servicio WhatsApp (puerto 3002) calcula `HMAC-SHA256(body, META_APP_SECRET)` y compara con la firma recibida.
+Si no coincide, el webhook se rechaza con 401.
+
+### AES-256-GCM — Cifrado de Tokens:
+Los tokens de acceso de WhatsApp Business se almacenan cifrados en la tabla `whatsapp_credentials`.
+- Algoritmo: AES-256-GCM
+- Clave: `ENCRYPTION_KEY` (64 caracteres hexadecimales = 256 bits)
+- Cada registro tiene su propio IV y auth tag
+- El token solo se descifra en memoria al momento de usarse para llamadas a la Meta API
+
+### Auth Guard Interno (x-internal-key):
+La comunicación entre el WhatsApp Service (3002) y la API (3000) se protege con un guard dual:
+1. **JWT**: El servicio WhatsApp puede autenticarse con un JWT firmado con `INTERNAL_JWT_SECRET`
+2. **x-internal-key**: Alternativamente, se envía el header `x-internal-key` con el valor de `INTERNAL_API_KEY`
+
+El guard acepta cualquiera de los dos mecanismos. Esto permite llamadas service-to-service sin necesidad de un usuario real.
+
+---
+
+## 9. Idempotencia y Protección contra Duplicados
+
+### Webhooks WhatsApp:
+Meta puede enviar el mismo webhook más de una vez. Para evitar procesamiento duplicado:
+- Al recibir un webhook, se genera la clave `idem:wa:{waMessageId}` en Redis
+- Si la clave ya existe, el webhook se descarta (ya fue procesado)
+- TTL de la clave: 24 horas
+- Esto garantiza procesamiento exactly-once dentro de la ventana de 24h
+
+### Onboarding:
+El flujo de onboarding también usa dedupe keys en Redis para evitar que un tenant inicie múltiples procesos simultáneos.
+
+---
+
+## 10. Gestión de Usuarios
 
 ### Crear usuario admin (VPS):
 ```bash
@@ -326,7 +365,7 @@ curl -X POST https://api.parallly-chat.cloud/auth/register \
 
 ---
 
-## 9. Buenas Prácticas
+## 11. Buenas Prácticas
 
 1. **Contraseñas**: Mínimo 12 caracteres, incluir mayúsculas, números y símbolos
 2. **JWT Secrets**: Usar `crypto.randomBytes(64)`, nunca reusar entre access y refresh

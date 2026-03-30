@@ -20,8 +20,8 @@ export class AnthropicProvider implements ILLMProvider {
             const req: Anthropic.MessageCreateParamsNonStreaming = {
                 model: options.model,
                 messages: this.formatMessages(options.messages),
-                max_tokens: options.maxTokens || 4096,
-                temperature: options.temperature ?? 0.7,
+                max_tokens: Number(options.maxTokens || 4096),
+                temperature: Number(options.temperature ?? 0.7),
             };
 
             if (options.systemPrompt) {
@@ -87,8 +87,8 @@ export class AnthropicProvider implements ILLMProvider {
             const req: Anthropic.MessageCreateParamsStreaming = {
                 model: options.model,
                 messages: this.formatMessages(options.messages),
-                max_tokens: options.maxTokens || 4096,
-                temperature: options.temperature ?? 0.7,
+                max_tokens: Number(options.maxTokens || 4096),
+                temperature: Number(options.temperature ?? 0.7),
                 stream: true,
             };
 

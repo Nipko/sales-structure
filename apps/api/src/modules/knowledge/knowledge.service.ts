@@ -1,112 +1,258 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import * as crypto from 'crypto';
+import { RedisService } from '../redis/redis.service';
+import OpenAI from 'openai';
+
+/** Approximate max characters per chunk (~500 tokens at ~4 chars/token) */
+const CHUNK_MAX_CHARS = 2000;
+/** Overlap in characters (~50 tokens) */
+const CHUNK_OVERLAP_CHARS = 200;
+/** Redis TTL for "tenant has knowledge" flag */
+const HAS_KNOWLEDGE_TTL = 300; // 5 minutes
 
 @Injectable()
 export class KnowledgeService {
     private readonly logger = new Logger(KnowledgeService.name);
+    private readonly openai: OpenAI;
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
+        private readonly configService: ConfigService,
+    ) {
+        this.openai = new OpenAI({
+            apiKey: this.configService.get<string>('OPENAI_API_KEY') || '',
+        });
+    }
 
-    // ─── Resources ────────────────────────────────────────────────────────────
+    // ─── Document Ingestion ──────────────────────────────────────────────────
+
+    async ingestDocument(
+        tenantId: string,
+        file: { name: string; content: string; mimeType?: string },
+    ) {
+        const schema = this.tenantSchema(tenantId);
+        this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId}`);
+
+        // 1. Create document record
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status)
+             VALUES ($1, $2, $3, $4, 'processing') RETURNING *`,
+            [file.name, file.name, file.mimeType || 'text/plain', file.content],
+        );
+        const document = rows[0];
+
+        try {
+            // 2. Chunk the content
+            const chunks = this.chunkText(file.content);
+
+            // 3. Generate embeddings and store
+            for (let i = 0; i < chunks.length; i++) {
+                const embedding = await this.generateEmbedding(chunks[i]);
+                const embeddingStr = `[${embedding.join(',')}]`;
+
+                await this.prisma.executeInTenantSchema(
+                    schema,
+                    `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata)
+                     VALUES ($1, $2, $3, $4::vector, $5::jsonb)`,
+                    [
+                        document.id,
+                        i,
+                        chunks[i],
+                        embeddingStr,
+                        JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }),
+                    ],
+                );
+            }
+
+            // 4. Update document status
+            await this.prisma.executeInTenantSchema(
+                schema,
+                `UPDATE knowledge_documents SET status = 'ready', chunk_count = $2, updated_at = NOW() WHERE id = $1`,
+                [document.id, chunks.length],
+            );
+
+            // 5. Invalidate Redis cache
+            await this.invalidateHasKnowledgeCache(tenantId);
+
+            this.logger.log(`Document "${file.name}" ingested: ${chunks.length} chunks`);
+            return { ...document, status: 'ready', chunk_count: chunks.length };
+        } catch (error: any) {
+            this.logger.error(`Failed to ingest document ${document.id}: ${error.message}`);
+            await this.prisma.executeInTenantSchema(
+                schema,
+                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1`,
+                [document.id, error.message],
+            );
+            throw error;
+        }
+    }
+
+    // ─── Vector Search ───────────────────────────────────────────────────────
+
+    async searchRelevant(tenantId: string, query: string, topK = 5): Promise<any[]> {
+        const schema = this.tenantSchema(tenantId);
+        const queryEmbedding = await this.generateEmbedding(query);
+        const embeddingStr = `[${queryEmbedding.join(',')}]`;
+
+        const results = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT ke.chunk_text, ke.chunk_index, ke.metadata,
+                    kd.title AS document_title, kd.id AS document_id,
+                    (ke.embedding <=> $1::vector) AS distance
+             FROM knowledge_embeddings ke
+             JOIN knowledge_documents kd ON kd.id = ke.document_id
+             WHERE kd.status = 'ready'
+             ORDER BY ke.embedding <=> $1::vector
+             LIMIT $2`,
+            [embeddingStr, topK],
+        );
+
+        return results;
+    }
+
+    // ─── Document Management ─────────────────────────────────────────────────
+
+    async listDocuments(tenantId: string) {
+        const schema = this.tenantSchema(tenantId);
+        return this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message, created_at, updated_at
+             FROM knowledge_documents
+             ORDER BY created_at DESC`,
+        );
+    }
+
+    async deleteDocument(tenantId: string, documentId: string) {
+        const schema = this.tenantSchema(tenantId);
+
+        // Embeddings are deleted via ON DELETE CASCADE
+        await this.prisma.executeInTenantSchema(
+            schema,
+            `DELETE FROM knowledge_documents WHERE id = $1`,
+            [documentId],
+        );
+
+        await this.invalidateHasKnowledgeCache(tenantId);
+        this.logger.log(`Deleted document ${documentId} for tenant ${tenantId}`);
+    }
+
+    // ─── Tenant Knowledge Check (cached) ─────────────────────────────────────
+
+    async tenantHasKnowledge(tenantId: string): Promise<boolean> {
+        const cacheKey = this.redis.tenantKey(tenantId, 'has_knowledge');
+        const cached = await this.redis.get(cacheKey);
+        if (cached !== null) {
+            return cached === '1';
+        }
+
+        const schema = this.tenantSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings LIMIT 1`,
+        );
+        const hasKnowledge = rows[0]?.cnt > 0;
+
+        await this.redis.set(cacheKey, hasKnowledge ? '1' : '0', HAS_KNOWLEDGE_TTL);
+        return hasKnowledge;
+    }
+
+    private async invalidateHasKnowledgeCache(tenantId: string) {
+        const cacheKey = this.redis.tenantKey(tenantId, 'has_knowledge');
+        await this.redis.del(cacheKey);
+    }
+
+    // ─── Chunking ────────────────────────────────────────────────────────────
+
+    private chunkText(text: string): string[] {
+        const chunks: string[] = [];
+
+        // Step 1: Split by paragraphs (double newline)
+        const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+
+        let currentChunk = '';
+
+        for (const paragraph of paragraphs) {
+            const trimmed = paragraph.trim();
+
+            // If adding this paragraph exceeds the limit, flush current chunk
+            if (currentChunk.length + trimmed.length + 1 > CHUNK_MAX_CHARS && currentChunk.length > 0) {
+                chunks.push(currentChunk.trim());
+                // Keep overlap from the end of the current chunk
+                currentChunk = currentChunk.slice(-CHUNK_OVERLAP_CHARS);
+            }
+
+            // If a single paragraph exceeds the limit, split by sentences
+            if (trimmed.length > CHUNK_MAX_CHARS) {
+                if (currentChunk.length > 0) {
+                    chunks.push(currentChunk.trim());
+                    currentChunk = currentChunk.slice(-CHUNK_OVERLAP_CHARS);
+                }
+                const sentenceChunks = this.splitBySentences(trimmed);
+                chunks.push(...sentenceChunks);
+                currentChunk = sentenceChunks.length > 0
+                    ? sentenceChunks[sentenceChunks.length - 1].slice(-CHUNK_OVERLAP_CHARS)
+                    : '';
+            } else {
+                currentChunk += (currentChunk.length > 0 ? '\n\n' : '') + trimmed;
+            }
+        }
+
+        // Flush remaining
+        if (currentChunk.trim().length > 0) {
+            chunks.push(currentChunk.trim());
+        }
+
+        return chunks;
+    }
+
+    private splitBySentences(text: string): string[] {
+        const sentences = text.match(/[^.!?]+[.!?]+\s*/g) || [text];
+        const chunks: string[] = [];
+        let current = '';
+
+        for (const sentence of sentences) {
+            if (current.length + sentence.length > CHUNK_MAX_CHARS && current.length > 0) {
+                chunks.push(current.trim());
+                current = current.slice(-CHUNK_OVERLAP_CHARS);
+            }
+            current += sentence;
+        }
+
+        if (current.trim().length > 0) {
+            chunks.push(current.trim());
+        }
+
+        return chunks;
+    }
+
+    // ─── Embedding ───────────────────────────────────────────────────────────
+
+    private async generateEmbedding(text: string): Promise<number[]> {
+        const response = await this.openai.embeddings.create({
+            model: 'text-embedding-3-small',
+            input: text,
+        });
+        return response.data[0].embedding;
+    }
+
+    // ─── Legacy Resource Methods (backward compat) ───────────────────────────
 
     async getResources(schemaName: string, status?: string) {
         if (status) {
             return this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT * FROM knowledge_resources WHERE status = $1 ORDER BY created_at DESC`,
-                [status]
+                [status],
             );
         }
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM knowledge_resources ORDER BY created_at DESC`
+            `SELECT * FROM knowledge_resources ORDER BY created_at DESC`,
         );
     }
-
-    async createResource(schemaName: string, data: any) {
-        const contentHash = data.content ? crypto.createHash('sha256').update(data.content).digest('hex').substring(0, 64) : null;
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO knowledge_resources (tenant_id, type, title, source, source_url, content, content_hash, course_id, campaign_id, version, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-            [
-                data.tenant_id, data.type || 'manual', data.title,
-                data.source || null, data.source_url || null,
-                data.content || null, contentHash,
-                data.course_id || null, data.campaign_id || null,
-                data.version || 1, 'draft'
-            ]
-        );
-
-        const resource = rows[0];
-        if (resource && data.content) {
-            await this.chunkResource(schemaName, resource.id, data.content);
-        }
-
-        return resource;
-    }
-
-    async updateResourceStatus(schemaName: string, id: string, status: string) {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE knowledge_resources SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
-            [id, status]
-        );
-        return rows[0];
-    }
-
-    // ─── Chunking ─────────────────────────────────────────────────────────────
-
-    private async chunkResource(schemaName: string, resourceId: string, content: string) {
-        const chunkSize = 500;
-        const overlap = 50;
-        const chunks: string[] = [];
-
-        for (let i = 0; i < content.length; i += chunkSize - overlap) {
-            chunks.push(content.substring(i, i + chunkSize));
-        }
-
-        for (let idx = 0; idx < chunks.length; idx++) {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `INSERT INTO knowledge_chunks (resource_id, chunk_index, content, metadata_json)
-                 VALUES ($1, $2, $3, $4)`,
-                [resourceId, idx, chunks[idx], JSON.stringify({ char_start: idx * (chunkSize - overlap), char_end: Math.min(idx * (chunkSize - overlap) + chunkSize, content.length) })]
-            );
-        }
-
-        this.logger.log(`Chunked resource ${resourceId} into ${chunks.length} chunks`);
-    }
-
-    async getChunks(schemaName: string, resourceId: string) {
-        return this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM knowledge_chunks WHERE resource_id = $1 ORDER BY chunk_index ASC`,
-            [resourceId]
-        );
-    }
-
-    // ─── Approvals ────────────────────────────────────────────────────────────
-
-    async approveResource(schemaName: string, resourceId: string, approvedBy: string, notes?: string) {
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO knowledge_approvals (resource_id, approved_by, notes) VALUES ($1, $2, $3)`,
-            [resourceId, approvedBy, notes || null]
-        );
-        return this.updateResourceStatus(schemaName, resourceId, 'approved');
-    }
-
-    async getApprovals(schemaName: string, resourceId: string) {
-        return this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM knowledge_approvals WHERE resource_id = $1 ORDER BY approved_at DESC`,
-            [resourceId]
-        );
-    }
-
-    // ─── Retrieval (for Carla) ────────────────────────────────────────────────
 
     async searchChunks(schemaName: string, query: string, limit = 5) {
         return this.prisma.executeInTenantSchema<any[]>(
@@ -116,7 +262,13 @@ export class KnowledgeService {
              JOIN knowledge_resources kr ON kr.id = kc.resource_id
              WHERE kr.status = 'approved' AND kc.content ILIKE $1
              ORDER BY kc.created_at DESC LIMIT $2`,
-            [`%${query}%`, limit]
+            [`%${query}%`, limit],
         );
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private tenantSchema(tenantId: string): string {
+        return `tenant_${tenantId.replace(/-/g, '_')}`;
     }
 }

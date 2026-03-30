@@ -7,4 +7,4 @@ import { HandoffController } from './handoff.controller';
     controllers: [HandoffController],
     exports: [HandoffService],
 })
-export class HandoffModule { }
+export class HandoffModule {}

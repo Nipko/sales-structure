@@ -1,31 +1,62 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { BroadcastService } from './broadcast.service';
+import {
+    Controller,
+    Get,
+    Post,
+    Body,
+    Param,
+    UseGuards,
+    Logger,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
+import { CurrentTenant } from '../../common/decorators/tenant.decorator';
+import { BroadcastService, CreateCampaignDto } from './broadcast.service';
 
-@Controller('api/v1/broadcast')
+@ApiTags('broadcast')
+@Controller('broadcast')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class BroadcastController {
-    constructor(private broadcastService: BroadcastService) { }
+    private readonly logger = new Logger(BroadcastController.name);
 
-    @Get('campaigns/:tenantId')
-    async getCampaigns(@Param('tenantId') tenantId: string) {
-        const data = await this.broadcastService.getCampaigns(tenantId);
-        return { success: true, data };
-    }
+    constructor(private readonly broadcastService: BroadcastService) {}
 
-    @Post('campaigns/:tenantId')
+    @Post('campaigns')
+    @ApiOperation({ summary: 'Create a new broadcast campaign' })
     async createCampaign(
-        @Param('tenantId') tenantId: string,
-        @Body() body: { name: string; channel: string; template: string; targetAudience: string }
+        @CurrentTenant() tenantId: string,
+        @Body() body: CreateCampaignDto,
     ) {
         const result = await this.broadcastService.createCampaign(tenantId, body);
         return { success: true, data: result };
     }
 
-    @Post('campaigns/:tenantId/:campaignId/send')
-    async sendCampaign(
-        @Param('tenantId') tenantId: string,
-        @Param('campaignId') campaignId: string
+    @Post('campaigns/:id/launch')
+    @ApiOperation({ summary: 'Launch a campaign — queues all recipients for sending' })
+    async launchCampaign(
+        @CurrentTenant() tenantId: string,
+        @Param('id') campaignId: string,
     ) {
-        await this.broadcastService.sendCampaign(tenantId, campaignId);
-        return { success: true, message: 'Campaign dispatch started' };
+        const result = await this.broadcastService.launchCampaign(tenantId, campaignId);
+        return { success: true, message: 'Campaign launched', data: result };
+    }
+
+    @Get('campaigns')
+    @ApiOperation({ summary: 'List all campaigns with stats' })
+    async getCampaigns(@CurrentTenant() tenantId: string) {
+        const data = await this.broadcastService.getCampaigns(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('campaigns/:id/stats')
+    @ApiOperation({ summary: 'Get detailed delivery stats for a campaign' })
+    async getCampaignStats(
+        @CurrentTenant() tenantId: string,
+        @Param('id') campaignId: string,
+    ) {
+        const data = await this.broadcastService.getCampaignStats(tenantId, campaignId);
+        return { success: true, data };
     }
 }

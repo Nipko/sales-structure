@@ -98,10 +98,11 @@ export class WebhookProcessor extends WorkerHost {
    */
   private async forwardToConversationsService(normalizedMsg: any): Promise<void> {
     const apiUrl = this.configService.get<string>('API_INTERNAL_URL') || 'http://api:3000/api/v1';
-    const secret = this.configService.get<string>('INTERNAL_JWT_SECRET');
+    const internalKey = this.configService.get<string>('INTERNAL_API_KEY')
+      || this.configService.get<string>('INTERNAL_JWT_SECRET'); // fallback for backward compat
 
-    if (!secret) {
-      this.logger.warn('INTERNAL_JWT_SECRET not set — skipping AI forwarding');
+    if (!internalKey) {
+      this.logger.warn('INTERNAL_API_KEY not set — skipping AI forwarding');
       return;
     }
 
@@ -113,7 +114,7 @@ export class WebhookProcessor extends WorkerHost {
           {
             headers: {
               'Content-Type': 'application/json',
-              'x-internal-secret': secret,
+              'x-internal-key': internalKey,
             },
             timeout: 5000,
           },

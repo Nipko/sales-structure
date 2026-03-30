@@ -1,7 +1,7 @@
 # 🗂️ Estructura de la API — Parallext Engine
 
 > Referencia rápida de todos los módulos y endpoints del backend.
-> Actualizado: Marzo 22, 2026
+> Actualizado: Marzo 29, 2026
 
 ---
 
@@ -21,7 +21,8 @@
 | Conversations | `modules/conversations/` | — | Orchestrator |
 | Persona | `modules/persona/` | — | YAML persona engine |
 | Knowledge | `modules/knowledge/` | — | RAG pipeline |
-| Handoff | `modules/handoff/` | — | Escalation triggers |
+| Handoff | `modules/handoff/` | 2 | Escalation triggers, EventEmitter2 |
+| Broadcast | `modules/broadcast/` | 4 | Campañas masivas, BullMQ rate-limited |
 | Health | `modules/health/` | 1 | Health check |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
@@ -96,6 +97,31 @@
 | POST | `/api-keys` | Crear/actualizar |
 | DELETE | `/api-keys/:provider` | Eliminar |
 
+### Handoff (`/api/v1/handoff`)
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|------------|
+| POST | `/:conversationId/complete` | ✅ | Completar handoff y devolver a IA |
+| POST | `/:conversationId/status` | ✅ | Consultar estado del handoff |
+
+### Broadcast (`/api/v1/broadcast`)
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|------------|
+| POST | `/campaigns` | ✅ admin | Crear campaña de broadcast |
+| GET | `/campaigns` | ✅ | Listar campañas del tenant |
+| POST | `/campaigns/:id/launch` | ✅ admin | Lanzar campaña (encola mensajes) |
+| GET | `/campaigns/:id/stats` | ✅ | Estadísticas de entrega de la campaña |
+
+---
+
+## Colas BullMQ
+
+| Cola | Descripción | Reintentos | Rate limit |
+|------|------------|------------|------------|
+| `outbound-messages` | Mensajes salientes individuales (respuestas IA, agente) | 3 (backoff exponencial) | — |
+| `broadcast-messages` | Mensajes de campañas masivas | 3 | 80 msg/s |
+| `wa:webhooks` | Procesamiento de webhooks entrantes de Meta | 3 | — |
+| `wa:sync` | Sincronización de templates y teléfonos | 3 | — |
+
 ---
 
 ## WebSocket Events (namespace `/agent`)
@@ -116,9 +142,14 @@
 | `inbox:update` | `InboxData` | Actualización completa |
 | `inbox:new_message` | `{ conversationId, message }` | Nuevo mensaje |
 | `inbox:assigned` | `{ conversationId }` | Asignación recibida |
-| `inbox:refresh` | — | Recargar inbox |
+| `inbox:refresh` | — | Recargar inbox (datos cambiaron) |
+| `inbox:handoff` | `{ conversationId, reason, metadata }` | Escalación de handoff recibida |
+| `inbox:handoff_completed` | `{ conversationId }` | Handoff resuelto, conversación devuelta a IA |
 | `conversation:message` | `Message` | Mensaje en chat abierto |
 | `conversation:resolved` | `{ conversationId }` | Chat cerrado |
+
+> Los eventos `inbox:handoff` e `inbox:handoff_completed` son emitidos por `AgentConsoleGateway`
+> en respuesta a eventos internos `handoff.escalated` y `handoff.completed` de EventEmitter2.
 
 ---
 

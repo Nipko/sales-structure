@@ -98,20 +98,17 @@ CREATE TABLE "{{SCHEMA_NAME}}"."knowledge_documents" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 
--- ---- Knowledge Embeddings (Vector search) ----
--- NOTE: Uses TEXT instead of vector(1536) to avoid dependency on pgvector extension.
--- When pgvector is installed globally, change "embedding" to vector(1536) and restore the ivfflat index.
+-- ---- Knowledge Embeddings (Vector search via pgvector) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_embeddings" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "document_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."knowledge_documents"("id") ON DELETE CASCADE,
     "chunk_index" INTEGER NOT NULL,
     "chunk_text" TEXT NOT NULL,
-    "embedding" TEXT,
+    "embedding" vector(1536),
     "metadata" JSONB DEFAULT '{}',
     "created_at" TIMESTAMP DEFAULT NOW()
 );
--- INDEX: Restore when pgvector is enabled:
--- CREATE INDEX ON "{{SCHEMA_NAME}}"."knowledge_embeddings" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_ke_embedding_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_embeddings" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100);
 
 -- ---- Conversation Memory (Long-term summaries) ----
 CREATE TABLE "{{SCHEMA_NAME}}"."conversation_memory" (

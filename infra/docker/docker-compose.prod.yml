@@ -52,6 +52,26 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
+  # ---- Background Worker (BullMQ processors + cron jobs) ----
+  worker:
+    image: ghcr.io/nipko/parallext-worker:latest
+    container_name: parallext-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    env_file:
+      - ../../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
   # ---- WhatsApp Onboarding Service ----
   whatsapp:
     image: ghcr.io/nipko/parallext-whatsapp:latest

@@ -94,7 +94,7 @@ export class AuthService {
         const hashedPassword = await bcrypt.hash(data.password, 12);
 
         // Atomic transaction: create tenant + admin user
-        const result = await this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx: any) => {
             // 1. Create tenant
             const tenant = await tx.tenant.create({
                 data: {

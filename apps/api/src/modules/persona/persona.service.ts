@@ -32,9 +32,9 @@ export class PersonaService {
 
         // Load from database
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
-        const result = await this.prisma.$queryRawUnsafe<any[]>(
+        const result = await this.prisma.$queryRawUnsafe(
             `SELECT config_json FROM "${schemaName}".persona_config WHERE is_active = true ORDER BY version DESC LIMIT 1`,
-        );
+        ) as any[];
 
         if (!result || result.length === 0) return null;
 
@@ -64,9 +64,9 @@ export class PersonaService {
         );
 
         // Get next version number
-        const versionResult = await this.prisma.$queryRawUnsafe<any[]>(
+        const versionResult = await this.prisma.$queryRawUnsafe(
             `SELECT COALESCE(MAX(version), 0) + 1 as next_version FROM "${schemaName}".persona_config`,
-        );
+        ) as any[];
         const nextVersion = versionResult[0]?.next_version || 1;
 
         // Insert new config
@@ -159,9 +159,9 @@ export class PersonaService {
      */
     async getVersionHistory(tenantId: string): Promise<any[]> {
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
-        return this.prisma.$queryRawUnsafe<any[]>(
+        return this.prisma.$queryRawUnsafe(
             `SELECT id, version, is_active, created_by, created_at FROM "${schemaName}".persona_config ORDER BY version DESC`,
-        );
+        ) as Promise<any[]>;
     }
 
     /**

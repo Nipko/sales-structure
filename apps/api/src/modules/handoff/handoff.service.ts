@@ -191,7 +191,7 @@ export class HandoffService {
      */
     private async tryAutoAssign(tenantId: string, schemaName: string, conversationId: string): Promise<string | null> {
         try {
-            const agents = await this.prisma.$queryRawUnsafe<any[]>(`
+            const agents = await this.prisma.$queryRawUnsafe(`
                 SELECT u.id, u.name,
                     (SELECT COUNT(*) FROM "${schemaName}".conversations c
                      WHERE c.assigned_to = u.id::text AND c.status = 'with_human') as active_count
@@ -201,7 +201,7 @@ export class HandoffService {
                   AND u.role IN ('tenant_admin', 'tenant_supervisor', 'tenant_agent')
                 ORDER BY active_count ASC
                 LIMIT 1
-            `, tenantId);
+            `, tenantId) as any[];
 
             if (agents?.length) {
                 const agent = agents[0];

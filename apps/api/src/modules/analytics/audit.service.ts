@@ -86,6 +86,6 @@ export class AuditService {
         query += ` ORDER BY al.created_at DESC LIMIT $${n++} OFFSET $${n++}`;
         p.push(limit, offset);
 
-        return this.prisma.$queryRawUnsafe<any[]>(query, ...p);
+        return this.prisma.$queryRawUnsafe(query, ...p) as Promise<any[]>;
     }
 }

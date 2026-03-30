@@ -66,37 +66,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test API — verify NestJS DI container boots
+      - name: Smoke test API — verify module graph resolves
         run: |
           docker run --rm \
-            -e DATABASE_URL="postgresql://test:test@localhost:5432/test" \
-            -e REDIS_HOST="localhost" \
-            -e NODE_ENV="test" \
-            -w /app/dist \
-            --entrypoint node \
-            ${{ env.API_IMAGE }}:${{ github.sha }} \
-            -e "
-              const { NestFactory } = require('./main');
-            " 2>&1 | head -20
-          echo "Smoke test: checking if DI container assembled..."
-          docker run --rm \
-            -e DATABASE_URL="postgresql://test:test@localhost:5432/test" \
-            -e REDIS_HOST="localhost" \
-            -e NODE_ENV="test" \
             -w /app \
             --entrypoint node \
             ${{ env.API_IMAGE }}:${{ github.sha }} \
             -e "
+              // Verify all compiled modules can be required (catches missing deps, bad imports)
               try {
-                const { AppModule } = require('./dist/app.module');
-                console.log('✅ AppModule loaded:', typeof AppModule);
+                const m = require('./dist/app.module');
+                if (!m.AppModule) throw new Error('AppModule not exported');
+                console.log('✅ AppModule loaded — all module imports resolved');
                 process.exit(0);
               } catch(e) {
-                console.error('❌ FAILED:', e.message);
+                console.error('❌ Module load FAILED:', e.message);
                 process.exit(1);
               }
             "
-        timeout-minutes: 2
+        timeout-minutes: 1
 
       - name: Build and push Worker image
         uses: docker/build-push-action@v5

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { AutomationService } from './automation.service';
 import { ActionExecutorService } from './action-executor.service';
@@ -16,10 +16,10 @@ import { ChannelsModule } from '../channels/channels.module';
 @Module({
     imports: [
         PrismaModule,
-        WhatsappModule,
+        forwardRef(() => WhatsappModule),
         PersonaModule,
         AIModule,
-        ChannelsModule,
+        forwardRef(() => ChannelsModule),
         BullModule.registerQueue({ name: NURTURING_QUEUE }),
         BullModule.registerQueue({ name: AUTOMATION_JOBS_QUEUE }),
     ],

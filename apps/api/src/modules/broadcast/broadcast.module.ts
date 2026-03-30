@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { BroadcastController } from './broadcast.controller';
 import { BroadcastService, BROADCAST_QUEUE } from './broadcast.service';
@@ -9,7 +9,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 @Module({
     imports: [
         RedisModule,
-        WhatsappModule,
+        forwardRef(() => WhatsappModule),
         BullModule.registerQueue({
             name: BROADCAST_QUEUE,
         }),

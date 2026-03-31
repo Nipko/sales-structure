@@ -56,8 +56,13 @@ export class WhatsappController {
     const apiBaseWithPrefix = apiBase.endsWith('/api/v1') ? apiBase : `${apiBase}/api/v1`;
 
     return {
-      webhookUrl: `${apiBaseWithPrefix}/channels/whatsapp/webhook`,
-      verifyToken: this.webhookService.getVerifyToken() || 'Token no configurado en backend',
+      success: true,
+      data: {
+        webhookUrl: `${apiBaseWithPrefix}/channels/webhook/whatsapp`,
+        verifyToken: this.webhookService.getVerifyToken()
+          || process.env.META_VERIFY_TOKEN
+          || 'Token no configurado en backend',
+      },
     };
   }
 

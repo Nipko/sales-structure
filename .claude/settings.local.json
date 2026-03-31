@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developers.chatwoot.com)",
+      "WebFetch(domain:developers.facebook.com)",
+      "WebFetch(domain:helpdocs.ycloud.com)",
+      "WebSearch",
+      "WebFetch(domain:botsailor.com)",
+      "WebFetch(domain:www.twilio.com)"
+    ]
+  }
+}

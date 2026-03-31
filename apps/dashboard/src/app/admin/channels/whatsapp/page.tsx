@@ -53,6 +53,7 @@ export default function WhatsAppSetupPage() {
     const [templates, setTemplates] = useState<any[]>([]);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
 
+    const [phoneNumber, setPhoneNumber] = useState("");
     const [phoneNumberId, setPhoneNumberId] = useState("");
     const [wabaId, setWabaId] = useState("");
     const [accessToken, setAccessToken] = useState("");
@@ -71,7 +72,8 @@ export default function WhatsAppSetupPage() {
             const statusRes = await api.fetch("/channels/whatsapp/status");
             setStatus(statusRes);
             if (statusRes?.channel) {
-                setPhoneNumberId(statusRes.channel.phone_number_id || statusRes.channel.display_phone_number || "");
+                setPhoneNumber(statusRes.channel.display_phone_number || "");
+                setPhoneNumberId(statusRes.channel.phone_number_id || "");
                 setWabaId(statusRes.channel.meta_waba_id || "");
             }
         } catch (e) { console.error("Failed to load WA status", e); }
@@ -99,7 +101,12 @@ export default function WhatsAppSetupPage() {
         try {
             await api.fetch("/channels/whatsapp/connect/complete", {
                 method: "POST",
-                body: JSON.stringify({ phoneNumberId, wabaId, accessToken }),
+                body: JSON.stringify({
+                    phoneNumberId,
+                    wabaId,
+                    accessToken,
+                    displayPhoneNumber: phoneNumber || undefined,
+                }),
             });
             setMessage({ type: "success", text: "Canal conectado correctamente." });
             setAccessToken("");
@@ -282,15 +289,23 @@ export default function WhatsAppSetupPage() {
                                 </p>
                                 <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <div>
-                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>Phone Number ID</label>
+                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Numero de telefono</label>
+                                        <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>El numero de WhatsApp Business desde el que se enviaran los mensajes</span>
+                                        <input type="text" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="Ej: +57 320 801 0737" style={input} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Phone Number ID</label>
+                                        <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>Lo encuentras en WhatsApp → API Setup, debajo de tu numero</span>
                                         <input type="text" value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} placeholder="Ej: 104561234908123" required style={input} />
                                     </div>
                                     <div>
-                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>WhatsApp Business Account ID (WABA)</label>
+                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Business Account ID</label>
+                                        <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>WhatsApp → API Setup → WhatsApp Business Account ID (arriba de la pagina)</span>
                                         <input type="text" value={wabaId} onChange={e => setWabaId(e.target.value)} placeholder="Ej: 1120019283746" required style={input} />
                                     </div>
                                     <div>
-                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>Access Token (System User o permanente)</label>
+                                        <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>API Key (Access Token permanente)</label>
+                                        <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>System User Token o token temporal de API Setup. Nunca se almacena en texto plano.</span>
                                         <input type="password" value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="EAAG..." required style={{ ...input, fontFamily: "monospace" }} />
                                     </div>
                                     <button type="submit" disabled={saving} style={{
@@ -361,11 +376,11 @@ export default function WhatsAppSetupPage() {
                                     <input type="text" value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} required style={input} />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>WABA ID</label>
+                                    <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>Business Account ID</label>
                                     <input type="text" value={wabaId} onChange={e => setWabaId(e.target.value)} required style={input} />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>Nuevo Access Token</label>
+                                    <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: "block" }}>Nueva API Key (Access Token)</label>
                                     <input type="password" value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="Solo si necesitas actualizar" style={{ ...input, fontFamily: "monospace" }} />
                                 </div>
                                 <button type="submit" disabled={saving} style={{

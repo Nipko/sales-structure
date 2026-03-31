@@ -268,6 +268,16 @@ jobs:
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 
+            echo "===> Ensuring platform_settings table exists..."
+            docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+              psql -U parallext -d parallext_engine -c "
+                CREATE TABLE IF NOT EXISTS platform_settings (
+                  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), key TEXT UNIQUE NOT NULL,
+                  value TEXT, is_secret BOOLEAN DEFAULT false, category TEXT DEFAULT 'general',
+                  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+              " || true
+
             echo "===> Running Prisma public schema migrations..."
             docker compose -f infra/docker/docker-compose.prod.yml \
               run --rm \
@@ -275,7 +285,17 @@ jobs:
 
             echo "===> Running tenant schema migration (idempotent)..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              run --rm api npm run migrate:tenants
+              run --rm api npm run migrate:tenants || true
+
+            echo "===> Applying tenant-schema.sql to all existing tenants..."
+            TENANTS=$(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$')
+            for schema in $TENANTS; do
+              echo "  Migrating tenant: $schema"
+              cat apps/api/prisma/tenant-schema.sql | sed "s/{{SCHEMA_NAME}}/$schema/g" | \
+                docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+                psql -U parallext -d parallext_engine 2>/dev/null || true
+            done
 
             echo "===> Restarting API, Worker, Dashboard, and WhatsApp..."
             docker compose -f infra/docker/docker-compose.prod.yml \

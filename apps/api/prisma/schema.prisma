@@ -25,7 +25,7 @@ model Tenant {
   industry    String
   language    String   @default("es-CO")
   schemaName  String   @unique @map("schema_name")
-  isActive    Boolean  @default(true)
+  isActive    Boolean  @default(true) @map("is_active")
   plan        String   @default("starter")
   settings    Json     @default("{}")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -47,7 +47,7 @@ model User {
   lastName    String   @map("last_name")
   role        String   @default("tenant_agent") // super_admin, tenant_admin, tenant_agent, tenant_viewer
   tenantId    String?  @map("tenant_id")
-  isActive    Boolean  @default(true)
+  isActive    Boolean  @default(true) @map("is_active")
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -69,10 +69,10 @@ model ChannelAccount {
   accessToken   String   @map("access_token")   // Encrypted
   refreshToken  String?  @map("refresh_token")  // Encrypted
   webhookSecret String?  @map("webhook_secret")
-  isActive      Boolean  @default(true)
+  isActive      Boolean  @default(true) @map("is_active")
   metadata      Json     @default("{}")
   createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  updatedAt     DateTime @default(now()) @map("updated_at")
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

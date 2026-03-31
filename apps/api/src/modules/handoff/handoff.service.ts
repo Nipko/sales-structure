@@ -83,7 +83,7 @@ export class HandoffService {
         message: NormalizedMessage,
         reason: string,
     ): Promise<HandoffResult> {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         // 1. Build AI summary from recent messages
         const recentMessages = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -156,7 +156,7 @@ export class HandoffService {
      * Complete handoff: return conversation back to AI
      */
     async completeHandoff(tenantId: string, conversationId: string): Promise<void> {
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE conversations SET status = 'active', assigned_to = NULL, updated_at = NOW() WHERE id = $1`,

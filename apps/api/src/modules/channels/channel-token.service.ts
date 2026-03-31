@@ -34,7 +34,7 @@ export class ChannelTokenService {
         const cached = await this.redis.getJson<ChannelCredentials>(cacheKey);
         if (cached) return cached;
 
-        const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         // 1. Channel info from tenant schema
         const channels = await this.prisma.executeInTenantSchema<any[]>(

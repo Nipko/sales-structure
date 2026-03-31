@@ -171,8 +171,8 @@ export class WhatsappWebhookService {
    * Fire-and-forget — errors are logged but don't block processing.
    */
   private resolveAccessTokenAndMarkRead(tenantId: string, phoneNumberId: string, waMessageId: string): void {
-      const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
-      this.whatsappConnection.getValidAccessToken(schemaName)
+      this.prisma.getTenantSchemaName(tenantId)
+          .then(schemaName => this.whatsappConnection.getValidAccessToken(schemaName))
           .then(creds => {
               this.whatsappAdapter.markAsRead(phoneNumberId, waMessageId, creds.accessToken);
           })

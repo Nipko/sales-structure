@@ -32,7 +32,7 @@ export class KnowledgeService {
         tenantId: string,
         file: { name: string; content: string; mimeType?: string },
     ) {
-        const schema = this.tenantSchema(tenantId);
+        const schema = await this.tenantSchema(tenantId);
         this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId}`);
 
         // 1. Create document record
@@ -93,7 +93,7 @@ export class KnowledgeService {
     // ─── Vector Search ───────────────────────────────────────────────────────
 
     async searchRelevant(tenantId: string, query: string, topK = 5): Promise<any[]> {
-        const schema = this.tenantSchema(tenantId);
+        const schema = await this.tenantSchema(tenantId);
         const queryEmbedding = await this.generateEmbedding(query);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
@@ -116,7 +116,7 @@ export class KnowledgeService {
     // ─── Document Management ─────────────────────────────────────────────────
 
     async listDocuments(tenantId: string) {
-        const schema = this.tenantSchema(tenantId);
+        const schema = await this.tenantSchema(tenantId);
         return this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message, created_at, updated_at
@@ -126,7 +126,7 @@ export class KnowledgeService {
     }
 
     async deleteDocument(tenantId: string, documentId: string) {
-        const schema = this.tenantSchema(tenantId);
+        const schema = await this.tenantSchema(tenantId);
 
         // Embeddings are deleted via ON DELETE CASCADE
         await this.prisma.executeInTenantSchema(
@@ -148,7 +148,7 @@ export class KnowledgeService {
             return cached === '1';
         }
 
-        const schema = this.tenantSchema(tenantId);
+        const schema = await this.tenantSchema(tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings LIMIT 1`,
@@ -268,7 +268,7 @@ export class KnowledgeService {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private tenantSchema(tenantId: string): string {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    private async tenantSchema(tenantId: string): Promise<string> {
+        return this.prisma.getTenantSchemaName(tenantId);
     }
 }

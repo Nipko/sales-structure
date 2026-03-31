@@ -56,7 +56,7 @@ export class ConversationsService {
         );
 
         // Auto-progress stage from 'nuevo' to 'respondio' upon user message
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1 AND stage = 'nuevo'`,
             [conversation.id],
@@ -144,7 +144,7 @@ export class ConversationsService {
      * Resolve or create contact, lead, conversation, and opportunity
      */
     private async resolveConversation(tenantId: string, contactId: string, channelType: string, msg: NormalizedMessage) {
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
 
         // 1. Find or create contact
         let contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -267,7 +267,7 @@ export class ConversationsService {
     }
 
     private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage) {
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
         const metadataJson = JSON.stringify(msg.metadata || {});
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -279,7 +279,7 @@ export class ConversationsService {
     }
 
     private async saveAiMessage(tenantId: string, conversationId: string, text: string) {
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
@@ -353,7 +353,7 @@ export class ConversationsService {
         }
 
         // 3. Get Conversation History with smart truncation
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 30`,
             [conversation.id],
@@ -423,8 +423,13 @@ export class ConversationsService {
         return messages;
     }
 
-    /** Helper to build tenant schema name */
-    private tenantSchema(tenantId: string): string {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    /** Helper to resolve tenant schema name (cached in Redis) */
+    private async tenantSchema(tenantId: string): Promise<string> {
+        const cacheKey = `tenant:${tenantId}:schema`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return cached;
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        await this.redis.set(cacheKey, schema, 600);
+        return schema;
     }
 }

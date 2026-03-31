@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
 
 @ApiTags('knowledge')
@@ -12,7 +13,10 @@ import { KnowledgeService } from './knowledge.service';
 export class KnowledgeController {
     private readonly logger = new Logger(KnowledgeController.name);
 
-    constructor(private readonly knowledgeService: KnowledgeService) {}
+    constructor(
+        private readonly knowledgeService: KnowledgeService,
+        private readonly prisma: PrismaService,
+    ) {}
 
     // ─── Document RAG Endpoints ──────────────────────────────────────────────
 
@@ -65,7 +69,7 @@ export class KnowledgeController {
         @Param('tenantId') tenantId: string,
         @Query('status') status?: string,
     ) {
-        return this.knowledgeService.getResources(this.schemaFor(tenantId), status);
+        return this.knowledgeService.getResources(await this.schemaFor(tenantId), status);
     }
 
     @Get('search/:tenantId')
@@ -76,10 +80,10 @@ export class KnowledgeController {
         @Query('limit') limit?: number,
     ) {
         if (!query) return [];
-        return this.knowledgeService.searchChunks(this.schemaFor(tenantId), query, limit ? Number(limit) : 5);
+        return this.knowledgeService.searchChunks(await this.schemaFor(tenantId), query, limit ? Number(limit) : 5);
     }
 
-    private schemaFor(tenantId: string) {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    private async schemaFor(tenantId: string): Promise<string> {
+        return this.prisma.getTenantSchemaName(tenantId);
     }
 }

@@ -396,7 +396,7 @@ Reglas:
     // ─── Private Helpers ────────────────────────────────────────────────────
 
     private async loadRecentMessages(tenantId: string, conversationId: string): Promise<any[] | null> {
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
 
         try {
             const messages = await this.prisma.executeInTenantSchema<any[]>(
@@ -438,8 +438,8 @@ Reglas:
         }
     }
 
-    private tenantSchema(tenantId: string): string {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    private async tenantSchema(tenantId: string): Promise<string> {
+        return this.prisma.getTenantSchemaName(tenantId);
     }
 
     // ─── System Prompt (platform copilot) ───────────────────────────────────

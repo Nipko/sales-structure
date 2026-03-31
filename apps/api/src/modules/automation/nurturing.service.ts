@@ -123,7 +123,7 @@ export class NurturingService {
      * Execute a follow-up attempt. Called by the queue processor.
      */
     async executeFollowUp(tenantId: string, conversationId: string, leadId: string, attempt: number): Promise<void> {
-        const schemaName = this.tenantSchema(tenantId);
+        const schemaName = await this.tenantSchema(tenantId);
         const config = await this.getNurturingConfig(tenantId);
         const maxAttempts = config.maxAttempts || DEFAULT_MAX_ATTEMPTS;
 
@@ -209,7 +209,7 @@ export class NurturingService {
      * that don't already have a follow-up scheduled.
      */
     async checkStaleConversations(tenantId: string, schemaName?: string): Promise<void> {
-        const schema = schemaName || this.tenantSchema(tenantId);
+        const schema = schemaName || await this.tenantSchema(tenantId);
         const config = await this.getNurturingConfig(tenantId);
         if (!config.enabled) return;
 
@@ -582,7 +582,7 @@ export class NurturingService {
         return `nurturing:${tenantId}:${conversationId}:${attempt}`;
     }
 
-    private tenantSchema(tenantId: string): string {
-        return `tenant_${tenantId.replace(/-/g, '_')}`;
+    private async tenantSchema(tenantId: string): Promise<string> {
+        return this.prisma.getTenantSchemaName(tenantId);
     }
 }

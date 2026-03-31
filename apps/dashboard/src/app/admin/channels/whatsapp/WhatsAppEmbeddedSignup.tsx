@@ -79,12 +79,34 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         }
 
         const code = response.authResponse.code;
+
+        // Extract session info from Embedded Signup v4 (sessionInfoVersion: "3")
+        // These may not be present with older SDK versions or certain Meta configurations
+        const sessionPhoneNumberId = response.authResponse.phone_number_id || null;
+        const sessionWabaId = response.authResponse.waba_id || null;
+
+        if (!sessionPhoneNumberId || !sessionWabaId) {
+          console.warn(
+            "[EmbeddedSignup] Session info missing from authResponse. " +
+            "phone_number_id:", sessionPhoneNumberId,
+            "waba_id:", sessionWabaId,
+            "— backend will attempt API discovery as fallback.",
+          );
+        } else {
+          console.log(
+            "[EmbeddedSignup] Session info captured. phone_number_id:",
+            sessionPhoneNumberId, "waba_id:", sessionWabaId,
+          );
+        }
+
         setLaunching(false);
         setProcessing(true);
         setStep("Intercambiando código con Meta...");
 
         try {
           const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+
+          setStep("Registrando cuenta de WhatsApp Business...");
 
           const res = await fetch(`${WA_SERVICE_URL}/onboarding/start`, {
             method: "POST",
@@ -99,6 +121,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
               mode: "new",
               source: "embedded_signup",
               coexistenceAcknowledged: false,
+              // Session info from Embedded Signup v4
+              phoneNumberId: sessionPhoneNumberId,
+              wabaId: sessionWabaId,
             }),
           });
 

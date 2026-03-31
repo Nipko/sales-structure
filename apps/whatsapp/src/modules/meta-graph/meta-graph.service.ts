@@ -50,6 +50,16 @@ export interface TemplateInfo {
   components: any[];
 }
 
+export interface TokenDebugInfo {
+  appId: string;
+  type: string;
+  isValid: boolean;
+  expiresAt: number;
+  scopes: string[];
+  userId?: string;
+  granularScopes?: Array<{ scope: string; target_ids?: string[] }>;
+}
+
 @Injectable()
 export class MetaGraphService {
   private readonly logger = new Logger(MetaGraphService.name);
@@ -219,7 +229,10 @@ export class MetaGraphService {
   }
 
   /**
-   * Suscribe la app de Meta al WABA para recibir webhooks
+   * Suscribe la app de Meta al WABA para recibir webhooks.
+   * NOTE: The accessToken must have the `whatsapp_business_management` permission
+   * for this call to succeed. For Tech Partners using Embedded Signup, this
+   * permission is granted during the Facebook Login flow.
    */
   async subscribeAppToWaba(wabaId: string, accessToken: string): Promise<boolean> {
     this.logger.log(`Subscribing app to WABA: ${wabaId}`);
@@ -236,10 +249,217 @@ export class MetaGraphService {
             },
           ),
         );
+
+        this.logger.log(`subscribeAppToWaba response for WABA ${wabaId}: ${JSON.stringify(response.data)}`);
         return response.data.success === true;
       } catch (error: any) {
         if (error instanceof MetaApiError) throw error;
         this.handleMetaApiError(error, OnboardingErrorCode.WEBHOOK_INVALID, 'No se pudo suscribir el webhook al WABA');
+      }
+    });
+  }
+
+  /**
+   * Exchanges a short-lived user token (~1h) for a long-lived token (~60 days).
+   * Required after Embedded Signup to persist access beyond the initial session.
+   */
+  async exchangeForLongLivedToken(shortLivedToken: string): Promise<{ accessToken: string; expiresIn: number }> {
+    const appId = this.config.get<string>('meta.appId');
+    const appSecret = this.config.get<string>('meta.appSecret');
+    const timeout = this.config.get<number>('meta.exchangeTimeout');
+
+    this.logger.log('Exchanging short-lived token for long-lived token');
+
+    return this.withRetry(async () => {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get(`${this.baseUrl}/oauth/access_token`, {
+            params: {
+              grant_type: 'fb_exchange_token',
+              client_id: appId,
+              client_secret: appSecret,
+              fb_exchange_token: shortLivedToken,
+            },
+            timeout,
+          }),
+        );
+
+        this.logger.log(`Long-lived token exchange response: token_type=${response.data.token_type}, expires_in=${response.data.expires_in}`);
+
+        if (!response.data.access_token) {
+          throw new MetaApiError(
+            OnboardingErrorCode.TOKEN_EXCHANGE_FAILED,
+            'No se pudo obtener el token de larga duración de Meta',
+            `Token exchange returned no access_token: ${JSON.stringify(response.data)}`,
+            true,
+          );
+        }
+
+        return {
+          accessToken: response.data.access_token,
+          expiresIn: response.data.expires_in,
+        };
+      } catch (error: any) {
+        if (error instanceof MetaApiError) throw error;
+        this.handleMetaApiError(error, OnboardingErrorCode.TOKEN_EXCHANGE_FAILED, 'Fallo en el intercambio de token de larga duración');
+      }
+    });
+  }
+
+  /**
+   * Verifies a token and retrieves its metadata using the Debug Token API.
+   * Uses app_id|app_secret as the access_token (app token format).
+   */
+  async debugToken(token: string): Promise<TokenDebugInfo> {
+    const appId = this.config.get<string>('meta.appId');
+    const appSecret = this.config.get<string>('meta.appSecret');
+    const timeout = this.config.get<number>('meta.discoveryTimeout');
+
+    this.logger.log('Debugging token via Meta API');
+
+    return this.withRetry(async () => {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get(`${this.baseUrl}/debug_token`, {
+            params: {
+              input_token: token,
+              access_token: `${appId}|${appSecret}`,
+            },
+            timeout,
+          }),
+        );
+
+        const data = response.data?.data;
+        this.logger.log(`debugToken response: is_valid=${data?.is_valid}, type=${data?.type}, expires_at=${data?.expires_at}`);
+
+        if (!data) {
+          throw new MetaApiError(
+            OnboardingErrorCode.TOKEN_EXPIRED,
+            'No se pudo verificar el token de Meta',
+            `debug_token returned no data: ${JSON.stringify(response.data)}`,
+            false,
+          );
+        }
+
+        return {
+          appId: data.app_id,
+          type: data.type,
+          isValid: data.is_valid,
+          expiresAt: data.expires_at,
+          scopes: data.scopes || [],
+          userId: data.user_id,
+          granularScopes: data.granular_scopes,
+        };
+      } catch (error: any) {
+        if (error instanceof MetaApiError) throw error;
+        this.handleMetaApiError(error, OnboardingErrorCode.TOKEN_EXPIRED, 'No se pudo verificar el token de Meta');
+      }
+    });
+  }
+
+  /**
+   * Registers a phone number for WhatsApp Cloud API usage.
+   * Required for newly added numbers before they can send/receive messages.
+   * If no PIN is provided, a random 6-digit PIN is generated for two-step verification.
+   */
+  async registerPhoneNumber(phoneNumberId: string, accessToken: string, pin?: string): Promise<boolean> {
+    const resolvedPin = pin || this.generateRandomPin();
+    const timeout = this.config.get<number>('meta.webhookTimeout');
+
+    this.logger.log(`Registering phone number: ${phoneNumberId} (pin ${pin ? 'provided' : 'auto-generated'})`);
+
+    return this.withRetry(async () => {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.post(
+            `${this.baseUrl}/${phoneNumberId}/register`,
+            {
+              messaging_product: 'whatsapp',
+              pin: resolvedPin,
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              timeout,
+            },
+          ),
+        );
+
+        this.logger.log(`registerPhoneNumber response for ${phoneNumberId}: ${JSON.stringify(response.data)}`);
+        return response.data.success === true;
+      } catch (error: any) {
+        if (error instanceof MetaApiError) throw error;
+        this.handleMetaApiError(error, OnboardingErrorCode.PHONE_REGISTRATION_FAILED, 'No se pudo registrar el número de teléfono en WhatsApp');
+      }
+    });
+  }
+
+  /**
+   * Checks whether the client's Meta Business is verified.
+   * Returns the verification_status: 'verified', 'not_verified', or 'pending'.
+   */
+  async getBusinessVerificationStatus(businessId: string, accessToken: string): Promise<string> {
+    const timeout = this.config.get<number>('meta.discoveryTimeout');
+
+    this.logger.log(`Checking business verification status for: ${businessId}`);
+
+    return this.withRetry(async () => {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get(`${this.baseUrl}/${businessId}`, {
+            params: {
+              fields: 'verification_status',
+              access_token: accessToken,
+            },
+            timeout,
+          }),
+        );
+
+        const status = response.data.verification_status || 'not_verified';
+        this.logger.log(`Business ${businessId} verification_status: ${status}`);
+        return status;
+      } catch (error: any) {
+        if (error instanceof MetaApiError) throw error;
+        this.handleMetaApiError(error, OnboardingErrorCode.BUSINESS_NOT_VERIFIED, 'No se pudo obtener el estado de verificación del negocio');
+      }
+    });
+  }
+
+  /**
+   * Retrieves WABA info directly by its ID, without going through /me/businesses discovery.
+   * Useful when the WABA ID is already known (e.g., from Embedded Signup callback).
+   */
+  async getWabaDirectly(wabaId: string, accessToken: string): Promise<WabaInfo> {
+    const timeout = this.config.get<number>('meta.discoveryTimeout');
+
+    this.logger.log(`Fetching WABA directly by ID: ${wabaId}`);
+
+    return this.withRetry(async () => {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get(`${this.baseUrl}/${wabaId}`, {
+            params: {
+              fields: 'id,name,currency,timezone_id,message_template_namespace',
+              access_token: accessToken,
+            },
+            timeout,
+          }),
+        );
+
+        this.logger.log(`getWabaDirectly response for ${wabaId}: id=${response.data.id}, name=${response.data.name}`);
+
+        return {
+          id: response.data.id,
+          name: response.data.name,
+          currency: response.data.currency,
+          timezoneId: response.data.timezone_id,
+          messageTemplateNamespace: response.data.message_template_namespace,
+        };
+      } catch (error: any) {
+        if (error instanceof MetaApiError) throw error;
+        this.handleMetaApiError(error, OnboardingErrorCode.WABA_NOT_FOUND, 'No se pudo obtener la información del WABA');
       }
     });
   }
@@ -332,5 +552,12 @@ export class MetaGraphService {
       retryable,
       error,
     );
+  }
+
+  /**
+   * Generates a random 6-digit PIN for two-step verification during phone registration.
+   */
+  private generateRandomPin(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
   }
 }

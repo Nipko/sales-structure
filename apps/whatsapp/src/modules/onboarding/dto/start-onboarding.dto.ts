@@ -31,4 +31,14 @@ export class StartOnboardingDto {
   @IsBoolean()
   @IsOptional()
   coexistenceAcknowledged?: boolean = false;
+
+  @ApiPropertyOptional({ description: 'Phone Number ID from Embedded Signup session info' })
+  @IsString()
+  @IsOptional()
+  phoneNumberId?: string;
+
+  @ApiPropertyOptional({ description: 'WABA ID from Embedded Signup session info' })
+  @IsString()
+  @IsOptional()
+  wabaId?: string;
 }

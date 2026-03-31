@@ -42,12 +42,14 @@ export class OnboardingService {
 
   /**
    * === FLUJO PRINCIPAL DE ONBOARDING ===
-   * Ejecuta la secuencia completa: code → exchange → discovery → webhook → sync
+   * Ejecuta la secuencia completa:
+   * code → short-lived token → long-lived token → debug → discovery → register phone
+   * → persist channel → channel_account → credential → webhook → biz verification → sync → done
    */
   async startOnboarding(dto: StartOnboardingDto, user: RequestUser) {
     const tenantId = this.resolveTenantIdForAction(dto.tenantId, user);
     const userId = user.sub;
-    this.logger.log(`Starting onboarding for tenant: ${tenantId}, mode: ${dto.mode}`);
+    this.logger.log(`[Onboarding] START for tenant=${tenantId}, mode=${dto.mode}, sessionPhoneNumberId=${dto.phoneNumberId || 'none'}, sessionWabaId=${dto.wabaId || 'none'}`);
 
     // ---- 1. Validaciones previas ----
     await this.validatePreConditions(tenantId, dto);
@@ -66,60 +68,168 @@ export class OnboardingService {
       },
     });
 
-    this.logger.log(`Onboarding record created: ${onboarding.id}`);
+    this.logger.log(`[Onboarding] Record created: ${onboarding.id}`);
 
     try {
-      // ---- 3. Exchange del code con Meta ----
+      // ---- 3. Exchange code → SHORT-LIVED user token ----
       await this.updateStatus(onboarding.id, OnboardingStatus.EXCHANGE_IN_PROGRESS);
+      this.logger.log(`[Onboarding][${onboarding.id}] Step 3: Exchanging OAuth code for short-lived token`);
 
       const exchangeResult = await this.metaGraph.exchangeOnboardingCode(dto.code, dto.configId);
 
+      this.logger.log(`[Onboarding][${onboarding.id}] Short-lived token obtained (type=${exchangeResult.tokenType}, expiresIn=${exchangeResult.expiresIn || 'unknown'})`);
+
+      // ---- 4. Convert to LONG-LIVED token ----
+      this.logger.log(`[Onboarding][${onboarding.id}] Step 4: Converting short-lived token to long-lived token`);
+
+      let longLivedToken: string;
+      let longLivedExpiresIn: number;
+      try {
+        const longLivedResult = await this.metaGraph.exchangeForLongLivedToken(exchangeResult.accessToken);
+        longLivedToken = longLivedResult.accessToken;
+        longLivedExpiresIn = longLivedResult.expiresIn || 5184000; // default 60 days
+        this.logger.log(`[Onboarding][${onboarding.id}] Long-lived token obtained (expiresIn=${longLivedExpiresIn}s)`);
+      } catch (tokenError: any) {
+        this.logger.error(`[Onboarding][${onboarding.id}] Long-lived token exchange failed: ${tokenError.message}`);
+        throw new MetaApiError(
+          OnboardingErrorCode.TOKEN_EXCHANGE_FAILED,
+          'No se pudo obtener un token de larga duración. Por favor intenta de nuevo.',
+          `Long-lived token exchange failed: ${tokenError.message}`,
+          true,
+          tokenError,
+        );
+      }
+
+      // Store token in exchangePayload so retries can re-use it
       await this.prisma.whatsappOnboarding.update({
         where: { id: onboarding.id },
         data: {
           status: OnboardingStatus.EXCHANGE_COMPLETED,
-          exchangePayload: exchangeResult as any,
+          exchangePayload: {
+            shortLivedToken: exchangeResult.accessToken,
+            longLivedToken,
+            longLivedExpiresIn,
+            exchangedAt: new Date().toISOString(),
+          } as any,
           exchangeCompletedAt: new Date(),
         },
       });
 
-      this.logger.log(`Exchange completed for onboarding: ${onboarding.id}`);
+      this.logger.log(`[Onboarding][${onboarding.id}] Exchange completed — stored both tokens in exchangePayload`);
 
-      // ---- 4. Descubrimiento de assets ----
-      await this.updateStatus(onboarding.id, OnboardingStatus.ASSET_DISCOVERY_IN_PROGRESS);
+      // Continue from step 5 onward with the long-lived token
+      return await this.continueOnboardingFromDiscovery(
+        onboarding.id, tenantId, userId, longLivedToken, longLivedExpiresIn, dto,
+      );
 
-      const wabas = await this.metaGraph.getBusinessAccountsForToken(exchangeResult.accessToken);
+    } catch (error: any) {
+      return this.handleOnboardingFailure(error, onboarding.id, tenantId, userId);
+    }
+  }
 
-      if (!wabas || wabas.length === 0) {
-        throw new MetaApiError(
-          OnboardingErrorCode.WABA_NOT_FOUND,
-          'No se encontró ninguna cuenta de WhatsApp Business asociada',
-          'No WABAs found after exchange',
-          false,
-        );
+  /**
+   * Continues the onboarding flow from step 5 onward (after token exchange).
+   * Extracted so that retryOnboarding can resume from here.
+   */
+  private async continueOnboardingFromDiscovery(
+    onboardingId: string,
+    tenantId: string,
+    userId: string,
+    longLivedToken: string,
+    longLivedExpiresIn: number,
+    dto: Pick<StartOnboardingDto, 'phoneNumberId' | 'wabaId' | 'mode'>,
+  ) {
+    try {
+      // ---- 5. Debug/validate token ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 5: Debugging/validating long-lived token`);
+      try {
+        const tokenDebug = await this.metaGraph.debugToken(longLivedToken);
+        this.logger.log(`[Onboarding][${onboardingId}] Token debug: valid=${tokenDebug.isValid}, type=${tokenDebug.type}, scopes=[${tokenDebug.scopes?.join(', ')}], expiresAt=${tokenDebug.expiresAt}`);
+        if (tokenDebug.granularScopes) {
+          this.logger.log(`[Onboarding][${onboardingId}] Granular scopes: ${JSON.stringify(tokenDebug.granularScopes)}`);
+        }
+      } catch (debugError: any) {
+        this.logger.warn(`[Onboarding][${onboardingId}] Token debug call failed (non-blocking): ${debugError.message}`);
       }
 
-      // Usar la primera WABA (en Embedded Signup v4, generalmente solo devuelve 1)
-      const waba = wabas[0];
-      const phones = await this.metaGraph.getPhoneNumbersForWaba(waba.id, exchangeResult.accessToken);
+      // ---- 6. Discover WABA and phone number ----
+      await this.updateStatus(onboardingId, OnboardingStatus.ASSET_DISCOVERY_IN_PROGRESS);
 
-      if (!phones || phones.length === 0) {
-        throw new MetaApiError(
-          OnboardingErrorCode.PHONE_NOT_FOUND,
-          'No se encontró ningún número de teléfono en la cuenta de WhatsApp Business',
-          `No phone numbers found for WABA ${waba.id}`,
-          false,
-        );
+      let wabaId: string;
+      let waba: any;
+      let primaryPhone: any;
+      const usedSessionInfo = !!(dto.phoneNumberId && dto.wabaId);
+
+      if (dto.wabaId) {
+        // Session info provides WABA ID — use it directly, skip /me/businesses discovery
+        wabaId = dto.wabaId;
+        this.logger.log(`[Onboarding][${onboardingId}] Step 6: Using session info WABA ID=${wabaId} (skipping /me/businesses discovery)`);
+
+        try {
+          waba = await this.metaGraph.getWabaDirectly(wabaId, longLivedToken);
+        } catch (wabaError: any) {
+          this.logger.warn(`[Onboarding][${onboardingId}] Direct WABA fetch failed, falling back to discovery: ${wabaError.message}`);
+          waba = await this.discoverWabaViaApi(longLivedToken);
+          wabaId = waba.id;
+        }
+      } else {
+        // No session info — fall back to /me/businesses discovery
+        this.logger.log(`[Onboarding][${onboardingId}] Step 6: No session info — falling back to /me/businesses discovery`);
+        waba = await this.discoverWabaViaApi(longLivedToken);
+        wabaId = waba.id;
       }
 
-      const primaryPhone = phones[0];
+      this.logger.log(`[Onboarding][${onboardingId}] Resolved WABA: id=${wabaId}, name=${waba.name}, source=${usedSessionInfo ? 'session_info' : 'api_discovery'}`);
+
+      // ---- 7. Get phone details ----
+      if (dto.phoneNumberId) {
+        // Session info provides phone number ID — get that specific phone
+        this.logger.log(`[Onboarding][${onboardingId}] Step 7: Fetching specific phone from session info: phoneNumberId=${dto.phoneNumberId}`);
+        const phones = await this.metaGraph.getPhoneNumbersForWaba(wabaId, longLivedToken);
+        primaryPhone = phones.find((p: any) => p.id === dto.phoneNumberId) || phones[0];
+        if (!primaryPhone) {
+          throw new MetaApiError(
+            OnboardingErrorCode.PHONE_NOT_FOUND,
+            'No se encontró el número de teléfono indicado en la cuenta de WhatsApp Business',
+            `Phone ${dto.phoneNumberId} not found in WABA ${wabaId}`,
+            false,
+          );
+        }
+        this.logger.log(`[Onboarding][${onboardingId}] Phone resolved from session info: ${primaryPhone.id} (${primaryPhone.displayPhoneNumber})`);
+      } else {
+        // No session phone — get all phones and use first
+        this.logger.log(`[Onboarding][${onboardingId}] Step 7: Fetching phone numbers for WABA=${wabaId} (no session phoneNumberId)`);
+        const phones = await this.metaGraph.getPhoneNumbersForWaba(wabaId, longLivedToken);
+
+        if (!phones || phones.length === 0) {
+          throw new MetaApiError(
+            OnboardingErrorCode.PHONE_NOT_FOUND,
+            'No se encontró ningún número de teléfono en la cuenta de WhatsApp Business',
+            `No phone numbers found for WABA ${wabaId}`,
+            false,
+          );
+        }
+
+        primaryPhone = phones[0];
+        this.logger.log(`[Onboarding][${onboardingId}] Phone resolved via API discovery: ${primaryPhone.id} (${primaryPhone.displayPhoneNumber})`);
+      }
+
+      // ---- 8. Register phone number (required for new numbers) ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 8: Registering phone number ${primaryPhone.id} with Meta`);
+      try {
+        await this.metaGraph.registerPhoneNumber(primaryPhone.id, longLivedToken);
+        this.logger.log(`[Onboarding][${onboardingId}] Phone number registered successfully`);
+      } catch (regError: any) {
+        // Phone may already be registered — this is not fatal
+        this.logger.warn(`[Onboarding][${onboardingId}] Phone registration returned error (may already be registered): ${regError.message}`);
+      }
 
       await this.prisma.whatsappOnboarding.update({
-        where: { id: onboarding.id },
+        where: { id: onboardingId },
         data: {
           status: OnboardingStatus.ASSETS_DISCOVERED,
-          metaBusinessId: waba.id,
-          wabaId: waba.id,
+          metaBusinessId: wabaId,
+          wabaId,
           phoneNumberId: primaryPhone.id,
           displayPhoneNumber: primaryPhone.displayPhoneNumber,
           verifiedName: primaryPhone.verifiedName,
@@ -127,44 +237,76 @@ export class OnboardingService {
         },
       });
 
-      this.logger.log(`Assets discovered: WABA=${waba.id}, Phone=${primaryPhone.id}`);
+      this.logger.log(`[Onboarding][${onboardingId}] Assets discovered: WABA=${wabaId}, Phone=${primaryPhone.id}, source=${usedSessionInfo ? 'session_info' : 'api_discovery'}`);
 
-      // ---- 5. Persistir canal en el tenant schema ----
-      await this.persistWhatsAppChannel(tenantId, onboarding.id, waba, primaryPhone, exchangeResult.accessToken, dto.mode === OnboardingMode.COEXISTENCE);
+      // ---- 9. Persistir canal en el tenant schema ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 9: Persisting WhatsApp channel in tenant schema`);
+      await this.persistWhatsAppChannel(tenantId, onboardingId, waba, primaryPhone, longLivedToken, dto.mode === OnboardingMode.COEXISTENCE);
 
-      // ---- 6. Registrar en channel_accounts (público) para routing de webhooks ----
+      // ---- 10. Registrar en channel_accounts (público) para routing de webhooks ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 10: Registering channel_account for webhook routing`);
       await this.registerChannelAccount(tenantId, primaryPhone);
 
-      // ---- 7. Guardar credenciales cifradas ----
-      await this.storeEncryptedCredential(tenantId, exchangeResult.accessToken);
+      // ---- 11. Guardar credenciales cifradas (LONG-LIVED token, not short-lived!) ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 11: Storing encrypted LONG-LIVED credential (expiresIn=${longLivedExpiresIn}s)`);
+      await this.storeEncryptedCredential(tenantId, longLivedToken, longLivedExpiresIn);
 
-      // ---- 8. Suscribir webhook ----
-      await this.updateStatus(onboarding.id, OnboardingStatus.WEBHOOK_VALIDATION_IN_PROGRESS);
+      // ---- 12. Suscribir webhook ----
+      await this.updateStatus(onboardingId, OnboardingStatus.WEBHOOK_VALIDATION_IN_PROGRESS);
+      this.logger.log(`[Onboarding][${onboardingId}] Step 12: Subscribing app to WABA=${wabaId} for webhooks`);
 
-      const webhookSuccess = await this.metaGraph.subscribeAppToWaba(waba.id, exchangeResult.accessToken);
+      const webhookSuccess = await this.metaGraph.subscribeAppToWaba(wabaId, longLivedToken);
 
       if (webhookSuccess) {
-        await this.updateStatus(onboarding.id, OnboardingStatus.WEBHOOK_VALIDATED);
+        await this.updateStatus(onboardingId, OnboardingStatus.WEBHOOK_VALIDATED);
         await this.prisma.whatsappOnboarding.update({
-          where: { id: onboarding.id },
+          where: { id: onboardingId },
           data: { webhookValidatedAt: new Date() },
         });
+        this.logger.log(`[Onboarding][${onboardingId}] Webhook subscription successful`);
+      } else {
+        this.logger.warn(`[Onboarding][${onboardingId}] Webhook subscription returned false — may need manual verification`);
       }
 
-      // ---- 9. Sync templates en background (no bloquea) ----
-      this.syncTemplatesInBackground(tenantId, waba.id, exchangeResult.accessToken, onboarding.id);
+      // ---- 13. Check business verification status ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 13: Checking business verification status for WABA=${wabaId}`);
+      let businessVerified = true;
+      let verificationWarning: string | null = null;
+      try {
+        const verificationStatus = await this.metaGraph.getBusinessVerificationStatus(wabaId, longLivedToken);
+        this.logger.log(`[Onboarding][${onboardingId}] Business verification status: ${JSON.stringify(verificationStatus)}`);
+        if (verificationStatus && verificationStatus !== 'verified') {
+          businessVerified = false;
+          verificationWarning = 'La verificación del negocio en Meta aún no está completa. Algunas funciones pueden estar limitadas hasta que se verifique.';
+          this.logger.warn(`[Onboarding][${onboardingId}] Business NOT verified — will set COMPLETED_WITH_WARNINGS`);
+        }
+      } catch (verifyError: any) {
+        this.logger.warn(`[Onboarding][${onboardingId}] Business verification check failed (non-blocking): ${verifyError.message}`);
+      }
 
-      // ---- 10. Marcar completado ----
-      const finalStatus = webhookSuccess
-        ? OnboardingStatus.COMPLETED
-        : OnboardingStatus.COMPLETED_WITH_WARNINGS;
+      // ---- 14. Sync templates en background (no bloquea) ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 14: Starting background template sync for WABA=${wabaId}`);
+      this.syncTemplatesInBackground(tenantId, wabaId, longLivedToken, onboardingId);
+
+      // ---- 15. Marcar completado ----
+      const warnings: string[] = [];
+      if (!webhookSuccess) {
+        warnings.push('La suscripción de webhooks pudo haber fallado — verificar manualmente');
+      }
+      if (!businessVerified && verificationWarning) {
+        warnings.push(verificationWarning);
+      }
+
+      const finalStatus = warnings.length > 0
+        ? OnboardingStatus.COMPLETED_WITH_WARNINGS
+        : OnboardingStatus.COMPLETED;
 
       await this.prisma.whatsappOnboarding.update({
-        where: { id: onboarding.id },
+        where: { id: onboardingId },
         data: {
           status: finalStatus,
           completedAt: new Date(),
-          errorMessage: webhookSuccess ? null : 'Webhook subscription may have failed — verify manually',
+          errorMessage: warnings.length > 0 ? warnings.join(' | ') : null,
         },
       });
 
@@ -174,54 +316,81 @@ export class OnboardingService {
         tenantId,
         userId,
         entityType: 'whatsapp_onboarding',
-        entityId: onboarding.id,
+        entityId: onboardingId,
         metadata: {
-          wabaId: waba.id,
+          wabaId,
           phoneNumberId: primaryPhone.id,
           displayPhoneNumber: primaryPhone.displayPhoneNumber,
           mode: dto.mode,
           finalStatus,
+          usedSessionInfo,
+          businessVerified,
+          warnings,
         },
       });
 
-      this.logger.log(`Onboarding ${finalStatus} for tenant: ${tenantId}`);
+      this.logger.log(`[Onboarding][${onboardingId}] ${finalStatus} for tenant=${tenantId}${warnings.length ? ' (warnings: ' + warnings.join('; ') + ')' : ''}`);
 
       return this.formatOnboardingResponse(
-        await this.prisma.whatsappOnboarding.findUnique({ where: { id: onboarding.id } }),
+        await this.prisma.whatsappOnboarding.findUnique({ where: { id: onboardingId } }),
       );
 
     } catch (error: any) {
-      // Marcar como FAILED
-      const errorCode = error instanceof MetaApiError ? error.code : OnboardingErrorCode.GRAPH_API_ERROR;
-      const errorMessage = error instanceof MetaApiError ? error.userMessage : error.message;
-
-      await this.prisma.whatsappOnboarding.update({
-        where: { id: onboarding.id },
-        data: {
-          status: OnboardingStatus.FAILED,
-          errorCode,
-          errorMessage,
-        },
-      });
-
-      this.logger.error(`Onboarding FAILED: ${errorCode} — ${error.message}`);
-
-      await this.audit.log({
-        action: 'onboarding_failed',
-        tenantId,
-        userId,
-        entityType: 'whatsapp_onboarding',
-        entityId: onboarding.id,
-        metadata: { errorCode, errorMessage, retryable: RETRYABLE_ERRORS.has(errorCode) },
-      });
-
-      throw new BadRequestException({
-        code: errorCode,
-        userMessage: errorMessage,
-        retryable: RETRYABLE_ERRORS.has(errorCode),
-        onboardingId: onboarding.id,
-      });
+      return this.handleOnboardingFailure(error, onboardingId, tenantId, userId);
     }
+  }
+
+  /**
+   * Discovers WABA via the /me/businesses API (backwards compat fallback).
+   */
+  private async discoverWabaViaApi(accessToken: string): Promise<any> {
+    const wabas = await this.metaGraph.getBusinessAccountsForToken(accessToken);
+
+    if (!wabas || wabas.length === 0) {
+      throw new MetaApiError(
+        OnboardingErrorCode.WABA_NOT_FOUND,
+        'No se encontró ninguna cuenta de WhatsApp Business asociada. Verifica que completaste el flujo de Embedded Signup correctamente.',
+        'No WABAs found via /me/businesses discovery',
+        false,
+      );
+    }
+
+    return wabas[0];
+  }
+
+  /**
+   * Handles onboarding failure — marks record as FAILED, audits, throws.
+   */
+  private async handleOnboardingFailure(error: any, onboardingId: string, tenantId: string, userId: string): Promise<never> {
+    const errorCode = error instanceof MetaApiError ? error.code : OnboardingErrorCode.GRAPH_API_ERROR;
+    const errorMessage = error instanceof MetaApiError ? error.userMessage : error.message;
+
+    await this.prisma.whatsappOnboarding.update({
+      where: { id: onboardingId },
+      data: {
+        status: OnboardingStatus.FAILED,
+        errorCode,
+        errorMessage,
+      },
+    });
+
+    this.logger.error(`[Onboarding][${onboardingId}] FAILED: ${errorCode} — ${error.message}`);
+
+    await this.audit.log({
+      action: 'onboarding_failed',
+      tenantId,
+      userId,
+      entityType: 'whatsapp_onboarding',
+      entityId: onboardingId,
+      metadata: { errorCode, errorMessage, retryable: RETRYABLE_ERRORS.has(errorCode) },
+    });
+
+    throw new BadRequestException({
+      code: errorCode,
+      userMessage: errorMessage,
+      retryable: RETRYABLE_ERRORS.has(errorCode),
+      onboardingId,
+    });
   }
 
   /**
@@ -292,7 +461,9 @@ export class OnboardingService {
   }
 
   /**
-   * Reintentar un onboarding fallido (retoma desde el punto de fallo)
+   * Reintentar un onboarding fallido.
+   * - Si el fallo fue DESPUÉS del token exchange (tenemos token almacenado), retoma desde discovery.
+   * - Si el fallo fue DURANTE el token exchange (no hay token), indica al usuario que necesita un nuevo code.
    */
   async retryOnboarding(id: string, user: RequestUser) {
     const userId = user.sub;
@@ -301,12 +472,22 @@ export class OnboardingService {
     this.assertTenantAccess(user, onboarding.tenantId);
 
     if (onboarding.status !== OnboardingStatus.FAILED) {
-      throw new BadRequestException(`Solo se puede reintentar un onboarding con status FAILED. Actual: ${onboarding.status}`);
+      throw new BadRequestException(`Solo se puede reintentar un onboarding con status FAILED. Estado actual: ${onboarding.status}`);
     }
 
     if (onboarding.errorCode && !RETRYABLE_ERRORS.has(onboarding.errorCode as OnboardingErrorCode)) {
-      throw new BadRequestException(`Este error no es reintentable: ${onboarding.errorCode}`);
+      throw new BadRequestException({
+        code: onboarding.errorCode,
+        userMessage: `Este error no es reintentable: ${onboarding.errorCode}. Debes iniciar un nuevo proceso de onboarding.`,
+        retryable: false,
+        onboardingId: id,
+      });
     }
+
+    // Check if we have a stored long-lived token from a successful exchange
+    const exchangePayload = onboarding.exchangePayload as any;
+    const storedLongLivedToken = exchangePayload?.longLivedToken;
+    const storedExpiresIn = exchangePayload?.longLivedExpiresIn || 5184000;
 
     await this.audit.log({
       action: 'onboarding_retried',
@@ -314,21 +495,60 @@ export class OnboardingService {
       userId,
       entityType: 'whatsapp_onboarding',
       entityId: id,
-      metadata: { previousError: onboarding.errorCode },
+      metadata: {
+        previousError: onboarding.errorCode,
+        hasStoredToken: !!storedLongLivedToken,
+        retryStrategy: storedLongLivedToken ? 'resume_from_discovery' : 'needs_new_code',
+      },
     });
 
-    // TODO: En una versión futura, retomar desde el punto exacto de fallo
-    // Por ahora: resetear y arrancar desde CREATED
+    if (!storedLongLivedToken) {
+      // Failure was DURING token exchange — the OAuth code is single-use, we can't retry
+      this.logger.warn(`[Onboarding][${id}] Retry requested but no stored token — user needs a new OAuth code`);
+
+      await this.prisma.whatsappOnboarding.update({
+        where: { id },
+        data: {
+          status: OnboardingStatus.CANCELLED,
+          errorCode: OnboardingErrorCode.CODE_EXPIRED,
+          errorMessage: 'El código OAuth es de un solo uso y ya fue consumido. Se requiere un nuevo código.',
+        },
+      });
+
+      return {
+        message: 'El código de autorización ya fue utilizado y no se pudo completar el intercambio de token. Debes hacer clic en el botón de Embedded Signup nuevamente para obtener un nuevo código.',
+        onboardingId: id,
+        requiresNewCode: true,
+        action: 'RESTART_EMBEDDED_SIGNUP',
+      };
+    }
+
+    // We have a stored long-lived token — resume from discovery (step 5 onward)
+    this.logger.log(`[Onboarding][${id}] Retrying from discovery step using stored long-lived token`);
+
+    // Reset error state
     await this.prisma.whatsappOnboarding.update({
       where: { id },
       data: {
-        status: OnboardingStatus.CREATED,
+        status: OnboardingStatus.EXCHANGE_COMPLETED,
         errorCode: null,
         errorMessage: null,
       },
     });
 
-    return { message: 'Onboarding marcado para reintento. Inicia un nuevo flujo con el code.', onboardingId: id };
+    // Resume the flow from step 5 onward
+    return await this.continueOnboardingFromDiscovery(
+      id,
+      onboarding.tenantId,
+      userId,
+      storedLongLivedToken,
+      storedExpiresIn,
+      {
+        phoneNumberId: onboarding.phoneNumberId || undefined,
+        wabaId: onboarding.wabaId || undefined,
+        mode: onboarding.mode as OnboardingMode,
+      },
+    );
   }
 
   /**
@@ -564,31 +784,43 @@ export class OnboardingService {
   }
 
   /**
-   * Almacenar token cifrado en la tabla de credenciales
+   * Almacenar token cifrado en la tabla de credenciales con expiración
    */
-  private async storeEncryptedCredential(tenantId: string, accessToken: string) {
+  private async storeEncryptedCredential(tenantId: string, accessToken: string, expiresInSeconds?: number) {
     const encryptedValue = this.encryptToken(accessToken);
+    const expiresAt = expiresInSeconds
+      ? new Date(Date.now() + expiresInSeconds * 1000)
+      : undefined;
 
     // Upsert — reemplaza si ya existe
     const existing = await this.prisma.whatsappCredential.findFirst({
       where: { tenantId, credentialType: 'system_user_token' },
     });
 
+    const data: any = {
+      encryptedValue,
+      rotationState: 'active',
+    };
+    if (expiresAt) {
+      data.expiresAt = expiresAt;
+    }
+
     if (existing) {
       await this.prisma.whatsappCredential.update({
         where: { id: existing.id },
-        data: { encryptedValue, rotationState: 'active' },
+        data,
       });
     } else {
       await this.prisma.whatsappCredential.create({
         data: {
           tenantId,
           credentialType: 'system_user_token',
-          encryptedValue,
-          rotationState: 'active',
+          ...data,
         },
       });
     }
+
+    this.logger.log(`[Credential] Stored encrypted long-lived token for tenant=${tenantId}${expiresAt ? `, expiresAt=${expiresAt.toISOString()}` : ''}`);
   }
 
   /**

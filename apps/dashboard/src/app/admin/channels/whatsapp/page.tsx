@@ -84,7 +84,7 @@ export default function WhatsAppSetupPage() {
         try {
             const configRes = await api.getWhatsappConfig();
             if (configRes?.data) setConfig(configRes.data);
-            else if (configRes?.webhookUrl) setConfig(configRes);
+            else if ((configRes as any)?.webhookUrl) setConfig(configRes as any);
         } catch (e) { console.error("Failed to load WA config", e); }
 
         setLoading(false);

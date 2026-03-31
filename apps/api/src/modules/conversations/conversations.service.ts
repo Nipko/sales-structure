@@ -160,9 +160,10 @@ export class ConversationsService {
         }
 
         // 2. Find or create lead
+        const contactIdStr = String(contact.id);
         let lead = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM leads WHERE contact_id = $1 LIMIT 1`,
-            [contact.id],
+            `SELECT * FROM leads WHERE contact_id = $1::uuid LIMIT 1`,
+            [contactIdStr],
         ).then(res => res[0]);
 
         let isNewLead = false;
@@ -173,28 +174,28 @@ export class ConversationsService {
             const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
 
             lead = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1, $2, $3, $4, 'nuevo', 10) RETURNING *`,
-                [contact.id, firstName, lastName, contactId],
+                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1::uuid, $2, $3, $4, 'nuevo', 10) RETURNING *`,
+                [contactIdStr, firstName, lastName, contactId],
             ).then(res => res[0]);
             isNewLead = true;
         }
 
         // 3. Find active conversation or create new
         let conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM conversations WHERE contact_id = $1 AND status IN ('active', 'waiting_human', 'with_human') ORDER BY created_at DESC LIMIT 1`,
-            [contact.id],
+            `SELECT * FROM conversations WHERE contact_id = $1::uuid AND status IN ('active', 'waiting_human', 'with_human') ORDER BY created_at DESC LIMIT 1`,
+            [contactIdStr],
         ).then(res => res[0]);
 
         if (!conversation) {
             conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage) VALUES ($1, $2, $3, 'active', 'greeting') RETURNING *`,
-                [contact.id, msg.channelType, msg.channelAccountId],
+                `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage) VALUES ($1::uuid, $2, $3, 'active', 'greeting') RETURNING *`,
+                [contactIdStr, msg.channelType, msg.channelAccountId],
             ).then(res => res[0]);
 
             // Create an active opportunity tied to this new conversation
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1, $2, 'nuevo', 10)`,
-                [lead.id, conversation.id],
+                `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1::uuid, $2::uuid, 'nuevo', 10)`,
+                [String(lead.id), String(conversation.id)],
             );
         }
 

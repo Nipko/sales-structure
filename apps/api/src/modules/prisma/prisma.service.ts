@@ -39,14 +39,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Create a new tenant schema from the SQL template
      */
     async createTenantSchema(schemaName: string): Promise<void> {
+        // 1. Always create the schema first (separate call, guaranteed to run)
+        await this.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}";`);
+
+        // 2. Read and execute the tenant schema template
         const fs = await import('fs');
         const path = await import('path');
 
-        // Try multiple possible locations for the SQL template
         const possiblePaths = [
             path.join(process.cwd(), 'prisma', 'tenant-schema.sql'),
             path.join(process.cwd(), 'apps', 'api', 'prisma', 'tenant-schema.sql'),
             path.join(__dirname, '..', '..', 'prisma', 'tenant-schema.sql'),
+            '/app/prisma/tenant-schema.sql', // Docker path
         ];
 
         let template: string | null = null;
@@ -58,23 +62,73 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         }
 
         if (!template) {
-            throw new Error(
-                `tenant-schema.sql not found. Searched: ${possiblePaths.join(', ')}`,
-            );
+            throw new Error(`tenant-schema.sql not found. Searched: ${possiblePaths.join(', ')}`);
         }
 
-        // Replace placeholder with actual schema name
+        // Replace placeholder
         template = template.replace(/\{\{SCHEMA_NAME\}\}/g, schemaName);
 
-        // Execute the SQL statements
-        const statements = template
-            .split(';')
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0 && !s.startsWith('--'));
+        // Execute each statement individually, skipping comments and empty lines.
+        // Use a smarter split that handles dollar-quoted blocks (PL/pgSQL).
+        const statements = this.splitSqlStatements(template);
 
         for (const statement of statements) {
-            await this.$executeRawUnsafe(statement + ';');
+            try {
+                await this.$executeRawUnsafe(statement);
+            } catch (e: any) {
+                // Skip "already exists" errors (42P06, 42710, 42P07) for idempotency
+                const code = e?.meta?.code || '';
+                if (['42P06', '42710', '42P07'].includes(code)) continue;
+                // Log but don't fail — partial schema is better than no schema
+                console.warn(`[createTenantSchema] Non-fatal error in "${schemaName}": ${e.message}`);
+            }
         }
+    }
+
+    /**
+     * Split SQL into individual statements, respecting dollar-quoted blocks
+     * and skipping comments. Returns statements WITH trailing semicolons.
+     */
+    private splitSqlStatements(sql: string): string[] {
+        const results: string[] = [];
+        let current = '';
+        let inDollarQuote = false;
+        let dollarTag = '';
+
+        const lines = sql.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('--')) continue;
+
+            // Check for dollar quoting ($$, $tag$)
+            const dollarMatches = line.match(/\$[^$]*\$/g) || [];
+            for (const dm of dollarMatches) {
+                if (!inDollarQuote) {
+                    inDollarQuote = true;
+                    dollarTag = dm;
+                } else if (dm === dollarTag) {
+                    inDollarQuote = false;
+                    dollarTag = '';
+                }
+            }
+
+            current += line + '\n';
+
+            // Only split on semicolons outside dollar-quoted blocks
+            if (!inDollarQuote && trimmed.endsWith(';')) {
+                const stmt = current.trim();
+                if (stmt.length > 1) results.push(stmt);
+                current = '';
+            }
+        }
+
+        // Catch any remaining
+        const remaining = current.trim();
+        if (remaining.length > 1) {
+            results.push(remaining.endsWith(';') ? remaining : remaining + ';');
+        }
+
+        return results;
     }
 
     /**

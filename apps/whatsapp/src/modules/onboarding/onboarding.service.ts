@@ -247,15 +247,32 @@ export class OnboardingService {
       this.logger.log(`[Onboarding][${onboardingId}] Step 10: Registering channel_account for webhook routing`);
       await this.registerChannelAccount(tenantId, primaryPhone);
 
-      // ---- 11. Guardar credenciales cifradas (LONG-LIVED token, not short-lived!) ----
-      this.logger.log(`[Onboarding][${onboardingId}] Step 11: Storing encrypted LONG-LIVED credential (expiresIn=${longLivedExpiresIn}s)`);
-      await this.storeEncryptedCredential(tenantId, longLivedToken, longLivedExpiresIn);
+      // ---- 11. Try to generate permanent System User Token (Tech Partner flow) ----
+      let finalToken = longLivedToken;
+      let finalExpiresIn = longLivedExpiresIn;
+      try {
+        this.logger.log(`[Onboarding][${onboardingId}] Step 11a: Attempting System User Token generation for WABA=${wabaId}`);
+        const systemUserResult = await this.metaGraph.generateSystemUserToken(wabaId, longLivedToken);
+        if (systemUserResult) {
+          finalToken = systemUserResult.accessToken;
+          finalExpiresIn = 0; // permanent — no expiry
+          this.logger.log(`[Onboarding][${onboardingId}] System User Token generated — permanent, no expiry`);
+        } else {
+          this.logger.log(`[Onboarding][${onboardingId}] System User Token not available — using long-lived token (${longLivedExpiresIn}s)`);
+        }
+      } catch (sysUserError: any) {
+        this.logger.warn(`[Onboarding][${onboardingId}] System User Token failed (non-blocking): ${sysUserError.message}`);
+      }
+
+      // ---- 11b. Store the best available token ----
+      this.logger.log(`[Onboarding][${onboardingId}] Step 11b: Storing encrypted credential (expiresIn=${finalExpiresIn}s)`);
+      await this.storeEncryptedCredential(tenantId, finalToken, finalExpiresIn);
 
       // ---- 12. Suscribir webhook ----
       await this.updateStatus(onboardingId, OnboardingStatus.WEBHOOK_VALIDATION_IN_PROGRESS);
       this.logger.log(`[Onboarding][${onboardingId}] Step 12: Subscribing app to WABA=${wabaId} for webhooks`);
 
-      const webhookSuccess = await this.metaGraph.subscribeAppToWaba(wabaId, longLivedToken);
+      const webhookSuccess = await this.metaGraph.subscribeAppToWaba(wabaId, finalToken);
 
       if (webhookSuccess) {
         await this.updateStatus(onboardingId, OnboardingStatus.WEBHOOK_VALIDATED);
@@ -273,7 +290,7 @@ export class OnboardingService {
       let businessVerified = true;
       let verificationWarning: string | null = null;
       try {
-        const verificationStatus = await this.metaGraph.getBusinessVerificationStatus(wabaId, longLivedToken);
+        const verificationStatus = await this.metaGraph.getBusinessVerificationStatus(wabaId, finalToken);
         this.logger.log(`[Onboarding][${onboardingId}] Business verification status: ${JSON.stringify(verificationStatus)}`);
         if (verificationStatus && verificationStatus !== 'verified') {
           businessVerified = false;
@@ -286,7 +303,7 @@ export class OnboardingService {
 
       // ---- 14. Sync templates en background (no bloquea) ----
       this.logger.log(`[Onboarding][${onboardingId}] Step 14: Starting background template sync for WABA=${wabaId}`);
-      this.syncTemplatesInBackground(tenantId, wabaId, longLivedToken, onboardingId);
+      this.syncTemplatesInBackground(tenantId, wabaId, finalToken, onboardingId);
 
       // ---- 15. Marcar completado ----
       const warnings: string[] = [];

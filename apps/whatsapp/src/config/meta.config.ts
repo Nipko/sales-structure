@@ -5,6 +5,7 @@ export default registerAs('meta', () => ({
   appSecret: process.env.META_APP_SECRET || '',          // NUNCA exponer al frontend
   verifyToken: process.env.META_VERIFY_TOKEN || '',      // Token para verificar webhooks
   configId: process.env.META_CONFIG_ID || '',            // config_id del Facebook Login for Business
+  systemUserId: process.env.SYSTEM_USER_ID || '',        // System User ID de tu Business Manager (para tokens permanentes)
   graphVersion: process.env.META_GRAPH_VERSION || 'v21.0',
   graphBaseUrl: 'https://graph.facebook.com',
   // Timeouts en ms

@@ -465,6 +465,101 @@ export class MetaGraphService {
   }
 
   /**
+   * Generate a permanent System User Token for a WABA (Tech Partner flow).
+   *
+   * As a Tech Partner, after getting the client's long-lived token, you should:
+   * 1. Create a System User in YOUR Business Manager (done once in Meta Business Settings)
+   * 2. Assign the client's WABA to your System User
+   * 3. Generate a permanent token for that System User scoped to the WABA
+   *
+   * This method handles step 2+3. The System User ID must be pre-configured
+   * in the environment as SYSTEM_USER_ID.
+   *
+   * Docs: https://developers.facebook.com/docs/marketing-api/system-users
+   */
+  async generateSystemUserToken(
+    wabaId: string,
+    clientToken: string,
+  ): Promise<{ accessToken: string; tokenType: string } | null> {
+    const systemUserId = this.config.get<string>('meta.systemUserId');
+    const appId = this.config.get<string>('meta.appId');
+    const appSecret = this.config.get<string>('meta.appSecret');
+    const timeout = this.config.get<number>('meta.exchangeTimeout');
+
+    if (!systemUserId) {
+      this.logger.warn(
+        'SYSTEM_USER_ID not configured — skipping permanent token generation. ' +
+        'Using long-lived token instead (expires in ~60 days). ' +
+        'To get permanent tokens, create a System User in Meta Business Settings ' +
+        'and set SYSTEM_USER_ID in your environment.',
+      );
+      return null;
+    }
+
+    this.logger.log(`Generating System User Token for WABA ${wabaId}, System User ${systemUserId}`);
+
+    try {
+      // Step 1: Assign the WABA to the System User with full_control
+      this.logger.log(`Assigning WABA ${wabaId} to System User ${systemUserId}`);
+      await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/${wabaId}/assigned_users`,
+          { user: systemUserId, tasks: ['MANAGE'] },
+          {
+            params: { access_token: clientToken },
+            timeout,
+          },
+        ),
+      ).catch((err: any) => {
+        // 368 = already assigned — that's fine
+        if (err?.response?.data?.error?.code !== 368) {
+          this.logger.warn(`WABA assignment warning: ${err?.response?.data?.error?.message || err.message}`);
+        }
+      });
+
+      // Step 2: Generate a token for the System User scoped to the app
+      this.logger.log(`Generating token for System User ${systemUserId}`);
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/${systemUserId}/access_tokens`,
+          {
+            business_app: appId,
+            scope: 'whatsapp_business_management,whatsapp_business_messaging',
+            appsecret_proof: this.generateAppSecretProof(appSecret, clientToken),
+          },
+          {
+            params: { access_token: clientToken },
+            timeout,
+          },
+        ),
+      );
+
+      if (response.data?.access_token) {
+        this.logger.log('System User Token generated successfully (permanent)');
+        return {
+          accessToken: response.data.access_token,
+          tokenType: 'system_user',
+        };
+      }
+
+      this.logger.warn('System User Token generation returned no token — falling back to long-lived');
+      return null;
+    } catch (error: any) {
+      this.logger.warn(`System User Token generation failed (will use long-lived token): ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Generate appsecret_proof for secure Graph API calls.
+   * Required by some endpoints when app-level security is enabled.
+   */
+  private generateAppSecretProof(appSecret: string, accessToken: string): string {
+    const crypto = require('crypto');
+    return crypto.createHmac('sha256', appSecret).update(accessToken).digest('hex');
+  }
+
+  /**
    * Envía un mensaje de prueba para verificar que el canal está operativo
    */
   async sendTestMessage(phoneNumberId: string, accessToken: string, toPhone: string): Promise<string | null> {

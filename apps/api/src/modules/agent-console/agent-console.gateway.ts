@@ -8,10 +8,13 @@ import {
     MessageBody,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AgentConsoleService } from './agent-console.service';
 import { CopilotService } from '../copilot/copilot.service';
 import { HandoffEscalatedEvent } from '../handoff/handoff.service';
+import { JwtPayload } from '@parallext/shared';
 
 @WebSocketGateway({
     cors: { origin: '*' },
@@ -23,15 +26,45 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
 
     private readonly logger = new Logger(AgentConsoleGateway.name);
     private connectedAgents = new Map<string, string>(); // agentId -> socketId
-    private socketMeta = new Map<string, { agentId: string; tenantId: string }>();
+    private socketMeta = new Map<string, { agentId: string; tenantId: string; role: string }>();
 
     constructor(
         private agentConsoleService: AgentConsoleService,
         private copilotService: CopilotService,
+        private jwtService: JwtService,
+        private configService: ConfigService,
     ) { }
 
     async handleConnection(client: any) {
-        this.logger.log(`Agent connected: ${client.id}`);
+        try {
+            const token = client.handshake?.auth?.token;
+            if (!token) {
+                this.logger.warn(`Connection rejected (no token): ${client.id}`);
+                client.emit('error', { message: 'Authentication required' });
+                client.disconnect(true);
+                return;
+            }
+
+            const payload = this.jwtService.verify<JwtPayload>(token, {
+                secret: this.configService.get<string>('auth.jwtSecret'),
+            });
+
+            if (!payload.sub || !payload.tenantId) {
+                this.logger.warn(`Connection rejected (invalid payload): ${client.id}`);
+                client.emit('error', { message: 'Invalid token: missing user or tenant info' });
+                client.disconnect(true);
+                return;
+            }
+
+            // Store verified JWT data on the socket for later use
+            (client as any).jwtPayload = payload;
+            this.logger.log(`Agent authenticated: ${payload.sub} (tenant: ${payload.tenantId}) socket: ${client.id}`);
+        } catch (error: any) {
+            const reason = error?.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
+            this.logger.warn(`Connection rejected (${reason}): ${client.id}`);
+            client.emit('error', { message: reason });
+            client.disconnect(true);
+        }
     }
 
     async handleDisconnect(client: any) {
@@ -48,18 +81,43 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         @ConnectedSocket() client: any,
         @MessageBody() data: { agentId: string; tenantId: string },
     ) {
-        this.socketMeta.set(client.id, { agentId: data.agentId, tenantId: data.tenantId });
-        this.connectedAgents.set(data.agentId, client.id);
+        const jwtPayload: JwtPayload | undefined = (client as any).jwtPayload;
+        if (!jwtPayload) {
+            client.emit('error', { message: 'Not authenticated' });
+            client.disconnect(true);
+            return;
+        }
+
+        // Use verified JWT values — never trust client-supplied tenantId
+        const verifiedUserId = jwtPayload.sub;
+        const verifiedTenantId = jwtPayload.tenantId!;
+        const verifiedRole = jwtPayload.role;
+
+        // If client supplies agentId, validate it matches the JWT user
+        if (data.agentId && data.agentId !== verifiedUserId) {
+            this.logger.warn(
+                `agent:join mismatch: client sent agentId=${data.agentId} but JWT sub=${verifiedUserId}`,
+            );
+            client.emit('error', { message: 'Agent ID does not match authenticated user' });
+            return;
+        }
+
+        this.socketMeta.set(client.id, {
+            agentId: verifiedUserId,
+            tenantId: verifiedTenantId,
+            role: verifiedRole,
+        });
+        this.connectedAgents.set(verifiedUserId, client.id);
 
         // Join tenant room for broadcasts
-        client.join(`tenant:${data.tenantId}`);
-        client.join(`agent:${data.agentId}`);
+        client.join(`tenant:${verifiedTenantId}`);
+        client.join(`agent:${verifiedUserId}`);
 
         // Send initial inbox
-        const inbox = await this.agentConsoleService.getInbox(data.tenantId, data.agentId);
+        const inbox = await this.agentConsoleService.getInbox(verifiedTenantId, verifiedUserId);
         client.emit('inbox:update', inbox);
 
-        this.logger.log(`Agent ${data.agentId} joined tenant ${data.tenantId}`);
+        this.logger.log(`Agent ${verifiedUserId} joined tenant ${verifiedTenantId} (role: ${verifiedRole})`);
     }
 
     @SubscribeMessage('conversation:open')
@@ -87,6 +145,17 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
 
+        // Permission check: agent must be assigned, or have supervisor/admin role
+        if (!this.hasElevatedRole(meta.role)) {
+            const canAct = await this.agentConsoleService.canActOnConversation(
+                meta.tenantId, data.conversationId, meta.agentId,
+            );
+            if (!canAct) {
+                client.emit('error', { message: 'No tienes permiso para enviar mensajes en esta conversación.' });
+                return;
+            }
+        }
+
         const message = await this.agentConsoleService.sendAgentMessage(
             meta.tenantId,
             data.conversationId,
@@ -108,6 +177,13 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
     ) {
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
+
+        // Permission check: only allow if assigning to themselves OR has supervisor/admin role
+        const isAssigningToSelf = data.agentId === meta.agentId;
+        if (!isAssigningToSelf && !this.hasElevatedRole(meta.role)) {
+            client.emit('error', { message: 'No tienes permiso para asignar conversaciones a otros agentes.' });
+            return;
+        }
 
         await this.agentConsoleService.assignConversation(
             meta.tenantId,
@@ -131,6 +207,17 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
     ) {
         const meta = this.socketMeta.get(client.id);
         if (!meta) return;
+
+        // Permission check: agent must be assigned, or have supervisor/admin role
+        if (!this.hasElevatedRole(meta.role)) {
+            const canAct = await this.agentConsoleService.canActOnConversation(
+                meta.tenantId, data.conversationId, meta.agentId,
+            );
+            if (!canAct) {
+                client.emit('error', { message: 'No tienes permiso para resolver esta conversación.' });
+                return;
+            }
+        }
 
         await this.agentConsoleService.resolveConversation(
             meta.tenantId,
@@ -187,6 +274,13 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         this.server
             ?.to(`conversation:${conversationId}`)
             .emit('conversation:message', message);
+    }
+
+    /**
+     * Check if the agent role allows acting on any conversation (supervisor or admin).
+     */
+    private hasElevatedRole(role: string): boolean {
+        return ['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(role);
     }
 
     /**

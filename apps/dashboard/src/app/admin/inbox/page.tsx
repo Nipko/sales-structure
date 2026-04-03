@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -9,7 +9,7 @@ import { io } from "socket.io-client";
 import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
-    ArrowRight, StickyNote, Sparkles, Hash,
+    ArrowRight, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
 } from "lucide-react";
 
 // No mock arrays — all data fetched from API
@@ -19,6 +19,13 @@ import {
 // ============================================
 
 type InboxFilter = "all" | "mine" | "unassigned" | "handoff";
+
+interface CannedResponse {
+    id: string;
+    shortcode: string;
+    title: string;
+    content: string;
+}
 
 const priorityColors: Record<string, string> = {
     urgent: "#e74c3c",
@@ -30,9 +37,12 @@ const priorityColors: Record<string, string> = {
 const statusLabels: Record<string, { label: string; color: string }> = {
     handoff: { label: "Handoff", color: "#e74c3c" },
     open: { label: "Abierta", color: "#2ecc71" },
+    active: { label: "Activa", color: "#2ecc71" },
     assigned: { label: "Asignada", color: "#3498db" },
     pending: { label: "Pendiente", color: "#e67e22" },
     resolved: { label: "Resuelta", color: "#95a5a6" },
+    with_human: { label: "Con agente", color: "#3498db" },
+    waiting_human: { label: "Esperando agente", color: "#e67e22" },
 };
 
 // ============================================
@@ -54,15 +64,39 @@ export default function InboxPage() {
     const [isLive, setIsLive] = useState(false);
     const [loadingConv, setLoadingConv] = useState(true);
 
-    // Load conversations from API
+    // --- Canned Responses State ---
+    const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
+    const [showCannedMenu, setShowCannedMenu] = useState(false);
+    const [cannedFilter, setCannedFilter] = useState("");
+    const [cannedSelectedIndex, setCannedSelectedIndex] = useState(0);
+    const messageInputRef = useRef<HTMLInputElement>(null);
+    const selectedConvIdRef = useRef<string | null>(null);
+
+    // Keep ref in sync with selected conversation ID (for WebSocket handler)
+    useEffect(() => {
+        selectedConvIdRef.current = selectedConv?.id || null;
+    }, [selectedConv?.id]);
+
+    // --- AI Suggestion State ---
+    const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+    const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
+
+    // --- Assign State ---
+    const [assignLoading, setAssignLoading] = useState(false);
+
+    // Load conversations and canned responses from API
     useEffect(() => {
         async function load() {
             if (!activeTenantId) return;
             setLoadingConv(true);
             try {
-                const result = await api.getInbox(activeTenantId);
-                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                    const convs = result.data.map((c: any) => ({
+                const [inboxResult, cannedResult] = await Promise.all([
+                    api.getInbox(activeTenantId),
+                    api.getCannedResponses(activeTenantId),
+                ]);
+
+                if (inboxResult.success && Array.isArray(inboxResult.data) && inboxResult.data.length > 0) {
+                    const convs = inboxResult.data.map((c: any) => ({
                         id: c.id,
                         contactName: c.contact_name || c.contactName || 'Desconocido',
                         contactPhone: c.contact_phone || c.contactPhone || '',
@@ -75,6 +109,7 @@ export default function InboxPage() {
                         priority: c.priority || 'normal',
                         tags: c.tags || [],
                         isAiHandled: c.is_ai_handled ?? c.isAiHandled ?? false,
+                        assignedAgentId: c.assigned_agent_id || c.assignedAgentId || '',
                         assignedAgentName: c.assigned_agent_name || c.assignedAgentName || '',
                         contactId: c.contact_id || c.contactId,
                         estimatedValue: c.estimated_ticket_value || 0,
@@ -82,6 +117,15 @@ export default function InboxPage() {
                     setConversations(convs);
                     setSelectedConv(convs[0]);
                     setIsLive(true);
+                }
+
+                if (cannedResult.success && Array.isArray(cannedResult.data)) {
+                    setCannedResponses(cannedResult.data.map((r: any) => ({
+                        id: r.id,
+                        shortcode: r.shortcode || r.short_code || '',
+                        title: r.title || r.name || '',
+                        content: r.content || r.body || '',
+                    })));
                 }
             } catch (err) {
                 console.error('Failed to load inbox:', err);
@@ -150,14 +194,14 @@ export default function InboxPage() {
         socket.on('newMessage', (payload) => {
             const { conversationId, message } = payload;
             
-            // Normalize message for UI
+            // Normalize message for UI (must match shape from loadMessages)
             const uiMsg = {
                 id: message.id,
-                content: message.content_text,
-                sender: message.direction === 'inbound' ? 'customer' : 'ai',
-                senderName: message.direction === 'inbound' ? 'Cliente' : 'IA',
+                content: message.content_text || message.content || '',
+                sender: message.direction === 'inbound' ? 'customer' : (message.llm_model_used ? 'ai' : 'agent'),
+                senderName: message.direction === 'inbound' ? 'Cliente' : (message.llm_model_used ? 'IA' : 'Agente'),
                 timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
-                type: message.content_type
+                type: message.content_type || 'text',
             };
             
             // Update conversation list with latest message
@@ -175,12 +219,144 @@ export default function InboxPage() {
                 }
                 return prev;
             });
+
+            // Update the messages state (the actual rendered chat thread) if this
+            // message belongs to the currently viewed conversation
+            if (selectedConvIdRef.current === conversationId) {
+                setMessages(prev => [...prev, uiMsg]);
+            }
         });
 
         return () => {
             socket.disconnect();
         };
     }, [activeTenantId]);
+
+    // --- Fetch AI Suggestion when conversation changes ---
+    const fetchAiSuggestion = useCallback(async (convId?: string) => {
+        const cId = convId || selectedConv?.id;
+        if (!activeTenantId || !cId) return;
+        // Only fetch for conversations that are with or waiting for a human agent
+        const conv = conversations.find(c => c.id === cId) || selectedConv;
+        if (!conv || !['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(conv.status)) {
+            setAiSuggestion(null);
+            return;
+        }
+        setAiSuggestionLoading(true);
+        setAiSuggestion(null);
+        try {
+            const result = await api.getAISuggestion(activeTenantId, cId);
+            if (result.success && result.data) {
+                const text = typeof result.data === 'string' ? result.data : (result.data as any).suggestion || (result.data as any).text || (result.data as any).content || '';
+                setAiSuggestion(text || null);
+            }
+        } catch (err) {
+            console.error('Failed to fetch AI suggestion:', err);
+        } finally {
+            setAiSuggestionLoading(false);
+        }
+    }, [activeTenantId, selectedConv?.id, conversations]);
+
+    useEffect(() => {
+        if (selectedConv?.id) {
+            fetchAiSuggestion(selectedConv.id);
+        } else {
+            setAiSuggestion(null);
+        }
+    }, [selectedConv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // --- Canned Responses: filter & interpolation ---
+    const filteredCanned = cannedResponses.filter(r => {
+        if (!cannedFilter) return true;
+        const q = cannedFilter.toLowerCase();
+        return r.shortcode.toLowerCase().includes(q) || r.title.toLowerCase().includes(q);
+    });
+
+    const interpolateCanned = (content: string): string => {
+        return content
+            .replace(/\{\{contactName\}\}/gi, selectedConv?.contactName || '')
+            .replace(/\{\{contactPhone\}\}/gi, selectedConv?.contactPhone || '')
+            .replace(/\{\{agentName\}\}/gi, user?.firstName || 'Agente');
+    };
+
+    const selectCannedResponse = (response: CannedResponse) => {
+        const interpolated = interpolateCanned(response.content);
+        setMessageInput(interpolated);
+        setShowCannedMenu(false);
+        setCannedFilter("");
+        setCannedSelectedIndex(0);
+        messageInputRef.current?.focus();
+    };
+
+    // --- Handle message input change for canned responses trigger ---
+    const handleMessageInputChange = (value: string) => {
+        setMessageInput(value);
+        if (value.startsWith("/")) {
+            setShowCannedMenu(true);
+            setCannedFilter(value.slice(1));
+            setCannedSelectedIndex(0);
+        } else {
+            setShowCannedMenu(false);
+            setCannedFilter("");
+        }
+    };
+
+    // --- Handle keyboard nav in canned menu ---
+    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (showCannedMenu && filteredCanned.length > 0) {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setCannedSelectedIndex(prev => Math.min(prev + 1, filteredCanned.length - 1));
+                return;
+            }
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setCannedSelectedIndex(prev => Math.max(prev - 1, 0));
+                return;
+            }
+            if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                selectCannedResponse(filteredCanned[cannedSelectedIndex]);
+                return;
+            }
+            if (e.key === "Escape") {
+                setShowCannedMenu(false);
+                return;
+            }
+        }
+        if (e.key === "Enter" && !showCannedMenu) {
+            handleSend();
+        }
+    };
+
+    // --- Assign conversation ---
+    const handleAssign = async () => {
+        if (!activeTenantId || !selectedConv?.id || !user?.id) return;
+        setAssignLoading(true);
+        try {
+            const result = await api.assignConversation(activeTenantId, selectedConv.id, user.id);
+            if (result.success) {
+                const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Agente';
+                // Update the selected conversation — backend assignConversation() sets status 'with_human'
+                setSelectedConv((prev: any) => ({
+                    ...prev,
+                    assignedAgentId: user.id,
+                    assignedAgentName: agentName,
+                    status: 'with_human',
+                }));
+                // Update the conversation in the list
+                setConversations((prev: any[]) => prev.map(c =>
+                    c.id === selectedConv.id
+                        ? { ...c, assignedAgentId: user.id, assignedAgentName: agentName, status: 'with_human' }
+                        : c
+                ));
+            }
+        } catch (err) {
+            console.error('Failed to assign conversation:', err);
+        } finally {
+            setAssignLoading(false);
+        }
+    };
 
     const filteredConversations = conversations.filter(c => {
         if (searchQuery) {
@@ -197,7 +373,7 @@ export default function InboxPage() {
         if (!messageInput.trim()) return;
         const content = messageInput.trim();
         setMessageInput("");
-        // Optimistic add to local messages
+        setShowCannedMenu(false);
         // Optimistic add to local messages
         setMessages(prev => [...prev, {
             id: `msg_${Date.now()}`, sender: "agent" as const, content,
@@ -223,11 +399,11 @@ export default function InboxPage() {
     };
 
     const handleResolve = async () => {
-        // Optimistic update
+        // Optimistic update — backend resolveConversation() returns status 'active' (back to AI handling)
         setConversations((prev: any[]) => prev.map(c =>
-            c.id === selectedConv.id ? { ...c, status: "resolved" as any } : c
+            c.id === selectedConv.id ? { ...c, status: "active" as any } : c
         ));
-        setSelectedConv((prev: any) => ({ ...prev, status: "resolved" as any }));
+        setSelectedConv((prev: any) => ({ ...prev, status: "active" as any }));
         // API call
         if (activeTenantId && selectedConv.id) {
             await api.resolveConversation(activeTenantId, selectedConv.id, user?.id);
@@ -237,6 +413,8 @@ export default function InboxPage() {
 
     return (
         <div style={{ display: "flex", height: "calc(100vh - 64px)", margin: "-32px -40px", overflow: "hidden" }}>
+            {/* Keyframes for spinner animation */}
+            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
             {/* ======== LEFT: Conversation List ======== */}
             <div style={{
@@ -336,11 +514,11 @@ export default function InboxPage() {
                                             </span>
                                         )}
                                         <span style={{
-                                            background: `${statusLabels[conv.status].color}22`,
-                                            color: statusLabels[conv.status].color,
+                                            background: `${(statusLabels[conv.status]?.color || '#95a5a6')}22`,
+                                            color: statusLabels[conv.status]?.color || '#95a5a6',
                                             fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
                                         }}>
-                                            {statusLabels[conv.status].label}
+                                            {statusLabels[conv.status]?.label || conv.status}
                                         </span>
                                     </div>
                                 </div>
@@ -395,19 +573,40 @@ export default function InboxPage() {
                         }}>
                             <StickyNote size={14} /> Notas
                         </button>
-                        <button style={{
+                        {selectedConv.assignedAgentName && (
+                            <div style={{
+                                padding: "4px 10px", borderRadius: 6, fontSize: 11,
+                                background: "rgba(52, 152, 219, 0.12)", color: "#3498db",
+                                display: "flex", gap: 4, alignItems: "center", fontWeight: 500,
+                            }}>
+                                <UserCheck size={12} />
+                                {selectedConv.assignedAgentName}
+                            </div>
+                        )}
+                        <button onClick={handleResolve} style={{
                             padding: "6px 12px", borderRadius: 8, border: "none",
                             background: "#2ecc71", color: "white", fontSize: 12, fontWeight: 600,
                             cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
                         }}>
                             <CheckCircle size={14} /> Resolver
                         </button>
-                        <button style={{
-                            padding: "6px 12px", borderRadius: 8, border: "none",
-                            background: "var(--accent)", color: "white", fontSize: 12, fontWeight: 600,
-                            cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
-                        }}>
-                            <ArrowRight size={14} /> Asignar
+                        <button
+                            onClick={handleAssign}
+                            disabled={assignLoading}
+                            style={{
+                                padding: "6px 12px", borderRadius: 8, border: "none",
+                                background: assignLoading ? "var(--bg-tertiary)" : "var(--accent)",
+                                color: assignLoading ? "var(--text-secondary)" : "white",
+                                fontSize: 12, fontWeight: 600,
+                                cursor: assignLoading ? "not-allowed" : "pointer",
+                                display: "flex", gap: 4, alignItems: "center",
+                                opacity: assignLoading ? 0.7 : 1,
+                            }}
+                        >
+                            {assignLoading
+                                ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Asignando...</>
+                                : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mí' : 'Asignarme'}</>
+                            }
                         </button>
                     </div>
                 </div>
@@ -464,27 +663,60 @@ export default function InboxPage() {
                         );
                     })}
 
-                    {/* AI Suggestion Banner */}
-                    <div style={{
-                        padding: "10px 14px", borderRadius: 10,
-                        background: "rgba(46, 204, 113, 0.08)", border: "1px solid rgba(46, 204, 113, 0.2)",
-                        display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8,
-                    }}>
-                        <Sparkles size={16} color="#2ecc71" style={{ marginTop: 2, flexShrink: 0 }} />
-                        <div>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: "#2ecc71", marginBottom: 4 }}>Sugerencia IA</div>
-                            <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                                &quot;Los niños de 12+ pueden participar. Para quienes tienen miedo al agua, tenemos chalecos especiales y un guía dedicado.
-                                El recorrido tiene tramos suaves ideales para principiantes.&quot;
-                            </div>
-                            <button style={{
-                                marginTop: 6, padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(46, 204, 113, 0.3)",
-                                background: "transparent", color: "#2ecc71", fontSize: 12, cursor: "pointer",
+                    {/* AI Suggestion Banner — only when conversation is active */}
+                    {selectedConv && ['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(selectedConv.status) && (
+                        aiSuggestionLoading ? (
+                            <div style={{
+                                padding: "10px 14px", borderRadius: 10,
+                                background: "rgba(46, 204, 113, 0.08)", border: "1px solid rgba(46, 204, 113, 0.2)",
+                                display: "flex", gap: 8, alignItems: "center", marginTop: 8,
                             }}>
-                                Usar sugerencia
-                            </button>
-                        </div>
-                    </div>
+                                <Loader2 size={16} color="#2ecc71" style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
+                                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                                    Generando sugerencia de IA...
+                                </div>
+                            </div>
+                        ) : aiSuggestion ? (
+                            <div style={{
+                                padding: "10px 14px", borderRadius: 10,
+                                background: "rgba(46, 204, 113, 0.08)", border: "1px solid rgba(46, 204, 113, 0.2)",
+                                display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8,
+                            }}>
+                                <Sparkles size={16} color="#2ecc71" style={{ marginTop: 2, flexShrink: 0 }} />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#2ecc71", marginBottom: 4 }}>Sugerencia IA</div>
+                                    <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                                        &quot;{aiSuggestion}&quot;
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                        <button
+                                            onClick={() => {
+                                                setMessageInput(aiSuggestion);
+                                                messageInputRef.current?.focus();
+                                            }}
+                                            style={{
+                                                padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(46, 204, 113, 0.3)",
+                                                background: "transparent", color: "#2ecc71", fontSize: 12, cursor: "pointer",
+                                                display: "flex", gap: 4, alignItems: "center",
+                                            }}
+                                        >
+                                            <Zap size={12} /> Usar sugerencia
+                                        </button>
+                                        <button
+                                            onClick={() => fetchAiSuggestion()}
+                                            style={{
+                                                padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)",
+                                                background: "transparent", color: "var(--text-secondary)", fontSize: 12, cursor: "pointer",
+                                                display: "flex", gap: 4, alignItems: "center",
+                                            }}
+                                        >
+                                            <RefreshCw size={12} /> Actualizar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null
+                    )}
                 </div>
 
                 {/* Notes Panel (conditional) */}
@@ -536,10 +768,76 @@ export default function InboxPage() {
                         <Paperclip size={20} />
                     </button>
                     <div style={{ position: "relative", flex: 1 }}>
+                        {/* Canned Responses Dropdown */}
+                        {showCannedMenu && filteredCanned.length > 0 && (
+                            <div style={{
+                                position: "absolute", bottom: "100%", left: 0, right: 0,
+                                marginBottom: 4, background: "var(--bg-secondary)",
+                                border: "1px solid var(--border)", borderRadius: 10,
+                                boxShadow: "0 -4px 20px rgba(0,0,0,0.15)", maxHeight: 220, overflow: "auto",
+                                zIndex: 50,
+                            }}>
+                                <div style={{
+                                    padding: "8px 12px", fontSize: 11, fontWeight: 600,
+                                    color: "var(--text-secondary)", borderBottom: "1px solid var(--border)",
+                                    display: "flex", gap: 4, alignItems: "center",
+                                }}>
+                                    <Zap size={12} /> Respuestas rápidas
+                                </div>
+                                {filteredCanned.map((cr, idx) => (
+                                    <div
+                                        key={cr.id}
+                                        onClick={() => selectCannedResponse(cr)}
+                                        style={{
+                                            padding: "8px 12px", cursor: "pointer",
+                                            background: idx === cannedSelectedIndex ? "var(--accent-glow)" : "transparent",
+                                            borderBottom: idx < filteredCanned.length - 1 ? "1px solid var(--border)" : "none",
+                                            transition: "background 0.1s ease",
+                                        }}
+                                        onMouseEnter={() => setCannedSelectedIndex(idx)}
+                                    >
+                                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                            <span style={{
+                                                fontSize: 11, fontWeight: 600, color: "var(--accent)",
+                                                background: "rgba(108, 92, 231, 0.1)", padding: "2px 6px", borderRadius: 4,
+                                                fontFamily: "monospace",
+                                            }}>
+                                                /{cr.shortcode}
+                                            </span>
+                                            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-primary)" }}>
+                                                {cr.title}
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            fontSize: 11, color: "var(--text-secondary)", marginTop: 2,
+                                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                                            maxWidth: "100%",
+                                        }}>
+                                            {cr.content}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {showCannedMenu && filteredCanned.length === 0 && cannedFilter && (
+                            <div style={{
+                                position: "absolute", bottom: "100%", left: 0, right: 0,
+                                marginBottom: 4, background: "var(--bg-secondary)",
+                                border: "1px solid var(--border)", borderRadius: 10,
+                                boxShadow: "0 -4px 20px rgba(0,0,0,0.15)", padding: "12px 14px",
+                                zIndex: 50,
+                            }}>
+                                <div style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
+                                    No se encontraron respuestas para &quot;/{cannedFilter}&quot;
+                                </div>
+                            </div>
+                        )}
                         <input
+                            ref={messageInputRef}
                             value={messageInput}
-                            onChange={e => setMessageInput(e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && handleSend()}
+                            onChange={e => handleMessageInputChange(e.target.value)}
+                            onKeyDown={handleInputKeyDown}
+                            onBlur={() => { setTimeout(() => setShowCannedMenu(false), 150); }}
                             placeholder="Escribe un mensaje... (/ para respuestas rápidas)"
                             style={{
                                 width: "100%", padding: "10px 14px", borderRadius: 10,
@@ -619,6 +917,43 @@ export default function InboxPage() {
                             <MessageSquare size={14} color="var(--text-secondary)" />
                             <span>{selectedConv.channel}</span>
                         </div>
+                    </div>
+
+                    {/* Assigned Agent */}
+                    <div style={{ marginBottom: 20 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                            <UserCheck size={12} /> Agente asignado
+                        </div>
+                        {selectedConv.assignedAgentName ? (
+                            <div style={{
+                                padding: "8px 12px", borderRadius: 8,
+                                background: "rgba(52, 152, 219, 0.08)", border: "1px solid rgba(52, 152, 219, 0.2)",
+                                display: "flex", alignItems: "center", gap: 8,
+                            }}>
+                                <div style={{
+                                    width: 28, height: 28, borderRadius: "50%",
+                                    background: "linear-gradient(135deg, #3498db, #2980b9)",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 12, fontWeight: 700, color: "white", flexShrink: 0,
+                                }}>
+                                    {selectedConv.assignedAgentName.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 13, fontWeight: 500 }}>{selectedConv.assignedAgentName}</div>
+                                    {selectedConv.assignedAgentId === user?.id && (
+                                        <div style={{ fontSize: 10, color: "var(--accent)" }}>Tú</div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{
+                                padding: "8px 12px", borderRadius: 8,
+                                background: "var(--bg-tertiary)", fontSize: 12,
+                                color: "var(--text-secondary)", textAlign: "center",
+                            }}>
+                                Sin asignar
+                            </div>
+                        )}
                     </div>
 
                     {/* Tags */}

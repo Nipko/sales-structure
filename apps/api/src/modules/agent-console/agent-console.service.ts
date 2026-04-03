@@ -87,9 +87,11 @@ export class AgentConsoleService {
         if (!schemaName) return [];
 
         let statusFilter = '';
+        const params: any[] = [];
         switch (filter) {
             case 'mine':
-                statusFilter = `AND c.assigned_to = '${agentId}'`;
+                params.push(agentId);
+                statusFilter = `AND c.assigned_to = $${params.length}::uuid`;
                 break;
             case 'unassigned':
                 statusFilter = `AND c.assigned_to IS NULL AND c.status = 'waiting_human'`;
@@ -117,6 +119,7 @@ export class AgentConsoleService {
       ${statusFilter}
       ORDER BY m.created_at DESC NULLS LAST
       LIMIT 100`,
+            params,
         );
 
         return (conversations || []).map((c: any) => ({
@@ -188,9 +191,9 @@ export class AgentConsoleService {
                 tags: conv.tags || [],
                 segment: conv.segment || 'new',
                 customFields: conv.custom_fields || {},
-                lifetimeValue: parseFloat(conv.lifetime_value) || 0,
+                lifetimeValue: Number(conv.lifetime_value) || 0,
                 lastInteraction: conv.last_interaction,
-                conversationCount: parseInt(countRows?.[0]?.total) || 0,
+                conversationCount: Number(countRows?.[0]?.total) || 0,
             },
             messages: (messages || []).map((m: any) => ({
                 id: m.id,
@@ -236,33 +239,44 @@ export class AgentConsoleService {
 
         const msg = result[0];
 
+        // Track first response time in conversation_assignments (only if not yet set)
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE conversation_assignments
+                 SET first_response_at = NOW()
+                 WHERE conversation_id = $1::uuid AND agent_id = $2::uuid
+                   AND first_response_at IS NULL AND resolved_at IS NULL`,
+                [conversationId, agentId],
+            );
+        } catch (e: any) {
+            this.logger.warn(`Could not update first_response_at: ${e.message}`);
+        }
+
         // Obtener token real y enviar via el canal (WhatsApp, etc.)
         try {
-            const schemaName = await this.getTenantSchema(tenantId);
-            if (schemaName) {
-                // Buscar el canal activo de la conversación para saber a qué número enviar
-                const convRows = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT c.channel_type, ct.phone, c.channel_account_id
-                     FROM conversations c
-                     LEFT JOIN contacts ct ON c.contact_id = ct.id
-                     WHERE c.id = $1 LIMIT 1`,
-                    [conversationId],
+            // Buscar el canal activo de la conversación para saber a qué número enviar
+            const convRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT c.channel_type, ct.phone, c.channel_account_id
+                 FROM conversations c
+                 LEFT JOIN contacts ct ON c.contact_id = ct.id
+                 WHERE c.id = $1::uuid LIMIT 1`,
+                [conversationId],
+            );
+            if (convRows?.[0]) {
+                const conv = convRows[0];
+                const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
+                await this.channelGateway.sendMessage(
+                    {
+                        tenantId,
+                        channelType: conv.channel_type || 'whatsapp',
+                        channelAccountId: conv.channel_account_id || creds.phoneNumberId,
+                        to: conv.phone,
+                        content: { type: 'text', text: content },
+                    },
+                    creds.accessToken,
                 );
-                if (convRows?.[0]) {
-                    const conv = convRows[0];
-                    const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
-                    await this.channelGateway.sendMessage(
-                        {
-                            tenantId,
-                            channelType: conv.channel_type || 'whatsapp',
-                            channelAccountId: conv.channel_account_id || creds.phoneNumberId,
-                            to: conv.phone,
-                            content: { type: 'text', text: content },
-                        },
-                        creds.accessToken,
-                    );
-                }
             }
         } catch (e: any) {
             this.logger.warn(`Could not send agent message via channel: ${e.message}`);
@@ -286,7 +300,23 @@ export class AgentConsoleService {
 
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE conversations SET assigned_to = $2, status = 'with_human' WHERE id = $1`,
+            `UPDATE conversations SET assigned_to = $2::uuid, status = 'with_human' WHERE id = $1::uuid`,
+            [conversationId, agentId],
+        );
+
+        // Close any existing active assignment from a different agent before creating the new one
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversation_assignments SET resolved_at = NOW()
+             WHERE conversation_id = $1::uuid AND resolved_at IS NULL`,
+            [conversationId],
+        );
+
+        // Track assignment in conversation_assignments table
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
+             VALUES ($1::uuid, $2::uuid, NOW())`,
             [conversationId, agentId],
         );
 
@@ -302,8 +332,25 @@ export class AgentConsoleService {
 
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE conversations SET status = 'active', assigned_to = NULL WHERE id = $1`,
+            `UPDATE conversations
+             SET status = 'active',
+                 assigned_to = NULL,
+                 metadata = jsonb_set(
+                     COALESCE(metadata, '{}'::jsonb),
+                     '{failedAttempts}',
+                     '0'::jsonb
+                 )
+             WHERE id = $1::uuid`,
             [conversationId],
+        );
+
+        // Mark the active assignment as resolved
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversation_assignments
+             SET resolved_at = NOW()
+             WHERE conversation_id = $1::uuid AND agent_id = $2::uuid AND resolved_at IS NULL`,
+            [conversationId, agentId],
         );
 
         this.logger.log(`Conversation ${conversationId} resolved by agent ${agentId}, returned to AI`);
@@ -342,17 +389,12 @@ export class AgentConsoleService {
 
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT content, sender FROM messages
-       WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 5`,
+            `SELECT content_text, direction FROM messages
+       WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 5`,
             [conversationId],
         );
 
         if (!messages || messages.length === 0) return 'No hay suficiente contexto para sugerir.';
-
-        const context = messages
-            .reverse()
-            .map((m: any) => `${m.sender}: ${m.content}`)
-            .join('\n');
 
         // Usar LLM Router para generar sugerencia real
         try {
@@ -382,23 +424,80 @@ Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
         if (!schemaName) return { resolved: 0, active: 0, avg_first_response_secs: 0, avg_resolution_secs: 0 };
 
         try {
-            const stats = await this.prisma.executeInTenantSchema<any[]>(
+            // Resolved count from conversation_assignments (assignments that have been closed)
+            const resolvedRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT
-                   SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved,
-                   SUM(CASE WHEN status = 'with_human' AND assigned_to = $1 THEN 1 ELSE 0 END) as active
-                 FROM conversations
-                 WHERE assigned_to = $1`,
+                `SELECT COUNT(*) as resolved
+                 FROM conversation_assignments
+                 WHERE agent_id = $1::uuid AND resolved_at IS NOT NULL`,
                 [agentId],
             );
+
+            // Active count from conversations (currently assigned to this agent)
+            const activeRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT COUNT(*) as active
+                 FROM conversations
+                 WHERE assigned_to = $1::uuid AND status IN ('with_human', 'waiting_human')`,
+                [agentId],
+            );
+
+            // Timing stats from conversation_assignments
+            const timingStats = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT
+                   COALESCE(AVG(EXTRACT(EPOCH FROM (ca.first_response_at - ca.assigned_at)))
+                     FILTER (WHERE ca.first_response_at IS NOT NULL), 0) as avg_first_response_secs,
+                   COALESCE(AVG(EXTRACT(EPOCH FROM (ca.resolved_at - ca.assigned_at)))
+                     FILTER (WHERE ca.resolved_at IS NOT NULL), 0) as avg_resolution_secs
+                 FROM conversation_assignments ca
+                 WHERE ca.agent_id = $1::uuid`,
+                [agentId],
+            );
+
             return {
-                resolved: parseInt(stats?.[0]?.resolved || '0'),
-                active: parseInt(stats?.[0]?.active || '0'),
-                avg_first_response_secs: 0,
-                avg_resolution_secs: 0,
+                resolved: Number(resolvedRows?.[0]?.resolved || 0),
+                active: Number(activeRows?.[0]?.active || 0),
+                avg_first_response_secs: Number(timingStats?.[0]?.avg_first_response_secs || 0),
+                avg_resolution_secs: Number(timingStats?.[0]?.avg_resolution_secs || 0),
             };
         } catch (e) {
             return { resolved: 0, active: 0, avg_first_response_secs: 0, avg_resolution_secs: 0 };
+        }
+    }
+
+    /**
+     * Check if an agent can act on a conversation (assigned to them, or conversation is unassigned).
+     * Returns true if the agent is assigned or the conversation has no assignee.
+     */
+    async canActOnConversation(tenantId: string, conversationId: string, agentId: string): Promise<boolean> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return false;
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT assigned_to FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+
+        if (!rows || rows.length === 0) return false;
+
+        const assignedTo = rows[0].assigned_to;
+        // Allow if unassigned or assigned to this agent
+        return assignedTo === null || assignedTo === agentId;
+    }
+
+    /**
+     * Get an agent's role from the public users table.
+     */
+    async getAgentRole(agentId: string): Promise<string | null> {
+        try {
+            const rows = await this.prisma.$queryRaw<any[]>`
+                SELECT role FROM public.users WHERE id = ${agentId}::uuid LIMIT 1
+            `;
+            return rows?.[0]?.role || null;
+        } catch {
+            return null;
         }
     }
 

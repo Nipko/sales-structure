@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { PersonaModule } from '../persona/persona.module';
@@ -22,7 +23,13 @@ import { AutomationModule } from '../automation/automation.module';
         CrmModule,
         PipelineModule,
         forwardRef(() => AutomationModule),
-        JwtModule.register({}),
+        JwtModule.registerAsync({
+            imports: [ConfigModule],
+            useFactory: (config: ConfigService) => ({
+                secret: config.get<string>('auth.jwtSecret'),
+            }),
+            inject: [ConfigService],
+        }),
     ],
     providers: [ConversationsService, ConversationsGateway],
     controllers: [ConversationsController],

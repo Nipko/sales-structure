@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 @WebSocketGateway({
     cors: {
@@ -26,7 +27,10 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     // Maps socket ID to tenant ID
     private connectedClients = new Map<string, string>();
 
-    constructor(private jwtService: JwtService) { }
+    constructor(
+        private jwtService: JwtService,
+        private configService: ConfigService,
+    ) { }
 
     async handleConnection(client: Socket) {
         try {
@@ -38,7 +42,7 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
             }
 
             const token = authHeader.replace('Bearer ', '');
-            const payload = this.jwtService.verify(token, { secret: process.env.JWT_SECRET || 'super-secret' });
+            const payload = this.jwtService.verify(token, { secret: this.configService.get<string>('auth.jwtSecret') });
             
             const tenantId = payload.tenantId;
 

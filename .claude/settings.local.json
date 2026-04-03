@@ -6,7 +6,9 @@
       "WebFetch(domain:helpdocs.ycloud.com)",
       "WebSearch",
       "WebFetch(domain:botsailor.com)",
-      "WebFetch(domain:www.twilio.com)"
+      "WebFetch(domain:www.twilio.com)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

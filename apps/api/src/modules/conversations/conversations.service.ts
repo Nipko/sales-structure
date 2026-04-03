@@ -378,6 +378,18 @@ export class ConversationsService {
                 },
             });
 
+            // Reset failedAttempts on successful AI response
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations
+                 SET metadata = jsonb_set(
+                     COALESCE(metadata, '{}'::jsonb),
+                     '{failedAttempts}',
+                     '0'::jsonb
+                 )
+                 WHERE id = $1`,
+                [conversation.id],
+            );
+
             return response.content || '[Error Generating AI Response]';
         } catch (e: any) {
             this.logger.error(`LLM call failed: ${e.message}`);

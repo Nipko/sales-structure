@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -10,9 +10,8 @@ import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
     ArrowRight, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
+    Bell,
 } from "lucide-react";
-
-// No mock arrays — all data fetched from API
 
 // ============================================
 // TYPES
@@ -46,6 +45,44 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 };
 
 // ============================================
+// HELPERS
+// ============================================
+
+/** Format a date string to a localized time (HH:MM) */
+function formatTime(dateStr: string): string {
+    try {
+        return new Date(dateStr).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+    } catch {
+        return "";
+    }
+}
+
+/** Format a date for the day separator label */
+function formatDateLabel(dateStr: string): string {
+    try {
+        const d = new Date(dateStr);
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        if (d.toDateString() === today.toDateString()) return "Hoy";
+        if (d.toDateString() === yesterday.toDateString()) return "Ayer";
+        return d.toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
+    } catch {
+        return "";
+    }
+}
+
+/** Get the calendar date string (YYYY-MM-DD) from an ISO date */
+function getDateKey(dateStr: string): string {
+    try {
+        return new Date(dateStr).toISOString().slice(0, 10);
+    } catch {
+        return "";
+    }
+}
+
+// ============================================
 // COMPONENT
 // ============================================
 
@@ -71,6 +108,8 @@ export default function InboxPage() {
     const [cannedSelectedIndex, setCannedSelectedIndex] = useState(0);
     const messageInputRef = useRef<HTMLInputElement>(null);
     const selectedConvIdRef = useRef<string | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
 
     // Keep ref in sync with selected conversation ID (for WebSocket handler)
     useEffect(() => {
@@ -83,6 +122,23 @@ export default function InboxPage() {
 
     // --- Assign State ---
     const [assignLoading, setAssignLoading] = useState(false);
+
+    // --- Total unread count for bell badge ---
+    const totalUnread = useMemo(() => {
+        return conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    }, [conversations]);
+
+    // --- Auto-scroll to bottom ---
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior });
+        }, 50);
+    }, []);
+
+    // Scroll to bottom when messages change
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages.length, scrollToBottom]);
 
     // Load conversations and canned responses from API
     useEffect(() => {
@@ -145,17 +201,23 @@ export default function InboxPage() {
                 if (result.success && result.data) {
                     const conv = result.data;
                     const msgs = (conv.messages || []).map((m: any) => {
-                        // Determine sender: inbound = customer, outbound with agent metadata = agent, else = AI
-                        const isInbound = m.direction === 'inbound' || m.sender === 'customer';
-                        const isHumanAgent = !isInbound && (m.sender === 'agent' || m.metadata?.source === 'agent');
+                        // FIX: Use direction field — 'inbound' = customer, 'outbound' = AI/agent
+                        // The API returns direction aliased as 'sender' in SQL, so check both fields
+                        const dir = m.direction || m.sender;
+                        const isInbound = dir === 'inbound';
+                        // For outbound, check metadata to distinguish human agent vs AI
+                        const isHumanAgent = !isInbound && (m.metadata?.source === 'agent');
                         return {
-                        id: m.id,
-                        content: m.content_text || m.content || '',
-                        sender: isInbound ? 'customer' : (isHumanAgent ? 'agent' : 'ai'),
-                        senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? 'Agente' : 'IA'),
-                        timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '',
-                        type: m.content_type || 'text',
-                    }; });
+                            id: m.id,
+                            content: m.content_text || m.content || '',
+                            direction: isInbound ? 'inbound' : 'outbound',
+                            senderLabel: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
+                            senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? 'Agente' : 'IA'),
+                            timestamp: m.created_at ? formatTime(m.created_at) : '',
+                            rawDate: m.created_at || '',
+                            type: m.content_type || 'text',
+                        };
+                    });
                     setMessages(msgs);
                     // Update notes from conversation data if available
                     if (conv.notes) {
@@ -166,6 +228,8 @@ export default function InboxPage() {
                             createdAt: n.created_at ? new Date(n.created_at).toLocaleDateString('es-CO') : '',
                         })));
                     }
+                    // Scroll to bottom instantly on load
+                    scrollToBottom("instant");
                 }
             } catch (err) {
                 console.error('Failed to load conversation:', err);
@@ -173,7 +237,7 @@ export default function InboxPage() {
             }
         }
         loadMessages();
-    }, [activeTenantId, selectedConv?.id]);
+    }, [activeTenantId, selectedConv?.id, scrollToBottom]);
 
     // WebSocket real-time updates
     useEffect(() => {
@@ -201,15 +265,17 @@ export default function InboxPage() {
         socket.on('newMessage', (payload: any) => {
             const { conversationId, message } = payload;
 
-            // Normalize message for UI
+            // FIX: Use direction field — 'inbound' = customer, 'outbound' = AI/agent
             const isInbound = message.direction === 'inbound';
-            const isHumanAgent = !isInbound && (message.sender === 'agent' || message.metadata?.source === 'agent');
+            const isHumanAgent = !isInbound && (message.metadata?.source === 'agent');
             const uiMsg = {
                 id: message.id,
                 content: message.content_text || message.content || '',
-                sender: isInbound ? 'customer' : (isHumanAgent ? 'agent' : 'ai'),
+                direction: isInbound ? 'inbound' : 'outbound',
+                senderLabel: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
                 senderName: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
-                timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+                timestamp: message.created_at ? formatTime(message.created_at) : new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+                rawDate: message.created_at || new Date().toISOString(),
                 type: message.content_type || 'text',
             };
 
@@ -392,10 +458,15 @@ export default function InboxPage() {
         setMessageInput("");
         setShowCannedMenu(false);
         // Optimistic add to local messages
+        const now = new Date();
         setMessages(prev => [...prev, {
-            id: `msg_${Date.now()}`, sender: "agent" as const, content,
+            id: `msg_${Date.now()}`,
+            direction: 'outbound',
+            content,
+            senderLabel: 'Agente',
             senderName: user?.firstName || 'Agente',
-            timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+            timestamp: now.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+            rawDate: now.toISOString(),
             type: 'text',
         }]);
         setSelectedConv((prev: any) => ({ ...prev, lastMessage: content }));
@@ -427,11 +498,35 @@ export default function InboxPage() {
         }
     };
 
+    // --- Build messages with date separators ---
+    const messagesWithSeparators = useMemo(() => {
+        const result: any[] = [];
+        let lastDateKey = "";
+        for (const msg of messages) {
+            const dateKey = getDateKey(msg.rawDate);
+            if (dateKey && dateKey !== lastDateKey) {
+                result.push({ _type: "date-separator", date: msg.rawDate, key: `sep-${dateKey}` });
+                lastDateKey = dateKey;
+            }
+            result.push(msg);
+        }
+        return result;
+    }, [messages]);
+
 
     return (
         <div style={{ display: "flex", height: "calc(100vh - 64px)", margin: "-32px -40px", overflow: "hidden" }}>
-            {/* Keyframes for spinner animation */}
-            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+            {/* Keyframes for animations */}
+            <style>{`
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+                .inbox-msg-bubble { animation: fadeIn 0.2s ease-out; }
+                .inbox-conv-item:hover { background: var(--bg-tertiary) !important; }
+                .inbox-scrollbar::-webkit-scrollbar { width: 6px; }
+                .inbox-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .inbox-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+                .inbox-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+            `}</style>
 
             {/* ======== LEFT: Conversation List ======== */}
             <div style={{
@@ -440,9 +535,28 @@ export default function InboxPage() {
             }}>
                 {/* Header */}
                 <div style={{ padding: "16px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 12px" }}>Inbox</h2>
-                        <DataSourceBadge isLive={isLive} />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Inbox</h2>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {/* Notification Bell */}
+                            <div style={{ position: "relative", cursor: "pointer" }}>
+                                <Bell size={20} color="var(--text-secondary)" />
+                                {totalUnread > 0 && (
+                                    <span style={{
+                                        position: "absolute", top: -6, right: -8,
+                                        background: "#e74c3c", color: "white",
+                                        fontSize: 10, fontWeight: 700,
+                                        borderRadius: 10, padding: "1px 5px",
+                                        minWidth: 16, textAlign: "center",
+                                        lineHeight: "14px",
+                                        boxShadow: "0 0 0 2px var(--bg-secondary)",
+                                    }}>
+                                        {totalUnread > 99 ? "99+" : totalUnread}
+                                    </span>
+                                )}
+                            </div>
+                            <DataSourceBadge isLive={isLive} />
+                        </div>
                     </div>
 
                     {/* Search */}
@@ -484,10 +598,14 @@ export default function InboxPage() {
                 </div>
 
                 {/* Conversation List */}
-                <div style={{ flex: 1, overflow: "auto" }}>
-                    {filteredConversations.map(conv => (
+                <div className="inbox-scrollbar" style={{ flex: 1, overflow: "auto" }}>
+                    {filteredConversations.map(conv => {
+                        const hasUnread = (conv.unreadCount || 0) > 0;
+                        const isSelected = selectedConv?.id === conv.id;
+                        return (
                         <div
                             key={conv.id}
+                            className="inbox-conv-item"
                             onClick={() => {
                                 setSelectedConv(conv);
                                 // Clear unread badge when selecting
@@ -497,28 +615,47 @@ export default function InboxPage() {
                             }}
                             style={{
                                 padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
-                                background: selectedConv?.id === conv.id ? "var(--accent-glow)" : "transparent",
+                                background: isSelected ? "var(--accent-glow)" : "transparent",
                                 transition: "background 0.15s ease",
                             }}
                         >
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flex: 1 }}>
-                                    {/* Avatar */}
-                                    <div style={{
-                                        width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
-                                        background: `linear-gradient(135deg, ${priorityColors[conv.priority]}, ${priorityColors[conv.priority]}88)`,
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        fontSize: 16, fontWeight: 700, color: "white",
-                                    }}>
-                                        {conv.contactName.charAt(0)}
+                                    {/* Avatar with unread green dot */}
+                                    <div style={{ position: "relative", flexShrink: 0 }}>
+                                        <div style={{
+                                            width: 40, height: 40, borderRadius: "50%",
+                                            background: `linear-gradient(135deg, ${priorityColors[conv.priority]}, ${priorityColors[conv.priority]}88)`,
+                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                            fontSize: 16, fontWeight: 700, color: "white",
+                                        }}>
+                                            {conv.contactName.charAt(0)}
+                                        </div>
+                                        {hasUnread && !isSelected && (
+                                            <div style={{
+                                                position: "absolute", bottom: 0, right: 0,
+                                                width: 12, height: 12, borderRadius: "50%",
+                                                background: "#2ecc71",
+                                                border: "2px solid var(--bg-secondary)",
+                                            }} />
+                                        )}
                                     </div>
                                     <div style={{ overflow: "hidden", flex: 1 }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                            <span style={{ fontWeight: 600, fontSize: 14 }}>{conv.contactName}</span>
+                                            <span style={{
+                                                fontWeight: hasUnread ? 700 : 600,
+                                                fontSize: 14,
+                                                color: hasUnread ? "var(--text-primary)" : undefined,
+                                            }}>
+                                                {conv.contactName}
+                                            </span>
                                             {conv.isAiHandled && <Bot size={14} color="var(--accent)" />}
                                         </div>
                                         <div style={{
-                                            fontSize: 12, color: "var(--text-secondary)", marginTop: 2,
+                                            fontSize: 12,
+                                            color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
+                                            fontWeight: hasUnread ? 500 : 400,
+                                            marginTop: 2,
                                             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                                         }}>
                                             {conv.lastMessage}
@@ -528,10 +665,11 @@ export default function InboxPage() {
                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
                                     <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{conv.lastMessageAt}</span>
                                     <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                                        {conv.unreadCount > 0 && (
+                                        {hasUnread && (
                                             <span style={{
-                                                background: "var(--accent)", color: "white", fontSize: 10,
+                                                background: "#2ecc71", color: "white", fontSize: 10,
                                                 borderRadius: 10, padding: "1px 6px", fontWeight: 700,
+                                                minWidth: 18, textAlign: "center",
                                             }}>
                                                 {conv.unreadCount}
                                             </span>
@@ -559,7 +697,8 @@ export default function InboxPage() {
                                 </div>
                             )}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
@@ -628,22 +767,52 @@ export default function InboxPage() {
                         >
                             {assignLoading
                                 ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Asignando...</>
-                                : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mí' : 'Asignarme'}</>
+                                : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mi' : 'Asignarme'}</>
                             }
                         </button>
                     </div>
                 </div>
 
-                {/* Messages */}
-                <div style={{ flex: 1, overflow: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
-                    {messages.map(msg => {
-                        const isCustomer = msg.sender === "customer";
-                        const isSystem = msg.sender === "system";
-                        const isAi = msg.sender === "ai";
-
-                        if (isSystem) {
+                {/* Messages Area */}
+                <div
+                    ref={messagesContainerRef}
+                    className="inbox-scrollbar"
+                    style={{
+                        flex: 1, overflow: "auto", padding: "16px 24px",
+                        display: "flex", flexDirection: "column", gap: 4,
+                        backgroundImage: "radial-gradient(circle at 20% 80%, rgba(108, 92, 231, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(46, 204, 113, 0.03) 0%, transparent 50%)",
+                    }}
+                >
+                    {messagesWithSeparators.map((item: any) => {
+                        // Date separator
+                        if (item._type === "date-separator") {
                             return (
-                                <div key={msg.id} style={{
+                                <div key={item.key} style={{
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    padding: "12px 0", gap: 12,
+                                }}>
+                                    <div style={{ flex: 1, height: 1, background: "var(--border)", opacity: 0.5 }} />
+                                    <span style={{
+                                        fontSize: 11, color: "var(--text-secondary)",
+                                        background: "var(--bg-primary)", padding: "4px 12px",
+                                        borderRadius: 12, fontWeight: 500,
+                                        border: "1px solid var(--border)",
+                                        textTransform: "capitalize",
+                                    }}>
+                                        {formatDateLabel(item.date)}
+                                    </span>
+                                    <div style={{ flex: 1, height: 1, background: "var(--border)", opacity: 0.5 }} />
+                                </div>
+                            );
+                        }
+
+                        const msg = item;
+                        const isInbound = msg.direction === "inbound";
+
+                        // System messages
+                        if (msg.type === "system") {
+                            return (
+                                <div key={msg.id} className="inbox-msg-bubble" style={{
                                     textAlign: "center", fontSize: 11, color: "var(--text-secondary)",
                                     padding: "8px 16px", background: "rgba(231, 76, 60, 0.08)",
                                     borderRadius: 8, margin: "4px auto", maxWidth: "80%",
@@ -656,37 +825,85 @@ export default function InboxPage() {
                         }
 
                         return (
-                            <div key={msg.id} style={{
-                                display: "flex", justifyContent: isCustomer ? "flex-start" : "flex-end",
+                            <div key={msg.id} className="inbox-msg-bubble" style={{
+                                display: "flex",
+                                justifyContent: isInbound ? "flex-start" : "flex-end",
+                                alignItems: "flex-end",
+                                gap: 6,
+                                marginBottom: 4,
                             }}>
-                                <div style={{ maxWidth: "70%" }}>
+                                {/* Customer avatar (left side) */}
+                                {isInbound && (
                                     <div style={{
-                                        fontSize: 11, color: "var(--text-secondary)", marginBottom: 2,
-                                        textAlign: isCustomer ? "left" : "right",
-                                        display: "flex", gap: 4, alignItems: "center",
-                                        justifyContent: isCustomer ? "flex-start" : "flex-end",
+                                        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                                        background: "var(--bg-tertiary)",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        marginBottom: 2,
                                     }}>
-                                        {isAi && <Bot size={12} color="var(--accent)" />}
-                                        {!isCustomer && !isAi && <User size={12} />}
-                                        {msg.senderName} · {msg.timestamp}
+                                        <User size={14} color="var(--text-secondary)" />
                                     </div>
+                                )}
+
+                                <div style={{ maxWidth: "65%" }}>
+                                    {/* Sender label + timestamp */}
                                     <div style={{
-                                        padding: "10px 14px", borderRadius: 12,
-                                        background: isCustomer ? "var(--bg-secondary)" : isAi ? "rgba(108, 92, 231, 0.15)" : "var(--accent)",
-                                        color: (!isCustomer && !isAi) ? "white" : "var(--text-primary)",
-                                        fontSize: 14, lineHeight: 1.5,
-                                        borderBottomLeftRadius: isCustomer ? 4 : 12,
-                                        borderBottomRightRadius: isCustomer ? 12 : 4,
-                                        border: isAi ? "1px solid rgba(108, 92, 231, 0.3)" : "none",
+                                        fontSize: 10, color: "var(--text-secondary)", marginBottom: 3,
+                                        textAlign: isInbound ? "left" : "right",
+                                        display: "flex", gap: 4, alignItems: "center",
+                                        justifyContent: isInbound ? "flex-start" : "flex-end",
+                                        paddingLeft: isInbound ? 4 : 0,
+                                        paddingRight: isInbound ? 0 : 4,
+                                    }}>
+                                        {!isInbound && msg.senderLabel === "IA" && <Bot size={10} color="var(--accent)" />}
+                                        {!isInbound && msg.senderLabel === "Agente" && <User size={10} />}
+                                        <span style={{ fontWeight: 600 }}>{msg.senderLabel || msg.senderName}</span>
+                                        <span style={{ opacity: 0.6 }}>{msg.timestamp}</span>
+                                    </div>
+
+                                    {/* Bubble */}
+                                    <div style={{
+                                        padding: "10px 14px",
+                                        borderRadius: 16,
+                                        // Inbound: light dark bubble, Outbound: accent-colored
+                                        background: isInbound
+                                            ? "var(--bg-secondary)"
+                                            : (msg.senderLabel === "IA" ? "rgba(108, 92, 231, 0.18)" : "var(--accent)"),
+                                        color: (!isInbound && msg.senderLabel !== "IA") ? "white" : "var(--text-primary)",
+                                        fontSize: 14, lineHeight: 1.55,
+                                        // Tail effect
+                                        borderBottomLeftRadius: isInbound ? 4 : 16,
+                                        borderBottomRightRadius: isInbound ? 16 : 4,
+                                        border: isInbound
+                                            ? "1px solid var(--border)"
+                                            : (msg.senderLabel === "IA" ? "1px solid rgba(108, 92, 231, 0.3)" : "none"),
+                                        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+                                        wordBreak: "break-word" as const,
                                     }}>
                                         {msg.content}
                                     </div>
                                 </div>
+
+                                {/* Outbound: small icon on right */}
+                                {!isInbound && (
+                                    <div style={{
+                                        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                                        background: msg.senderLabel === "IA"
+                                            ? "rgba(108, 92, 231, 0.15)"
+                                            : "rgba(108, 92, 231, 0.25)",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        marginBottom: 2,
+                                    }}>
+                                        {msg.senderLabel === "IA"
+                                            ? <Bot size={14} color="var(--accent)" />
+                                            : <User size={14} color="var(--accent)" />
+                                        }
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
 
-                    {/* AI Suggestion Banner — only when conversation is active */}
+                    {/* AI Suggestion Banner -- only when conversation is active */}
                     {selectedConv && ['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(selectedConv.status) && (
                         aiSuggestionLoading ? (
                             <div style={{
@@ -740,6 +957,12 @@ export default function InboxPage() {
                             </div>
                         ) : null
                     )}
+
+                    {/* Typing indicator area (visual placeholder for future use) */}
+                    <div style={{ minHeight: 4 }} />
+
+                    {/* Scroll anchor */}
+                    <div ref={messagesEndRef} />
                 </div>
 
                 {/* Notes Panel (conditional) */}
@@ -760,7 +983,7 @@ export default function InboxPage() {
                                 <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4 }}>— {note.agentName}, {note.createdAt}</div>
                             </div>
                         )) : (
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", opacity: 0.6 }}>No hay notas para esta conversación</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", opacity: 0.6 }}>No hay notas para esta conversacion</div>
                         )}
                         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                             <input
@@ -805,7 +1028,7 @@ export default function InboxPage() {
                                     color: "var(--text-secondary)", borderBottom: "1px solid var(--border)",
                                     display: "flex", gap: 4, alignItems: "center",
                                 }}>
-                                    <Zap size={12} /> Respuestas rápidas
+                                    <Zap size={12} /> Respuestas rapidas
                                 </div>
                                 {filteredCanned.map((cr, idx) => (
                                     <div
@@ -861,9 +1084,9 @@ export default function InboxPage() {
                             onChange={e => handleMessageInputChange(e.target.value)}
                             onKeyDown={handleInputKeyDown}
                             onBlur={() => { setTimeout(() => setShowCannedMenu(false), 150); }}
-                            placeholder="Escribe un mensaje... (/ para respuestas rápidas)"
+                            placeholder="Escribe un mensaje... (/ para respuestas rapidas)"
                             style={{
-                                width: "100%", padding: "10px 14px", borderRadius: 10,
+                                width: "100%", padding: "10px 14px", borderRadius: 20,
                                 border: "1px solid var(--border)", background: "var(--bg-tertiary)",
                                 color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box",
                             }}
@@ -875,9 +1098,10 @@ export default function InboxPage() {
                     <button
                         onClick={handleSend}
                         style={{
-                            padding: "10px", borderRadius: 10, border: "none",
+                            padding: "10px", borderRadius: "50%", border: "none",
                             background: "var(--accent)", color: "white", cursor: "pointer",
                             display: "flex", alignItems: "center", justifyContent: "center",
+                            transition: "transform 0.1s ease",
                         }}
                     >
                         <Send size={18} />
@@ -887,17 +1111,17 @@ export default function InboxPage() {
                 ) : (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", gap: 16 }}>
                         <MessageSquare size={48} opacity={0.2} />
-                        <span>Selecciona una conversación para ver los mensajes.</span>
+                        <span>Selecciona una conversacion para ver los mensajes.</span>
                     </div>
                 )}
             </div>
 
             {/* ======== RIGHT: Contact Panel ======== */}
-            <div style={{
+            <div className="inbox-scrollbar" style={{
                 width: 300, borderLeft: "1px solid var(--border)", overflow: "auto",
                 background: "var(--bg-secondary)", padding: "16px",
             }}>
-                {/* Contact Header — derived from selected conversation */}
+                {/* Contact Header -- derived from selected conversation */}
                 {selectedConv && (
                     <>
                     <div style={{ textAlign: "center", marginBottom: 20 }}>
@@ -924,7 +1148,7 @@ export default function InboxPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                             <Phone size={14} color="var(--text-secondary)" />
-                            <span>{selectedConv.contactPhone || 'Sin teléfono'}</span>
+                            <span>{selectedConv.contactPhone || 'Sin telefono'}</span>
                         </div>
                         {selectedConv.contactEmail && (
                             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
@@ -964,7 +1188,7 @@ export default function InboxPage() {
                                 <div>
                                     <div style={{ fontSize: 13, fontWeight: 500 }}>{selectedConv.assignedAgentName}</div>
                                     {selectedConv.assignedAgentId === user?.id && (
-                                        <div style={{ fontSize: 10, color: "var(--accent)" }}>Tú</div>
+                                        <div style={{ fontSize: 10, color: "var(--accent)" }}>Tu</div>
                                     )}
                                 </div>
                             </div>

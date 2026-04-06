@@ -60,9 +60,10 @@ export default function ChannelsOverviewPage() {
     useEffect(() => {
         async function load() {
             try {
-                const data = await api.fetch("/channels/overview");
-                if (Array.isArray(data)) {
-                    setConnectedChannels(data.map((ch: any) => ch.channel_type || ch.channelType));
+                const res = await api.fetch("/channels/overview");
+                const list = res?.data || res;
+                if (Array.isArray(list)) {
+                    setConnectedChannels(list.map((ch: any) => ch.channel_type || ch.channelType));
                 }
             } catch (err) {
                 console.error("Failed to load channel overview", err);

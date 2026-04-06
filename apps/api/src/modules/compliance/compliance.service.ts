@@ -32,13 +32,13 @@ export class ComplianceService {
         if (leadId) {
             return this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT * FROM consent_records WHERE lead_id = $1 ORDER BY granted_at DESC`,
+                `SELECT * FROM consent_records WHERE lead_id = $1::uuid ORDER BY created_at DESC`,
                 [leadId]
             );
         }
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM consent_records ORDER BY granted_at DESC LIMIT 100`
+            `SELECT * FROM consent_records ORDER BY created_at DESC LIMIT 100`
         );
     }
 

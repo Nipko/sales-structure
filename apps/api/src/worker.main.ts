@@ -11,6 +11,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
+(BigInt.prototype as any).toJSON = function () { return Number(this); };
+
 async function bootstrapWorker() {
     const app = await NestFactory.createApplicationContext(AppModule, {
         logger: ['error', 'warn', 'log'],

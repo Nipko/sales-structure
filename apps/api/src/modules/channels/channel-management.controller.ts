@@ -33,7 +33,7 @@ export class ChannelManagementController {
 
         return {
             success: true,
-            data: accounts.map(a => ({
+            data: accounts.map((a: any) => ({
                 id: a.id,
                 channelType: a.channelType,
                 accountId: a.accountId,

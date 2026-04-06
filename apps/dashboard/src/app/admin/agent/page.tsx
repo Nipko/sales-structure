@@ -129,8 +129,10 @@ const DAY_LABELS: Record<string, string> = {
 
 export default function AgentConfigPage() {
     const { activeTenantId } = useTenant();
+    const [mode, setMode] = useState<"wizard" | "prompt">("wizard");
     const [step, setStep] = useState(0);
     const [config, setConfig] = useState<PersonaConfig>(structuredClone(defaultConfig));
+    const [customPrompt, setCustomPrompt] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
@@ -142,7 +144,13 @@ export default function AgentConfigPage() {
         api.getPersonaConfig(activeTenantId)
             .then((res: any) => {
                 if (res?.success && res.data) {
-                    setConfig(deepMerge(structuredClone(defaultConfig), res.data));
+                    const data = res.data;
+                    setConfig(deepMerge(structuredClone(defaultConfig), data));
+                    // If a custom prompt was saved, load it and switch to prompt mode
+                    if (data._customPrompt) {
+                        setCustomPrompt(data._customPrompt);
+                        setMode("prompt");
+                    }
                 }
             })
             .catch(() => {})
@@ -233,7 +241,18 @@ export default function AgentConfigPage() {
         if (!activeTenantId) return;
         setSaving(true);
         try {
-            const res = await api.savePersonaConfig(activeTenantId, config);
+            let payload: any;
+            if (mode === "prompt") {
+                // Save the custom prompt alongside minimal config
+                payload = {
+                    ...config,
+                    _customPrompt: customPrompt,
+                    _mode: "prompt",
+                };
+            } else {
+                payload = { ...config, _customPrompt: undefined, _mode: "wizard" };
+            }
+            const res = await api.savePersonaConfig(activeTenantId, payload);
             if (res?.success) {
                 setToast("Configuración guardada exitosamente");
             } else {
@@ -717,83 +736,167 @@ export default function AgentConfigPage() {
                 </p>
             </div>
 
-            {/* Step indicator */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
-                {STEPS.map((s, i) => {
-                    const isActive = i === step;
-                    const isDone = i < step;
-                    return (
-                        <button
-                            key={i}
-                            onClick={() => setStep(i)}
-                            style={{
-                                padding: "8px 16px", borderRadius: 20,
-                                border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
-                                background: isActive ? "var(--accent)" : isDone ? "var(--accent-glow)" : "var(--bg-secondary)",
-                                color: isActive ? "#fff" : isDone ? "var(--accent)" : "var(--text-secondary)",
-                                fontSize: 13, fontWeight: 600, cursor: "pointer",
-                                display: "flex", alignItems: "center", gap: 6,
-                                transition: "all 0.2s",
-                            }}
-                        >
-                            <s.icon size={14} />
-                            {s.label}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* Step content */}
-            <div style={{ marginBottom: 24 }}>
-                {stepRenderers[step]()}
-            </div>
-
-            {/* Navigation */}
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            {/* Mode toggle */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
                 <button
-                    onClick={() => setStep(prev => prev - 1)}
-                    disabled={step === 0}
+                    onClick={() => setMode("wizard")}
                     style={{
-                        padding: "10px 20px", borderRadius: 10,
-                        border: "1px solid var(--border)",
-                        background: "var(--bg-secondary)",
-                        color: step === 0 ? "var(--border)" : "var(--text-primary)",
-                        fontSize: 14, fontWeight: 600, cursor: step === 0 ? "not-allowed" : "pointer",
-                        display: "flex", alignItems: "center", gap: 6,
+                        flex: 1, padding: "14px 20px", borderRadius: 12,
+                        border: `2px solid ${mode === "wizard" ? "var(--accent)" : "var(--border)"}`,
+                        background: mode === "wizard" ? "var(--accent-glow)" : "var(--bg-secondary)",
+                        color: mode === "wizard" ? "var(--accent)" : "var(--text-secondary)",
+                        fontSize: 14, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                        transition: "all 0.2s",
                     }}
                 >
-                    <ChevronLeft size={16} /> Anterior
+                    <Sparkles size={16} /> Wizard guiado
                 </button>
-                {step < 5 ? (
-                    <button
-                        onClick={() => setStep(prev => prev + 1)}
-                        style={{
-                            padding: "10px 20px", borderRadius: 10, border: "none",
-                            background: "var(--accent)", color: "#fff",
-                            fontSize: 14, fontWeight: 600, cursor: "pointer",
-                            display: "flex", alignItems: "center", gap: 6,
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "var(--accent-hover)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = "var(--accent)")}
-                    >
-                        Siguiente <ChevronRight size={16} />
-                    </button>
-                ) : (
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        style={{
-                            padding: "10px 20px", borderRadius: 10, border: "none",
-                            background: saving ? "var(--border)" : "var(--accent)",
-                            color: "#fff", fontSize: 14, fontWeight: 600,
-                            cursor: saving ? "not-allowed" : "pointer",
-                            display: "flex", alignItems: "center", gap: 6,
-                        }}
-                    >
-                        <Save size={16} /> {saving ? "Guardando..." : "Guardar"}
-                    </button>
-                )}
+                <button
+                    onClick={() => setMode("prompt")}
+                    style={{
+                        flex: 1, padding: "14px 20px", borderRadius: 12,
+                        border: `2px solid ${mode === "prompt" ? "var(--accent)" : "var(--border)"}`,
+                        background: mode === "prompt" ? "var(--accent-glow)" : "var(--bg-secondary)",
+                        color: mode === "prompt" ? "var(--accent)" : "var(--text-secondary)",
+                        fontSize: 14, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                        transition: "all 0.2s",
+                    }}
+                >
+                    <Brain size={16} /> Prompt personalizado
+                </button>
             </div>
+
+            {mode === "prompt" ? (
+                /* ── Prompt mode ─────────────────────────── */
+                <>
+                    <div style={{
+                        padding: 24, borderRadius: 14,
+                        background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                        marginBottom: 24,
+                    }}>
+                        <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                            <Brain size={20} color="var(--accent)" /> System Prompt personalizado
+                        </h3>
+                        <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 16px" }}>
+                            Escribe el prompt completo que recibirá el modelo de IA como instrucción del sistema.
+                            Este prompt reemplaza toda la configuración del wizard.
+                        </p>
+                        <textarea
+                            value={customPrompt}
+                            onChange={e => setCustomPrompt(e.target.value)}
+                            placeholder={`Eres Sofia Henao, asesora de ventas de Gecko Aventura Extrema.\n\nTu personalidad:\n- Tono amigable y entusiasta\n- Uso moderado de emojis\n- Siempre respondes en español colombiano\n\nReglas:\n1. Nunca inventes precios\n2. Si no puedes resolver en 3 mensajes, ofrece hablar con un humano\n3. Siempre confirma fecha y número de personas antes de cotizar\n\nHorario: Lunes a Viernes 8am-6pm, Sábados 8am-2pm (Colombia)`}
+                            style={{
+                                width: "100%", minHeight: 400, padding: "16px",
+                                borderRadius: 10, border: "1px solid var(--border)",
+                                background: "var(--bg-primary)", color: "var(--text-primary)",
+                                fontSize: 14, lineHeight: 1.6, fontFamily: "monospace",
+                                outline: "none", boxSizing: "border-box", resize: "vertical",
+                            }}
+                        />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                            <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                                {customPrompt.length} caracteres
+                            </span>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving || !customPrompt.trim()}
+                                style={{
+                                    padding: "10px 24px", borderRadius: 10, border: "none",
+                                    background: saving || !customPrompt.trim() ? "var(--border)" : "var(--accent)",
+                                    color: "#fff", fontSize: 14, fontWeight: 600,
+                                    cursor: saving || !customPrompt.trim() ? "not-allowed" : "pointer",
+                                    display: "flex", alignItems: "center", gap: 6,
+                                }}
+                            >
+                                <Save size={16} /> {saving ? "Guardando..." : "Guardar Prompt"}
+                            </button>
+                        </div>
+                    </div>
+                </>
+            ) : (
+                /* ── Wizard mode ─────────────────────────── */
+                <>
+                    {/* Step indicator */}
+                    <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
+                        {STEPS.map((s, i) => {
+                            const isActive = i === step;
+                            const isDone = i < step;
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => setStep(i)}
+                                    style={{
+                                        padding: "8px 16px", borderRadius: 20,
+                                        border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
+                                        background: isActive ? "var(--accent)" : isDone ? "var(--accent-glow)" : "var(--bg-secondary)",
+                                        color: isActive ? "#fff" : isDone ? "var(--accent)" : "var(--text-secondary)",
+                                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                        display: "flex", alignItems: "center", gap: 6,
+                                        transition: "all 0.2s",
+                                    }}
+                                >
+                                    <s.icon size={14} />
+                                    {s.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Step content */}
+                    <div style={{ marginBottom: 24 }}>
+                        {stepRenderers[step]()}
+                    </div>
+
+                    {/* Navigation */}
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <button
+                            onClick={() => setStep(prev => prev - 1)}
+                            disabled={step === 0}
+                            style={{
+                                padding: "10px 20px", borderRadius: 10,
+                                border: "1px solid var(--border)",
+                                background: "var(--bg-secondary)",
+                                color: step === 0 ? "var(--border)" : "var(--text-primary)",
+                                fontSize: 14, fontWeight: 600, cursor: step === 0 ? "not-allowed" : "pointer",
+                                display: "flex", alignItems: "center", gap: 6,
+                            }}
+                        >
+                            <ChevronLeft size={16} /> Anterior
+                        </button>
+                        {step < 5 ? (
+                            <button
+                                onClick={() => setStep(prev => prev + 1)}
+                                style={{
+                                    padding: "10px 20px", borderRadius: 10, border: "none",
+                                    background: "var(--accent)", color: "#fff",
+                                    fontSize: 14, fontWeight: 600, cursor: "pointer",
+                                    display: "flex", alignItems: "center", gap: 6,
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = "var(--accent-hover)")}
+                                onMouseLeave={e => (e.currentTarget.style.background = "var(--accent)")}
+                            >
+                                Siguiente <ChevronRight size={16} />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                style={{
+                                    padding: "10px 20px", borderRadius: 10, border: "none",
+                                    background: saving ? "var(--border)" : "var(--accent)",
+                                    color: "#fff", fontSize: 14, fontWeight: 600,
+                                    cursor: saving ? "not-allowed" : "pointer",
+                                    display: "flex", alignItems: "center", gap: 6,
+                                }}
+                            >
+                                <Save size={16} /> {saving ? "Guardando..." : "Guardar"}
+                            </button>
+                        )}
+                    </div>
+                </>
+            )}
 
             {/* Toast */}
             {toast && (

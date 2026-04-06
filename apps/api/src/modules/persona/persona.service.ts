@@ -101,6 +101,12 @@ export class PersonaService {
      * Build the system prompt from persona config
      */
     buildSystemPrompt(config: TenantConfig): string {
+        // If a custom prompt was provided, use it directly
+        const customPrompt = (config as any)._customPrompt;
+        if (customPrompt && (config as any)._mode === 'prompt') {
+            return customPrompt;
+        }
+
         const persona = config.persona;
         const behavior = config.behavior;
 

@@ -167,7 +167,7 @@ export class AgentConsoleService {
 
         const notes = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT n.id, n.content, n.created_at, u.name as agent_name
+            `SELECT n.id, n.content, n.created_at, TRIM(u.first_name || ' ' || u.last_name) as agent_name
        FROM internal_notes n
        LEFT JOIN public.users u ON n.agent_id = u.id
        WHERE n.conversation_id = $1::uuid ORDER BY n.created_at ASC`,

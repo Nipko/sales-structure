@@ -70,7 +70,7 @@ export class AuditService {
         const offset = (page - 1) * limit;
 
         let query = `
-            SELECT al.*, u.name as actor_name
+            SELECT al.*, TRIM(u.first_name || ' ' || u.last_name) as actor_name
             FROM audit_logs al
             LEFT JOIN users u ON u.id = al.actor_id::uuid
             WHERE al.tenant_id = $1

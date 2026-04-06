@@ -192,7 +192,7 @@ export class HandoffService {
     private async tryAutoAssign(tenantId: string, schemaName: string, conversationId: string): Promise<string | null> {
         try {
             const agents = await this.prisma.$queryRawUnsafe(`
-                SELECT u.id, u.name,
+                SELECT u.id, TRIM(u.first_name || ' ' || u.last_name) as name,
                     (SELECT COUNT(*) FROM "${schemaName}".conversations c
                      WHERE c.assigned_to = u.id::text AND c.status = 'with_human') as active_count
                 FROM public.users u

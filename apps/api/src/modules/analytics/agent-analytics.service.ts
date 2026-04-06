@@ -146,7 +146,7 @@ export class AgentAnalyticsService {
             schema,
             `SELECT
         ca.agent_id,
-        u.name as agent_name,
+        TRIM(u.first_name || ' ' || u.last_name) as agent_name,
         COUNT(*) as total_conversations,
         COUNT(*) FILTER (WHERE ca.resolved_at IS NOT NULL) as resolved,
         COUNT(*) FILTER (WHERE ca.resolved_at IS NULL) as active,
@@ -162,7 +162,7 @@ export class AgentAnalyticsService {
          WHERE m.sender = 'agent') as messages_handled
        FROM conversation_assignments ca
        LEFT JOIN public.users u ON ca.agent_id = u.id
-       GROUP BY ca.agent_id, u.name
+       GROUP BY ca.agent_id, u.first_name, u.last_name
        ORDER BY resolved DESC`,
         );
 
@@ -187,7 +187,7 @@ export class AgentAnalyticsService {
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT cs.*, ct.name as contact_name, u.name as agent_name
+            `SELECT cs.*, ct.name as contact_name, TRIM(u.first_name || ' ' || u.last_name) as agent_name
        FROM csat_surveys cs
        LEFT JOIN contacts ct ON cs.contact_id = ct.id
        LEFT JOIN public.users u ON cs.agent_id = u.id

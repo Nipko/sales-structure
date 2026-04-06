@@ -61,8 +61,8 @@ export class ActivityService {
             ),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT 'event' as event_type, id, created_at, event_type as description, NULL as actor
-                 FROM analytics_events WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-                [leadId]
+                 FROM analytics_events WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
+                [contactId]
             ),
             contactId
                 ? this.prisma.executeInTenantSchema<any[]>(schema,

@@ -30,16 +30,16 @@ export class TasksService {
         if (!schema) throw new Error('Tenant not found');
 
         const { leadId, assignedTo, status } = filters;
-        let query = `SELECT * FROM ${schema}.tasks WHERE 1=1`;
+        let query = `SELECT * FROM tasks WHERE 1=1`;
         const params: any[] = [];
         let paramCount = 1;
 
         if (leadId) {
-            query += ` AND lead_id = $${paramCount++}`;
+            query += ` AND lead_id = $${paramCount++}::uuid`;
             params.push(leadId);
         }
         if (assignedTo) {
-            query += ` AND assigned_to = $${paramCount++}`;
+            query += ` AND assigned_to = $${paramCount++}::uuid`;
             params.push(assignedTo);
         }
         if (status) {

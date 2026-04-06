@@ -278,6 +278,13 @@ jobs:
                 );
               " || true
 
+            echo "===> Ensuring users.name generated column exists..."
+            docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+              psql -U parallext -d parallext_engine -c "
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS name TEXT
+                  GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED;
+              " || true
+
             echo "===> Running Prisma public schema migrations..."
             docker compose -f infra/docker/docker-compose.prod.yml \
               run --rm \

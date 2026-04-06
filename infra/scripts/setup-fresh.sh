@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users(tenant_id);
 
+-- Generated column so raw SQL queries can use u.name
+ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT
+    GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED;
+
 CREATE TABLE IF NOT EXISTS channel_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

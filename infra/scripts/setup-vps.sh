@@ -1,122 +1,127 @@
 #!/bin/bash
 # ============================================
-# Parallext Engine — VPS Setup Script
-# Run this on the VPS after the first deploy:
-#   bash /opt/parallext-engine/infra/scripts/setup-vps.sh
+# Parallext Engine — VPS Initial Setup
+# Run on a fresh Hostinger Ubuntu VPS:
+#   cd /opt/parallext-engine && bash infra/scripts/setup-vps.sh
+#
+# Prerequisites: Docker + Docker Compose installed
 # ============================================
 
 set -e
 cd /opt/parallext-engine
 
-echo "🔧 Configurando Parallext Engine en el VPS..."
+echo ""
+echo "=========================================="
+echo "  PARALLEXT ENGINE — VPS INITIAL SETUP"
+echo "=========================================="
+echo ""
 
-# 1. Generar JWT secrets aleatorios
-JWT_SECRET=$(openssl rand -base64 48)
-JWT_REFRESH_SECRET=$(openssl rand -base64 48)
-ENCRYPTION_KEY=$(openssl rand -hex 16)
+# ---- 1. Generate secrets ----
+echo "===> [1/5] Generating secrets..."
+INTERNAL_JWT_SECRET=$(openssl rand -base64 48)
+ENCRYPTION_KEY=$(openssl rand -hex 32)   # 64 hex chars = 32 bytes for AES-256-GCM
+INTERNAL_API_KEY=$(openssl rand -base64 32)
+DB_PASSWORD="p4r4ll3xt$(openssl rand -hex 4)"
+echo "  [OK] Secrets generated"
 
-echo "🔑 Secrets generados correctamente"
-
-# 2. Crear .env de producción
+# ---- 2. Create production .env ----
+echo "===> [2/5] Creating .env..."
 cat > .env << EOF
 # ============================================
-# Parallext Engine - Production Configuration
-# VPS: 31.97.99.73 | Domain: parallly-chat.cloud
+# Parallext Engine — Production Configuration
 # Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # ============================================
 
-# ---- Application ----
+# ---- General ----
 NODE_ENV=production
-PORT=3000
-API_URL=https://api.parallly-chat.cloud
-DASHBOARD_URL=https://admin.parallly-chat.cloud
+LOG_LEVEL=info
 
 # ---- Database (PostgreSQL) ----
-DATABASE_URL=postgresql://parallext:p4r4ll3xt9877*.@postgres:5432/parallext_engine
-DATABASE_HOST=postgres
-DATABASE_PORT=5432
-DATABASE_USER=parallext
-DATABASE_PASSWORD=p4r4ll3xt9877*.
-DATABASE_NAME=parallext_engine
-DB_PASSWORD=p4r4ll3xt9877*.
+DATABASE_URL=postgresql://parallext:${DB_PASSWORD}@postgres:5432/parallext_engine
+DB_PASSWORD=${DB_PASSWORD}
 
 # ---- Redis ----
-REDIS_URL=redis://redis:6379
 REDIS_HOST=redis
 REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# ---- Authentication (auto-generated) ----
-JWT_SECRET=${JWT_SECRET}
-JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-JWT_EXPIRATION=15m
-JWT_REFRESH_EXPIRATION=7d
+# ---- Authentication ----
+# Shared JWT secret between API and WhatsApp services
+INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET}
 
-# ---- LLM Providers (add your keys) ----
-OPENAI_API_KEY=sk-your-openai-key
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
-GOOGLE_AI_API_KEY=your-google-ai-key
-XAI_API_KEY=your-xai-grok-key
-DEEPSEEK_API_KEY=your-deepseek-key
-
-# ---- Embeddings ----
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_DIMENSIONS=1536
-
-# ---- WhatsApp (Meta Cloud API) ----
-WHATSAPP_VERIFY_TOKEN=parallext-whatsapp-verify-2026
-WHATSAPP_APP_SECRET=your-meta-app-secret
-
-# ---- Cloudflare R2 (Object Storage) ----
-R2_ACCOUNT_ID=your-cloudflare-account-id
-R2_ACCESS_KEY_ID=your-r2-access-key
-R2_SECRET_ACCESS_KEY=your-r2-secret-key
-R2_BUCKET_NAME=parallext-media
-R2_PUBLIC_URL=https://media.parallext.com
-
-# ---- Chatwoot ----
-CHATWOOT_URL=https://chatwoot.parallly-chat.cloud
-CHATWOOT_API_TOKEN=your-chatwoot-api-token
-CHATWOOT_ACCOUNT_ID=1
-
-# ---- Encryption (auto-generated) ----
+# ---- Encryption (AES-256-GCM for WhatsApp tokens) ----
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
-# ---- Backup ----
-BACKUP_RETENTION_DAYS=30
-BACKUP_SCHEDULE=0 2 * * *
+# ---- Internal Service-to-Service Auth ----
+API_INTERNAL_URL=http://api:3000/api/v1
+INTERNAL_API_KEY=${INTERNAL_API_KEY}
+
+# ---- Meta / WhatsApp Cloud API ----
+# Fill these from your Meta Developer App:
+META_APP_ID=CHANGE_ME
+META_APP_SECRET=CHANGE_ME
+META_VERIFY_TOKEN=CHANGE_ME
+META_CONFIG_ID=CHANGE_ME
+WHATSAPP_VERIFY_TOKEN=CHANGE_ME
+# System User ID from business.facebook.com → Settings → System Users
+SYSTEM_USER_ID=
+
+# ---- AI Providers (at least one required) ----
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GOOGLE_GENERATIVE_AI_API_KEY=
+XAI_API_KEY=
+DEEPSEEK_API_KEY=
+
+# ---- Frontend URLs ----
+NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1
+NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1
+NEXT_PUBLIC_META_APP_ID=CHANGE_ME
+NEXT_PUBLIC_META_CONFIG_ID=CHANGE_ME
+DASHBOARD_URL=https://admin.parallly-chat.cloud
+
+# ---- Cloudflare Tunnel ----
+CLOUDFLARE_TUNNEL_TOKEN=CHANGE_ME
 EOF
 
-echo "📝 Archivo .env creado con JWT secrets auto-generados"
+chmod 600 .env
+echo "  [OK] .env created and secured"
 
-# 3. Verificar que Docker está corriendo
-echo "🐳 Reiniciando stack con la nueva configuración..."
-docker compose -f infra/docker/docker-compose.prod.yml down || true
-docker compose -f infra/docker/docker-compose.prod.yml up -d --build
+# ---- 3. Start infrastructure (postgres + redis) ----
+echo "===> [3/5] Starting PostgreSQL and Redis..."
+docker compose -f infra/docker/docker-compose.prod.yml up -d postgres redis
+echo "  Waiting for PostgreSQL..."
+for i in $(seq 1 20); do
+    if docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres pg_isready -U parallext > /dev/null 2>&1; then
+        echo "  [OK] PostgreSQL ready"
+        break
+    fi
+    [ $i -eq 20 ] && { echo "  [ERROR] PostgreSQL not ready after 20s"; exit 1; }
+    sleep 1
+done
 
-# 4. Esperar a que arranquen
-echo "⏳ Esperando 15 segundos para que los servicios arranquen..."
-sleep 15
+# ---- 4. Run fresh database setup ----
+echo "===> [4/5] Running fresh database setup..."
+bash infra/scripts/setup-fresh.sh
 
-# 5. Verificar estado
-echo ""
-echo "📊 Estado de los contenedores:"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-# 6. Seed de la base de datos (Gecko Aventura)
-echo ""
-echo "🦎 Ejecutando seed de Gecko Aventura..."
-docker exec parallext-postgres psql -U parallext -d parallext_engine -f /dev/stdin < apps/api/prisma/seed-gecko.sql 2>/dev/null && echo "✅ Seed ejecutado" || echo "⚠️  Seed ya ejecutado previamente o DB aún arrancando. Re-intenta en 30s."
+# ---- 5. Start remaining services + tunnel ----
+echo "===> [5/5] Starting all services..."
+docker compose -f infra/docker/docker-compose.prod.yml up -d
 
 echo ""
-echo "============================================"
-echo "✅ SETUP COMPLETADO"
-echo "============================================"
+echo "=========================================="
+echo "  VPS SETUP COMPLETE"
+echo "=========================================="
 echo ""
-echo "🌐 Dashboard: https://admin.parallly-chat.cloud"
-echo "🔌 API:       https://api.parallly-chat.cloud"
+echo "  Dashboard: https://admin.parallly-chat.cloud"
+echo "  API:       https://api.parallly-chat.cloud"
+echo "  WhatsApp:  https://wa.parallly-chat.cloud"
 echo ""
-echo "⚠️  PENDIENTE: Edita /opt/parallext-engine/.env para agregar:"
-echo "   - Tus API keys de LLM (OpenAI, Anthropic, Google, etc.)"
-echo "   - Credenciales de WhatsApp Meta"
-echo "   - Luego reinicia: docker compose -f infra/docker/docker-compose.prod.yml restart"
+echo "  Login:     admin@parallext.com / Parallext2026!"
+echo ""
+echo "  IMPORTANT: Edit /opt/parallext-engine/.env to add:"
+echo "    - Meta/WhatsApp credentials (META_APP_ID, META_APP_SECRET, etc.)"
+echo "    - At least one AI provider API key"
+echo "    - Cloudflare Tunnel token"
+echo "  Then restart: docker compose -f infra/docker/docker-compose.prod.yml restart"
 echo ""

@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
 CREATE UNIQUE INDEX IF NOT EXISTS "users_email_key" ON "public"."users"("email");
 CREATE INDEX IF NOT EXISTS "users_tenant_id_idx" ON "public"."users"("tenant_id");
 
+-- Generated column so raw SQL queries can reference u.name
+ALTER TABLE "public"."users" ADD COLUMN IF NOT EXISTS "name" TEXT
+    GENERATED ALWAYS AS (TRIM("first_name" || ' ' || "last_name")) STORED;
+
 ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey"
     FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

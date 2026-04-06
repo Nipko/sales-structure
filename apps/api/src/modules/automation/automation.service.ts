@@ -83,18 +83,40 @@ export class AutomationService {
     }
 
     private evaluateConditions(conditions: any, payload: any): boolean {
-        // Very simple condition evaluator for Sprint 2
-        // E.g., { "campaignId": "uuid" } must match payload.campaignId
-        if (!conditions || Object.keys(conditions).length === 0) return true; // generic rule
+        if (!conditions) return true;
 
-        // Check if all conditions match
-        for (const [key, expectedValue] of Object.entries(conditions)) {
-            if (payload[key] !== expectedValue) {
-                return false;
-            }
+        // New structured format: [{ field, operator, value }]
+        if (Array.isArray(conditions)) {
+            if (conditions.length === 0) return true;
+            return conditions.every((c: any) => this.evaluateCondition(c, payload));
         }
 
+        // Legacy format: { key: value } — simple equality
+        if (typeof conditions === 'object' && Object.keys(conditions).length === 0) return true;
+        for (const [key, expectedValue] of Object.entries(conditions)) {
+            if (payload[key] !== expectedValue) return false;
+        }
         return true;
+    }
+
+    private evaluateCondition(condition: { field: string; operator: string; value: string }, payload: any): boolean {
+        const actual = payload[condition.field];
+        const expected = condition.value;
+
+        switch (condition.operator) {
+            case 'equals':
+                return String(actual) === String(expected);
+            case 'not_equals':
+                return String(actual) !== String(expected);
+            case 'greater_than':
+                return Number(actual) > Number(expected);
+            case 'less_than':
+                return Number(actual) < Number(expected);
+            case 'contains':
+                return String(actual || '').toLowerCase().includes(String(expected).toLowerCase());
+            default:
+                return String(actual) === String(expected);
+        }
     }
 
     // ─── CRUD for Rules ───────────────────────────────────────────────────────
@@ -141,7 +163,7 @@ export class AutomationService {
             schemaName,
             `UPDATE automation_rules
              SET active = COALESCE($2, NOT active), updated_at = CURRENT_TIMESTAMP
-             WHERE id = $1
+             WHERE id = $1::uuid
              RETURNING *`,
             [ruleId, isActive ?? null]
         );
@@ -149,10 +171,42 @@ export class AutomationService {
         return rows[0] || null;
     }
 
+    async updateRule(schemaName: string, ruleId: string, payload: any) {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE automation_rules
+             SET name = $2, trigger_type = $3,
+                 conditions_json = $4::jsonb, actions_json = $5::jsonb,
+                 active = $6, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1::uuid
+             RETURNING *`,
+            [
+                ruleId,
+                payload.name,
+                payload.trigger_type,
+                JSON.stringify(payload.conditions_json || []),
+                JSON.stringify(payload.actions_json || []),
+                payload.active ?? true,
+            ],
+        );
+        return rows?.[0] || null;
+    }
+
+    async getExecutions(schemaName: string, ruleId: string) {
+        return this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT * FROM automation_executions
+             WHERE rule_id = $1::uuid
+             ORDER BY started_at DESC
+             LIMIT 50`,
+            [ruleId],
+        );
+    }
+
     async deleteRule(schemaName: string, ruleId: string) {
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `DELETE FROM automation_rules WHERE id = $1`,
+            `DELETE FROM automation_rules WHERE id = $1::uuid`,
             [ruleId]
         );
     }

@@ -53,6 +53,29 @@ export class AutomationController {
         return { success: true, data: updated };
     }
 
+    @Put('rules/:tenantId/:ruleId')
+    @ApiOperation({ summary: 'Update an automation rule' })
+    async updateRule(
+        @Param('tenantId') tenantId: string,
+        @Param('ruleId') ruleId: string,
+        @Body() payload: any,
+    ) {
+        const schemaName = await this.schemaFor(tenantId);
+        const updated = await this.automationService.updateRule(schemaName, ruleId, payload);
+        return { success: true, data: updated };
+    }
+
+    @Get('rules/:tenantId/:ruleId/executions')
+    @ApiOperation({ summary: 'Get execution history for a rule' })
+    async getExecutions(
+        @Param('tenantId') tenantId: string,
+        @Param('ruleId') ruleId: string,
+    ) {
+        const schemaName = await this.schemaFor(tenantId);
+        const executions = await this.automationService.getExecutions(schemaName, ruleId);
+        return { success: true, data: executions };
+    }
+
     @Delete('rules/:tenantId/:ruleId')
     @ApiOperation({ summary: 'Delete an automation rule' })
     async deleteRule(

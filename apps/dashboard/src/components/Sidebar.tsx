@@ -35,7 +35,7 @@ const navItems = [
     { href: "/admin/catalog/campaigns", label: "Campañas", icon: Megaphone },
     { href: "/admin/compliance", label: "Compliance", icon: Shield },
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },
-    { href: "/admin/carla", label: "Carla AI", icon: Bot },
+    { href: "/admin/agent", label: "Agente IA", icon: Bot },
     { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/admin/channels/whatsapp", label: "WhatsApp Business", icon: Phone },
     { href: "/admin/users", label: "Usuarios", icon: Users },

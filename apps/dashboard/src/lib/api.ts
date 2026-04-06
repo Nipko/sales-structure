@@ -141,6 +141,22 @@ export const api = {
     deleteRule: (tenantId: string, ruleId: string) =>
         apiDelete(`/automation/rules/${tenantId}/${ruleId}`),
 
+    updateRule: (tenantId: string, ruleId: string, data: any) =>
+        apiPut(`/automation/rules/${tenantId}/${ruleId}`, data),
+
+    getRuleExecutions: (tenantId: string, ruleId: string) =>
+        apiGet(`/automation/rules/${tenantId}/${ruleId}/executions`),
+
+    // --- Persona / Agent Config ---
+    getPersonaConfig: (tenantId: string) =>
+        apiGet(`/persona/${tenantId}/active`),
+
+    getPersonaVersions: (tenantId: string) =>
+        apiGet(`/persona/${tenantId}/versions`),
+
+    savePersonaConfig: (tenantId: string, config: any) =>
+        apiPut(`/persona/${tenantId}`, config),
+
     getSLAViolations: (tenantId: string) =>
         apiGet(`/pipeline/automation/${tenantId}/sla-violations`),
 

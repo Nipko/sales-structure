@@ -24,21 +24,32 @@ export class PersonaService {
      * Load the active persona config for a tenant.
      * Checks Redis cache first, then database.
      */
-    async getActivePersona(tenantId: string): Promise<TenantConfig | null> {
+    async getActivePersona(tenantId: string): Promise<TenantConfig> {
         // Check cache
         const cacheKey = `persona:${tenantId}:active`;
         const cached = await this.redis.getJson<TenantConfig>(cacheKey);
         if (cached) return cached;
 
         // Load from database
-        const schemaName = await this.tenantsService.getSchemaName(tenantId);
-        const result = await this.prisma.$queryRawUnsafe(
-            `SELECT config_json FROM "${schemaName}".persona_config WHERE is_active = true ORDER BY version DESC LIMIT 1`,
-        ) as any[];
+        let config: TenantConfig | null = null;
+        try {
+            const schemaName = await this.tenantsService.getSchemaName(tenantId);
+            const result = await this.prisma.$queryRawUnsafe(
+                `SELECT config_json FROM "${schemaName}".persona_config WHERE is_active = true ORDER BY version DESC LIMIT 1`,
+            ) as any[];
 
-        if (!result || result.length === 0) return null;
+            if (result && result.length > 0) {
+                config = result[0].config_json as TenantConfig;
+            }
+        } catch (e: any) {
+            this.logger.warn(`Could not load persona for tenant ${tenantId}: ${e.message}`);
+        }
 
-        const config = result[0].config_json as TenantConfig;
+        // Fallback: use default persona so new tenants work immediately
+        if (!config) {
+            this.logger.log(`Using default persona for tenant ${tenantId} (no persona_config found)`);
+            config = this.buildDefaultPersona(tenantId);
+        }
 
         // Cache for 10 minutes
         await this.redis.setJson(cacheKey, config, 600);
@@ -103,7 +114,7 @@ export class PersonaService {
         prompt += `- Humor: ${persona.personality.humor}\n\n`;
 
         // Rules
-        if (behavior.rules.length > 0) {
+        if (behavior.rules?.length > 0) {
             prompt += `## Reglas Estrictas (DEBES seguir siempre)\n`;
             behavior.rules.forEach((rule, i) => {
                 prompt += `${i + 1}. ${rule}\n`;
@@ -124,7 +135,7 @@ export class PersonaService {
         }
 
         // Forbidden topics
-        if (behavior.forbiddenTopics.length > 0) {
+        if (behavior.forbiddenTopics?.length > 0) {
             prompt += `## Temas PROHIBIDOS (nunca hablar de esto)\n`;
             behavior.forbiddenTopics.forEach((t) => {
                 prompt += `- ${t}\n`;
@@ -133,7 +144,7 @@ export class PersonaService {
         }
 
         // Handoff triggers
-        if (behavior.handoffTriggers.length > 0) {
+        if (behavior.handoffTriggers?.length > 0) {
             prompt += `## Escalar a agente humano cuando:\n`;
             behavior.handoffTriggers.forEach((t) => {
                 prompt += `- ${t}\n`;
@@ -162,6 +173,67 @@ export class PersonaService {
         return this.prisma.$queryRawUnsafe(
             `SELECT id, version, is_active, created_by, created_at FROM "${schemaName}".persona_config ORDER BY version DESC`,
         ) as Promise<any[]>;
+    }
+
+    /**
+     * Build a sensible default persona for tenants that haven't configured one yet.
+     * Uses the tenant name from the DB if available.
+     */
+    private buildDefaultPersona(tenantId: string): TenantConfig {
+        return {
+            id: tenantId,
+            name: 'Default',
+            slug: 'default',
+            industry: 'general',
+            language: 'es-CO',
+            isActive: true,
+            persona: {
+                name: 'Asistente',
+                role: 'Asistente virtual de atención al cliente',
+                personality: {
+                    tone: 'amigable, profesional',
+                    formality: 'casual-professional',
+                    emojiUsage: 'minimal',
+                    humor: 'ligero',
+                },
+                greeting: '¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte hoy?',
+                fallbackMessage: 'No tengo esa información en este momento. Déjame conectarte con alguien de nuestro equipo.',
+            },
+            behavior: {
+                rules: [
+                    'Responder siempre en español de forma clara y profesional',
+                    'Nunca inventar información que no tengas',
+                    'Si no puedes resolver la consulta, ofrecer hablar con un humano',
+                ],
+                requiredFields: {},
+                forbiddenTopics: [],
+                handoffTriggers: [
+                    'Solicitud explícita de hablar con un humano',
+                    'Quejas o reclamos formales',
+                ],
+            },
+            llm: {
+                temperature: 0.7,
+                maxTokens: 800,
+                routing: {
+                    tiers: {
+                        tier_1_premium: { models: ['gpt-4o'], costLevel: 'high' },
+                        tier_2_standard: { models: ['gpt-4o-mini'], costLevel: 'medium' },
+                        tier_3_efficient: { models: ['gpt-4o-mini'], costLevel: 'low' },
+                        tier_4_budget: { models: ['gpt-4o-mini'], costLevel: 'very_low' },
+                    },
+                    factors: {},
+                    fallback: 'auto_upgrade',
+                },
+                memory: { shortTerm: 20, longTerm: false, summaryAfter: 30 },
+            },
+            rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+            hours: {
+                timezone: 'America/Bogota',
+                schedule: {},
+                afterHoursMessage: '',
+            },
+        };
     }
 
     /**

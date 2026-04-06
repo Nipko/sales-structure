@@ -119,20 +119,35 @@ export class AutomationListenerService {
     }
 
     /**
-     * Evaluador simple de condiciones: todas las claves del JSON de condiciones
-     * deben coincidir con el payload del evento.
+     * Evaluador de condiciones con soporte para formato estructurado y legacy.
+     * Formato nuevo: [{ field, operator, value }] con operadores avanzados.
+     * Formato legacy: { key: value } con igualdad simple.
      */
     private evaluateConditions(conditions: any, event: LeadCapturedEvent): boolean {
-        if (!conditions || typeof conditions !== 'object' || Object.keys(conditions).length === 0) {
-            return true; // Sin condiciones = regla generica
+        if (!conditions) return true;
+
+        // New structured format: [{ field, operator, value }]
+        if (Array.isArray(conditions)) {
+            if (conditions.length === 0) return true;
+            return conditions.every((c: any) => {
+                const actual = (event as any)[c.field];
+                const expected = c.value;
+                switch (c.operator) {
+                    case 'equals': return String(actual) === String(expected);
+                    case 'not_equals': return String(actual) !== String(expected);
+                    case 'greater_than': return Number(actual) > Number(expected);
+                    case 'less_than': return Number(actual) < Number(expected);
+                    case 'contains': return String(actual || '').toLowerCase().includes(String(expected).toLowerCase());
+                    default: return String(actual) === String(expected);
+                }
+            });
         }
 
+        // Legacy format: { key: value }
+        if (typeof conditions !== 'object' || Object.keys(conditions).length === 0) return true;
         for (const [key, expectedValue] of Object.entries(conditions)) {
-            if ((event as any)[key] !== expectedValue) {
-                return false;
-            }
+            if ((event as any)[key] !== expectedValue) return false;
         }
-
         return true;
     }
 

@@ -144,14 +144,18 @@ export default function InboxPage() {
                 const result = await api.getConversation(activeTenantId, selectedConv.id);
                 if (result.success && result.data) {
                     const conv = result.data;
-                    const msgs = (conv.messages || []).map((m: any) => ({
+                    const msgs = (conv.messages || []).map((m: any) => {
+                        // Determine sender: inbound = customer, outbound with agent metadata = agent, else = AI
+                        const isInbound = m.direction === 'inbound' || m.sender === 'customer';
+                        const isHumanAgent = !isInbound && (m.sender === 'agent' || m.metadata?.source === 'agent');
+                        return {
                         id: m.id,
                         content: m.content_text || m.content || '',
-                        sender: m.direction === 'inbound' ? 'customer' : (m.llm_model_used ? 'ai' : 'agent'),
-                        senderName: m.direction === 'inbound' ? selectedConv.contactName : (m.llm_model_used ? 'IA' : 'Agente'),
+                        sender: isInbound ? 'customer' : (isHumanAgent ? 'agent' : 'ai'),
+                        senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? 'Agente' : 'IA'),
                         timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '',
                         type: m.content_type || 'text',
-                    }));
+                    }; });
                     setMessages(msgs);
                     // Update notes from conversation data if available
                     if (conv.notes) {
@@ -176,10 +180,13 @@ export default function InboxPage() {
         if (!activeTenantId) return;
 
         const token = localStorage.getItem("accessToken");
-        const socketUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-        
+        // Socket.io needs the base URL without /api/v1 path
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
+        const socketUrl = apiUrl.replace(/\/api\/v\d+\/?$/, '');
+
         const socket = io(`${socketUrl}/inbox`, {
-            auth: { token }
+            auth: { token },
+            transports: ['websocket', 'polling'],
         });
 
         socket.on('connect', () => {
@@ -191,23 +198,33 @@ export default function InboxPage() {
             setIsLive(false);
         });
 
-        socket.on('newMessage', (payload) => {
+        socket.on('newMessage', (payload: any) => {
             const { conversationId, message } = payload;
-            
-            // Normalize message for UI (must match shape from loadMessages)
+
+            // Normalize message for UI
+            const isInbound = message.direction === 'inbound';
+            const isHumanAgent = !isInbound && (message.sender === 'agent' || message.metadata?.source === 'agent');
             const uiMsg = {
                 id: message.id,
                 content: message.content_text || message.content || '',
-                sender: message.direction === 'inbound' ? 'customer' : (message.llm_model_used ? 'ai' : 'agent'),
-                senderName: message.direction === 'inbound' ? 'Cliente' : (message.llm_model_used ? 'IA' : 'Agente'),
+                sender: isInbound ? 'customer' : (isHumanAgent ? 'agent' : 'ai'),
+                senderName: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
                 timestamp: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
                 type: message.content_type || 'text',
             };
-            
-            // Update conversation list with latest message
+
+            // Increment unread count if this conversation is not currently selected
+            const isViewing = selectedConvIdRef.current === conversationId;
+
+            // Update conversation list with latest message + unread badge
             setConversations((prev: any[]) => prev.map(c => {
                  if (c.id === conversationId) {
-                     return { ...c, lastMessage: uiMsg.content, lastMessageAt: uiMsg.timestamp };
+                     return {
+                         ...c,
+                         lastMessage: uiMsg.content,
+                         lastMessageAt: uiMsg.timestamp,
+                         unreadCount: isViewing ? 0 : (c.unreadCount || 0) + 1,
+                     };
                  }
                  return c;
             }));
@@ -471,7 +488,13 @@ export default function InboxPage() {
                     {filteredConversations.map(conv => (
                         <div
                             key={conv.id}
-                            onClick={() => setSelectedConv(conv)}
+                            onClick={() => {
+                                setSelectedConv(conv);
+                                // Clear unread badge when selecting
+                                setConversations(prev => prev.map(c =>
+                                    c.id === conv.id ? { ...c, unreadCount: 0 } : c
+                                ));
+                            }}
                             style={{
                                 padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
                                 background: selectedConv?.id === conv.id ? "var(--accent-glow)" : "transparent",

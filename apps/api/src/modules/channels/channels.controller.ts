@@ -22,8 +22,11 @@ import { MessengerAdapter } from './messenger/messenger.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChannelType } from '@parallext/shared';
+import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { WhatsappWebhookService } from '../whatsapp/services/whatsapp-webhook.service';
+import { validateMetaSignature } from './meta-signature.util';
 
 @ApiTags('channels')
 @Controller('channels')
@@ -41,6 +44,8 @@ export class ChannelsController {
         private conversationsService: ConversationsService,
         @Inject(forwardRef(() => WhatsappWebhookService))
         private whatsappWebhookService: WhatsappWebhookService,
+        private configService: ConfigService,
+        private redis: RedisService,
     ) { }
 
     // ==========================================
@@ -92,12 +97,30 @@ export class ChannelsController {
 
     @Post('webhook/instagram')
     @ApiOperation({ summary: 'Receive Instagram DM webhook events' })
-    async receiveInstagram(@Body() body: any, @Res() res: Response) {
+    async receiveInstagram(
+        @Body() body: any,
+        @Headers('x-hub-signature-256') signature: string,
+        @Req() req: RawBodyRequest<Request>,
+        @Res() res: Response,
+    ) {
+        const appSecret = this.configService.get<string>('META_APP_SECRET') || this.configService.get<string>('WHATSAPP_APP_SECRET');
+        if (!validateMetaSignature(req.rawBody, signature, appSecret)) {
+            return res.status(401).send('Invalid signature');
+        }
+
         res.status(200).send('OK');
 
         try {
             const igUserId = body?.entry?.[0]?.id;
             if (!igUserId) return;
+
+            // Idempotency check
+            const messageId = body?.entry?.[0]?.messaging?.[0]?.message?.mid;
+            if (messageId) {
+                const idemKey = `idem:ig:${messageId}`;
+                if (await this.redis.get(idemKey)) return;
+                await this.redis.set(idemKey, '1', 86400);
+            }
 
             const channelAccount = await this.prisma.channelAccount.findFirst({
                 where: { channelType: 'instagram', accountId: igUserId, isActive: true },
@@ -135,12 +158,30 @@ export class ChannelsController {
 
     @Post('webhook/messenger')
     @ApiOperation({ summary: 'Receive Messenger webhook events' })
-    async receiveMessenger(@Body() body: any, @Res() res: Response) {
+    async receiveMessenger(
+        @Body() body: any,
+        @Headers('x-hub-signature-256') signature: string,
+        @Req() req: RawBodyRequest<Request>,
+        @Res() res: Response,
+    ) {
+        const appSecret = this.configService.get<string>('META_APP_SECRET') || this.configService.get<string>('WHATSAPP_APP_SECRET');
+        if (!validateMetaSignature(req.rawBody, signature, appSecret)) {
+            return res.status(401).send('Invalid signature');
+        }
+
         res.status(200).send('OK');
 
         try {
             const pageId = body?.entry?.[0]?.id;
             if (!pageId) return;
+
+            // Idempotency check
+            const messageId = body?.entry?.[0]?.messaging?.[0]?.message?.mid;
+            if (messageId) {
+                const idemKey = `idem:fb:${messageId}`;
+                if (await this.redis.get(idemKey)) return;
+                await this.redis.set(idemKey, '1', 86400);
+            }
 
             const channelAccount = await this.prisma.channelAccount.findFirst({
                 where: { channelType: 'messenger', accountId: pageId, isActive: true },

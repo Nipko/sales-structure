@@ -920,3 +920,49 @@ CREATE TABLE "{{SCHEMA_NAME}}"."csat_surveys" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."csat_surveys" ("agent_id");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."csat_surveys" ("rating");
+
+-- ============================================
+-- Identity Service — Unified Customer Profiles
+-- ============================================
+
+-- ---- Customer Profiles (unified identity across channels) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_profiles" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "display_name" VARCHAR(255),
+    "phone" VARCHAR(50),
+    "email" VARCHAR(255),
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "cp_phone_idx" ON "{{SCHEMA_NAME}}"."customer_profiles" ("phone");
+CREATE INDEX IF NOT EXISTS "cp_email_idx" ON "{{SCHEMA_NAME}}"."customer_profiles" ("email");
+
+-- ---- Contact Identities (links contacts to unified profiles) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."contact_identities" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "customer_profile_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."customer_profiles"("id") ON DELETE CASCADE,
+    "contact_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE CASCADE,
+    "channel_type" VARCHAR(50) NOT NULL,
+    "external_id" VARCHAR(255) NOT NULL,
+    "is_primary" BOOLEAN DEFAULT false,
+    "linked_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ci_contact_idx" ON "{{SCHEMA_NAME}}"."contact_identities" ("contact_id");
+CREATE INDEX IF NOT EXISTS "ci_profile_idx" ON "{{SCHEMA_NAME}}"."contact_identities" ("customer_profile_id");
+
+-- ---- Merge Suggestions (pending approval for cross-channel identity merge) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."merge_suggestions" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "customer_profile_id_a" UUID REFERENCES "{{SCHEMA_NAME}}"."customer_profiles"("id") ON DELETE SET NULL,
+    "customer_profile_id_b" UUID REFERENCES "{{SCHEMA_NAME}}"."customer_profiles"("id") ON DELETE SET NULL,
+    "contact_id_a" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE CASCADE,
+    "contact_id_b" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE CASCADE,
+    "match_type" VARCHAR(50) NOT NULL,
+    "confidence" DECIMAL(3,2) DEFAULT 0.00,
+    "status" VARCHAR(20) DEFAULT 'pending',
+    "reviewed_by" UUID,
+    "reviewed_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "ms_status_idx" ON "{{SCHEMA_NAME}}"."merge_suggestions" ("status");

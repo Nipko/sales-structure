@@ -12,6 +12,7 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { CrmModule } from '../crm/crm.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { AutomationModule } from '../automation/automation.module';
+import { IdentityModule } from '../identity/identity.module';
 
 @Module({
     imports: [
@@ -23,6 +24,7 @@ import { AutomationModule } from '../automation/automation.module';
         CrmModule,
         PipelineModule,
         forwardRef(() => AutomationModule),
+        IdentityModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => ({

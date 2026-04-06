@@ -14,6 +14,7 @@ import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.se
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
+import { IdentityService } from '../identity/identity.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -37,6 +38,7 @@ export class ConversationsService {
         private pipelineService: PipelineService,
         private eventEmitter: EventEmitter2,
         private nurturingService: NurturingService,
+        private identityService: IdentityService,
     ) {}
 
     /**
@@ -158,6 +160,12 @@ export class ConversationsService {
                 [contactId, channelType, msg.metadata?.contactName || 'Unknown', contactId],
             ).then(res => res[0]);
         }
+
+        // 1b. Resolve unified identity (fire-and-forget)
+        this.identityService.resolveOrCreateProfile(tenantId, {
+            id: contact.id, phone: contact.phone, email: contact.email,
+            name: contact.name, channelType, externalId: contactId,
+        }).catch(e => this.logger.warn(`Identity resolution failed (non-fatal): ${e.message}`));
 
         // 2. Find or create lead
         const contactIdStr = String(contact.id);

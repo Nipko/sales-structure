@@ -9,6 +9,7 @@ import { TelegramAdapter } from './telegram/telegram.adapter';
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.processor';
 import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
+import { ChannelManagementController } from './channel-management.controller';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
@@ -18,7 +19,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
     ],
-    controllers: [ChannelsController],
+    controllers: [ChannelsController, ChannelManagementController],
     providers: [
         ChannelGatewayService,
         WhatsAppAdapter,

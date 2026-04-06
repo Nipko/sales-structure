@@ -22,6 +22,7 @@ import {
     UserPlus,
     Workflow,
     Phone,
+    Fingerprint,
 } from "lucide-react";
 
 const navItems = [
@@ -37,7 +38,8 @@ const navItems = [
     { href: "/admin/knowledge", label: "Knowledge Base", icon: BookOpen },
     { href: "/admin/agent", label: "Agente IA", icon: Bot },
     { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
-    { href: "/admin/channels/whatsapp", label: "WhatsApp Business", icon: Phone },
+    { href: "/admin/channels", label: "Canales", icon: Phone },
+    { href: "/admin/identity", label: "Identidad", icon: Fingerprint },
     { href: "/admin/users", label: "Usuarios", icon: Users },
     { href: "/admin/settings", label: "Configuración", icon: Settings },
 ];

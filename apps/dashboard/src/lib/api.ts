@@ -157,6 +157,19 @@ export const api = {
     savePersonaConfig: (tenantId: string, config: any) =>
         apiPut(`/persona/${tenantId}`, config),
 
+    // --- Identity ---
+    getMergeSuggestions: (tenantId: string) =>
+        apiGet(`/identity/${tenantId}/suggestions`),
+
+    approveMerge: (tenantId: string, suggestionId: string) =>
+        apiPost(`/identity/${tenantId}/suggestions/${suggestionId}/approve`, {}),
+
+    rejectMerge: (tenantId: string, suggestionId: string) =>
+        apiPost(`/identity/${tenantId}/suggestions/${suggestionId}/reject`, {}),
+
+    getCustomerProfile: (tenantId: string, profileId: string) =>
+        apiGet(`/identity/${tenantId}/profiles/${profileId}`),
+
     getSLAViolations: (tenantId: string) =>
         apiGet(`/pipeline/automation/${tenantId}/sla-violations`),
 

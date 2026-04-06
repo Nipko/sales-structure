@@ -73,12 +73,15 @@ export class ConversationsService {
 
         // 2. Load Persona & Check Business Hours
         const config = await this.personaService.getActivePersona(tenantId);
+        this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
+
         if (!config) {
             this.logger.error(`No active persona found for tenant ${tenantId}`);
             return;
         }
 
         if (!this.isWithinBusinessHours(config)) {
+            this.logger.log(`[Pipeline] Outside business hours — sending after-hours message`);
             await this.sendAfterHoursMessage(tenantId, normalizedMsg, config);
             return;
         }
@@ -92,6 +95,7 @@ export class ConversationsService {
 
         // 4. Save User Message
         await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+        this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
         // 5. Check handoff triggers BEFORE generating AI response
         const handoffReason = this.handoffService.shouldHandoff(
@@ -100,7 +104,6 @@ export class ConversationsService {
         if (handoffReason) {
             this.logger.warn(`HANDOFF TRIGGERED for conversation ${conversation.id}: ${handoffReason}`);
             await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
-            // Send a message to the customer
             const handoffMsg = `Entiendo. Te comunicaré ahora mismo con nuestro equipo de asistencia humana. En un momento te responderán.`;
             await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, handoffMsg);
@@ -108,14 +111,20 @@ export class ConversationsService {
         }
 
         // 6. Generate AI Response
+        this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config);
+        this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
         // 7. Send Response via Channel Gateway
         if (response) {
+            this.logger.log(`[Pipeline] Sending response via outbound queue...`);
             await this.sendResponse(tenantId, response, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, response);
+            this.logger.log(`[Pipeline] Response sent and saved`);
+        } else {
+            this.logger.warn(`[Pipeline] No response generated — customer gets no reply`);
         }
 
         // 8. Auto-progress pipeline stage based on conversation signals
@@ -318,9 +327,12 @@ export class ConversationsService {
     private async resolveAccessToken(tenantId: string): Promise<string> {
         try {
             const creds = await this.channelToken.getWhatsAppToken(tenantId);
+            if (!creds.accessToken) {
+                this.logger.error(`[Pipeline] Access token is EMPTY for tenant ${tenantId}`);
+            }
             return creds.accessToken;
         } catch (e: any) {
-            this.logger.warn(`Could not resolve WhatsApp token for tenant ${tenantId}: ${e.message}`);
+            this.logger.error(`[Pipeline] FAILED to resolve WhatsApp token for tenant ${tenantId}: ${e.message}`);
             return '';
         }
     }
@@ -400,7 +412,7 @@ export class ConversationsService {
 
             return response.content || '[Error Generating AI Response]';
         } catch (e: any) {
-            this.logger.error(`LLM call failed: ${e.message}`);
+            this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);
 
             // Increment failed attempts for handoff threshold
             await this.prisma.executeInTenantSchema(schemaName,

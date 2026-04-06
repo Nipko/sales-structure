@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from '../persona/persona.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LeadCapturedEvent } from './events/lead-captured.event';
 
 export const AUTOMATION_JOBS_QUEUE = 'automation-jobs';
@@ -21,6 +22,7 @@ export class AutomationListenerService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly personaService: PersonaService,
+        private readonly throttle: TenantThrottleService,
         @InjectQueue(AUTOMATION_JOBS_QUEUE) private readonly automationQueue: Queue,
     ) {}
 
@@ -56,7 +58,18 @@ export class AutomationListenerService {
                 return;
             }
 
-            // 3. Evaluar y programar cada regla
+            // 3. Check tenant rate limit before queueing any jobs
+            if (await this.throttle.isLimited(event.tenantId, 'automation')) {
+                this.logger.warn(
+                    `[AutomationListener] Tenant ${event.tenantId} rate limited — skipping ${activeRules.length} rules`,
+                );
+                return;
+            }
+
+            // 4. Resolve job priority based on tenant plan
+            const priority = await this.throttle.getPriority(event.tenantId);
+
+            // 5. Evaluar y programar cada regla
             for (const rule of activeRules) {
                 const conditionsMatch = this.evaluateConditions(rule.conditions_json, event);
                 if (!conditionsMatch) {
@@ -86,7 +99,7 @@ export class AutomationListenerService {
                     const delayMs = (action.delay_seconds || 0) * 1000;
 
                     await this.automationQueue.add(
-                        action.type, // job name: 'send_template', 'create_task', 'update_stage'
+                        action.type,
                         {
                             tenantId: event.tenantId,
                             schemaName,
@@ -97,6 +110,7 @@ export class AutomationListenerService {
                             event,
                         },
                         {
+                            priority,
                             delay: delayMs,
                             attempts: 3,
                             backoff: { type: 'exponential', delay: 5000 },
@@ -106,7 +120,7 @@ export class AutomationListenerService {
                     );
 
                     this.logger.log(
-                        `[AutomationListener] Job '${action.type}' programado con delay ${delayMs}ms para regla '${rule.name}'`,
+                        `[AutomationListener] Job '${action.type}' programado (priority=${priority}, delay=${delayMs}ms) para regla '${rule.name}' tenant=${event.tenantId}`,
                     );
                 }
             }

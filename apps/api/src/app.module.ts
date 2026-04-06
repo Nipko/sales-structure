@@ -34,6 +34,7 @@ import { CarlaModule } from './modules/carla/carla.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { EmailModule } from './modules/email/email.module';
 import { InternalModule } from './modules/internal/internal.module';
+import { ThrottleModule } from './modules/throttle/throttle.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -68,6 +69,7 @@ import llmConfig from './config/llm.config';
         // Core infrastructure
         PrismaModule,
         RedisModule,
+        ThrottleModule,
         HealthModule,
 
         // Business modules

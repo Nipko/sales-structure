@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { LeadCapturedEvent } from './events/lead-captured.event';
 
@@ -36,22 +37,32 @@ export interface AutomationJobData {
  *
  * 3 reintentos con backoff exponencial.
  */
-@Processor(AUTOMATION_JOBS_QUEUE)
+@Processor(AUTOMATION_JOBS_QUEUE, {
+    concurrency: 10,
+    limiter: { max: 30, duration: 1000 },
+})
 export class AutomationJobsProcessor extends WorkerHost {
     private readonly logger = new Logger(AutomationJobsProcessor.name);
 
     constructor(
         private readonly prisma: PrismaService,
         private readonly whatsappMessaging: WhatsappMessagingService,
+        private readonly throttle: TenantThrottleService,
     ) {
         super();
     }
 
     async process(job: Job<AutomationJobData>): Promise<any> {
         const { tenantId, schemaName, executionId, ruleName, action, event } = job.data;
+        const startTime = Date.now();
+
+        // Per-tenant rate limit check — if exceeded, throw to trigger BullMQ retry
+        if (await this.throttle.isLimited(tenantId, 'automation')) {
+            throw new Error(`Tenant ${tenantId} rate limited for automation — will retry`);
+        }
 
         this.logger.log(
-            `[AutomationJobs] Procesando job '${action.type}' para regla '${ruleName}' (intento ${job.attemptsMade + 1})`,
+            `[AutomationJobs] Procesando job '${action.type}' para regla '${ruleName}' tenant=${tenantId} (intento ${job.attemptsMade + 1})`,
         );
 
         try {
@@ -86,7 +97,8 @@ export class AutomationJobsProcessor extends WorkerHost {
                 );
             }
 
-            this.logger.log(`[AutomationJobs] Job '${action.type}' completado exitosamente para regla '${ruleName}'`);
+            const durationMs = Date.now() - startTime;
+            this.logger.log(`[AutomationJobs] Job '${action.type}' completado para '${ruleName}' tenant=${tenantId} (${durationMs}ms)`);
             return result;
 
         } catch (error: any) {

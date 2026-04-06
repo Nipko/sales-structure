@@ -506,7 +506,7 @@ export class PipelineService {
     async checkAllTenantSLAs(): Promise<void> {
         try {
             const tenants = await this.prisma.$queryRaw<any[]>`
-                SELECT id, schema_name FROM tenants WHERE "isActive" = true
+                SELECT id, schema_name FROM tenants WHERE is_active = true
             `;
             if (!tenants || tenants.length === 0) return;
 

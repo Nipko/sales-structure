@@ -258,7 +258,7 @@ export class AgentConsoleService {
             // Buscar el canal activo de la conversación para saber a qué número enviar
             const convRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT c.channel_type, ct.phone, c.channel_account_id
+                `SELECT c.channel_type, COALESCE(ct.phone, ct.external_id) as phone, c.channel_account_id
                  FROM conversations c
                  LEFT JOIN contacts ct ON c.contact_id = ct.id
                  WHERE c.id = $1::uuid LIMIT 1`,

@@ -868,8 +868,30 @@ CREATE TABLE "{{SCHEMA_NAME}}"."knowledge_approvals" (
 CREATE INDEX ON "{{SCHEMA_NAME}}"."knowledge_approvals" ("resource_id");
 
 -- ============================================
--- Agent Console — Conversation Assignments & CSAT
+-- Agent Console — Internal Notes, Canned Responses, Assignments & CSAT
 -- ============================================
+
+-- ---- Internal Notes ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."internal_notes" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "conversation_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE CASCADE,
+    "agent_id" UUID,
+    "content" TEXT NOT NULL,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "internal_notes_conversation_idx" ON "{{SCHEMA_NAME}}"."internal_notes" ("conversation_id");
+
+-- ---- Canned Responses ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."canned_responses" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255),
+    "shortcode" VARCHAR(100) NOT NULL,
+    "title" VARCHAR(255) NOT NULL,
+    "content" TEXT NOT NULL,
+    "category" VARCHAR(100) DEFAULT 'general',
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "canned_responses_shortcode_idx" ON "{{SCHEMA_NAME}}"."canned_responses" ("shortcode");
 
 -- ---- Conversation Assignments ----
 CREATE TABLE "{{SCHEMA_NAME}}"."conversation_assignments" (

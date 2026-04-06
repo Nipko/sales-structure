@@ -154,8 +154,8 @@ export class ConversationsService {
 
         if (!contact) {
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO contacts (external_id, channel_type, name) VALUES ($1, $2, $3) RETURNING *`,
-                [contactId, channelType, msg.metadata?.contactName || 'Unknown'],
+                `INSERT INTO contacts (external_id, channel_type, name, phone) VALUES ($1, $2, $3, $4) RETURNING *`,
+                [contactId, channelType, msg.metadata?.contactName || 'Unknown', contactId],
             ).then(res => res[0]);
         }
 

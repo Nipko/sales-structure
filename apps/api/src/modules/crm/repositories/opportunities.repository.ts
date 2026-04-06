@@ -98,8 +98,8 @@ export class OpportunitiesRepository {
 
     await this.prisma.executeInTenantSchema(
       schema,
-      `INSERT INTO stage_history (lead_id, opportunity_id, from_stage, to_stage, reason, triggered_by, agent_id) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO stage_history (lead_id, opportunity_id, from_stage, to_stage, reason, triggered_by, agent_id)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)`,
       [data.lead_id, data.opportunity_id, data.from_stage || null, data.to_stage, data.reason || null, data.triggered_by || 'system', data.agent_id || null]
     );
   }

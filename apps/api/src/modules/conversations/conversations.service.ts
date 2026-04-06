@@ -238,6 +238,10 @@ export class ConversationsService {
     private isWithinBusinessHours(config: TenantConfig): boolean {
         if (!config.hours || !config.hours.schedule) return true;
 
+        const schedule: Record<string, any> = config.hours.schedule as any;
+        // If schedule is empty, agent is always available
+        if (Object.keys(schedule).length === 0) return true;
+
         const now = new Date();
         const timezone = config.hours.timezone || 'America/Bogota';
 
@@ -249,14 +253,21 @@ export class ConversationsService {
             hour12: false,
         }).formatToParts(now);
 
-        const dayPart = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase();
+        const dayPartEn = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase() || '';
         const hourPart = localTime.find(p => p.type === 'hour')?.value || '0';
         const minutePart = localTime.find(p => p.type === 'minute')?.value || '0';
         const currentMinutes = parseInt(hourPart) * 60 + parseInt(minutePart);
 
-        const schedule: Record<string, { start: string; end: string } | string> = config.hours.schedule as any;
-        const todaySchedule = schedule[dayPart || ''];
+        // Map English day abbreviations to Spanish keys used in config
+        const dayMap: Record<string, string> = {
+            sun: 'dom', mon: 'lun', tue: 'mar', wed: 'mie', thu: 'jue', fri: 'vie', sat: 'sab',
+        };
+        const dayKey = dayMap[dayPartEn] || dayPartEn;
 
+        // Try both Spanish key and English key (backward compat)
+        const todaySchedule = schedule[dayKey] || schedule[dayPartEn];
+
+        // No schedule for today or explicitly closed (null or string like "cerrado")
         if (!todaySchedule || typeof todaySchedule === 'string') return false;
 
         const [startH, startM] = todaySchedule.start.split(':').map(Number);

@@ -121,7 +121,7 @@ export class LeadScoringService {
              SET score = $1,
                  metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{scoring}', $2::jsonb),
                  updated_at = NOW()
-             WHERE id = $3`,
+             WHERE id = $3::uuid`,
             [result.score, scoringJson, leadId],
         );
 
@@ -130,7 +130,7 @@ export class LeadScoringService {
             schema,
             `UPDATE opportunities
              SET score = $1, updated_at = NOW()
-             WHERE lead_id = $2
+             WHERE lead_id = $2::uuid
              ORDER BY created_at DESC
              LIMIT 1`,
             [result.score, leadId],
@@ -141,7 +141,7 @@ export class LeadScoringService {
                 `UPDATE opportunities
                  SET score = $1, updated_at = NOW()
                  WHERE id = (
-                     SELECT id FROM opportunities WHERE lead_id = $2 ORDER BY created_at DESC LIMIT 1
+                     SELECT id FROM opportunities WHERE lead_id = $2::uuid ORDER BY created_at DESC LIMIT 1
                  )`,
                 [result.score, leadId],
             );
@@ -168,7 +168,7 @@ export class LeadScoringService {
             `SELECT l.id, l.score AS old_score
              FROM leads l
              JOIN opportunities o ON o.lead_id = l.id
-             WHERE o.conversation_id = $1
+             WHERE o.conversation_id = $1::uuid
              LIMIT 1`,
             [conversationId],
         );
@@ -225,7 +225,7 @@ export class LeadScoringService {
              JOIN conversations c ON c.id = m.conversation_id
              JOIN contacts ct ON ct.id = c.contact_id
              JOIN leads l ON l.contact_id = ct.id
-             WHERE l.id = $1`,
+             WHERE l.id = $1::uuid`,
             [leadId],
         );
 
@@ -257,7 +257,7 @@ export class LeadScoringService {
              JOIN conversations c ON c.id = m.conversation_id
              JOIN contacts ct ON ct.id = c.contact_id
              JOIN leads l ON l.contact_id = ct.id
-             WHERE l.id = $1 AND m.direction = 'inbound' AND m.content_text IS NOT NULL
+             WHERE l.id = $1::uuid AND m.direction = 'inbound' AND m.content_text IS NOT NULL
              ORDER BY m.created_at DESC
              LIMIT 10`,
             [leadId],
@@ -302,7 +302,7 @@ export class LeadScoringService {
              JOIN conversations c ON c.id = m.conversation_id
              JOIN contacts ct ON ct.id = c.contact_id
              JOIN leads l ON l.contact_id = ct.id
-             WHERE l.id = $1 AND m.direction = 'inbound'`,
+             WHERE l.id = $1::uuid AND m.direction = 'inbound'`,
             [leadId],
         );
 
@@ -324,7 +324,7 @@ export class LeadScoringService {
     private async computeStageProgress(schema: string, leadId: string): Promise<number> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT stage FROM leads WHERE id = $1 LIMIT 1`,
+            `SELECT stage FROM leads WHERE id = $1::uuid LIMIT 1`,
             [leadId],
         );
 
@@ -343,7 +343,7 @@ export class LeadScoringService {
             `SELECT l.first_name, l.phone, l.email,
                     (SELECT COUNT(*) FROM lead_tags lt WHERE lt.lead_id = l.id) AS tag_count
              FROM leads l
-             WHERE l.id = $1 LIMIT 1`,
+             WHERE l.id = $1::uuid LIMIT 1`,
             [leadId],
         );
 

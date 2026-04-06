@@ -391,16 +391,16 @@ export class NurturingService {
         if (finalAction === 'mark_not_interested') {
             // Mark lead as no_interesado
             await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE leads SET stage = 'no_interesado' WHERE id = $1`,
+                `UPDATE leads SET stage = 'no_interesado' WHERE id = $1::uuid`,
                 [leadId],
             );
             await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE opportunities SET stage = 'no_interesado' WHERE lead_id = $1 AND stage NOT IN ('ganado', 'perdido', 'no_interesado')`,
+                `UPDATE opportunities SET stage = 'no_interesado' WHERE lead_id = $1::uuid AND stage NOT IN ('ganado', 'perdido', 'no_interesado')`,
                 [leadId],
             );
             // Close the conversation
             await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE conversations SET status = 'resolved', resolved_at = NOW() WHERE id = $1`,
+                `UPDATE conversations SET status = 'resolved', resolved_at = NOW() WHERE id = $1::uuid`,
                 [conversationId],
             );
             this.logger.log(`Final action: marked lead ${leadId} as no_interesado, conversation resolved`);
@@ -440,7 +440,7 @@ export class NurturingService {
     private async saveOutboundMessage(schemaName: string, conversationId: string, text: string): Promise<void> {
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-             VALUES ($1, 'outbound', 'text', $2, 'delivered', '{"source":"nurturing"}'::jsonb)`,
+             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered', '{"source":"nurturing"}'::jsonb)`,
             [conversationId, text],
         );
     }
@@ -450,12 +450,12 @@ export class NurturingService {
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT EXISTS(
                 SELECT 1 FROM messages
-                WHERE conversation_id = $1
+                WHERE conversation_id = $1::uuid
                   AND direction = 'inbound'
                   AND created_at > (
                       SELECT COALESCE(MAX(created_at), '1970-01-01')
                       FROM messages
-                      WHERE conversation_id = $1
+                      WHERE conversation_id = $1::uuid
                         AND direction = 'outbound'
                         AND created_at < NOW() - INTERVAL '30 seconds'
                   )
@@ -467,7 +467,7 @@ export class NurturingService {
 
     private async getConversation(schemaName: string, conversationId: string): Promise<any> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM conversations WHERE id = $1`,
+            `SELECT * FROM conversations WHERE id = $1::uuid`,
             [conversationId],
         );
         return rows?.[0] || null;
@@ -477,7 +477,7 @@ export class NurturingService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT ct.* FROM contacts ct
              JOIN conversations c ON c.contact_id = ct.id
-             WHERE c.id = $1`,
+             WHERE c.id = $1::uuid`,
             [conversationId],
         );
         return rows?.[0] || null;
@@ -487,7 +487,7 @@ export class NurturingService {
         return this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text, created_at
              FROM messages
-             WHERE conversation_id = $1
+             WHERE conversation_id = $1::uuid
              ORDER BY created_at DESC
              LIMIT $2`,
             [conversationId, limit],
@@ -506,7 +506,7 @@ export class NurturingService {
                  '{nurturing_last_attempt_at}',
                  to_jsonb(NOW()::text)
              )
-             WHERE id = $1`,
+             WHERE id = $1::uuid`,
             [conversationId, attempt],
         );
     }

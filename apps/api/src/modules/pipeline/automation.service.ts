@@ -44,13 +44,13 @@ export class AutomationService {
         return (rows || []).map((r: any) => ({
             id: r.id,
             name: r.name,
-            type: r.type,
-            trigger: r.trigger_event,
-            conditions: r.conditions || {},
-            actions: r.actions || {},
-            isActive: r.is_active,
-            executionCount: parseInt(r.execution_count) || 0,
-            lastExecutedAt: r.last_executed_at,
+            type: r.trigger_type,
+            trigger: r.trigger_type,
+            conditions: r.conditions_json || {},
+            actions: r.actions_json || {},
+            isActive: r.active,
+            executionCount: 0,
+            lastExecutedAt: null,
         }));
     }
 
@@ -64,20 +64,20 @@ export class AutomationService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO automation_rules (tenant_id, name, type, trigger_event, conditions, actions, is_active, execution_count, created_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, true, 0, NOW())
+            `INSERT INTO automation_rules (tenant_id, name, trigger_type, conditions_json, actions_json, active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true, NOW(), NOW())
        RETURNING *`,
-            [tenantId, data.name, data.type, data.trigger,
+            [tenantId, data.name, data.type,
                 JSON.stringify(data.conditions), JSON.stringify(data.actions)],
         );
 
         return {
             id: result[0].id,
             name: result[0].name,
-            type: result[0].type,
-            trigger: result[0].trigger_event,
-            conditions: result[0].conditions,
-            actions: result[0].actions,
+            type: result[0].trigger_type,
+            trigger: result[0].trigger_type,
+            conditions: result[0].conditions_json,
+            actions: result[0].actions_json,
             isActive: true,
             executionCount: 0,
             lastExecutedAt: null,
@@ -91,7 +91,7 @@ export class AutomationService {
 
         await this.prisma.executeInTenantSchema(
             schema,
-            `UPDATE automation_rules SET is_active = $1 WHERE id = $2`,
+            `UPDATE automation_rules SET active = $1, updated_at = NOW() WHERE id = $2::uuid`,
             [isActive, ruleId],
         );
     }
@@ -103,7 +103,7 @@ export class AutomationService {
 
         await this.prisma.executeInTenantSchema(
             schema,
-            `DELETE FROM automation_rules WHERE id = $1`,
+            `DELETE FROM automation_rules WHERE id = $1::uuid`,
             [ruleId],
         );
     }
@@ -120,7 +120,7 @@ export class AutomationService {
         // Get active auto_assign rules
         const rules = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT * FROM automation_rules WHERE type = 'auto_assign' AND is_active = true LIMIT 1`,
+            `SELECT * FROM automation_rules WHERE trigger_type = 'auto_assign' AND active = true LIMIT 1`,
         );
         if (!rules || rules.length === 0) return null;
 
@@ -136,7 +136,7 @@ export class AutomationService {
         // Track execution
         await this.prisma.executeInTenantSchema(
             schema,
-            `UPDATE automation_rules SET execution_count = execution_count + 1, last_executed_at = NOW() WHERE id = $1`,
+            `UPDATE automation_rules SET updated_at = NOW() WHERE id = $1::uuid`,
             [rule.id],
         );
 
@@ -151,7 +151,7 @@ export class AutomationService {
 
         const rules = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT * FROM automation_rules WHERE type = 'auto_tag' AND is_active = true`,
+            `SELECT * FROM automation_rules WHERE trigger_type = 'auto_tag' AND active = true`,
         );
         if (!rules || rules.length === 0) return [];
 
@@ -159,8 +159,8 @@ export class AutomationService {
         const lowerContent = messageContent.toLowerCase();
 
         for (const rule of rules) {
-            const keywords: string[] = rule.conditions?.keywords || [];
-            const tag: string = rule.actions?.tag || '';
+            const keywords: string[] = rule.conditions_json?.keywords || [];
+            const tag: string = rule.actions_json?.tag || '';
 
             if (!tag) continue;
 
@@ -170,14 +170,14 @@ export class AutomationService {
                     schema,
                     `UPDATE contacts SET tags = array_append(
             CASE WHEN $1 = ANY(tags) THEN tags ELSE tags END, $1
-          ) WHERE id = $2 AND NOT ($1 = ANY(tags))`,
+          ) WHERE id = $2::uuid AND NOT ($1 = ANY(tags))`,
                     [tag, contactId],
                 );
                 appliedTags.push(tag);
 
                 await this.prisma.executeInTenantSchema(
                     schema,
-                    `UPDATE automation_rules SET execution_count = execution_count + 1, last_executed_at = NOW() WHERE id = $1`,
+                    `UPDATE automation_rules SET updated_at = NOW() WHERE id = $1::uuid`,
                     [rule.id],
                 );
             }

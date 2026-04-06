@@ -92,17 +92,17 @@ export class LeadsRepository {
             LEFT JOIN companies c ON c.id = l.company_id
             LEFT JOIN courses crs ON crs.id = l.course_id
             LEFT JOIN campaigns cam ON cam.id = l.campaign_id
-            WHERE l.id = $1 LIMIT 1`,
+            WHERE l.id = $1::uuid LIMIT 1`,
             [leadId]
         ),
         this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT o.*, crs.name as course_name FROM opportunities o
              LEFT JOIN courses crs ON crs.id = o.course_id
-             WHERE o.lead_id = $1 ORDER BY o.created_at DESC`,
+             WHERE o.lead_id = $1::uuid ORDER BY o.created_at DESC`,
             [leadId]
         ),
         this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT t.name, t.color FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.lead_id = $1`,
+            `SELECT t.name, t.color FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.lead_id = $1::uuid`,
             [leadId]
         ),
     ]);
@@ -118,7 +118,7 @@ export class LeadsRepository {
 
     const results = await this.prisma.executeInTenantSchema<Lead[]>(
       schema,
-      `SELECT * FROM leads WHERE id = $1`,
+      `SELECT * FROM leads WHERE id = $1::uuid`,
       [id]
     );
     const resultsArray = results as any[];
@@ -179,7 +179,7 @@ export class LeadsRepository {
 
     const results = await this.prisma.executeInTenantSchema<Lead[]>(
       schema,
-      `UPDATE leads SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      `UPDATE leads SET ${setClause}, updated_at = NOW() WHERE id = $1::uuid RETURNING *`,
       values
     );
     const resultsArray = results as any[];

@@ -58,13 +58,13 @@ export class ConversationsService {
         // Auto-progress stage from 'nuevo' to 'respondio' upon user message
         const schemaName = await this.tenantSchema(tenantId);
         await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1 AND stage = 'nuevo'`,
+            `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1::uuid AND stage = 'nuevo'`,
             [conversation.id],
         );
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE leads
              SET stage = 'respondio'
-             WHERE id = (SELECT lead_id FROM opportunities WHERE conversation_id = $1 LIMIT 1)
+             WHERE id = (SELECT lead_id FROM opportunities WHERE conversation_id = $1::uuid LIMIT 1)
                AND stage = 'nuevo'`,
             [conversation.id],
         );
@@ -273,7 +273,7 @@ export class ConversationsService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-             VALUES ($1, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
+             VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
             [conversationId, msg.content.type, msg.content.text, metadataJson],
         );
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
@@ -284,7 +284,7 @@ export class ConversationsService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
-             VALUES ($1, 'outbound', 'text', $2, 'delivered') RETURNING *`,
+             VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered') RETURNING *`,
             [conversationId, text],
         );
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
@@ -356,7 +356,7 @@ export class ConversationsService {
         // 3. Get Conversation History with smart truncation
         const schemaName = await this.tenantSchema(tenantId);
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT direction, content_text FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 30`,
+            `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 30`,
             [conversation.id],
         );
 
@@ -386,7 +386,7 @@ export class ConversationsService {
                      '{failedAttempts}',
                      '0'::jsonb
                  )
-                 WHERE id = $1`,
+                 WHERE id = $1::uuid`,
                 [conversation.id],
             );
 
@@ -402,7 +402,7 @@ export class ConversationsService {
                      '{failedAttempts}',
                      (COALESCE((metadata->>'failedAttempts')::int, 0) + 1)::text::jsonb
                  )
-                 WHERE id = $1`,
+                 WHERE id = $1::uuid`,
                 [conversation.id],
             );
 

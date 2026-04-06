@@ -497,22 +497,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."stage_transitions" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."stage_transitions" ("deal_id", "created_at");
 
--- ---- Automation Rules ----
-CREATE TABLE "{{SCHEMA_NAME}}"."automation_rules" (
-    "id"                UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id"         UUID NOT NULL,
-    "name"              VARCHAR(255) NOT NULL,
-    "type"              VARCHAR(50) NOT NULL,
-    "trigger_event"     VARCHAR(100) NOT NULL,
-    "conditions"        JSONB DEFAULT '{}',
-    "actions"           JSONB DEFAULT '{}',
-    "is_active"         BOOLEAN DEFAULT true,
-    "execution_count"   INTEGER DEFAULT 0,
-    "last_executed_at"  TIMESTAMP,
-    "created_at"        TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX ON "{{SCHEMA_NAME}}"."automation_rules" ("tenant_id");
-CREATE INDEX ON "{{SCHEMA_NAME}}"."automation_rules" ("type");
+-- ---- Automation Rules (see V4 section below) ----
 
 -- ============================================
 -- PARALLLY — WhatsApp Platform Manager (WABA)
@@ -671,7 +656,32 @@ CREATE TABLE "{{SCHEMA_NAME}}"."intake_sources" (
 -- ============================================
 
 -- ---- Automation Rules ----
-CREATE TABLE "{{SCHEMA_NAME}}"."automation_rules" (
+-- Migrate old schema if it exists (rename columns to match V4 service code)
+DO $$
+BEGIN
+    -- If old column "type" exists, this is the V3 schema — migrate it
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = '{{SCHEMA_NAME}}' AND table_name = 'automation_rules' AND column_name = 'type'
+    ) THEN
+        -- Rename columns to match V4 code expectations
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" RENAME COLUMN "type" TO "trigger_type";
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" RENAME COLUMN "trigger_event" TO "trigger_type_legacy";
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" RENAME COLUMN "conditions" TO "conditions_json";
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" RENAME COLUMN "actions" TO "actions_json";
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" RENAME COLUMN "is_active" TO "active";
+        -- Add missing updated_at column
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP DEFAULT NOW();
+        -- Alter tenant_id to VARCHAR to match V4
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" ALTER COLUMN "tenant_id" TYPE VARCHAR(255) USING tenant_id::text;
+        -- Drop legacy column
+        ALTER TABLE "{{SCHEMA_NAME}}"."automation_rules" DROP COLUMN IF EXISTS "trigger_type_legacy";
+        -- Drop old indexes (ignore errors)
+        DROP INDEX IF EXISTS "{{SCHEMA_NAME}}"."automation_rules_tenant_id_idx";
+        DROP INDEX IF EXISTS "{{SCHEMA_NAME}}"."automation_rules_type_idx";
+    END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."automation_rules" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "tenant_id" VARCHAR(255) NOT NULL,
     "name" VARCHAR(255) NOT NULL,
@@ -682,7 +692,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."automation_rules" (
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX ON "{{SCHEMA_NAME}}"."automation_rules" ("trigger_type");
+CREATE INDEX IF NOT EXISTS "automation_rules_trigger_type_idx" ON "{{SCHEMA_NAME}}"."automation_rules" ("trigger_type");
 
 -- ---- Automation Executions ----
 CREATE TABLE "{{SCHEMA_NAME}}"."automation_executions" (

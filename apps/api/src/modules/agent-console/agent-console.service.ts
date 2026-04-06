@@ -151,7 +151,7 @@ export class AgentConsoleService {
               ct.tags, ct.metadata as custom_fields, ct.first_contact_at as last_interaction, ct.id as contact_id
        FROM conversations c
        LEFT JOIN contacts ct ON c.contact_id = ct.id
-       WHERE c.id = $1`,
+       WHERE c.id = $1::uuid`,
             [conversationId],
         );
 
@@ -161,7 +161,7 @@ export class AgentConsoleService {
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, content_text as content, content_type as type, direction as sender, created_at, metadata
-       FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
+       FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC`,
             [conversationId],
         );
 
@@ -170,14 +170,14 @@ export class AgentConsoleService {
             `SELECT n.id, n.content, n.created_at, u.name as agent_name
        FROM internal_notes n
        LEFT JOIN public.users u ON n.agent_id = u.id
-       WHERE n.conversation_id = $1 ORDER BY n.created_at ASC`,
+       WHERE n.conversation_id = $1::uuid ORDER BY n.created_at ASC`,
             [conversationId],
         );
 
         // Count total conversations for this contact
         const countRows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT COUNT(*) as total FROM conversations WHERE contact_id = $1`,
+            `SELECT COUNT(*) as total FROM conversations WHERE contact_id = $1::uuid`,
             [conv.contact_id],
         );
 
@@ -232,7 +232,7 @@ export class AgentConsoleService {
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, created_at)
-       VALUES ($1, $2, $3, 'outbound', 'delivered', NOW())
+       VALUES ($1::uuid, $2, $3, 'outbound', 'delivered', NOW())
        RETURNING id, content_text, content_type, direction, created_at`,
             [conversationId, content, type],
         );
@@ -366,7 +366,7 @@ export class AgentConsoleService {
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
-       VALUES ($1, $2, $3, NOW())
+       Values ($1::uuid, $2::uuid, $3, NOW())
        RETURNING id, content, created_at`,
             [conversationId, agentId, content],
         );

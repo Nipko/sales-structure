@@ -50,7 +50,7 @@ export class OpportunitiesRepository {
 
     const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
       schema,
-      `SELECT * FROM opportunities WHERE id = $1`,
+      `SELECT * FROM opportunities WHERE id = $1::uuid`,
       [id]
     );
     return results && results.length > 0 ? results[0] : null;
@@ -86,7 +86,7 @@ export class OpportunitiesRepository {
 
     const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
       schema,
-      `UPDATE opportunities SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      `UPDATE opportunities SET ${setClause}, updated_at = NOW() WHERE id = $1::uuid RETURNING *`,
       values
     );
     return results && results.length > 0 ? results[0] : null;
@@ -184,7 +184,7 @@ export class OpportunitiesRepository {
       if (!schema) throw new Error('Tenant not found');
 
       const current = await this.prisma.executeInTenantSchema<any[]>(schema,
-          `SELECT stage, lead_id FROM opportunities WHERE id = $1 LIMIT 1`,
+          `SELECT stage, lead_id FROM opportunities WHERE id = $1::uuid LIMIT 1`,
           [opportunityId]
       );
       
@@ -196,13 +196,13 @@ export class OpportunitiesRepository {
       const lostFields = ['perdido', 'no_interesado'].includes(newStage) ? ', lost_at = NOW()' : '';
 
       await this.prisma.executeInTenantSchema(schema,
-          `UPDATE opportunities SET stage = $1, updated_at = NOW()${wonFields}${lostFields} WHERE id = $2`,
+          `UPDATE opportunities SET stage = $1, updated_at = NOW()${wonFields}${lostFields} WHERE id = $2::uuid`,
           [newStage, opportunityId]
       );
 
       if (leadId) {
           await this.prisma.executeInTenantSchema(schema,
-              `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2`,
+              `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
               [newStage, leadId]
           );
       }

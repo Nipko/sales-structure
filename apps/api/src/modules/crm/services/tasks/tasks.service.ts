@@ -86,7 +86,7 @@ export class TasksService {
         
         await this.prisma.executeInTenantSchema(schema, `
             UPDATE tasks SET status = $2, completed_at = ${status === 'done' ? 'NOW()' : 'NULL'}, updated_at = NOW()
-            WHERE id = $1
+            WHERE id = $1::uuid
         `, [taskId, status]);
     }
 }

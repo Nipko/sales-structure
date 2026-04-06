@@ -30,7 +30,7 @@ export class NotesService {
         if (!schema) throw new Error('Tenant not found');
 
         return this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT * FROM notes WHERE lead_id = $1 ORDER BY created_at DESC`,
+            `SELECT * FROM notes WHERE lead_id = $1::uuid ORDER BY created_at DESC`,
             [leadId]
         );
     }

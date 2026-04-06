@@ -239,11 +239,10 @@ export class OnboardingService {
 
       this.logger.log(`[Onboarding][${onboardingId}] Assets discovered: WABA=${wabaId}, Phone=${primaryPhone.id}, source=${usedSessionInfo ? 'session_info' : 'api_discovery'}`);
 
-      // ---- 9. Persistir canal en el tenant schema ----
+      // ---- 9-10. Persist channel + routing (CRITICAL — if this fails, onboarding must fail) ----
       this.logger.log(`[Onboarding][${onboardingId}] Step 9: Persisting WhatsApp channel in tenant schema`);
       await this.persistWhatsAppChannel(tenantId, onboardingId, waba, primaryPhone, longLivedToken, dto.mode === OnboardingMode.COEXISTENCE);
 
-      // ---- 10. Registrar en channel_accounts (público) para routing de webhooks ----
       this.logger.log(`[Onboarding][${onboardingId}] Step 10: Registering channel_account for webhook routing`);
       await this.registerChannelAccount(tenantId, primaryPhone);
 
@@ -725,9 +724,12 @@ export class OnboardingService {
       select: { schemaName: true },
     });
 
-    if (!tenant) return;
+    if (!tenant) {
+      throw new Error(`Tenant ${tenantId} not found — cannot persist WhatsApp channel`);
+    }
 
     // Upsert — si ya existe un canal para este tenant, lo actualizamos
+    // Wrap DELETE + INSERT in a single SQL block to avoid orphaned state
     await this.prisma.executeInTenantSchema(
       tenant.schemaName,
       `DELETE FROM whatsapp_channels WHERE phone_number_id = $1`,
@@ -750,12 +752,22 @@ export class OnboardingService {
       [
         waba.id, waba.id, phone.id,
         phone.displayPhoneNumber, phone.verifiedName, phone.qualityRating || 'GREEN',
-        'credential_ref', // No almacenamos el token en texto, usamos referencia a whatsapp_credentials
+        'credential_ref',
         isCoexistence, onboardingId,
       ],
     );
 
-    this.logger.log(`WhatsApp channel persisted in tenant schema: ${tenant.schemaName}`);
+    // Verify the channel was actually persisted
+    const verification = await this.prisma.executeInTenantSchema<any[]>(
+      tenant.schemaName,
+      `SELECT id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+      [phone.id],
+    );
+    if (!verification || verification.length === 0) {
+      throw new Error(`WhatsApp channel INSERT succeeded but row not found — possible schema issue for ${tenant.schemaName}`);
+    }
+
+    this.logger.log(`WhatsApp channel persisted in tenant schema: ${tenant.schemaName} (verified)`);
   }
 
   /**
@@ -837,7 +849,16 @@ export class OnboardingService {
       });
     }
 
-    this.logger.log(`[Credential] Stored encrypted long-lived token for tenant=${tenantId}${expiresAt ? `, expiresAt=${expiresAt.toISOString()}` : ''}`);
+    // Verify credential was persisted
+    const stored = await this.prisma.whatsappCredential.findFirst({
+      where: { tenantId, credentialType: 'system_user_token' },
+      select: { id: true, encryptedValue: true },
+    });
+    if (!stored?.encryptedValue) {
+      throw new Error(`Credential storage failed for tenant ${tenantId} — no encrypted value found after upsert`);
+    }
+
+    this.logger.log(`[Credential] Stored encrypted long-lived token for tenant=${tenantId}${expiresAt ? `, expiresAt=${expiresAt.toISOString()}` : ''} (verified)`);
   }
 
   /**

@@ -81,7 +81,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                     schemaName,
                     `UPDATE automation_executions
                      SET status = 'success', finished_at = CURRENT_TIMESTAMP, result_json = $2
-                     WHERE id = $1`,
+                     WHERE id = $1::uuid`,
                     [executionId, JSON.stringify(result || {})],
                 );
             }
@@ -102,7 +102,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                         schemaName,
                         `UPDATE automation_executions
                          SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
-                         WHERE id = $1`,
+                         WHERE id = $1::uuid`,
                         [executionId, JSON.stringify({ error: error.message })],
                     ).catch(e => this.logger.warn(`No se pudo actualizar ejecucion fallida: ${e.message}`));
                 }
@@ -200,7 +200,7 @@ export class AutomationJobsProcessor extends WorkerHost {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE opportunities SET stage = $1, updated_at = NOW()
-             WHERE lead_id = $2 AND stage != $1
+             WHERE lead_id = $2::uuid AND stage != $1
              RETURNING id, stage`,
             [newStage, event.leadId],
         );

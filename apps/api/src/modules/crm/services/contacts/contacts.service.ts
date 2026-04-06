@@ -94,17 +94,17 @@ export class ContactsService {
                 LEFT JOIN companies c ON c.id = l.company_id
                 LEFT JOIN courses crs ON crs.id = l.course_id
                 LEFT JOIN campaigns cam ON cam.id = l.campaign_id
-                WHERE l.id = $1 LIMIT 1`,
+                WHERE l.id = $1::uuid LIMIT 1`,
                 [leadId]
             ),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT o.*, crs.name as course_name FROM opportunities o
                  LEFT JOIN courses crs ON crs.id = o.course_id
-                 WHERE o.lead_id = $1 ORDER BY o.created_at DESC`,
+                 WHERE o.lead_id = $1::uuid ORDER BY o.created_at DESC`,
                 [leadId]
             ),
             this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT t.name, t.color FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.lead_id = $1`,
+                `SELECT t.name, t.color FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.lead_id = $1::uuid`,
                 [leadId]
             ),
         ]);
@@ -133,7 +133,7 @@ export class ContactsService {
         updates.push(`updated_at = NOW()`);
 
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE leads SET ${updates.join(', ')} WHERE id = $1`,
+            `UPDATE leads SET ${updates.join(', ')} WHERE id = $1::uuid`,
             params
         );
     }
@@ -228,7 +228,7 @@ export class ContactsService {
 
         // Get current stage for audit
         const current = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT stage, lead_id FROM opportunities WHERE id = $1 LIMIT 1`,
+            `SELECT stage, lead_id FROM opportunities WHERE id = $1::uuid LIMIT 1`,
             [opportunityId]
         );
         const oldStage = current?.[0]?.stage || 'unknown';
@@ -239,14 +239,14 @@ export class ContactsService {
         const lostFields = ['perdido', 'no_interesado'].includes(newStage) ? ', lost_at = NOW()' : '';
 
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE opportunities SET stage = $1, updated_at = NOW()${wonFields}${lostFields} WHERE id = $2`,
+            `UPDATE opportunities SET stage = $1, updated_at = NOW()${wonFields}${lostFields} WHERE id = $2::uuid`,
             [newStage, opportunityId]
         );
 
         // Also update lead stage to match
         if (leadId) {
             await this.prisma.executeInTenantSchema(schema,
-                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2`,
+                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
                 [newStage, leadId]
             );
         }

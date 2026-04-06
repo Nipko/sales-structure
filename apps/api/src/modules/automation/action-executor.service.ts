@@ -76,7 +76,7 @@ export class ActionExecutorService {
          this.logger.log(`[ActionExecutor] Updating Lead ${payload.leadId} step to ${config.stage}`);
          await this.prisma.executeInTenantSchema(
              schemaName,
-             `UPDATE leads SET stage = $1 WHERE id = $2`,
+             `UPDATE leads SET stage = $1 WHERE id = $2::uuid`,
              [config.stage, payload.leadId]
          );
     }

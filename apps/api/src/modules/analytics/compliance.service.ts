@@ -65,7 +65,7 @@ export class ComplianceService {
         if (leadId) {
             await this.prisma.executeInTenantSchema(schema, `
                 UPDATE leads SET opted_out = true, opted_out_at = NOW(), updated_at = NOW()
-                WHERE id = $1
+                WHERE id = $1::uuid
             `, [leadId]);
         }
 

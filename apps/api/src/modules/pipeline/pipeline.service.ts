@@ -288,12 +288,12 @@ export class PipelineService {
                  FROM deals d
                  LEFT JOIN contacts ct ON d.contact_id = ct.id
                  LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
-                 WHERE d.id = $1`,
+                 WHERE d.id = $1::uuid`,
                 [dealId],
             ),
             this.prisma.executeInTenantSchema<any[]>(
                 schema,
-                `SELECT * FROM stage_transitions WHERE deal_id = $1 ORDER BY created_at DESC`,
+                `SELECT * FROM stage_transitions WHERE deal_id = $1::uuid ORDER BY created_at DESC`,
                 [dealId],
             ),
             this.prisma.executeInTenantSchema<any[]>(
@@ -303,7 +303,7 @@ export class PipelineService {
                  FROM opportunities o
                  LEFT JOIN leads l ON l.id = o.lead_id
                  LEFT JOIN conversations c ON c.id = o.conversation_id
-                 WHERE o.deal_id = $1
+                 WHERE o.deal_id = $1::uuid
                  LIMIT 1`,
                 [dealId],
             ),
@@ -358,7 +358,7 @@ export class PipelineService {
         // Get stage info for SLA deadline
         const stageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT sla_hours, default_probability, name FROM pipeline_stages WHERE id = $1`,
+            `SELECT sla_hours, default_probability, name FROM pipeline_stages WHERE id = $1::uuid`,
             [data.stageId],
         );
         const stage = stageRows?.[0];
@@ -396,7 +396,7 @@ export class PipelineService {
             `SELECT d.stage_id, ps.is_terminal as current_is_terminal, ps.slug as current_slug
              FROM deals d
              LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
-             WHERE d.id = $1`,
+             WHERE d.id = $1::uuid`,
             [dealId],
         );
         if (!dealRows || dealRows.length === 0) {
@@ -411,7 +411,7 @@ export class PipelineService {
         // Get new stage info
         const newStageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, sla_hours, default_probability, is_terminal, slug FROM pipeline_stages WHERE id = $1`,
+            `SELECT id, sla_hours, default_probability, is_terminal, slug FROM pipeline_stages WHERE id = $1::uuid`,
             [newStageId],
         );
         if (!newStageRows || newStageRows.length === 0) {
@@ -441,7 +441,7 @@ export class PipelineService {
             `UPDATE deals
              SET stage_id = $1, probability = $2, stage_entered_at = NOW(),
                  updated_at = NOW(), sla_deadline = ${slaDeadline}, sla_status = 'on_track'${statusUpdate}
-             WHERE id = $3`,
+             WHERE id = $3::uuid`,
             [newStageId, probability, dealId],
         );
 
@@ -492,7 +492,7 @@ export class PipelineService {
 
         await this.prisma.executeInTenantSchema(
             schema,
-            `UPDATE deals SET ${sets.join(', ')} WHERE id = $1`,
+            `UPDATE deals SET ${sets.join(', ')} WHERE id = $1::uuid`,
             params,
         );
     }
@@ -546,7 +546,7 @@ export class PipelineService {
             // Mark as breached
             await this.prisma.executeInTenantSchema(
                 schema,
-                `UPDATE deals SET sla_status = 'breached', updated_at = NOW() WHERE id = $1`,
+                `UPDATE deals SET sla_status = 'breached', updated_at = NOW() WHERE id = $1::uuid`,
                 [deal.id],
             );
 
@@ -702,7 +702,7 @@ export class PipelineService {
              FROM opportunities o
              LEFT JOIN deals d ON d.id = o.deal_id
              LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
-             WHERE o.conversation_id = $1
+             WHERE o.conversation_id = $1::uuid
              LIMIT 1`,
             [conversationId],
         );
@@ -764,7 +764,7 @@ export class PipelineService {
         // Always update the opportunity stage
         await this.prisma.executeInTenantSchema(
             schema,
-            `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2`,
+            `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
             [targetSlug, opp.opp_id],
         );
 
@@ -772,7 +772,7 @@ export class PipelineService {
         if (opp.lead_id) {
             await this.prisma.executeInTenantSchema(
                 schema,
-                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2`,
+                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
                 [targetSlug, opp.lead_id],
             );
         }

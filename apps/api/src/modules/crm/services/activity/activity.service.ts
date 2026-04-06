@@ -35,7 +35,7 @@ export class ActivityService {
 
         // Get lead contact_id for linking conversations
         const lead = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, contact_id, phone FROM leads WHERE id = $1 LIMIT 1`,
+            `SELECT id, contact_id, phone FROM leads WHERE id = $1::uuid LIMIT 1`,
             [leadId]
         );
         if (!lead || lead.length === 0) throw new Error('Lead not found');
@@ -45,23 +45,23 @@ export class ActivityService {
         const [notes, tasks, stageHistory, analyticsEvents, messages] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT 'note' as event_type, id, created_at, content as description, created_by as actor
-                 FROM notes WHERE lead_id = $1 ORDER BY created_at DESC LIMIT 50`,
+                 FROM notes WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
                 [leadId]
             ),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT 'task' as event_type, id, created_at, title as description, created_by as actor, status, due_at
-                 FROM tasks WHERE lead_id = $1 ORDER BY created_at DESC LIMIT 50`,
+                 FROM tasks WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
                 [leadId]
             ),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT 'stage_change' as event_type, id, created_at, 
                     (from_stage || ' → ' || to_stage) as description, triggered_by as actor
-                 FROM stage_history WHERE lead_id = $1 ORDER BY created_at DESC LIMIT 50`,
+                 FROM stage_history WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
                 [leadId]
             ),
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT 'event' as event_type, id, created_at, event_type as description, NULL as actor
-                 FROM analytics_events WHERE lead_id = $1 ORDER BY created_at DESC LIMIT 50`,
+                 FROM analytics_events WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
                 [leadId]
             ),
             contactId
@@ -70,7 +70,7 @@ export class ActivityService {
                         COALESCE(m.content_text, '[media]') as description, m.direction as actor
                      FROM messages m
                      JOIN conversations c ON c.id = m.conversation_id
-                     WHERE c.contact_id = $1
+                     WHERE c.contact_id = $1::uuid
                      ORDER BY m.created_at DESC LIMIT 30`,
                     [contactId]
                 )

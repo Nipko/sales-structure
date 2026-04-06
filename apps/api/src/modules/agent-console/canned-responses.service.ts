@@ -86,7 +86,7 @@ export class CannedResponsesService {
 
         await this.prisma.executeInTenantSchema(
             tenant[0].schema_name,
-            `UPDATE canned_responses SET ${sets.join(', ')} WHERE id = $1`,
+            `UPDATE canned_responses SET ${sets.join(', ')} WHERE id = $1::uuid`,
             params,
         );
     }

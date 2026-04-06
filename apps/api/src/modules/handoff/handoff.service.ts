@@ -88,7 +88,7 @@ export class HandoffService {
         // 1. Build AI summary from recent messages
         const recentMessages = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text FROM messages
-             WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 10`,
+             WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 10`,
             [conversationId],
         );
         const summary = this.buildSummary(recentMessages || []);
@@ -103,7 +103,7 @@ export class HandoffService {
                      $2::jsonb
                  ),
                  updated_at = NOW()
-             WHERE id = $1`,
+             WHERE id = $1::uuid`,
             [conversationId, JSON.stringify({
                 reason,
                 summary,
@@ -115,7 +115,7 @@ export class HandoffService {
         // 3. Create internal note documenting the handoff
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
-             VALUES ($1, NULL, $2, NOW())`,
+             VALUES ($1::uuid, NULL, $2, NOW())`,
             [conversationId, `🔄 **Handoff automático** — Razón: ${reason}\n\n${summary}`],
         );
 
@@ -159,7 +159,7 @@ export class HandoffService {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET status = 'active', assigned_to = NULL, updated_at = NOW() WHERE id = $1`,
+            `UPDATE conversations SET status = 'active', assigned_to = NULL, updated_at = NOW() WHERE id = $1::uuid`,
             [conversationId],
         );
 
@@ -206,7 +206,7 @@ export class HandoffService {
             if (agents?.length) {
                 const agent = agents[0];
                 await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET assigned_to = $2, status = 'with_human' WHERE id = $1`,
+                    `UPDATE conversations SET assigned_to = $2, status = 'with_human' WHERE id = $1::uuid`,
                     [conversationId, agent.id],
                 );
                 return agent.id;

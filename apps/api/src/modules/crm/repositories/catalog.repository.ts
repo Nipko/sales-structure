@@ -46,7 +46,7 @@ export class CatalogRepository {
       
       const results = await this.prisma.executeInTenantSchema<Course[]>(
           schema,
-          `SELECT * FROM courses WHERE id = $1`,
+          `SELECT * FROM courses WHERE id = $1::uuid`,
           [id]
       );
       return results && results.length > 0 ? results[0] : null;
@@ -83,7 +83,7 @@ export class CatalogRepository {
 
       const results = await this.prisma.executeInTenantSchema<Campaign[]>(
           schema,
-          `SELECT * FROM campaigns WHERE id = $1`,
+          `SELECT * FROM campaigns WHERE id = $1::uuid`,
           [id]
       );
       return results && results.length > 0 ? results[0] : null;

@@ -130,22 +130,11 @@ export class LeadScoringService {
             schema,
             `UPDATE opportunities
              SET score = $1, updated_at = NOW()
-             WHERE lead_id = $2::uuid
-             ORDER BY created_at DESC
-             LIMIT 1`,
+             WHERE id = (
+                 SELECT id FROM opportunities WHERE lead_id = $2::uuid ORDER BY created_at DESC LIMIT 1
+             )`,
             [result.score, leadId],
-        ).catch(() => {
-            // Some DBs don't support ORDER BY + LIMIT in UPDATE; use sub-select fallback
-            return this.prisma.executeInTenantSchema(
-                schema,
-                `UPDATE opportunities
-                 SET score = $1, updated_at = NOW()
-                 WHERE id = (
-                     SELECT id FROM opportunities WHERE lead_id = $2::uuid ORDER BY created_at DESC LIMIT 1
-                 )`,
-                [result.score, leadId],
-            );
-        });
+        );
 
         // Refresh cache
         const cacheKey = this.redis.tenantKey(tenantId, `lead_score:${leadId}`);

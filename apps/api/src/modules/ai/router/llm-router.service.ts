@@ -139,9 +139,37 @@ export class LLMRouterService {
             selectedTier = allowedTiers[0]; // Default to first allowed tier
         }
 
-        // Select model from tier
-        const availableModels = MODEL_REGISTRY.filter(m => m.tier === selectedTier);
-        const selectedModel = availableModels[0]; // Primary model in tier
+        // Select model from tier — only include models whose provider has an API key
+        let availableModels = MODEL_REGISTRY
+            .filter(m => m.tier === selectedTier)
+            .filter(m => this.isProviderConfigured(m.provider));
+
+        // If no configured provider in this tier, try upgrading tiers
+        if (availableModels.length === 0) {
+            const tierOrder: ModelTier[] = ['tier_4_budget', 'tier_3_efficient', 'tier_2_standard', 'tier_1_premium'];
+            const startIdx = tierOrder.indexOf(selectedTier) + 1;
+            for (let i = startIdx; i < tierOrder.length; i++) {
+                availableModels = MODEL_REGISTRY
+                    .filter(m => m.tier === tierOrder[i])
+                    .filter(m => this.isProviderConfigured(m.provider));
+                if (availableModels.length > 0) {
+                    selectedTier = tierOrder[i];
+                    this.logger.warn(`No configured provider in original tier — upgraded to ${selectedTier}`);
+                    break;
+                }
+            }
+        }
+
+        // Last resort: pick any model with a configured provider
+        if (availableModels.length === 0) {
+            availableModels = MODEL_REGISTRY.filter(m => this.isProviderConfigured(m.provider));
+        }
+
+        if (availableModels.length === 0) {
+            throw new Error('No LLM provider is configured — set at least one API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)');
+        }
+
+        const selectedModel = availableModels[0];
 
         const decision: RoutingDecision = {
             selectedTier,
@@ -162,6 +190,23 @@ export class LLMRouterService {
 
         this.logger.debug(`Routing decision: ${decision.reasoning}`);
         return decision;
+    }
+
+    /**
+     * Check if a provider has a valid API key configured.
+     */
+    private isProviderConfigured(providerName: string): boolean {
+        const keyMap: Record<string, string> = {
+            openai: 'OPENAI_API_KEY',
+            anthropic: 'ANTHROPIC_API_KEY',
+            google: 'GOOGLE_GENERATIVE_AI_API_KEY',
+            deepseek: 'DEEPSEEK_API_KEY',
+            xai: 'XAI_API_KEY',
+        };
+        const envVar = keyMap[providerName];
+        if (!envVar) return false;
+        const key = this.configService.get<string>(envVar);
+        return !!key && key.length > 5;
     }
 
     /**

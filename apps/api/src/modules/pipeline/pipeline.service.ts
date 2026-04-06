@@ -693,15 +693,11 @@ export class PipelineService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
 
-        // Find the deal/opportunity linked to this conversation
+        // Find the opportunity linked to this conversation
         const oppRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT o.id as opp_id, o.stage as opp_stage, o.lead_id,
-                    d.id as deal_id, d.stage_id,
-                    ps.slug as current_stage_slug, ps.position as current_position
+            `SELECT o.id as opp_id, o.stage as opp_stage, o.lead_id
              FROM opportunities o
-             LEFT JOIN deals d ON d.id = o.deal_id
-             LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
              WHERE o.conversation_id = $1::uuid
              LIMIT 1`,
             [conversationId],
@@ -711,7 +707,7 @@ export class PipelineService {
 
         const opp = oppRows[0];
         const messageText = (signals.messageText || '').toLowerCase();
-        const currentSlug = opp.current_stage_slug || opp.opp_stage || 'nuevo';
+        const currentSlug = opp.opp_stage || 'nuevo';
 
         // Determine target stage based on signals
         let targetSlug: string | null = null;
@@ -749,19 +745,7 @@ export class PipelineService {
 
         if (targetIdx <= currentIdx) return; // Already at or past this stage
 
-        // Move the deal if it exists in the deals table
-        if (opp.deal_id) {
-            const targetStageRows = await this.prisma.executeInTenantSchema<any[]>(
-                schema,
-                `SELECT id FROM pipeline_stages WHERE slug = $1 LIMIT 1`,
-                [targetSlug],
-            );
-            if (targetStageRows && targetStageRows.length > 0) {
-                await this.moveToStage(tenantId, opp.deal_id, targetStageRows[0].id, 'system', reason || undefined);
-            }
-        }
-
-        // Always update the opportunity stage
+        // Update the opportunity stage
         await this.prisma.executeInTenantSchema(
             schema,
             `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,

@@ -579,7 +579,7 @@ export class NurturingService {
     }
 
     private buildJobId(tenantId: string, conversationId: string, attempt: number): string {
-        return `nurturing:${tenantId}:${conversationId}:${attempt}`;
+        return `nurturing_${tenantId}_${conversationId}_${attempt}`;
     }
 
     private async tenantSchema(tenantId: string): Promise<string> {

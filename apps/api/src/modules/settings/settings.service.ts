@@ -70,7 +70,7 @@ export class SettingsService {
      */
     async getSettingsForDisplay(): Promise<PlatformSettings> {
         const rows = await this.prisma.$queryRaw<any[]>`
-      SELECT key, value, is_secret, category, label FROM platform_settings ORDER BY category, key
+      SELECT key, value, is_secret, category FROM platform_settings ORDER BY category, key
     `;
 
         const settings = this.rowsToSettings(rows, true);

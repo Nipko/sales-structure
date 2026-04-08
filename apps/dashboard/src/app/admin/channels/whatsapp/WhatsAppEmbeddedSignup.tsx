@@ -26,6 +26,9 @@ interface OnboardingResult {
 const WA_SERVICE_URL = process.env.NEXT_PUBLIC_WA_SERVICE_URL || "https://wa.parallly-chat.cloud/api/v1";
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
 const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || "";
+// Solution ID from Meta Business Manager → Partner Center → Solutions
+// Required for Tech Provider Embedded Signup
+const META_SOLUTION_ID = process.env.NEXT_PUBLIC_META_SOLUTION_ID || "";
 
 // ============================================
 // Component
@@ -35,6 +38,36 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
   const [launching, setLaunching] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState<string>("");
+  // Capture session info from window message event (Embedded Signup v4)
+  const [sessionData, setSessionData] = useState<{ waba_id?: string; phone_number_id?: string }>({});
+
+  // ---- Listen for Embedded Signup session completion messages ----
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
+      try {
+        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        console.log("[EmbeddedSignup] Window message received:", data);
+        if (data.type === "WA_EMBEDDED_SIGNUP") {
+          if (data.event === "FINISH" || data.event === "FINISH_ONLY_WABA") {
+            console.log("[EmbeddedSignup] Signup FINISH event:", data.data);
+            setSessionData({
+              waba_id: data.data?.waba_id,
+              phone_number_id: data.data?.phone_number_id,
+            });
+          } else if (data.event === "CANCEL") {
+            console.log("[EmbeddedSignup] User cancelled signup");
+          } else if (data.event === "ERROR") {
+            console.error("[EmbeddedSignup] Signup error event:", data.data);
+          }
+        }
+      } catch {
+        // Not JSON or not relevant
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   // ---- Load Facebook SDK ----
   useEffect(() => {
@@ -86,10 +119,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         const code = response.authResponse.code;
         console.log("[EmbeddedSignup] Auth code received:", code.substring(0, 20) + "...");
 
-        // Extract session info from Embedded Signup v4 (sessionInfoVersion: "3")
-        // These may not be present with older SDK versions or certain Meta configurations
-        const sessionPhoneNumberId = response.authResponse.phone_number_id || null;
-        const sessionWabaId = response.authResponse.waba_id || null;
+        // Extract session info: try authResponse first, then window message data (sessionData)
+        const sessionPhoneNumberId = response.authResponse.phone_number_id || sessionData.phone_number_id || null;
+        const sessionWabaId = response.authResponse.waba_id || sessionData.waba_id || null;
 
         if (!sessionPhoneNumberId || !sessionWabaId) {
           console.warn(
@@ -179,10 +211,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
       response_type: "code",
       override_default_response_type: true,
       extras: {
-        setup: {},
-        featureType: "whatsapp_business_app_onboarding",
+        setup: META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {},
+        featureType: "whatsapp_business_app_onboard",
         sessionInfoVersion: "3",
-        version: "v4",
       },
     };
 

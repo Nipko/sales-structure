@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +27,7 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeft,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -126,41 +127,73 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {sections.map((section) => (
-          <div key={section.title}>
-            {showExpanded && (
-              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
-                {section.title}
-              </p>
-            )}
-            <ul className="space-y-0.5">
-              {section.items.map((item) => {
-                const active = isActive(item.href);
-                const Icon = item.icon;
-                return (
-                  <li key={item.href}>
+        {sections.map((section, sectionIdx) => (
+          <Fragment key={section.title}>
+            <div>
+              {showExpanded && (
+                <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+                  {section.title}
+                </p>
+              )}
+              <ul className="space-y-0.5">
+                {section.items.map((item) => {
+                  const active = isActive(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        title={!showExpanded ? item.label : undefined}
+                        onClick={handleNavClick}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                          showExpanded
+                            ? "px-3 py-2"
+                            : "justify-center px-2 py-2.5",
+                          active
+                            ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                            : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
+                        )}
+                      >
+                        <Icon size={18} className="shrink-0" />
+                        {showExpanded && <span>{item.label}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            {/* Plataforma section — after Análisis (index 2), super_admin only */}
+            {sectionIdx === 2 && user?.role === "super_admin" && (
+              <div>
+                {showExpanded && (
+                  <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+                    Plataforma
+                  </p>
+                )}
+                <ul className="space-y-0.5">
+                  <li>
                     <Link
-                      href={item.href}
-                      title={!showExpanded ? item.label : undefined}
+                      href="/admin/tenants"
+                      title={!showExpanded ? "Tenants" : undefined}
                       onClick={handleNavClick}
                       className={cn(
                         "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
-                        showExpanded
-                          ? "px-3 py-2"
-                          : "justify-center px-2 py-2.5",
-                        active
+                        showExpanded ? "px-3 py-2" : "justify-center px-2 py-2.5",
+                        isActive("/admin/tenants")
                           ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                           : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
                       )}
                     >
-                      <Icon size={18} className="shrink-0" />
-                      {showExpanded && <span>{item.label}</span>}
+                      <Building2 size={18} className="shrink-0" />
+                      {showExpanded && <span>Tenants</span>}
                     </Link>
                   </li>
-                );
-              })}
-            </ul>
-          </div>
+                </ul>
+              </div>
+            )}
+          </Fragment>
         ))}
       </nav>
 

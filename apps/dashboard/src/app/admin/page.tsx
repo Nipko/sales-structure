@@ -8,7 +8,10 @@ import {
     TrendingUp,
     ArrowUpRight,
     Activity,
+    Users,
+    CheckCircle2,
 } from "lucide-react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -45,6 +48,19 @@ export default function AdminDashboard() {
     const [activity, setActivity] = useState<any[]>([]);
     const [modelUsage, setModelUsage] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
+    const [platformStats, setPlatformStats] = useState({ totalTenants: 0, totalUsers: 0 });
+
+    useEffect(() => {
+        async function loadPlatformStats() {
+            if (user?.role !== "super_admin") return;
+            const result = await api.getTenants();
+            if (result.success && Array.isArray(result.data)) {
+                const totalUsers = result.data.reduce((s: number, t: any) => s + (t._count?.users || 0), 0);
+                setPlatformStats({ totalTenants: result.data.length, totalUsers });
+            }
+        }
+        loadPlatformStats();
+    }, [user?.role]);
 
     useEffect(() => {
         async function loadOverview() {
@@ -104,6 +120,59 @@ export default function AdminDashboard() {
                 </div>
                 <DataSourceBadge isLive={isLive} />
             </div>
+
+            {/* Platform Section — super_admin only */}
+            {user?.role === "super_admin" && (
+                <div className="mb-8">
+                    <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mb-4">Plataforma</h2>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <Link href="/admin/tenants">
+                            <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer">
+                                <CardContent className="pt-0">
+                                    <div className="flex items-start justify-between">
+                                        <div>
+                                            <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Tenants</p>
+                                            <p className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">{platformStats.totalTenants}</p>
+                                        </div>
+                                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500/10">
+                                            <Building2 size={22} className="text-indigo-500" />
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </Link>
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                            <CardContent className="pt-0">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Usuarios</p>
+                                        <p className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">{platformStats.totalUsers}</p>
+                                    </div>
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10">
+                                        <Users size={22} className="text-sky-500" />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                            <CardContent className="pt-0">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Estado del Sistema</p>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                                            <span className="text-sm font-semibold text-emerald-500">Online</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10">
+                                        <CheckCircle2 size={22} className="text-emerald-500" />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            )}
 
             {/* Stats Grid */}
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

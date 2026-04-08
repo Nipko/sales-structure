@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
-    Building2, Plus, Search, Eye, Edit, Globe, MessageSquare, Users, X, ArrowLeft, KeyRound, CheckCircle,
+    Building2, Plus, Search, Eye, Edit, Globe, MessageSquare, Users, X, ArrowLeft, KeyRound, CheckCircle, Activity, Link2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -41,10 +41,29 @@ export default function TenantsPage() {
     const filteredTenants = tenants.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()) || t.slug.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const handleCreateTenant = async () => {
-        const tenant: Tenant = { id: String(tenants.length + 1), name: newTenant.name, slug: newTenant.slug, industry: newTenant.industry, language: newTenant.language, plan: newTenant.plan, isActive: true, createdAt: new Date().toISOString().split("T")[0], channels: 0, conversations: 0, users: 0 };
-        setTenants([tenant, ...tenants]);
-        setShowCreateModal(false);
-        setNewTenant({ name: "", slug: "", industry: "turismo", language: "es-CO", plan: "starter" });
+        try {
+            const result = await api.createTenant({
+                name: newTenant.name,
+                slug: newTenant.slug,
+                industry: newTenant.industry,
+                language: newTenant.language,
+                plan: newTenant.plan,
+            });
+            if (result.success) {
+                showToast(`Tenant "${newTenant.name}" creado exitosamente`, "success");
+                setShowCreateModal(false);
+                setNewTenant({ name: "", slug: "", industry: "turismo", language: "es-CO", plan: "starter" });
+                // Reload tenant list
+                const reloadResult = await api.getTenants();
+                if (reloadResult.success && Array.isArray(reloadResult.data)) {
+                    setTenants(reloadResult.data.map((t: any) => ({ id: t.id, name: t.name, slug: t.slug, industry: t.industry || "N/A", language: t.language || "es-CO", plan: t.plan || "starter", isActive: t.isActive ?? true, createdAt: t.createdAt?.split("T")[0] || "\u2014", channels: t._count?.channelAccounts || 0, conversations: 0, users: t._count?.users || 0 })));
+                }
+            } else {
+                showToast(result.error || "Error al crear tenant", "error");
+            }
+        } catch {
+            showToast("Error de conexión al crear tenant", "error");
+        }
     };
 
     const autoSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -149,6 +168,29 @@ export default function TenantsPage() {
                     <p className="text-muted-foreground mt-1">Gestiona las empresas cliente conectadas a la plataforma</p>
                 </div>
                 <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreateModal(true)}><Plus size={18} /> Nuevo Tenant</button>
+            </div>
+
+            {/* System Stats */}
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                    { label: "Total Tenants", value: tenants.length, icon: Building2, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+                    { label: "Tenants Activos", value: tenants.filter(t => t.isActive).length, icon: Activity, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                    { label: "Total Usuarios", value: tenants.reduce((s, t) => s + t.users, 0), icon: Users, color: "text-sky-500", bg: "bg-sky-500/10" },
+                    { label: "Canales Conectados", value: tenants.reduce((s, t) => s + t.channels, 0), icon: Link2, color: "text-amber-500", bg: "bg-amber-500/10" },
+                ].map(stat => {
+                    const Icon = stat.icon;
+                    return (
+                        <div key={stat.label} className="glass-card p-5 flex items-start justify-between">
+                            <div>
+                                <p className="text-xs text-muted-foreground mb-1">{stat.label}</p>
+                                <p className="text-3xl font-extrabold">{stat.value}</p>
+                            </div>
+                            <div className={cn("flex h-11 w-11 items-center justify-center rounded-xl", stat.bg)}>
+                                <Icon size={22} className={stat.color} />
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
             <div className="mb-6 max-w-[400px] relative">

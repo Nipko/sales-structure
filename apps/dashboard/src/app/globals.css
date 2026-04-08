@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Dark mode: use class selector (next-themes adds .dark to <html>) instead of media query */
+@custom-variant dark (&:is(.dark *));
+
 /* Register custom colors as Tailwind utilities for shadcn/ui */
 @theme inline {
   --color-background: hsl(var(--background));

@@ -11,7 +11,7 @@ import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
     ArrowRight, ArrowLeft, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
-    Bell,
+    Bell, Globe, Building2, MapPin, Instagram, Facebook, Linkedin, ExternalLink, Edit2, Save,
 } from "lucide-react";
 
 // ============================================
@@ -49,10 +49,27 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 // HELPERS
 // ============================================
 
-/** Format a date string to a localized time (HH:MM) */
+/** Day abbreviations in Spanish */
+const DAY_ABBR = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const MONTH_ABBR = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+/** Format a date string with smart context: today → "14:30", yesterday → "Ayer 14:30",
+ *  this week → "Lun 14:30", older → "15 Mar 14:30" */
 function formatTime(dateStr: string): string {
     try {
-        return new Date(dateStr).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return "";
+        const time = d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const diffDays = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return time;
+        if (diffDays === 1) return `Ayer ${time}`;
+        if (diffDays < 7) return `${DAY_ABBR[d.getDay()]} ${time}`;
+        return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]} ${time}`;
     } catch {
         return "";
     }
@@ -128,6 +145,13 @@ export default function InboxPage() {
     // --- Assign State ---
     const [assignLoading, setAssignLoading] = useState(false);
 
+    // --- Contact Metadata State ---
+    const [contactMeta, setContactMeta] = useState<Record<string, any>>({});
+    const [contactMetaDirty, setContactMetaDirty] = useState(false);
+    const [editingField, setEditingField] = useState<string | null>(null);
+    const [contactMetaSaving, setContactMetaSaving] = useState(false);
+    const [customAttrDefs, setCustomAttrDefs] = useState<any[]>([]);
+
     // --- Snooze State ---
     const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
     const snoozeRef = useRef<HTMLDivElement>(null);
@@ -157,6 +181,58 @@ export default function InboxPage() {
             setMacrosLoaded(true);
         }).catch(() => setMacrosLoaded(true));
     }, [activeTenantId, macrosLoaded]);
+
+    // Load custom attribute definitions on mount
+    useEffect(() => {
+        if (!activeTenantId) return;
+        api.getCustomAttributes(activeTenantId, 'contact').then((res: any) => {
+            if (res?.success && Array.isArray(res.data)) setCustomAttrDefs(res.data);
+            else if (Array.isArray(res)) setCustomAttrDefs(res);
+        }).catch(() => {});
+    }, [activeTenantId]);
+
+    // Reset contact metadata when conversation changes
+    useEffect(() => {
+        if (!selectedConv) {
+            setContactMeta({});
+            setContactMetaDirty(false);
+            setEditingField(null);
+            return;
+        }
+        // Initialize from whatever metadata we have on the conversation
+        setContactMeta({
+            empresa: selectedConv.empresa || '',
+            ciudad: selectedConv.ciudad || '',
+            sitio_web: selectedConv.sitio_web || '',
+            instagram: selectedConv.instagram || '',
+            facebook: selectedConv.facebook || '',
+            linkedin: selectedConv.linkedin || '',
+            notas_rapidas: selectedConv.notas_rapidas || '',
+        });
+        setContactMetaDirty(false);
+        setEditingField(null);
+    }, [selectedConv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const updateContactMeta = (key: string, value: string) => {
+        setContactMeta(prev => ({ ...prev, [key]: value }));
+        setContactMetaDirty(true);
+    };
+
+    const saveContactMeta = async () => {
+        if (!activeTenantId || !selectedConv?.contactId) return;
+        setContactMetaSaving(true);
+        try {
+            await api.fetch(`/crm/contacts/${activeTenantId}/${selectedConv.contactId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ metadata: contactMeta }),
+            });
+            setContactMetaDirty(false);
+        } catch (err) {
+            console.error('Failed to save contact metadata:', err);
+        } finally {
+            setContactMetaSaving(false);
+        }
+    };
 
     const handleSnooze = async (label: string) => {
         if (!activeTenantId || !selectedConv) return;
@@ -237,7 +313,8 @@ export default function InboxPage() {
                         contactPhone: c.contact_phone || c.contactPhone || '',
                         contactEmail: c.contact_email || c.contactEmail || '',
                         lastMessage: c.last_message || c.lastMessage || '',
-                        lastMessageAt: c.last_message_at ? new Date(c.last_message_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : c.lastMessageAt || '',
+                        lastMessageAt: c.last_message_at ? formatTime(c.last_message_at) : c.lastMessageAt || '',
+                        lastMessageAtRaw: c.last_message_at || '',
                         status: c.status || 'open',
                         channel: c.channel_type || c.channel || 'whatsapp',
                         unreadCount: c.unread_count || c.unreadCount || 0,
@@ -367,7 +444,8 @@ export default function InboxPage() {
                      return {
                          ...c,
                          lastMessage: uiMsg.content,
-                         lastMessageAt: uiMsg.timestamp,
+                         lastMessageAt: formatTime(uiMsg.rawDate),
+                         lastMessageAtRaw: uiMsg.rawDate,
                          unreadCount: isViewing ? 0 : (c.unreadCount || 0) + 1,
                      };
                  }
@@ -1215,6 +1293,265 @@ export default function InboxPage() {
                             <div className="text-[11px] text-muted-foreground">Valor estimado</div>
                             <div className="text-xl font-bold text-emerald-500">
                                 ${selectedConv.estimatedValue.toLocaleString()} COP
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Información adicional */}
+                    <div className="mb-5">
+                        <div className="text-xs font-semibold text-muted-foreground mb-2.5 flex items-center gap-1">
+                            <Edit2 size={12} /> Información adicional
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {/* Empresa */}
+                            <div className="flex items-start gap-2 text-[13px] group">
+                                <Building2 size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">Empresa</div>
+                                    {editingField === 'empresa' ? (
+                                        <input
+                                            autoFocus
+                                            value={contactMeta.empresa || ''}
+                                            onChange={e => updateContactMeta('empresa', e.target.value)}
+                                            onBlur={() => setEditingField(null)}
+                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                            className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
+                                        />
+                                    ) : (
+                                        <div
+                                            onClick={() => setEditingField('empresa')}
+                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
+                                        >
+                                            {contactMeta.empresa || <span className="text-muted-foreground opacity-50 italic">Agregar empresa...</span>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Ciudad */}
+                            <div className="flex items-start gap-2 text-[13px] group">
+                                <MapPin size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">Ciudad</div>
+                                    {editingField === 'ciudad' ? (
+                                        <input
+                                            autoFocus
+                                            value={contactMeta.ciudad || ''}
+                                            onChange={e => updateContactMeta('ciudad', e.target.value)}
+                                            onBlur={() => setEditingField(null)}
+                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                            className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
+                                        />
+                                    ) : (
+                                        <div
+                                            onClick={() => setEditingField('ciudad')}
+                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
+                                        >
+                                            {contactMeta.ciudad || <span className="text-muted-foreground opacity-50 italic">Agregar ciudad...</span>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Sitio web */}
+                            <div className="flex items-start gap-2 text-[13px] group">
+                                <Globe size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">Sitio web</div>
+                                    {editingField === 'sitio_web' ? (
+                                        <input
+                                            autoFocus
+                                            value={contactMeta.sitio_web || ''}
+                                            onChange={e => updateContactMeta('sitio_web', e.target.value)}
+                                            onBlur={() => setEditingField(null)}
+                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                            placeholder="https://..."
+                                            className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
+                                        />
+                                    ) : contactMeta.sitio_web ? (
+                                        <div className="flex items-center gap-1">
+                                            <a
+                                                href={contactMeta.sitio_web.startsWith('http') ? contactMeta.sitio_web : `https://${contactMeta.sitio_web}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs text-indigo-400 hover:text-indigo-300 truncate"
+                                            >
+                                                {contactMeta.sitio_web}
+                                            </a>
+                                            <ExternalLink size={10} className="text-muted-foreground flex-shrink-0 cursor-pointer" onClick={() => setEditingField('sitio_web')} />
+                                        </div>
+                                    ) : (
+                                        <div
+                                            onClick={() => setEditingField('sitio_web')}
+                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors"
+                                        >
+                                            <span className="text-muted-foreground opacity-50 italic">Agregar sitio web...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Redes sociales */}
+                            <div className="flex items-start gap-2 text-[13px]">
+                                <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] text-muted-foreground mb-1">Redes sociales</div>
+                                    <div className="flex gap-2">
+                                        {/* Instagram */}
+                                        <div className="relative group/social">
+                                            <button
+                                                onClick={() => setEditingField(editingField === 'instagram' ? null : 'instagram')}
+                                                className={cn(
+                                                    "w-7 h-7 rounded-md border flex items-center justify-center cursor-pointer transition-colors",
+                                                    contactMeta.instagram
+                                                        ? "border-pink-500/30 bg-pink-500/10 text-pink-500"
+                                                        : "border-border bg-transparent text-muted-foreground hover:border-pink-500/30 hover:text-pink-500"
+                                                )}
+                                                title={contactMeta.instagram || 'Instagram'}
+                                            >
+                                                <Instagram size={14} />
+                                            </button>
+                                            {editingField === 'instagram' && (
+                                                <input
+                                                    autoFocus
+                                                    value={contactMeta.instagram || ''}
+                                                    onChange={e => updateContactMeta('instagram', e.target.value)}
+                                                    onBlur={() => setEditingField(null)}
+                                                    onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                    placeholder="@usuario"
+                                                    className="absolute top-full left-0 mt-1 w-32 py-1 px-2 rounded border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
+                                                />
+                                            )}
+                                        </div>
+                                        {/* Facebook */}
+                                        <div className="relative group/social">
+                                            <button
+                                                onClick={() => setEditingField(editingField === 'facebook' ? null : 'facebook')}
+                                                className={cn(
+                                                    "w-7 h-7 rounded-md border flex items-center justify-center cursor-pointer transition-colors",
+                                                    contactMeta.facebook
+                                                        ? "border-blue-500/30 bg-blue-500/10 text-blue-500"
+                                                        : "border-border bg-transparent text-muted-foreground hover:border-blue-500/30 hover:text-blue-500"
+                                                )}
+                                                title={contactMeta.facebook || 'Facebook'}
+                                            >
+                                                <Facebook size={14} />
+                                            </button>
+                                            {editingField === 'facebook' && (
+                                                <input
+                                                    autoFocus
+                                                    value={contactMeta.facebook || ''}
+                                                    onChange={e => updateContactMeta('facebook', e.target.value)}
+                                                    onBlur={() => setEditingField(null)}
+                                                    onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                    placeholder="facebook.com/..."
+                                                    className="absolute top-full left-0 mt-1 w-32 py-1 px-2 rounded border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
+                                                />
+                                            )}
+                                        </div>
+                                        {/* LinkedIn */}
+                                        <div className="relative group/social">
+                                            <button
+                                                onClick={() => setEditingField(editingField === 'linkedin' ? null : 'linkedin')}
+                                                className={cn(
+                                                    "w-7 h-7 rounded-md border flex items-center justify-center cursor-pointer transition-colors",
+                                                    contactMeta.linkedin
+                                                        ? "border-sky-500/30 bg-sky-500/10 text-sky-500"
+                                                        : "border-border bg-transparent text-muted-foreground hover:border-sky-500/30 hover:text-sky-500"
+                                                )}
+                                                title={contactMeta.linkedin || 'LinkedIn'}
+                                            >
+                                                <Linkedin size={14} />
+                                            </button>
+                                            {editingField === 'linkedin' && (
+                                                <input
+                                                    autoFocus
+                                                    value={contactMeta.linkedin || ''}
+                                                    onChange={e => updateContactMeta('linkedin', e.target.value)}
+                                                    onBlur={() => setEditingField(null)}
+                                                    onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                    placeholder="linkedin.com/in/..."
+                                                    className="absolute top-full left-0 mt-1 w-32 py-1 px-2 rounded border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Notas rápidas */}
+                            <div className="flex items-start gap-2 text-[13px]">
+                                <StickyNote size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">Notas rápidas</div>
+                                    <textarea
+                                        value={contactMeta.notas_rapidas || ''}
+                                        onChange={e => updateContactMeta('notas_rapidas', e.target.value)}
+                                        placeholder="Escribir nota sobre este contacto..."
+                                        rows={2}
+                                        className="w-full py-1.5 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none resize-none"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Save button */}
+                        {contactMetaDirty && (
+                            <button
+                                onClick={saveContactMeta}
+                                disabled={contactMetaSaving}
+                                className={cn(
+                                    "w-full mt-3 py-2 px-3 rounded-lg border-none text-xs font-semibold flex gap-1.5 items-center justify-center transition-colors",
+                                    contactMetaSaving
+                                        ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                        : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
+                                )}
+                            >
+                                {contactMetaSaving
+                                    ? <><Loader2 size={14} className="animate-spin" /> Guardando...</>
+                                    : <><Save size={14} /> Guardar cambios</>
+                                }
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Custom Attributes */}
+                    {customAttrDefs.length > 0 && (
+                        <div className="mb-5">
+                            <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                                <Hash size={12} /> Atributos personalizados
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                {customAttrDefs.map((attr: any) => {
+                                    const key = attr.key || attr.name || attr.id;
+                                    const label = attr.label || attr.name || key;
+                                    const value = contactMeta[key] || '';
+                                    return (
+                                        <div key={key} className="flex items-start gap-2 text-[13px]">
+                                            <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[10px] text-muted-foreground mb-0.5">{label}</div>
+                                                {editingField === `custom_${key}` ? (
+                                                    <input
+                                                        autoFocus
+                                                        value={value}
+                                                        onChange={e => updateContactMeta(key, e.target.value)}
+                                                        onBlur={() => setEditingField(null)}
+                                                        onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                        className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        onClick={() => setEditingField(`custom_${key}`)}
+                                                        className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
+                                                    >
+                                                        {value || <span className="text-muted-foreground opacity-50 italic">Sin valor</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

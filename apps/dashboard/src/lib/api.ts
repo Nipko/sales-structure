@@ -157,6 +157,42 @@ export const api = {
     savePersonaConfig: (tenantId: string, config: any) =>
         apiPut(`/persona/${tenantId}`, config),
 
+    // --- Agent Availability ---
+    updateAgentStatus: (userId: string, status: string) =>
+        apiPut(`/agent-console/status/${userId}`, { status }),
+    getAgentsWithStatus: (tenantId: string) =>
+        apiGet(`/agent-console/agents/${tenantId}/status`),
+
+    // --- Snooze ---
+    snoozeConversation: (tenantId: string, convId: string, snoozeUntil: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${convId}/snooze`, { snoozeUntil }),
+    unsnoozeConversation: (tenantId: string, convId: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${convId}/unsnooze`, {}),
+
+    // --- Macros ---
+    getMacros: (tenantId: string) => apiGet(`/agent-console/macros/${tenantId}`),
+    createMacro: (tenantId: string, data: any) => apiPost(`/agent-console/macros/${tenantId}`, data),
+    updateMacro: (tenantId: string, macroId: string, data: any) =>
+        apiPut(`/agent-console/macros/${tenantId}/${macroId}`, data),
+    executeMacro: (tenantId: string, macroId: string, conversationId: string, agentId: string) =>
+        apiPost(`/agent-console/macros/${tenantId}/${macroId}/execute`, { conversationId, agentId }),
+
+    // --- Custom Attributes ---
+    getCustomAttributes: (tenantId: string, entityType?: string) =>
+        apiGet(`/crm/custom-attributes/${tenantId}${entityType ? `?entityType=${entityType}` : ''}`),
+    createCustomAttribute: (tenantId: string, data: any) =>
+        apiPost(`/crm/custom-attributes/${tenantId}`, data),
+    updateCustomAttribute: (tenantId: string, id: string, data: any) =>
+        apiPut(`/crm/custom-attributes/${tenantId}/${id}`, data),
+
+    // --- Contact Segments ---
+    getSegments: (tenantId: string) => apiGet(`/crm/segments/${tenantId}`),
+    createSegment: (tenantId: string, data: any) => apiPost(`/crm/segments/${tenantId}`, data),
+    updateSegment: (tenantId: string, segmentId: string, data: any) =>
+        apiPut(`/crm/segments/${tenantId}/${segmentId}`, data),
+    getSegmentContacts: (tenantId: string, segmentId: string, page?: number) =>
+        apiGet(`/crm/segments/${tenantId}/${segmentId}/contacts?page=${page || 1}`),
+
     // --- Identity ---
     getMergeSuggestions: (tenantId: string) =>
         apiGet(`/identity/${tenantId}/suggestions`),

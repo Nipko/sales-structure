@@ -159,6 +159,67 @@
 .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
 @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(79,70,229,0); } 50% { box-shadow: 0 0 0 8px rgba(79,70,229,0.1); } }
 
+/* Monospace font for code / API keys */
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+:root {
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: hsl(var(--muted)); border-radius: 3px; }
+
+/* ============================================
+   Future Themes
+   ============================================
+   To create a new theme:
+   1. Add a CSS class (e.g. .graphite) with the same CSS custom properties as :root / .dark
+   2. Apply the class to <html> or a wrapper element
+   3. Add the theme option to the appearance settings page
+   ============================================ */
+
+/* .graphite {
+  --background: 220 10% 12%;
+  --foreground: 220 10% 90%;
+  --card: 220 10% 15%;
+  --card-foreground: 220 10% 90%;
+  --popover: 220 10% 15%;
+  --popover-foreground: 220 10% 90%;
+  --primary: 220 60% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 8% 22%;
+  --secondary-foreground: 220 10% 90%;
+  --muted: 220 8% 22%;
+  --muted-foreground: 220 8% 55%;
+  --accent: 220 8% 22%;
+  --accent-foreground: 220 10% 90%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 0 0% 95%;
+  --border: 220 8% 20%;
+  --input: 220 8% 20%;
+  --ring: 220 60% 55%;
+} */
+
+/* .midnight {
+  --background: 240 20% 6%;
+  --foreground: 240 10% 92%;
+  --card: 240 20% 9%;
+  --card-foreground: 240 10% 92%;
+  --popover: 240 20% 9%;
+  --popover-foreground: 240 10% 92%;
+  --primary: 260 70% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 15% 18%;
+  --secondary-foreground: 240 10% 92%;
+  --muted: 240 15% 18%;
+  --muted-foreground: 240 10% 58%;
+  --accent: 240 15% 18%;
+  --accent-foreground: 240 10% 92%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 0 0% 95%;
+  --border: 240 15% 16%;
+  --input: 240 15% 16%;
+  --ring: 260 70% 60%;
+} */

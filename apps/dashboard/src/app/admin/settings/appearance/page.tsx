@@ -2,7 +2,7 @@
 
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { Palette, Sun, Moon, Monitor, Check } from "lucide-react";
+import { Palette, Sun, Moon, Monitor, Check, Lock } from "lucide-react";
 
 const themes = [
   {
@@ -39,6 +39,31 @@ const themes = [
       card: "bg-neutral-500",
       text: "bg-neutral-400",
       accent: "bg-indigo-500",
+    },
+  },
+] as const;
+
+const futureThemes = [
+  {
+    key: "graphite",
+    label: "Graphite",
+    description: "Tonos neutros con acento azul acero",
+    preview: {
+      bg: "bg-neutral-700",
+      card: "bg-neutral-600",
+      text: "bg-neutral-500",
+      accent: "bg-blue-400",
+    },
+  },
+  {
+    key: "midnight",
+    label: "Midnight",
+    description: "Azul profundo con acentos violeta",
+    preview: {
+      bg: "bg-indigo-950",
+      card: "bg-indigo-900",
+      text: "bg-indigo-700",
+      accent: "bg-purple-500",
     },
   },
 ] as const;
@@ -129,6 +154,48 @@ export default function AppearancePage() {
               </button>
             );
           })}
+
+          {/* Future themes (disabled) */}
+          {futureThemes.map((t) => (
+            <div
+              key={t.key}
+              className="relative rounded-xl border-2 border-neutral-200 dark:border-neutral-800 p-4 text-left opacity-50 cursor-not-allowed"
+            >
+              {/* Coming soon badge */}
+              <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800">
+                <Lock size={10} className="text-neutral-400 dark:text-neutral-500" />
+                <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
+                  Próximamente
+                </span>
+              </div>
+
+              {/* Preview thumbnail */}
+              <div
+                className={cn(
+                  "w-full h-20 rounded-lg mb-3 p-2 flex flex-col gap-1.5",
+                  t.preview.bg
+                )}
+              >
+                <div className={cn("h-2 w-16 rounded-full", t.preview.accent)} />
+                <div className={cn("h-1.5 w-24 rounded-full", t.preview.text)} />
+                <div className={cn("flex-1 rounded", t.preview.card)} />
+              </div>
+
+              {/* Label */}
+              <div className="flex items-center gap-2">
+                <Palette
+                  size={16}
+                  className="text-neutral-400 dark:text-neutral-500"
+                />
+                <span className="text-sm font-medium text-neutral-400 dark:text-neutral-500">
+                  {t.label}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                {t.description}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 

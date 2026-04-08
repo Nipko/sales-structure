@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,6 +15,7 @@ export default function AdminLayout({
 }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -39,9 +41,12 @@ export default function AdminLayout({
   return (
     <TenantProvider>
       <div className="flex h-screen bg-white dark:bg-neutral-950">
-        <AppSidebar />
+        <AppSidebar
+          mobileOpen={mobileOpen}
+          onMobileClose={() => setMobileOpen(false)}
+        />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <TopBar />
+          <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
           <main className="flex-1 overflow-auto p-6">{children}</main>
         </div>
       </div>

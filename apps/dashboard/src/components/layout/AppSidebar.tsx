@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   LayoutDashboard,
   Inbox,
@@ -73,39 +78,46 @@ const sections: NavSection[] = [
   },
 ];
 
-export default function AppSidebar() {
+interface AppSidebarProps {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const pathname = usePathname();
   const { user } = useAuth();
+
+  // Whether sidebar visually shows full width (labels visible)
+  const showExpanded = !collapsed || hovered;
 
   const isActive = (href: string) => {
     if (href === "/admin") return pathname === "/admin";
     return pathname.startsWith(href);
   };
 
-  return (
-    <aside
-      className={cn(
-        "flex flex-col h-screen border-r border-neutral-200 dark:border-neutral-800",
-        "bg-white dark:bg-neutral-950 transition-all duration-300 shrink-0",
-        collapsed ? "w-16" : "w-[272px]"
-      )}
-    >
+  const handleNavClick = useCallback(() => {
+    if (onMobileClose) onMobileClose();
+  }, [onMobileClose]);
+
+  const sidebarContent = (
+    <>
       {/* Header */}
       <div
         className={cn(
           "flex items-center h-14 border-b border-neutral-200 dark:border-neutral-800 px-4 shrink-0",
-          collapsed ? "justify-center" : "justify-between"
+          showExpanded ? "justify-between" : "justify-center"
         )}
       >
-        {!collapsed && (
-          <span className="font-bold text-lg text-neutral-900 dark:text-neutral-100">
+        {showExpanded && (
+          <span className="font-bold text-lg text-neutral-900 dark:text-neutral-100 whitespace-nowrap">
             Parallly
           </span>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          className="p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors hidden md:inline-flex"
           title={collapsed ? "Expandir" : "Colapsar"}
         >
           {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
@@ -116,8 +128,8 @@ export default function AppSidebar() {
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
         {sections.map((section) => (
           <div key={section.title}>
-            {!collapsed && (
-              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+            {showExpanded && (
+              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
                 {section.title}
               </p>
             )}
@@ -129,19 +141,20 @@ export default function AppSidebar() {
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      title={collapsed ? item.label : undefined}
+                      title={!showExpanded ? item.label : undefined}
+                      onClick={handleNavClick}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
-                        collapsed
-                          ? "justify-center px-2 py-2.5"
-                          : "px-3 py-2",
+                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                        showExpanded
+                          ? "px-3 py-2"
+                          : "justify-center px-2 py-2.5",
                         active
                           ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                           : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
                       )}
                     >
                       <Icon size={18} className="shrink-0" />
-                      {!collapsed && <span>{item.label}</span>}
+                      {showExpanded && <span>{item.label}</span>}
                     </Link>
                   </li>
                 );
@@ -155,16 +168,16 @@ export default function AppSidebar() {
       <div
         className={cn(
           "border-t border-neutral-200 dark:border-neutral-800 p-3 shrink-0",
-          collapsed ? "flex justify-center" : "flex items-center gap-3"
+          showExpanded ? "flex items-center gap-3" : "flex justify-center"
         )}
       >
         <div
           className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0"
-          title={collapsed ? `${user?.firstName} ${user?.lastName}` : undefined}
+          title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
         >
           {user?.firstName?.charAt(0) || "U"}
         </div>
-        {!collapsed && (
+        {showExpanded && (
           <div className="overflow-hidden">
             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
               {user?.firstName} {user?.lastName}
@@ -175,6 +188,35 @@ export default function AppSidebar() {
           </div>
         )}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside
+        onMouseEnter={() => { if (collapsed) setHovered(true); }}
+        onMouseLeave={() => setHovered(false)}
+        className={cn(
+          "hidden md:flex flex-col h-screen border-r border-neutral-200 dark:border-neutral-800",
+          "bg-white dark:bg-neutral-950 transition-all duration-200 shrink-0 overflow-hidden",
+          showExpanded ? "w-[272px]" : "w-16"
+        )}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile drawer */}
+      <Sheet open={mobileOpen} onOpenChange={(open) => { if (!open && onMobileClose) onMobileClose(); }}>
+        <SheetContent
+          side="left"
+          showCloseButton={true}
+          className="w-[272px] p-0 bg-white dark:bg-neutral-950 flex flex-col"
+        >
+          <SheetTitle className="sr-only">Menu</SheetTitle>
+          {sidebarContent}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

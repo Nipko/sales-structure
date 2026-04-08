@@ -1,32 +1,48 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { Sun, Moon, Monitor, ChevronDown, LogOut } from "lucide-react";
+import { Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu } from "lucide-react";
 
 const pathLabels: Record<string, string> = {
-  admin: "Dashboard",
+  admin: "",
   inbox: "Inbox",
   contacts: "CRM",
   pipeline: "Pipeline",
   automation: "Automatización",
-  broadcast: "Campañas",
-  channels: "Canales",
-  "agent-analytics": "Analytics",
-  compliance: "Compliance",
   agent: "Agente IA",
-  knowledge: "Knowledge Base",
-  identity: "Identidad",
-  users: "Usuarios",
   settings: "Configuración",
+  channels: "Canales",
+  analytics: "Analytics",
+  "agent-analytics": "Reportes",
+  identity: "Identidad",
+  knowledge: "Knowledge Base",
+  users: "Usuarios",
+  broadcast: "Campañas",
+  compliance: "Compliance",
+  inventory: "Inventario",
+  orders: "Órdenes",
+  tenants: "Tenants",
+  "custom-attributes": "Atributos",
+  macros: "Macros",
+  prechat: "Pre-Chat",
   appearance: "Apariencia",
+  segments: "Segmentos",
+  whatsapp: "WhatsApp",
+  instagram: "Instagram",
+  messenger: "Messenger",
 };
 
-export default function TopBar() {
+interface TopBarProps {
+  onMobileMenuToggle?: () => void;
+}
+
+export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { tenants, activeTenantId, setActiveTenant } = useTenant();
@@ -48,10 +64,33 @@ export default function TopBar() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Build breadcrumb from pathname
-  const breadcrumb = useMemo(() => {
-    const segments = pathname.split("/").filter(Boolean);
-    return segments.map((seg) => pathLabels[seg] || seg).join(" > ");
+  // Build breadcrumb segments from pathname
+  const breadcrumbSegments = useMemo(() => {
+    const parts = pathname.split("/").filter(Boolean);
+    const segments: { label: string; href: string; isLast: boolean }[] = [];
+
+    // Always start with Dashboard
+    segments.push({
+      label: "Dashboard",
+      href: "/admin",
+      isLast: parts.length <= 1,
+    });
+
+    // Build remaining segments (skip "admin" at index 0)
+    for (let i = 1; i < parts.length; i++) {
+      const seg = parts[i];
+      const label = pathLabels[seg] || seg;
+      // Skip empty labels
+      if (!label) continue;
+      const href = "/" + parts.slice(0, i + 1).join("/");
+      segments.push({
+        label,
+        href,
+        isLast: i === parts.length - 1,
+      });
+    }
+
+    return segments;
   }, [pathname]);
 
   const themeOptions = [
@@ -61,11 +100,38 @@ export default function TopBar() {
   ] as const;
 
   return (
-    <header className="h-14 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-6 flex items-center gap-4 shrink-0">
+    <header className="h-14 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 md:px-6 flex items-center gap-4 shrink-0">
+      {/* Mobile hamburger */}
+      <button
+        onClick={onMobileMenuToggle}
+        className="md:hidden p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        title="Menu"
+      >
+        <Menu size={20} />
+      </button>
+
       {/* Breadcrumb */}
-      <p className="text-sm text-neutral-500 dark:text-neutral-400">
-        {breadcrumb}
-      </p>
+      <nav className="flex items-center gap-1 text-sm min-w-0">
+        {breadcrumbSegments.map((seg, idx) => (
+          <span key={seg.href} className="flex items-center gap-1 min-w-0">
+            {idx > 0 && (
+              <ChevronRight size={14} className="text-neutral-300 dark:text-neutral-600 shrink-0" />
+            )}
+            {seg.isLast ? (
+              <span className="text-neutral-900 dark:text-neutral-100 font-medium truncate">
+                {seg.label}
+              </span>
+            ) : (
+              <Link
+                href={seg.href}
+                className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors truncate"
+              >
+                {seg.label}
+              </Link>
+            )}
+          </span>
+        ))}
+      </nav>
 
       {/* Spacer */}
       <div className="flex-1" />

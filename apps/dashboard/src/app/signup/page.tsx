@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, User, Mail, Lock, Eye, EyeOff, AlertCircle, Zap, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -21,23 +22,7 @@ const INDUSTRIES = [
     { value: "other", label: "Otra" },
 ];
 
-const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "12px 14px 12px 44px", borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)",
-    color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" as const,
-    transition: "border-color 0.2s ease",
-};
-
-const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    paddingLeft: 44,
-    appearance: "none" as const,
-    cursor: "pointer",
-};
-
-const labelStyle: React.CSSProperties = {
-    display: "block", fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 6, fontWeight: 500,
-};
+const inputClasses = "w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
 
 export default function SignupPage() {
     const [form, setForm] = useState({
@@ -86,107 +71,82 @@ export default function SignupPage() {
         setIsSubmitting(false);
     };
 
-    const onFocus = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) =>
-        (e.target.style.borderColor = "rgba(108, 92, 231, 0.5)");
-    const onBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) =>
-        (e.target.style.borderColor = "rgba(255,255,255,0.1)");
-
     return (
-        <div style={{
-            minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-            background: "linear-gradient(135deg, #0a0a14 0%, #12122a 50%, #1a0a2e 100%)",
-            padding: 20,
-        }}>
-            {/* Background glow */}
-            <div style={{
-                position: "fixed", top: "20%", left: "30%", width: 400, height: 400,
-                borderRadius: "50%", background: "radial-gradient(circle, rgba(108, 92, 231, 0.15) 0%, transparent 70%)",
-                filter: "blur(60px)", pointerEvents: "none",
-            }} />
-            <div style={{
-                position: "fixed", bottom: "10%", right: "20%", width: 300, height: 300,
-                borderRadius: "50%", background: "radial-gradient(circle, rgba(46, 204, 113, 0.1) 0%, transparent 70%)",
-                filter: "blur(60px)", pointerEvents: "none",
-            }} />
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
+            {/* Background glow effects (dark mode only) */}
+            <div className="hidden dark:block fixed top-[20%] left-[30%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(108,92,231,0.15)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
+            <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
 
-            <div style={{ width: "100%", maxWidth: 460, position: "relative", zIndex: 1 }}>
+            <div className="w-full max-w-[460px] relative z-10">
                 {/* Logo */}
-                <div style={{ textAlign: "center", marginBottom: 24 }}>
-                    <div style={{
-                        display: "inline-flex", alignItems: "center", gap: 10,
-                        padding: "10px 20px", borderRadius: 12,
-                        background: "rgba(108, 92, 231, 0.1)", border: "1px solid rgba(108, 92, 231, 0.2)",
-                    }}>
-                        <Zap size={24} color="#6c5ce7" />
-                        <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5, color: "white" }}>
+                <div className="text-center mb-6">
+                    <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20">
+                        <Zap size={24} className="text-indigo-600" />
+                        <span className="text-[22px] font-extrabold tracking-tight text-gray-900 dark:text-white">
                             Parallext
                         </span>
                     </div>
-                    <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginTop: 10 }}>
+                    <p className="text-muted-foreground text-sm mt-2.5">
                         Plataforma de IA Conversacional
                     </p>
                 </div>
 
                 {/* Card */}
-                <div style={{
-                    padding: "32px", borderRadius: 20,
-                    background: "rgba(255, 255, 255, 0.04)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    backdropFilter: "blur(20px)",
-                    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-                }}>
-                    <h1 style={{ fontSize: 24, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
+                <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                    <h1 className="text-2xl font-bold text-foreground mb-1">
                         Crea tu cuenta
                     </h1>
-                    <p style={{ color: "rgba(255,255,255,0.5)", margin: "0 0 24px", fontSize: 14 }}>
+                    <p className="text-muted-foreground text-sm mb-6">
                         Registra tu empresa y comienza en minutos
                     </p>
 
                     {/* Error */}
                     {error && (
-                        <div style={{
-                            padding: "10px 14px", borderRadius: 10, marginBottom: 16,
-                            background: "rgba(231, 76, 60, 0.1)", border: "1px solid rgba(231, 76, 60, 0.2)",
-                            display: "flex", alignItems: "center", gap: 8,
-                            color: "#e74c3c", fontSize: 13,
-                        }}>
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
                             <AlertCircle size={16} /> {error}
                         </div>
                     )}
 
                     <form onSubmit={handleSubmit}>
-                        {/* ── Company Section ── */}
-                        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(108,92,231,0.8)", margin: "0 0 12px" }}>
+                        {/* Company Section */}
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600/80 mb-3">
                             Datos de la empresa
                         </p>
 
                         {/* Company Name */}
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={labelStyle}>Nombre de la empresa</label>
-                            <div style={{ position: "relative" }}>
-                                <Building2 size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)" }} />
+                        <div className="mb-3.5">
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                Nombre de la empresa
+                            </label>
+                            <div className="relative">
+                                <Building2 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
-                                    type="text" value={form.companyName}
+                                    type="text"
+                                    value={form.companyName}
                                     onChange={(e) => updateField("companyName", e.target.value)}
-                                    placeholder="Mi Empresa SAS" required
-                                    style={inputStyle} onFocus={onFocus} onBlur={onBlur}
+                                    placeholder="Mi Empresa SAS"
+                                    required
+                                    className={inputClasses}
                                 />
                             </div>
                         </div>
 
                         {/* Industry */}
-                        <div style={{ marginBottom: 20 }}>
-                            <label style={labelStyle}>Industria</label>
-                            <div style={{ position: "relative" }}>
-                                <Building2 size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)", pointerEvents: "none" }} />
+                        <div className="mb-5">
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                Industria
+                            </label>
+                            <div className="relative">
+                                <Building2 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
                                 <select
                                     value={form.industry}
                                     onChange={(e) => updateField("industry", e.target.value)}
-                                    required style={selectStyle} onFocus={onFocus} onBlur={onBlur}
+                                    required
+                                    className={cn(inputClasses, "appearance-none cursor-pointer")}
                                 >
                                     <option value="" disabled>Selecciona tu industria</option>
                                     {INDUSTRIES.map((i) => (
-                                        <option key={i.value} value={i.value} style={{ background: "#1a1a2e", color: "white" }}>
+                                        <option key={i.value} value={i.value} className="bg-white dark:bg-[#1a1a2e] text-foreground">
                                             {i.label}
                                         </option>
                                     ))}
@@ -194,73 +154,81 @@ export default function SignupPage() {
                             </div>
                         </div>
 
-                        {/* ── Admin Section ── */}
-                        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(108,92,231,0.8)", margin: "0 0 12px" }}>
+                        {/* Admin Section */}
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600/80 mb-3">
                             Tu cuenta de administrador
                         </p>
 
                         {/* Name row */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                        <div className="grid grid-cols-2 gap-3 mb-3.5">
                             <div>
-                                <label style={labelStyle}>Nombre</label>
-                                <div style={{ position: "relative" }}>
-                                    <User size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)" }} />
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">Nombre</label>
+                                <div className="relative">
+                                    <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
-                                        type="text" value={form.firstName}
+                                        type="text"
+                                        value={form.firstName}
                                         onChange={(e) => updateField("firstName", e.target.value)}
-                                        placeholder="Juan" required
-                                        style={inputStyle} onFocus={onFocus} onBlur={onBlur}
+                                        placeholder="Juan"
+                                        required
+                                        className={inputClasses}
                                     />
                                 </div>
                             </div>
                             <div>
-                                <label style={labelStyle}>Apellido</label>
-                                <div style={{ position: "relative" }}>
-                                    <User size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)" }} />
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">Apellido</label>
+                                <div className="relative">
+                                    <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
-                                        type="text" value={form.lastName}
+                                        type="text"
+                                        value={form.lastName}
                                         onChange={(e) => updateField("lastName", e.target.value)}
-                                        placeholder="Pérez" required
-                                        style={inputStyle} onFocus={onFocus} onBlur={onBlur}
+                                        placeholder="Pérez"
+                                        required
+                                        className={inputClasses}
                                     />
                                 </div>
                             </div>
                         </div>
 
                         {/* Email */}
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={labelStyle}>Email corporativo</label>
-                            <div style={{ position: "relative" }}>
-                                <Mail size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)" }} />
+                        <div className="mb-3.5">
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                Email corporativo
+                            </label>
+                            <div className="relative">
+                                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
-                                    type="email" value={form.email}
+                                    type="email"
+                                    value={form.email}
                                     onChange={(e) => updateField("email", e.target.value)}
-                                    placeholder="juan@miempresa.com" required
-                                    style={inputStyle} onFocus={onFocus} onBlur={onBlur}
+                                    placeholder="juan@miempresa.com"
+                                    required
+                                    className={inputClasses}
                                 />
                             </div>
                         </div>
 
                         {/* Password */}
-                        <div style={{ marginBottom: 24 }}>
-                            <label style={labelStyle}>Contraseña</label>
-                            <div style={{ position: "relative" }}>
-                                <Lock size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.3)" }} />
+                        <div className="mb-6">
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                Contraseña
+                            </label>
+                            <div className="relative">
+                                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
                                     type={showPassword ? "text" : "password"}
                                     value={form.password}
                                     onChange={(e) => updateField("password", e.target.value)}
-                                    placeholder="Mínimo 6 caracteres" required minLength={6}
-                                    style={{ ...inputStyle, paddingRight: 44 }}
-                                    onFocus={onFocus} onBlur={onBlur}
+                                    placeholder="Mínimo 6 caracteres"
+                                    required
+                                    minLength={6}
+                                    className={cn(inputClasses, "pr-11")}
                                 />
                                 <button
-                                    type="button" onClick={() => setShowPassword(!showPassword)}
-                                    style={{
-                                        position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
-                                        background: "none", border: "none", cursor: "pointer",
-                                        color: "rgba(255,255,255,0.3)", padding: 0,
-                                    }}
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer text-muted-foreground/50 p-0 hover:text-muted-foreground"
                                 >
                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
@@ -269,33 +237,24 @@ export default function SignupPage() {
 
                         {/* Submit */}
                         <button
-                            type="submit" disabled={isSubmitting}
-                            style={{
-                                width: "100%", padding: "14px", borderRadius: 12, border: "none",
-                                background: isSubmitting
-                                    ? "rgba(108, 92, 231, 0.5)"
-                                    : "linear-gradient(135deg, #6c5ce7, #a29bfe)",
-                                color: "white", fontSize: 15, fontWeight: 600,
-                                cursor: isSubmitting ? "wait" : "pointer",
-                                transition: "all 0.2s ease",
-                                boxShadow: "0 4px 15px rgba(108, 92, 231, 0.3)",
-                            }}
+                            type="submit"
+                            disabled={isSubmitting}
+                            className={cn(
+                                "w-full py-3.5 rounded-xl border-none text-white text-[15px] font-semibold transition-all shadow-[0_4px_15px_rgba(108,92,231,0.3)]",
+                                isSubmitting
+                                    ? "bg-indigo-400 dark:bg-indigo-600/50 cursor-wait"
+                                    : "bg-gradient-to-r from-indigo-600 to-indigo-400 cursor-pointer hover:shadow-[0_6px_20px_rgba(108,92,231,0.4)] hover:brightness-110"
+                            )}
                         >
                             {isSubmitting ? "Creando tu cuenta..." : "Crear cuenta y comenzar"}
                         </button>
                     </form>
 
                     {/* Link to login */}
-                    <div style={{ textAlign: "center", marginTop: 20 }}>
+                    <div className="text-center mt-5">
                         <Link
                             href="/login"
-                            style={{
-                                color: "rgba(255,255,255,0.5)", fontSize: 13, textDecoration: "none",
-                                display: "inline-flex", alignItems: "center", gap: 6,
-                                transition: "color 0.2s",
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = "#a29bfe")}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                            className="text-muted-foreground text-[13px] no-underline inline-flex items-center gap-1.5 hover:text-indigo-500 transition-colors"
                         >
                             <ArrowLeft size={14} /> ¿Ya tienes cuenta? Inicia sesión
                         </Link>
@@ -303,7 +262,7 @@ export default function SignupPage() {
                 </div>
 
                 {/* Footer */}
-                <p style={{ textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 20 }}>
+                <p className="text-center text-xs text-muted-foreground/60 mt-5">
                     Parallext Engine v1.0 · ©2026 Nipko
                 </p>
             </div>

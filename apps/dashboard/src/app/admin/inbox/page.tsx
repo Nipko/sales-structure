@@ -10,7 +10,7 @@ import { io } from "socket.io-client";
 import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
-    ArrowRight, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
+    ArrowRight, ArrowLeft, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
     Bell,
 } from "lucide-react";
 
@@ -101,6 +101,10 @@ export default function InboxPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [isLive, setIsLive] = useState(false);
     const [loadingConv, setLoadingConv] = useState(true);
+
+    // --- Mobile responsive state ---
+    // On mobile (<md), show either the conversation list or the chat view
+    const [mobileShowChat, setMobileShowChat] = useState(false);
 
     // --- Canned Responses State ---
     const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
@@ -590,20 +594,24 @@ export default function InboxPage() {
 
 
     return (
-        <div className="flex h-[calc(100vh-64px)] -m-8 -mx-10 overflow-hidden">
+        <div className="flex h-[calc(100%+48px)] -m-6 overflow-hidden">
             {/* Keyframes for animations */}
             <style>{`
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
                 .inbox-msg-bubble { animation: fadeIn 0.2s ease-out; }
-                .inbox-conv-item:hover { background: var(--bg-tertiary, hsl(var(--muted))) !important; }
+                .inbox-conv-item:hover { background: hsl(var(--muted)) !important; }
                 .inbox-scrollbar::-webkit-scrollbar { width: 6px; }
                 .inbox-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .inbox-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-                .inbox-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+                .inbox-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+                .inbox-scrollbar::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.3); border-radius: 3px; }
             `}</style>
 
             {/* ======== LEFT: Conversation List ======== */}
-            <div className="w-[340px] border-r border-border flex flex-col bg-card">
+            <div className={cn(
+                "border-r border-border flex flex-col bg-card flex-shrink-0",
+                "w-full md:w-[280px] lg:w-[320px]",
+                mobileShowChat ? "hidden md:flex" : "flex"
+            )}>
                 {/* Header */}
                 <div className="p-4 border-b border-border">
                     <div className="flex justify-between items-center mb-3">
@@ -667,6 +675,7 @@ export default function InboxPage() {
                             className="inbox-conv-item"
                             onClick={() => {
                                 setSelectedConv(conv);
+                                setMobileShowChat(true);
                                 // Clear unread badge when selecting
                                 setConversations(prev => prev.map(c =>
                                     c.id === conv.id ? { ...c, unreadCount: 0 } : c
@@ -743,12 +752,22 @@ export default function InboxPage() {
             </div>
 
             {/* ======== CENTER: Chat Thread ======== */}
-            <div className="flex-1 flex flex-col bg-background">
+            <div className={cn(
+                "flex-1 flex flex-col bg-background min-w-0",
+                mobileShowChat ? "flex" : "hidden md:flex"
+            )}>
                 {selectedConv ? (
                     <>
                 {/* Chat Header */}
-                <div className="px-5 py-3 border-b border-border flex justify-between items-center bg-card">
-                    <div className="flex items-center gap-2.5">
+                <div className="px-3 md:px-5 py-3 border-b border-border flex justify-between items-center bg-card gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Mobile back button */}
+                        <button
+                            onClick={() => setMobileShowChat(false)}
+                            className="md:hidden p-1.5 rounded-lg border-none bg-transparent text-muted-foreground cursor-pointer hover:bg-muted flex-shrink-0"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
                         <div
                             className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white"
                             style={{ background: `linear-gradient(135deg, ${priorityColors[selectedConv.priority]}, ${priorityColors[selectedConv.priority]}88)` }}
@@ -760,7 +779,7 @@ export default function InboxPage() {
                             <div className="text-xs text-muted-foreground">{selectedConv.contactPhone} · {selectedConv.channel}</div>
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5 md:gap-2 flex-wrap justify-end flex-shrink-0">
                         <button
                             onClick={() => setShowNotes(!showNotes)}
                             className={cn(
@@ -874,10 +893,7 @@ export default function InboxPage() {
                 {/* Messages Area */}
                 <div
                     ref={messagesContainerRef}
-                    className="inbox-scrollbar flex-1 overflow-auto px-6 py-4 flex flex-col gap-1"
-                    style={{
-                        backgroundImage: "radial-gradient(circle at 20% 80%, rgba(108, 92, 231, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(46, 204, 113, 0.03) 0%, transparent 50%)",
-                    }}
+                    className="inbox-scrollbar flex-1 overflow-auto px-3 md:px-6 py-4 flex flex-col gap-1 bg-[radial-gradient(circle_at_20%_80%,hsl(var(--muted)/0.3)_0%,transparent_50%),radial-gradient(circle_at_80%_20%,hsl(var(--muted)/0.2)_0%,transparent_50%)]"
                 >
                     {messagesWithSeparators.map((item: any) => {
                         // Date separator
@@ -1007,7 +1023,7 @@ export default function InboxPage() {
 
                 {/* Notes Panel (conditional) */}
                 {showNotes && (
-                    <div className="border-t border-border px-5 py-3 bg-amber-500/5 max-h-[200px] overflow-auto">
+                    <div className="border-t border-border px-3 md:px-5 py-3 bg-amber-500/5 max-h-[200px] overflow-auto">
                         <div className="text-xs font-semibold text-amber-500 mb-2 flex gap-1 items-center">
                             <StickyNote size={14} /> Notas internas
                         </div>
@@ -1037,7 +1053,7 @@ export default function InboxPage() {
                 )}
 
                 {/* Message Input */}
-                <div className="px-5 py-3 border-t border-border flex gap-2 items-center bg-card">
+                <div className="px-3 md:px-5 py-3 border-t border-border flex gap-2 items-center bg-card">
                     <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1 hover:text-foreground">
                         <Paperclip size={20} />
                     </button>
@@ -1111,7 +1127,7 @@ export default function InboxPage() {
             </div>
 
             {/* ======== RIGHT: Contact Panel ======== */}
-            <div className="inbox-scrollbar w-[300px] border-l border-border overflow-auto bg-card p-4">
+            <div className="inbox-scrollbar hidden lg:block w-[280px] border-l border-border overflow-auto bg-card p-4 flex-shrink-0">
                 {/* Contact Header -- derived from selected conversation */}
                 {selectedConv && (
                     <>

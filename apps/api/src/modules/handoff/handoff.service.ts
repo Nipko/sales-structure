@@ -199,6 +199,9 @@ export class HandoffService {
                 WHERE u.tenant_id = $1::uuid
                   AND u.is_active = true
                   AND u.role IN ('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+                  AND u.availability_status = 'online'
+                  AND (SELECT COUNT(*) FROM "${schemaName}".conversations c
+                       WHERE c.assigned_to = u.id::text AND c.status = 'with_human') < u.max_capacity
                 ORDER BY active_count ASC
                 LIMIT 1
             `, tenantId) as any[];

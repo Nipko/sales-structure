@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg-primary: #0a0a12;
   --bg-secondary: #12121e;
   --bg-card: #1a1a2e;
@@ -11,6 +12,23 @@
   --accent: #6c5ce7;
   --accent-hover: #7d6ff0;
   --accent-glow: rgba(108, 92, 231, 0.15);
+  --success: #00d68f;
+  --warning: #ffaa00;
+  --danger: #ff4757;
+  --info: #00b4d8;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f5f5f8;
+  --bg-secondary: #ffffff;
+  --bg-card: #f0f0f5;
+  --bg-card-hover: #e8e8f0;
+  --border: #d0d0e0;
+  --text-primary: #1a1a2e;
+  --text-secondary: #6060a0;
+  --accent: #6c5ce7;
+  --accent-hover: #7d6ff0;
+  --accent-glow: rgba(108, 92, 231, 0.1);
   --success: #00d68f;
   --warning: #ffaa00;
   --danger: #ff4757;

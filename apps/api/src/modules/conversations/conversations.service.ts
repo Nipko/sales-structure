@@ -170,11 +170,15 @@ export class ConversationsService {
             ).then(res => res[0]);
         }
 
-        // 1b. Resolve unified identity (fire-and-forget)
-        this.identityService.resolveOrCreateProfile(tenantId, {
-            id: contact.id, phone: contact.phone, email: contact.email,
-            name: contact.name, channelType, externalId: contactId,
-        }).catch(e => this.logger.warn(`Identity resolution failed (non-fatal): ${e.message}`));
+        // 1b. Resolve unified identity
+        try {
+            await this.identityService.resolveOrCreateProfile(tenantId, {
+                id: contact.id, phone: contact.phone, email: contact.email,
+                name: contact.name, channelType, externalId: contactId,
+            });
+        } catch (e: any) {
+            this.logger.warn(`[Pipeline] Identity resolution failed (non-fatal): ${e.message}`);
+        }
 
         // 2. Find or create lead
         const contactIdStr = String(contact.id);

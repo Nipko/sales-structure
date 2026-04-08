@@ -180,6 +180,50 @@ export class NurturingService {
     }
 
     /**
+     * Cron: every 6 hours, auto-resolve conversations with no message in 72 hours.
+     */
+    @Cron('0 */6 * * *')
+    async autoResolveStale(): Promise<void> {
+        this.logger.log('[Cron] Auto-resolving stale conversations (72h no activity)...');
+
+        try {
+            const tenants = await this.prisma.$queryRaw<any[]>`
+                SELECT id, schema_name FROM tenants WHERE is_active = true
+            `;
+            if (!tenants || tenants.length === 0) return;
+
+            let totalResolved = 0;
+            for (const tenant of tenants) {
+                try {
+                    const result = await this.prisma.executeInTenantSchema<any[]>(
+                        tenant.schema_name,
+                        `UPDATE conversations
+                         SET status = 'resolved', resolved_at = NOW()
+                         WHERE status = 'active'
+                           AND id NOT IN (
+                               SELECT DISTINCT conversation_id FROM messages
+                               WHERE created_at > NOW() - INTERVAL '72 hours'
+                           )
+                         RETURNING id`,
+                        [],
+                    );
+                    const count = result?.length || 0;
+                    if (count > 0) {
+                        this.logger.log(`Auto-resolved ${count} stale conversation(s) for tenant ${tenant.id}`);
+                        totalResolved += count;
+                    }
+                } catch (e: any) {
+                    this.logger.warn(`Auto-resolve failed for tenant ${tenant.id}: ${e.message}`);
+                }
+            }
+
+            this.logger.log(`[Cron] Auto-resolve complete: ${totalResolved} conversation(s) resolved`);
+        } catch (e: any) {
+            this.logger.error(`[Cron] Auto-resolve stale failed: ${e.message}`);
+        }
+    }
+
+    /**
      * Cron: every 2 hours, scan for stale conversations that need follow-up.
      */
     @Cron('0 */2 * * *')

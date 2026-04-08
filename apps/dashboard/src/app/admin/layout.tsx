@@ -3,10 +3,12 @@
 import Sidebar from "@/components/Sidebar";
 import CopilotWidget from "@/components/CopilotWidget";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { TenantProvider, TenantSelector } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
+import { Sun, Moon, Monitor } from "lucide-react";
 
 const agentStatuses = [
     { key: "online", label: "Online", color: "#2ecc71" },
@@ -20,10 +22,13 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const { isAuthenticated, isLoading, user, logout } = useAuth();
+    const { theme, setTheme } = useTheme();
     const router = useRouter();
     const [agentStatus, setAgentStatus] = useState<string>("online");
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+    const [showThemeDropdown, setShowThemeDropdown] = useState(false);
     const statusRef = useRef<HTMLDivElement>(null);
+    const themeRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
@@ -36,11 +41,14 @@ export default function AdminLayout({
         if ((user as any)?.status) setAgentStatus((user as any).status);
     }, [user]);
 
-    // Close dropdown on outside click
+    // Close dropdowns on outside click
     useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (statusRef.current && !statusRef.current.contains(e.target as Node)) {
                 setShowStatusDropdown(false);
+            }
+            if (themeRef.current && !themeRef.current.contains(e.target as Node)) {
+                setShowThemeDropdown(false);
             }
         };
         document.addEventListener("mousedown", handler);
@@ -95,6 +103,50 @@ export default function AdminLayout({
                         display: "flex", justifyContent: "flex-end", alignItems: "center",
                         marginBottom: 16, gap: 12,
                     }}>
+                        {/* Theme Toggle */}
+                        <div ref={themeRef} style={{ position: "relative" }}>
+                            <button
+                                onClick={() => setShowThemeDropdown(!showThemeDropdown)}
+                                style={{
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    width: 34, height: 34, borderRadius: 8,
+                                    border: "1px solid var(--border)", background: "transparent",
+                                    cursor: "pointer", color: "var(--text-secondary)",
+                                }}
+                                title="Tema"
+                            >
+                                {theme === "light" ? <Sun size={16} /> : theme === "system" ? <Monitor size={16} /> : <Moon size={16} />}
+                            </button>
+                            {showThemeDropdown && (
+                                <div style={{
+                                    position: "absolute", top: "100%", right: 0, marginTop: 4,
+                                    background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                                    borderRadius: 10, padding: 4, zIndex: 100, minWidth: 140,
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                                }}>
+                                    {([
+                                        { key: "light", label: "Claro", icon: <Sun size={14} /> },
+                                        { key: "dark", label: "Oscuro", icon: <Moon size={14} /> },
+                                        { key: "system", label: "Sistema", icon: <Monitor size={14} /> },
+                                    ] as const).map(opt => (
+                                        <button
+                                            key={opt.key}
+                                            onClick={() => { setTheme(opt.key); setShowThemeDropdown(false); }}
+                                            style={{
+                                                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                                                padding: "8px 12px", border: "none", borderRadius: 6,
+                                                background: theme === opt.key ? "var(--bg-card)" : "transparent",
+                                                color: theme === opt.key ? "var(--accent)" : "var(--text-primary)",
+                                                fontSize: 13, cursor: "pointer", textAlign: "left",
+                                            }}
+                                        >
+                                            {opt.icon}
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <TenantSelector />
                         {/* Agent Status Dropdown */}
                         <div ref={statusRef} style={{ position: "relative" }}>

@@ -72,13 +72,19 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
   const handleFBResponse = useCallback(
     (response: any) => {
       const processResponse = async () => {
+        console.log("[EmbeddedSignup] FB.login() raw response:", JSON.stringify(response, null, 2));
+        console.log("[EmbeddedSignup] authResponse:", response.authResponse);
+        console.log("[EmbeddedSignup] status:", response.status);
+
         if (!response.authResponse?.code) {
+          console.error("[EmbeddedSignup] No auth code received. Full response:", response);
           onError("No se recibió código de autorización de Meta. El usuario canceló el flujo o hubo un error.");
           setLaunching(false);
           return;
         }
 
         const code = response.authResponse.code;
+        console.log("[EmbeddedSignup] Auth code received:", code.substring(0, 20) + "...");
 
         // Extract session info from Embedded Signup v4 (sessionInfoVersion: "3")
         // These may not be present with older SDK versions or certain Meta configurations
@@ -108,34 +114,44 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
 
           setStep("Registrando cuenta de WhatsApp Business...");
 
+          const payload = {
+            tenantId,
+            configId: META_CONFIG_ID,
+            code,
+            mode: "new",
+            source: "embedded_signup",
+            coexistenceAcknowledged: false,
+            phoneNumberId: sessionPhoneNumberId,
+            wabaId: sessionWabaId,
+          };
+          console.log("[EmbeddedSignup] Sending to backend:", `${WA_SERVICE_URL}/onboarding/start`);
+          console.log("[EmbeddedSignup] Payload:", JSON.stringify(payload, null, 2));
+
           const res = await fetch(`${WA_SERVICE_URL}/onboarding/start`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({
-              tenantId,
-              configId: META_CONFIG_ID,
-              code,
-              mode: "new",
-              source: "embedded_signup",
-              coexistenceAcknowledged: false,
-              // Session info from Embedded Signup v4
-              phoneNumberId: sessionPhoneNumberId,
-              wabaId: sessionWabaId,
-            }),
+            body: JSON.stringify(payload),
           });
 
+          const responseText = await res.text();
+          console.log("[EmbeddedSignup] Backend response status:", res.status);
+          console.log("[EmbeddedSignup] Backend response body:", responseText);
+
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
+            let errorData: any = {};
+            try { errorData = JSON.parse(responseText); } catch {}
             throw new Error(errorData.userMessage || errorData.message || `Error ${res.status}`);
           }
 
-          const result = await res.json();
+          const result = JSON.parse(responseText);
           setStep("¡Conexión exitosa!");
+          console.log("[EmbeddedSignup] Onboarding complete:", result);
           onSuccess(result);
         } catch (err: any) {
+          console.error("[EmbeddedSignup] Error:", err);
           onError(err.message || "Error al procesar el onboarding");
         } finally {
           setProcessing(false);
@@ -158,20 +174,25 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
 
     setLaunching(true);
 
-    FB.login(
-      handleFBResponse,
-      {
-        config_id: META_CONFIG_ID,
-        response_type: "code",
-        override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: "whatsapp_business_app_onboarding",
-          sessionInfoVersion: "3",
-          version: "v4",
-        },
+    const loginOptions = {
+      config_id: META_CONFIG_ID,
+      response_type: "code",
+      override_default_response_type: true,
+      extras: {
+        setup: {},
+        featureType: "whatsapp_business_app_onboarding",
+        sessionInfoVersion: "3",
+        version: "v4",
       },
-    );
+    };
+
+    console.log("[EmbeddedSignup] Launching FB.login() with options:", JSON.stringify(loginOptions, null, 2));
+    console.log("[EmbeddedSignup] META_APP_ID:", META_APP_ID);
+    console.log("[EmbeddedSignup] META_CONFIG_ID:", META_CONFIG_ID);
+    console.log("[EmbeddedSignup] WA_SERVICE_URL:", WA_SERVICE_URL);
+    console.log("[EmbeddedSignup] tenantId:", tenantId);
+
+    FB.login(handleFBResponse, loginOptions);
   };
 
   // ---- Render ----

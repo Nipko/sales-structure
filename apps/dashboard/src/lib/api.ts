@@ -83,6 +83,9 @@ export const api = {
     // --- Tenants ---
     getTenants: () => apiGet("/tenants"),
     getTenant: (id: string) => apiGet(`/tenants/${id}`),
+    getTenantUsers: (tenantId: string) => apiGet(`/tenants/${tenantId}/users`),
+    adminResetPassword: (userId: string, newPassword: string) =>
+        apiPost("/auth/admin/reset-password", { userId, newPassword }),
 
     // --- Agent Console ---
     getInbox: (tenantId: string, filter?: string) =>

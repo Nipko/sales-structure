@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -267,6 +267,25 @@ export class AuthService {
         } catch {
             throw new UnauthorizedException('Invalid or expired refresh token');
         }
+    }
+
+    /**
+     * Admin-only password reset (super_admin resets any user's password)
+     */
+    async adminResetPassword(userId: string, newPassword: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        });
+
+        return { message: 'Password reset successfully' };
     }
 
     async validateUser(payload: JwtPayload) {

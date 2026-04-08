@@ -174,6 +174,34 @@ export class TenantsService {
     }
 
     /**
+     * Get all users belonging to a tenant
+     */
+    async getUsersByTenantId(tenantId: string) {
+        // Verify tenant exists
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (!tenant) {
+            throw new NotFoundException(`Tenant ${tenantId} not found`);
+        }
+
+        const users = await this.prisma.user.findMany({
+            where: { tenantId },
+            select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+                isActive: true,
+                createdAt: true,
+                lastLoginAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        return users;
+    }
+
+    /**
      * Deactivate a tenant (soft delete)
      */
     async deactivate(id: string) {

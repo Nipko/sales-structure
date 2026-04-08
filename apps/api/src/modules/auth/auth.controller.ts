@@ -44,6 +44,15 @@ class RefreshTokenDto {
     refreshToken: string;
 }
 
+class AdminResetPasswordDto {
+    @IsString()
+    userId: string;
+
+    @IsString()
+    @MinLength(6)
+    newPassword: string;
+}
+
 class SignupDto {
     @IsString()
     @MinLength(2)
@@ -123,6 +132,17 @@ export class AuthController {
     @ApiOperation({ summary: 'Refresh access token' })
     async refresh(@Body() dto: RefreshTokenDto) {
         const result = await this.authService.refreshToken(dto.refreshToken);
+        return { success: true, data: result };
+    }
+
+    @Post('admin/reset-password')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Admin reset user password (super_admin only)' })
+    async adminResetPassword(@Body() dto: AdminResetPasswordDto) {
+        const result = await this.authService.adminResetPassword(dto.userId, dto.newPassword);
         return { success: true, data: result };
     }
 

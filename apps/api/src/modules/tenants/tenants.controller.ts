@@ -60,6 +60,14 @@ export class TenantsController {
         return { success: true, data: tenant };
     }
 
+    @Get(':id/users')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'List users belonging to a tenant' })
+    async getUsersByTenant(@Param('id') id: string) {
+        const users = await this.tenantsService.getUsersByTenantId(id);
+        return { success: true, data: users };
+    }
+
     @Post(':id/deactivate')
     @Roles('super_admin')
     @ApiOperation({ summary: 'Deactivate a tenant' })

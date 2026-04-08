@@ -61,6 +61,28 @@ export class KnowledgeController {
         return this.knowledgeService.searchRelevant(tenantId, payload.query, payload.topK || 5);
     }
 
+    // ─── Public Knowledge Base Endpoints (no auth) ────────────────────────────
+
+    @Get('public/:tenantSlug/articles')
+    @ApiOperation({ summary: 'List public knowledge articles for a tenant (no auth)' })
+    async getPublicArticles(@Param('tenantSlug') tenantSlug: string) {
+        const articles = await this.knowledgeService.getPublicArticles(tenantSlug);
+        return { success: true, data: articles };
+    }
+
+    @Get('public/:tenantSlug/articles/:slug')
+    @ApiOperation({ summary: 'Get a single public article by slug (no auth)' })
+    async getPublicArticle(
+        @Param('tenantSlug') tenantSlug: string,
+        @Param('slug') slug: string,
+    ) {
+        const article = await this.knowledgeService.getPublicArticle(tenantSlug, slug);
+        if (!article) {
+            return { success: false, error: 'Article not found' };
+        }
+        return { success: true, data: article };
+    }
+
     // ─── Legacy Resource Endpoints ───────────────────────────────────────────
 
     @Get('resources/:tenantId')

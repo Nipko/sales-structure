@@ -4,7 +4,7 @@ import { AgentAnalyticsService } from './agent-analytics.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
-@Controller('analytics')
+@Controller('agent-analytics')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class AgentAnalyticsController {
     constructor(private analyticsService: AgentAnalyticsService) { }
@@ -46,5 +46,47 @@ export class AgentAnalyticsController {
     ) {
         await this.analyticsService.submitCSAT(tenantId, body);
         return { success: true, message: 'CSAT submitted' };
+    }
+
+    // ---- Enhanced Analytics Endpoints ----
+
+    @Get(':tenantId/channels')
+    async getChannelStats(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const data = await this.analyticsService.getChannelStats(tenantId, start, end);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/csat')
+    async getCSATReport(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const data = await this.analyticsService.getCSATReport(tenantId, start, end);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/overview-series')
+    async getOverviewTimeSeries(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const data = await this.analyticsService.getOverviewTimeSeries(tenantId, start, end);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/performance')
+    async getAgentPerformance(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const data = await this.analyticsService.getAgentPerformance(tenantId, start, end);
+        return { success: true, data };
     }
 }

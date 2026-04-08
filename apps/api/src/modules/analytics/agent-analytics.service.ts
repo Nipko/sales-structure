@@ -248,6 +248,248 @@ export class AgentAnalyticsService {
         return { totalConversations: 0, resolvedToday: 0, avgResponseTime: '0s', avgResolutionTime: '0s', csatAvg: 0, csatTrend: 0, activeAgents: 0, handoffRate: 0, recentActivity: [], modelUsage: [] };
     }
 
+    /** Channel stats — COUNT conversations GROUP BY channel_type */
+    async getChannelStats(
+        tenantId: string,
+        startDate: string,
+        endDate: string,
+    ): Promise<Array<{ channel: string; count: number; percentage: number }>> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return [];
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT
+                COALESCE(channel_type, 'whatsapp') as channel,
+                COUNT(*)::int as count
+             FROM conversations
+             WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day')
+             GROUP BY channel_type
+             ORDER BY count DESC`,
+            [startDate, endDate],
+        );
+
+        const total = (rows || []).reduce((sum: number, r: any) => sum + parseInt(r.count), 0);
+        return (rows || []).map((r: any) => ({
+            channel: r.channel || 'whatsapp',
+            count: parseInt(r.count) || 0,
+            percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
+        }));
+    }
+
+    /** CSAT report — AVG rating, COUNT per rating (1-5), trend by DATE */
+    async getCSATReport(
+        tenantId: string,
+        startDate: string,
+        endDate: string,
+    ): Promise<{
+        average: number;
+        total: number;
+        distribution: Record<number, number>;
+        trend: Array<{ date: string; avg: number; count: number }>;
+        recentFeedback: CSATEntry[];
+    }> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return { average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, trend: [], recentFeedback: [] };
+
+        // Average and distribution
+        const distRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT rating, COUNT(*)::int as count
+             FROM csat_surveys
+             WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day')
+             GROUP BY rating ORDER BY rating`,
+            [startDate, endDate],
+        );
+
+        const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        let totalCount = 0;
+        let weightedSum = 0;
+        (distRows || []).forEach((r: any) => {
+            const rating = parseInt(r.rating);
+            const count = parseInt(r.count);
+            distribution[rating] = count;
+            totalCount += count;
+            weightedSum += rating * count;
+        });
+        const average = totalCount > 0 ? Math.round((weightedSum / totalCount) * 100) / 100 : 0;
+
+        // Trend by date
+        const trendRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT DATE(created_at) as date, AVG(rating) as avg, COUNT(*)::int as count
+             FROM csat_surveys
+             WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day')
+             GROUP BY DATE(created_at)
+             ORDER BY date`,
+            [startDate, endDate],
+        );
+
+        const trend = (trendRows || []).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date),
+            avg: Math.round(parseFloat(r.avg) * 100) / 100,
+            count: parseInt(r.count),
+        }));
+
+        // Recent feedback
+        const feedbackRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT cs.*, ct.name as contact_name, TRIM(u.first_name || ' ' || u.last_name) as agent_name
+             FROM csat_surveys cs
+             LEFT JOIN contacts ct ON cs.contact_id = ct.id
+             LEFT JOIN public.users u ON cs.agent_id = u.id
+             WHERE cs.created_at >= $1::date AND cs.created_at <= ($2::date + INTERVAL '1 day')
+             ORDER BY cs.created_at DESC LIMIT 20`,
+            [startDate, endDate],
+        );
+
+        const recentFeedback: CSATEntry[] = (feedbackRows || []).map((r: any) => ({
+            id: r.id,
+            conversationId: r.conversation_id,
+            contactName: r.contact_name || 'Unknown',
+            agentName: r.agent_name || 'Agent',
+            rating: parseInt(r.rating) || 0,
+            feedback: r.feedback,
+            createdAt: r.created_at,
+        }));
+
+        return { average, total: totalCount, distribution, trend, recentFeedback };
+    }
+
+    /** Overview time series — daily: conversation count, message count, resolved count */
+    async getOverviewTimeSeries(
+        tenantId: string,
+        startDate: string,
+        endDate: string,
+    ): Promise<{
+        series: Array<{ date: string; conversations: number; messages: number; resolved: number }>;
+        totals: { conversations: number; messages: number; resolved: number; avgFirstResponse: string; csatAvg: number };
+    }> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return { series: [], totals: { conversations: 0, messages: 0, resolved: 0, avgFirstResponse: '0s', csatAvg: 0 } };
+
+        // Daily series
+        const seriesRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT
+                d.date,
+                COALESCE(conv.count, 0)::int as conversations,
+                COALESCE(msg.count, 0)::int as messages,
+                COALESCE(res.count, 0)::int as resolved
+             FROM generate_series($1::date, $2::date, '1 day'::interval) d(date)
+             LEFT JOIN (
+                SELECT DATE(created_at) as date, COUNT(*) as count
+                FROM conversations
+                WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day')
+                GROUP BY DATE(created_at)
+             ) conv ON conv.date = d.date
+             LEFT JOIN (
+                SELECT DATE(created_at) as date, COUNT(*) as count
+                FROM messages
+                WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day')
+                GROUP BY DATE(created_at)
+             ) msg ON msg.date = d.date
+             LEFT JOIN (
+                SELECT DATE(updated_at) as date, COUNT(*) as count
+                FROM conversations
+                WHERE status = 'resolved'
+                  AND updated_at >= $1::date AND updated_at <= ($2::date + INTERVAL '1 day')
+                GROUP BY DATE(updated_at)
+             ) res ON res.date = d.date
+             ORDER BY d.date`,
+            [startDate, endDate],
+        );
+
+        const series = (seriesRows || []).map((r: any) => ({
+            date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date).split('T')[0],
+            conversations: parseInt(r.conversations) || 0,
+            messages: parseInt(r.messages) || 0,
+            resolved: parseInt(r.resolved) || 0,
+        }));
+
+        // Totals for the period
+        const totalsRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT
+                (SELECT COUNT(*) FROM conversations WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day'))::int as conversations,
+                (SELECT COUNT(*) FROM messages WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day'))::int as messages,
+                (SELECT COUNT(*) FROM conversations WHERE status = 'resolved' AND updated_at >= $1::date AND updated_at <= ($2::date + INTERVAL '1 day'))::int as resolved,
+                (SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(ca.first_response_at, NOW()) - ca.assigned_at)))
+                 FROM conversation_assignments ca
+                 WHERE ca.first_response_at IS NOT NULL
+                   AND ca.assigned_at >= $1::date AND ca.assigned_at <= ($2::date + INTERVAL '1 day')) as avg_first_response,
+                (SELECT AVG(cs.rating) FROM csat_surveys cs
+                 WHERE cs.created_at >= $1::date AND cs.created_at <= ($2::date + INTERVAL '1 day')) as csat_avg`,
+            [startDate, endDate],
+        );
+
+        const t = totalsRows?.[0] || {};
+        return {
+            series,
+            totals: {
+                conversations: parseInt(t.conversations) || 0,
+                messages: parseInt(t.messages) || 0,
+                resolved: parseInt(t.resolved) || 0,
+                avgFirstResponse: this.formatDuration(parseFloat(t.avg_first_response) || 0),
+                csatAvg: Math.round((parseFloat(t.csat_avg) || 0) * 100) / 100,
+            },
+        };
+    }
+
+    /** Agent performance for date range */
+    async getAgentPerformance(
+        tenantId: string,
+        startDate: string,
+        endDate: string,
+    ): Promise<AgentMetrics[]> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return [];
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT
+                ca.agent_id,
+                TRIM(u.first_name || ' ' || u.last_name) as agent_name,
+                COUNT(*) as total_conversations,
+                COUNT(*) FILTER (WHERE ca.resolved_at IS NOT NULL) as resolved,
+                COUNT(*) FILTER (WHERE ca.resolved_at IS NULL) as active,
+                AVG(EXTRACT(EPOCH FROM (COALESCE(ca.first_response_at, NOW()) - ca.assigned_at)))
+                  FILTER (WHERE ca.first_response_at IS NOT NULL) as avg_first_response,
+                AVG(EXTRACT(EPOCH FROM (ca.resolved_at - ca.assigned_at)))
+                  FILTER (WHERE ca.resolved_at IS NOT NULL) as avg_resolution,
+                (SELECT AVG(cs.rating) FROM csat_surveys cs
+                 WHERE cs.agent_id = ca.agent_id
+                   AND cs.created_at >= $1::date AND cs.created_at <= ($2::date + INTERVAL '1 day')) as csat_avg,
+                (SELECT COUNT(*) FROM csat_surveys cs
+                 WHERE cs.agent_id = ca.agent_id
+                   AND cs.created_at >= $1::date AND cs.created_at <= ($2::date + INTERVAL '1 day')) as csat_count,
+                (SELECT COUNT(*) FROM messages m
+                 JOIN conversations c ON m.conversation_id = c.id
+                 JOIN conversation_assignments ca2 ON ca2.conversation_id = c.id AND ca2.agent_id = ca.agent_id
+                 WHERE m.sender = 'agent'
+                   AND m.created_at >= $1::date AND m.created_at <= ($2::date + INTERVAL '1 day')) as messages_handled
+             FROM conversation_assignments ca
+             LEFT JOIN public.users u ON ca.agent_id = u.id
+             WHERE ca.assigned_at >= $1::date AND ca.assigned_at <= ($2::date + INTERVAL '1 day')
+             GROUP BY ca.agent_id, u.first_name, u.last_name
+             ORDER BY resolved DESC`,
+            [startDate, endDate],
+        );
+
+        return (rows || []).map((r: any) => ({
+            agentId: r.agent_id,
+            agentName: r.agent_name || 'Agent',
+            totalConversations: parseInt(r.total_conversations) || 0,
+            resolvedConversations: parseInt(r.resolved) || 0,
+            activeConversations: parseInt(r.active) || 0,
+            avgFirstResponseSecs: parseFloat(r.avg_first_response) || 0,
+            avgResolutionSecs: parseFloat(r.avg_resolution) || 0,
+            csatAvg: parseFloat(r.csat_avg) || 0,
+            csatCount: parseInt(r.csat_count) || 0,
+            messagesHandled: parseInt(r.messages_handled) || 0,
+        }));
+    }
+
     private async getTenantSchema(tenantId: string): Promise<string | null> {
         const cached = await this.redis.get(`tenant:${tenantId}:schema`);
         if (cached) return cached;

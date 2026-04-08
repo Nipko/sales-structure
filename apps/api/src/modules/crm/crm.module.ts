@@ -9,6 +9,7 @@ import { ActivityService } from './services/activity/activity.service';
 import { LeadScoringService } from './services/lead-scoring/lead-scoring.service';
 import { CustomAttributesService } from './services/custom-attributes/custom-attributes.service';
 import { SegmentsService } from './services/segments/segments.service';
+import { ImportExportService } from './services/import-export/import-export.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 
@@ -25,6 +26,7 @@ import { RedisModule } from '../redis/redis.module';
         LeadScoringService,
         CustomAttributesService,
         SegmentsService,
+        ImportExportService,
     ],
     exports: [
         NotesService,
@@ -36,6 +38,7 @@ import { RedisModule } from '../redis/redis.module';
         LeadScoringService,
         CustomAttributesService,
         SegmentsService,
+        ImportExportService,
     ],
 })
 export class CrmModule {}

@@ -9,6 +9,7 @@ import { ActivityService } from './services/activity/activity.service';
 import { LeadScoringService } from './services/lead-scoring/lead-scoring.service';
 import { CustomAttributesService } from './services/custom-attributes/custom-attributes.service';
 import { SegmentsService } from './services/segments/segments.service';
+import { ImportExportService } from './services/import-export/import-export.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -26,6 +27,7 @@ export class CrmController {
         private leadScoring: LeadScoringService,
         private customAttrs: CustomAttributesService,
         private segmentsService: SegmentsService,
+        private importExportService: ImportExportService,
     ) {}
 
     // ---- Kanban (Pipeline Board using Opportunities) ----
@@ -336,5 +338,31 @@ export class CrmController {
             tenantId, segmentId, Number(page) || 1, Number(limit) || 25,
         );
         return { success: true, data };
+    }
+
+    // ---- Import / Export ----
+
+    @Post('import/:tenantId')
+    async importCSV(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { csvContent: string; options?: { skipDuplicates?: boolean } },
+    ) {
+        const result = await this.importExportService.importCSV(tenantId, body.csvContent, body.options);
+        return { success: true, data: result };
+    }
+
+    @Get('export/:tenantId')
+    async exportCSV(
+        @Param('tenantId') tenantId: string,
+        @Query('segmentId') segmentId?: string,
+    ) {
+        const csvString = await this.importExportService.exportCSV(tenantId, segmentId);
+        return { success: true, data: csvString };
+    }
+
+    @Get('import-template')
+    async getImportTemplate() {
+        const template = this.importExportService.getImportTemplate();
+        return { success: true, data: template };
     }
 }

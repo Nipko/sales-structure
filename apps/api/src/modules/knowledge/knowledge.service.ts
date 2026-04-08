@@ -238,6 +238,54 @@ export class KnowledgeService {
         return response.data[0].embedding;
     }
 
+    // ─── Public Knowledge Base ────────────────────────────────────────────────
+
+    async getPublicArticles(tenantSlug: string): Promise<any[]> {
+        const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
+        if (!schemaName) return [];
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
+             FROM knowledge_resources
+             WHERE is_public = true AND status = 'ready'
+             ORDER BY category, published_at DESC`,
+        );
+
+        return rows || [];
+    }
+
+    async getPublicArticle(tenantSlug: string, slug: string): Promise<any | null> {
+        const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
+        if (!schemaName) return null;
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
+             FROM knowledge_resources
+             WHERE is_public = true AND status = 'ready' AND slug = $1
+             LIMIT 1`,
+            [slug],
+        );
+
+        return rows?.[0] || null;
+    }
+
+    private async resolveSchemaFromSlug(tenantSlug: string): Promise<string | null> {
+        const cacheKey = `tenant:slug:${tenantSlug}:schema`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return cached;
+
+        const tenant = await this.prisma.$queryRaw<any[]>`
+            SELECT schema_name FROM tenants WHERE slug = ${tenantSlug} LIMIT 1
+        `;
+        if (tenant?.[0]) {
+            await this.redis.set(cacheKey, tenant[0].schema_name, 3600);
+            return tenant[0].schema_name;
+        }
+        return null;
+    }
+
     // ─── Legacy Resource Methods (backward compat) ───────────────────────────
 
     async getResources(schemaName: string, status?: string) {

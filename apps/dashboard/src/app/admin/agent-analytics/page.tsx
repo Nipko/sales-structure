@@ -1,69 +1,66 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
-import {
-    TrendingUp, Users, MessageSquare, CheckSquare, Bot,
-    AlertTriangle, Phone, Shield, Clock, Zap, BarChart2,
-    ArrowUpRight, ArrowDownRight, Activity, RefreshCw,
-} from "lucide-react";
-
-const STAGE_COLORS: Record<string, string> = {
-    nuevo: "#95a5a6", contactado: "#3498db", respondio: "#9b59b6",
-    calificado: "#f39c12", tibio: "#e67e22", caliente: "#e74c3c",
-    listo_cierre: "#27ae60", ganado: "#2ecc71", perdido: "#7f8c8d",
-};
-
-function StatCard({ title, value, sub, icon: Icon, trend, color = "var(--accent)" }: {
-    title: string; value: string | number; sub?: string; icon: any;
-    trend?: number; color?: string;
-}) {
-    return (
-        <div style={{
-            background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-            padding: "18px 20px", display: "flex", flexDirection: "column", gap: 8,
-        }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{title}</span>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={16} color={color} />
-                </div>
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{value}</div>
-            {(sub || trend !== undefined) && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
-                    {trend !== undefined && (
-                        trend >= 0
-                            ? <ArrowUpRight size={14} color="#2ecc71" />
-                            : <ArrowDownRight size={14} color="#e74c3c" />
-                    )}
-                    {sub}
-                </div>
-            )}
-        </div>
-    );
-}
 
 const TABS = [
-    { key: "ejecutivo", label: "Ejecutivo", icon: TrendingUp },
-    { key: "operativo", label: "Operativo CRM", icon: Users },
-    { key: "whatsapp", label: "WhatsApp", icon: Phone },
-    { key: "ia", label: "IA / Carla", icon: Bot },
-    { key: "compliance", label: "Compliance", icon: Shield },
-    { key: "audit", label: "Auditoría", icon: Clock },
+    { key: "overview", label: "Overview" },
+    { key: "agentes", label: "Agentes" },
+    { key: "canales", label: "Canales" },
+    { key: "csat", label: "CSAT" },
 ];
 
-export default function AnalyticsDashboardPage() {
+const CHANNEL_COLORS: Record<string, string> = {
+    whatsapp: "#25D366",
+    instagram: "#E1306C",
+    messenger: "#0084FF",
+    telegram: "#0088CC",
+    email: "#EA4335",
+    web: "#4285F4",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+    whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Messenger",
+    telegram: "Telegram",
+    email: "Email",
+    web: "Web",
+};
+
+function formatDate(d: Date): string {
+    return d.toISOString().split("T")[0];
+}
+
+function formatDuration(seconds: number): string {
+    if (!seconds || seconds <= 0) return "0s";
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+}
+
+type SortDir = "asc" | "desc";
+
+export default function AgentAnalyticsPage() {
     const { activeTenantId } = useTenant();
-    const [activeTab, setActiveTab] = useState("ejecutivo");
+    const [activeTab, setActiveTab] = useState("overview");
     const [loading, setLoading] = useState(false);
-    const [exec, setExec] = useState<any>(null);
-    const [crm, setCrm] = useState<any>(null);
-    const [wa, setWa] = useState<any>(null);
-    const [ai, setAi] = useState<any>(null);
-    const [compliance, setCompliance] = useState<any>(null);
-    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [startDate, setStartDate] = useState(formatDate(thirtyDaysAgo));
+    const [endDate, setEndDate] = useState(formatDate(now));
+
+    const [overviewData, setOverviewData] = useState<any>(null);
+    const [agentsData, setAgentsData] = useState<any[]>([]);
+    const [channelsData, setChannelsData] = useState<any[]>([]);
+    const [csatData, setCsatData] = useState<any>(null);
+
+    const [sortCol, setSortCol] = useState<string>("resolvedConversations");
+    const [sortDir, setSortDir] = useState<SortDir>("desc");
 
     const tenantId = activeTenantId;
 
@@ -71,226 +68,290 @@ export default function AnalyticsDashboardPage() {
         if (!tenantId) return;
         setLoading(true);
         try {
-            const [d1, d2, d3, d4, d5, d6] = await Promise.all([
-                api.fetch(`/analytics/dashboard/${tenantId}`),
-                api.fetch(`/analytics/crm/${tenantId}`),
-                api.fetch(`/analytics/whatsapp/${tenantId}`),
-                api.fetch(`/analytics/ai/${tenantId}`),
-                api.fetch(`/analytics/compliance/${tenantId}`),
-                api.fetch(`/analytics/audit/${tenantId}?limit=30`),
+            const [d1, d2, d3, d4] = await Promise.all([
+                api.fetch(`/agent-analytics/${tenantId}/overview-series?start=${startDate}&end=${endDate}`),
+                api.fetch(`/agent-analytics/${tenantId}/performance?start=${startDate}&end=${endDate}`),
+                api.fetch(`/agent-analytics/${tenantId}/channels?start=${startDate}&end=${endDate}`),
+                api.fetch(`/agent-analytics/${tenantId}/csat?start=${startDate}&end=${endDate}`),
             ]);
-            setExec(d1.data);
-            setCrm(d2.data);
-            setWa(d3.data);
-            setAi(d4.data);
-            setCompliance(d5.data);
-            setAuditLogs(Array.isArray(d6.data) ? d6.data : []);
+            setOverviewData(d1.data);
+            setAgentsData(Array.isArray(d2.data) ? d2.data : []);
+            setChannelsData(Array.isArray(d3.data) ? d3.data : []);
+            setCsatData(d4.data);
         } catch (e) {
-            console.error("Error loading analytics:", e);
+            console.error("Error loading agent analytics:", e);
         } finally {
             setLoading(false);
         }
-    }, [tenantId]);
+    }, [tenantId, startDate, endDate]);
 
     useEffect(() => { load(); }, [load]);
 
+    const handleSort = (col: string) => {
+        if (sortCol === col) {
+            setSortDir(sortDir === "asc" ? "desc" : "asc");
+        } else {
+            setSortCol(col);
+            setSortDir("desc");
+        }
+    };
+
+    const sortedAgents = useMemo(() => {
+        const list = [...agentsData];
+        list.sort((a, b) => {
+            const av = a[sortCol] ?? 0;
+            const bv = b[sortCol] ?? 0;
+            if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+            return sortDir === "asc" ? av - bv : bv - av;
+        });
+        return list;
+    }, [agentsData, sortCol, sortDir]);
+
+    const totals = overviewData?.totals || {};
+    const series = overviewData?.series || [];
+    const maxConv = Math.max(1, ...series.map((s: any) => s.conversations || 0));
+
+    const renderOverview = () => (
+        <div>
+            {/* KPI Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+                {[
+                    { title: "Conversaciones", value: totals.conversations ?? 0, color: "#3498db" },
+                    { title: "Tiempo Resp. Promedio", value: totals.avgFirstResponse ?? "0s", color: "#f39c12" },
+                    { title: "Tasa Resolución", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
+                    { title: "CSAT Promedio", value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
+                ].map((card) => (
+                    <div key={card.title} style={{
+                        background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
+                        padding: "18px 20px", display: "flex", flexDirection: "column", gap: 8,
+                    }}>
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.title}</span>
+                        <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: card.color }}>{card.value}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Daily Bar Chart */}
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
+                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Volumen Diario de Conversaciones</h3>
+                {series.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>Sin datos para el rango seleccionado</div>
+                ) : (
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 180, padding: "0 4px" }}>
+                        {series.map((s: any, i: number) => {
+                            const height = Math.max(2, (s.conversations / maxConv) * 160);
+                            return (
+                                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                                    <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>{s.conversations}</span>
+                                    <div style={{
+                                        width: "100%", maxWidth: 24, height, borderRadius: 4,
+                                        background: "#3498db", minHeight: 2,
+                                    }} />
+                                    {(i === 0 || i === series.length - 1 || i === Math.floor(series.length / 2)) && (
+                                        <span style={{ fontSize: 9, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                                            {s.date?.slice(5)}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    const renderAgentes = () => {
+        const columns: { key: string; label: string }[] = [
+            { key: "agentName", label: "Agente" },
+            { key: "totalConversations", label: "Conversaciones" },
+            { key: "resolvedConversations", label: "Resueltas" },
+            { key: "avgFirstResponseSecs", label: "Tiempo Resp." },
+            { key: "csatAvg", label: "CSAT" },
+        ];
+
+        return (
+            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                            {columns.map((col) => (
+                                <th
+                                    key={col.key}
+                                    onClick={() => handleSort(col.key)}
+                                    style={{
+                                        padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 600,
+                                        color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5,
+                                        cursor: "pointer", userSelect: "none",
+                                    }}
+                                >
+                                    {col.label}
+                                    {sortCol === col.key && (
+                                        <span style={{ marginLeft: 4 }}>{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>
+                                    )}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sortedAgents.length === 0 ? (
+                            <tr><td colSpan={5} style={{ padding: "30px 0", textAlign: "center", color: "var(--text-secondary)" }}>Sin datos de agentes</td></tr>
+                        ) : sortedAgents.map((agent: any) => (
+                            <tr key={agent.agentId} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "10px 16px", fontWeight: 600 }}>{agent.agentName}</td>
+                                <td style={{ padding: "10px 16px" }}>{agent.totalConversations}</td>
+                                <td style={{ padding: "10px 16px" }}>{agent.resolvedConversations}</td>
+                                <td style={{ padding: "10px 16px" }}>{formatDuration(agent.avgFirstResponseSecs)}</td>
+                                <td style={{ padding: "10px 16px" }}>
+                                    <span style={{
+                                        padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700,
+                                        background: agent.csatAvg >= 4 ? "#27ae6020" : agent.csatAvg >= 3 ? "#f39c1220" : "#e74c3c20",
+                                        color: agent.csatAvg >= 4 ? "#27ae60" : agent.csatAvg >= 3 ? "#f39c12" : "#e74c3c",
+                                    }}>
+                                        {agent.csatAvg ? agent.csatAvg.toFixed(1) : "—"}
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
+    const renderCanales = () => (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+            {channelsData.length === 0 ? (
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>Sin datos de canales</div>
+            ) : channelsData.map((ch: any) => {
+                const color = CHANNEL_COLORS[ch.channel] || "#95a5a6";
+                const label = CHANNEL_LABELS[ch.channel] || ch.channel;
+                return (
+                    <div key={ch.channel} style={{
+                        background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
+                        padding: "24px 20px", display: "flex", flexDirection: "column", gap: 12,
+                    }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{
+                                width: 40, height: 40, borderRadius: 10, background: `${color}18`,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 18, fontWeight: 800, color,
+                            }}>
+                                {label[0]}
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 15, fontWeight: 700 }}>{label}</div>
+                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{ch.percentage}% del total</div>
+                            </div>
+                        </div>
+                        <div style={{ fontSize: 32, fontWeight: 800, color }}>{ch.count}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>conversaciones</div>
+                        {/* Percentage bar */}
+                        <div style={{ height: 6, borderRadius: 3, background: "var(--bg-tertiary)" }}>
+                            <div style={{ height: "100%", width: `${ch.percentage}%`, background: color, borderRadius: 3 }} />
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+
+    const renderCSAT = () => {
+        const dist = csatData?.distribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        const total = csatData?.total || 0;
+        const avg = csatData?.average || 0;
+        const feedback = csatData?.recentFeedback || [];
+
+        const ratingColors: Record<number, string> = { 1: "#e74c3c", 2: "#e67e22", 3: "#f39c12", 4: "#2ecc71", 5: "#27ae60" };
+
+        return (
+            <div>
+                {/* Big Average */}
+                <div style={{
+                    background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
+                    padding: "32px 24px", textAlign: "center", marginBottom: 24,
+                }}>
+                    <div style={{ fontSize: 14, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                        Promedio CSAT
+                    </div>
+                    <div style={{ fontSize: 56, fontWeight: 800, color: avg >= 4 ? "#27ae60" : avg >= 3 ? "#f39c12" : "#e74c3c" }}>
+                        {avg ? avg.toFixed(1) : "—"}
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
+                        {total} {total === 1 ? "respuesta" : "respuestas"}
+                    </div>
+                </div>
+
+                {/* Rating Bars */}
+                <div style={{
+                    background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
+                    padding: 20, marginBottom: 24,
+                }}>
+                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Distribucion por Estrellas</h3>
+                    {[5, 4, 3, 2, 1].map((rating) => {
+                        const count = dist[rating] || 0;
+                        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                        return (
+                            <div key={rating} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                                <span style={{ width: 24, fontSize: 14, fontWeight: 700, color: ratingColors[rating] }}>{rating}</span>
+                                <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
+                                    <div style={{ height: "100%", width: `${pct}%`, background: ratingColors[rating], borderRadius: 4, transition: "width 0.3s" }} />
+                                </div>
+                                <span style={{ width: 40, fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{pct}%</span>
+                                <span style={{ width: 32, fontSize: 12, fontWeight: 700, textAlign: "right" }}>{count}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Recent Feedback */}
+                {feedback.length > 0 && (
+                    <div style={{
+                        background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
+                        padding: 20,
+                    }}>
+                        <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Feedback Reciente</h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                            {feedback.map((f: any) => (
+                                <div key={f.id} style={{
+                                    padding: 12, borderRadius: 8, border: "1px solid var(--border)",
+                                    background: "var(--bg-primary)",
+                                }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                            <span style={{ fontWeight: 600, fontSize: 13 }}>{f.contactName}</span>
+                                            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>/ {f.agentName}</span>
+                                        </div>
+                                        <span style={{
+                                            padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700,
+                                            background: `${ratingColors[f.rating]}20`, color: ratingColors[f.rating],
+                                        }}>
+                                            {f.rating}/5
+                                        </span>
+                                    </div>
+                                    {f.feedback && (
+                                        <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>
+                                            &quot;{f.feedback}&quot;
+                                        </p>
+                                    )}
+                                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 6 }}>
+                                        {new Date(f.createdAt).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const renderTab = () => {
         switch (activeTab) {
-            case "ejecutivo":
-                return (
-                    <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-                            <StatCard title="Conversaciones Hoy" value={exec?.today?.conversations ?? "—"} icon={MessageSquare} color="#3498db" />
-                            <StatCard title="Handoffs Activos" value={exec?.today?.handoffs ?? "—"} icon={AlertTriangle} color="#e67e22" />
-                            <StatCard title="Mensajes Procesados" value={exec?.today?.messages ?? "—"} icon={Activity} color="#9b59b6" />
-                            <StatCard title="Costo LLM Hoy" value={exec?.today?.llmCost ? `$${exec.today.llmCost.toFixed(4)}` : "$0.00"} icon={Zap} color="#f39c12" sub="USD" />
-                        </div>
-                        {exec?.models && exec.models.length > 0 && (
-                            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Uso por Modelo LLM</h3>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    {exec.models.map((m: any) => (
-                                        <div key={m.model} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                            <span style={{ width: 120, fontSize: 13, color: "var(--text-secondary)" }}>{m.model}</span>
-                                            <div style={{ flex: 1, height: 6, borderRadius: 3, background: "var(--bg-tertiary)" }}>
-                                                <div style={{ height: "100%", width: `${Math.min(100, m.requests)}%`, background: "var(--accent)", borderRadius: 3 }} />
-                                            </div>
-                                            <span style={{ fontSize: 13, fontWeight: 700, width: 40, textAlign: "right" }}>{m.requests}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-
-            case "operativo":
-                return (
-                    <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-                            <StatCard title="Win Rate" value={crm?.opportunities?.winRate !== undefined ? `${crm.opportunities.winRate}%` : "—"} icon={TrendingUp} color="#27ae60" />
-                            <StatCard title="Pipeline Activo" value={crm?.opportunities?.total ?? "—"} icon={BarChart2} color="#3498db" />
-                            <StatCard title="Valor Total" value={crm?.opportunities?.totalValue ? `$${crm.opportunities.totalValue.toLocaleString("es-CO")}` : "—"} icon={Activity} color="#f39c12" />
-                            <StatCard title="Tareas Vencidas" value={crm?.overdueTasks ?? "—"} icon={AlertTriangle} color="#e74c3c" />
-                        </div>
-                        
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-                            {/* Funnel */}
-                            {crm?.stageFunnel && crm.stageFunnel.length > 0 && (
-                                <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Funnel de Leads por Etapa</h3>
-                                    {crm.stageFunnel.map((s: any) => (
-                                        <div key={s.stage} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                                            <span style={{ width: 100, fontSize: 13, fontWeight: 600, color: STAGE_COLORS[s.stage] || "var(--text-primary)" }}>
-                                                {s.stage}
-                                            </span>
-                                            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
-                                                <div style={{ height: "100%", width: `${Math.min(100, parseInt(s.count) * 5)}%`, background: STAGE_COLORS[s.stage] || "var(--accent)", borderRadius: 4 }} />
-                                            </div>
-                                            <span style={{ fontSize: 13, fontWeight: 700, width: 32, textAlign: "right" }}>{s.count}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Leads por Campaña */}
-                            {crm?.leadsByCampaign && crm.leadsByCampaign.length > 0 && (
-                                <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Leads por Campaña</h3>
-                                    {crm.leadsByCampaign.map((c: any) => (
-                                        <div key={c.campaign_name} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                                            <span style={{ width: 140, fontSize: 13, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                                {c.campaign_name}
-                                            </span>
-                                            <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
-                                                <div style={{ height: "100%", width: `${Math.min(100, parseInt(c.lead_count) * 5)}%`, background: "#9b59b6", borderRadius: 4 }} />
-                                            </div>
-                                            <span style={{ fontSize: 13, fontWeight: 700, width: 32, textAlign: "right" }}>{c.lead_count}</span>
-                                            <span style={{ fontSize: 11, color: "var(--text-secondary)", width: 50 }}>
-                                                ★ {parseFloat(c.avg_score || '0').toFixed(1)}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                );
-
-            case "whatsapp":
-                return (
-                    <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
-                            <StatCard title="Mensajes Entrantes (7d)"
-                                value={wa?.messageLast7d?.find((m: any) => m.direction === 'inbound')?.count ?? "0"}
-                                icon={MessageSquare} color="#25D366" />
-                            <StatCard title="Mensajes Salientes (7d)"
-                                value={wa?.messageLast7d?.find((m: any) => m.direction === 'outbound')?.count ?? "0"}
-                                icon={MessageSquare} color="#3498db" />
-                            <StatCard title="Fallos de Entrega (7d)"
-                                value={wa?.failedMessages ?? "0"} icon={AlertTriangle} color="#e74c3c" />
-                        </div>
-                        <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Estado del Canal</h3>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: wa?.failedMessages > 10 ? "#e74c3c" : "#2ecc71" }}>
-                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: wa?.failedMessages > 10 ? "#e74c3c" : "#2ecc71" }} />
-                                {wa?.failedMessages > 10 ? "Tasa de errores alta — revisar calidad del número" : "Canal operando normalmente"}
-                            </div>
-                        </div>
-                    </div>
-                );
-
-            case "ia":
-                return (
-                    <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-                            <StatCard title="Conversaciones (30d)" value={ai?.totalConversations ?? "—"} icon={MessageSquare} color="#9b59b6" />
-                            <StatCard title="Handoffs" value={ai?.handoffs ?? "—"} icon={AlertTriangle} color="#e67e22" />
-                            <StatCard title="Tasa de Handoff" value={ai?.handoffRate ? `${ai.handoffRate}%` : "—"} icon={TrendingUp} color="#3498db" />
-                            <StatCard title="Score Promedio Lead" value={ai?.avgLeadScore ?? "—"} icon={BarChart2} color="#2ecc71" sub="/10" />
-                        </div>
-                        <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Salud del Agente IA</h3>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                {[
-                                    { label: "Conversaciones resueltas", value: `${ai?.resolved ?? 0}` },
-                                    { label: "Tasa resolución autónoma", value: ai?.handoffRate ? `${100 - ai.handoffRate}%` : "—" },
-                                    { label: "Costo LLM hoy", value: `$${(ai?.llmCostToday || 0).toFixed(4)} USD` },
-                                ].map(item => (
-                                    <div key={item.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 14, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                                        <span style={{ color: "var(--text-secondary)" }}>{item.label}</span>
-                                        <span style={{ fontWeight: 700 }}>{item.value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                );
-
-            case "compliance":
-                return (
-                    <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
-                            <StatCard title="Total Consentimientos" value={compliance?.totalConsents ?? "—"} icon={Shield} color="#2ecc71" />
-                            <StatCard title="Canales con OptOut"
-                                value={compliance?.optOuts?.length ?? "0"} icon={AlertTriangle} color="#e74c3c" />
-                            <StatCard title="OptOuts (últimos 7d)"
-                                value={compliance?.optOuts?.reduce((a: number, o: any) => a + parseInt(o.last_7d || '0'), 0) ?? "0"}
-                                icon={AlertTriangle} color="#e67e22" sub="últ. 7 días" />
-                        </div>
-                        {compliance?.optOuts?.length > 0 && (
-                            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                                <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Opt-Outs por Canal</h3>
-                                {compliance.optOuts.map((o: any) => (
-                                    <div key={o.channel} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: 14 }}>
-                                        <span style={{ fontWeight: 600 }}>{o.channel}</span>
-                                        <div style={{ display: "flex", gap: 20 }}>
-                                            <span style={{ color: "var(--text-secondary)" }}>Total: <strong>{o.total}</strong></span>
-                                            <span style={{ color: "#e74c3c" }}>Últimos 7d: <strong>{o.last_7d}</strong></span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                );
-
-            case "audit":
-                return (
-                    <div>
-                        <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                <thead>
-                                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                                        {["Acción", "Recurso", "Actor", "IP", "Fecha"].map(h => (
-                                            <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {auditLogs.length === 0 ? (
-                                        <tr><td colSpan={5} style={{ padding: "30px 0", textAlign: "center", color: "var(--text-secondary)" }}>Sin registros de auditoría aún.</td></tr>
-                                    ) : auditLogs.map((log: any) => (
-                                        <tr key={log.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                                            <td style={{ padding: "10px 16px" }}>
-                                                <span style={{ fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: "var(--bg-tertiary)", fontFamily: "monospace" }}>
-                                                    {log.action}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: "10px 16px", fontSize: 13, color: "var(--text-secondary)" }}>{log.resource || "—"}</td>
-                                            <td style={{ padding: "10px 16px", fontSize: 13 }}>{log.actor_name || log.user_id || "Sistema"}</td>
-                                            <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-secondary)", fontFamily: "monospace" }}>{log.ip || "—"}</td>
-                                            <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--text-secondary)" }}>
-                                                {new Date(log.created_at).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-
+            case "overview": return renderOverview();
+            case "agentes": return renderAgentes();
+            case "canales": return renderCanales();
+            case "csat": return renderCSAT();
             default: return null;
         }
     };
@@ -300,24 +361,41 @@ export default function AnalyticsDashboardPage() {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                 <div>
-                    <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Analytics & Compliance</h1>
+                    <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Agent Analytics</h1>
                     <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: 13 }}>
-                        Vista operativa en tiempo real del sistema
+                        Rendimiento de agentes y canales
                     </p>
                 </div>
-                <button
-                    onClick={load}
-                    disabled={loading}
-                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", cursor: "pointer", fontSize: 13 }}
-                >
-                    <RefreshCw size={14} style={{ animation: loading ? "spin 0.8s linear infinite" : "none" }} />
-                    Actualizar
-                </button>
+                {/* Date Range */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        style={{
+                            padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)",
+                            background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13,
+                        }}
+                    />
+                    <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>a</span>
+                    <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        style={{
+                            padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)",
+                            background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13,
+                        }}
+                    />
+                </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "var(--bg-secondary)", borderRadius: 12, padding: 4, border: "1px solid var(--border)" }}>
-                {TABS.map(tab => (
+            {/* Tabs */}
+            <div style={{
+                display: "flex", gap: 4, marginBottom: 24, background: "var(--bg-secondary)",
+                borderRadius: 12, padding: 4, border: "1px solid var(--border)",
+            }}>
+                {TABS.map((tab) => (
                     <button
                         key={tab.key}
                         onClick={() => setActiveTab(tab.key)}
@@ -326,16 +404,15 @@ export default function AnalyticsDashboardPage() {
                             background: activeTab === tab.key ? "var(--accent)" : "transparent",
                             color: activeTab === tab.key ? "white" : "var(--text-secondary)",
                             fontWeight: activeTab === tab.key ? 600 : 400, fontSize: 13,
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                             transition: "all 0.15s ease",
                         }}
                     >
-                        <tab.icon size={13} /> {tab.label}
+                        {tab.label}
                     </button>
                 ))}
             </div>
 
-            {/* Tab Content */}
+            {/* Content */}
             {loading ? (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300, gap: 12, color: "var(--text-secondary)" }}>
                     <div style={{ width: 24, height: 24, border: "2px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />

@@ -212,8 +212,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
       override_default_response_type: true,
       extras: {
         setup: META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {},
-        featureType: "whatsapp_business_app_onboard",
+        featureType: "whatsapp_business_app_onboarding",
         sessionInfoVersion: "3",
+        version: "v4",
       },
     };
 

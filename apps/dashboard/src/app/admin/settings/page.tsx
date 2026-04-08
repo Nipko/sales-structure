@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import {
@@ -18,6 +19,9 @@ import {
     Instagram,
     Facebook,
     Send,
+    Database,
+    Zap,
+    ArrowRight,
 } from "lucide-react";
 
 const tabs = [
@@ -92,7 +96,32 @@ const settingsSchema: Record<string, FieldConfig[]> = {
     ],
 };
 
+const toolCards = [
+    {
+        title: "Atributos Personalizados",
+        description: "Define campos dinámicos para contactos y conversaciones",
+        icon: Database,
+        href: "/admin/settings/custom-attributes",
+        color: "#3498db",
+    },
+    {
+        title: "Macros",
+        description: "Secuencias de acciones guardadas para ejecutar rápidamente",
+        icon: Zap,
+        href: "/admin/settings/macros",
+        color: "#e67e22",
+    },
+    {
+        title: "Formulario Pre-Chat",
+        description: "Configura los campos que se solicitan antes de iniciar un chat",
+        icon: MessageSquare,
+        href: "/admin/settings/prechat",
+        color: "#2ecc71",
+    },
+];
+
 export default function SettingsPage() {
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState("llm");
     const [isLive, setIsLive] = useState(false);
     const [values, setValues] = useState<Record<string, string>>({
@@ -279,6 +308,47 @@ export default function SettingsPage() {
             }}>
                 <Shield size={16} color="#6c5ce7" />
                 Las API keys se almacenan encriptadas y se muestran enmascaradas. Solo super_admin puede modificarlas.
+            </div>
+
+            {/* Herramientas */}
+            <div style={{ marginBottom: 24 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 12px" }}>Herramientas</h2>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                    {toolCards.map(card => {
+                        const Icon = card.icon;
+                        return (
+                            <button
+                                key={card.href}
+                                onClick={() => router.push(card.href)}
+                                style={{
+                                    display: "flex", alignItems: "center", gap: 14,
+                                    padding: "16px 20px", borderRadius: 12,
+                                    border: "1px solid var(--border)", background: "var(--bg-secondary)",
+                                    cursor: "pointer", textAlign: "left", transition: "all 0.2s ease",
+                                }}
+                                onMouseOver={e => (e.currentTarget.style.borderColor = card.color)}
+                                onMouseOut={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                            >
+                                <div style={{
+                                    width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                                    background: `${card.color}18`, display: "flex",
+                                    alignItems: "center", justifyContent: "center",
+                                }}>
+                                    <Icon size={20} color={card.color} />
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
+                                        {card.title}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                                        {card.description}
+                                    </div>
+                                </div>
+                                <ArrowRight size={16} color="var(--text-secondary)" />
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Tabs */}

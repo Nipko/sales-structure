@@ -123,6 +123,80 @@ export default function InboxPage() {
     // --- Assign State ---
     const [assignLoading, setAssignLoading] = useState(false);
 
+    // --- Snooze State ---
+    const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
+    const snoozeRef = useRef<HTMLDivElement>(null);
+
+    // --- Macros State ---
+    const [showMacrosMenu, setShowMacrosMenu] = useState(false);
+    const [macros, setMacros] = useState<any[]>([]);
+    const [macrosLoaded, setMacrosLoaded] = useState(false);
+    const macrosRef = useRef<HTMLDivElement>(null);
+
+    // Close snooze/macros on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) setShowSnoozeMenu(false);
+            if (macrosRef.current && !macrosRef.current.contains(e.target as Node)) setShowMacrosMenu(false);
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    // Load macros on mount
+    useEffect(() => {
+        if (!activeTenantId || macrosLoaded) return;
+        api.getMacros(activeTenantId).then((res: any) => {
+            if (res?.success && Array.isArray(res.data)) setMacros(res.data);
+            else if (Array.isArray(res)) setMacros(res);
+            setMacrosLoaded(true);
+        }).catch(() => setMacrosLoaded(true));
+    }, [activeTenantId, macrosLoaded]);
+
+    const handleSnooze = async (label: string) => {
+        if (!activeTenantId || !selectedConv) return;
+        const now = new Date();
+        let snoozeUntil: Date;
+        switch (label) {
+            case "1h": snoozeUntil = new Date(now.getTime() + 60 * 60 * 1000); break;
+            case "3h": snoozeUntil = new Date(now.getTime() + 3 * 60 * 60 * 1000); break;
+            case "tomorrow": {
+                snoozeUntil = new Date(now);
+                snoozeUntil.setDate(snoozeUntil.getDate() + 1);
+                snoozeUntil.setHours(9, 0, 0, 0);
+                break;
+            }
+            case "monday": {
+                snoozeUntil = new Date(now);
+                const day = snoozeUntil.getDay();
+                const daysUntilMon = day === 0 ? 1 : 8 - day;
+                snoozeUntil.setDate(snoozeUntil.getDate() + daysUntilMon);
+                snoozeUntil.setHours(9, 0, 0, 0);
+                break;
+            }
+            default: snoozeUntil = new Date(now.getTime() + 60 * 60 * 1000);
+        }
+        try {
+            await api.snoozeConversation(activeTenantId, selectedConv.id, snoozeUntil.toISOString());
+            setConversations(prev => prev.filter(c => c.id !== selectedConv.id));
+            setSelectedConv(null);
+            setMessages([]);
+        } catch (err) {
+            console.error("Snooze failed:", err);
+        }
+        setShowSnoozeMenu(false);
+    };
+
+    const handleExecuteMacro = async (macroId: string) => {
+        if (!activeTenantId || !selectedConv || !user?.id) return;
+        try {
+            await api.executeMacro(activeTenantId, macroId, selectedConv.id, user.id);
+            setShowMacrosMenu(false);
+        } catch (err) {
+            console.error("Macro execution failed:", err);
+        }
+    };
+
     // --- Total unread count for bell badge ---
     const totalUnread = useMemo(() => {
         return conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
@@ -770,6 +844,100 @@ export default function InboxPage() {
                                 : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mi' : 'Asignarme'}</>
                             }
                         </button>
+                        {/* Snooze Button */}
+                        <div ref={snoozeRef} style={{ position: "relative" }}>
+                            <button
+                                onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
+                                style={{
+                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
+                                    background: showSnoozeMenu ? "var(--accent)" : "transparent",
+                                    color: showSnoozeMenu ? "white" : "var(--text-secondary)",
+                                    fontSize: 12, cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
+                                }}
+                            >
+                                <Clock size={14} /> Snooze
+                            </button>
+                            {showSnoozeMenu && (
+                                <div style={{
+                                    position: "absolute", top: "100%", right: 0, marginTop: 4,
+                                    background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                                    borderRadius: 10, padding: 4, zIndex: 100, minWidth: 160,
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                                }}>
+                                    {[
+                                        { key: "1h", label: "1 hora" },
+                                        { key: "3h", label: "3 horas" },
+                                        { key: "tomorrow", label: "Mañana 9am" },
+                                        { key: "monday", label: "Próximo lunes" },
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.key}
+                                            onClick={() => handleSnooze(opt.key)}
+                                            style={{
+                                                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                                                padding: "8px 12px", border: "none", borderRadius: 6,
+                                                background: "transparent", color: "var(--text-primary)",
+                                                fontSize: 13, cursor: "pointer", textAlign: "left",
+                                            }}
+                                            onMouseOver={e => (e.currentTarget.style.background = "var(--bg-tertiary)")}
+                                            onMouseOut={e => (e.currentTarget.style.background = "transparent")}
+                                        >
+                                            <Clock size={13} color="var(--text-secondary)" />
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {/* Macros Button */}
+                        <div ref={macrosRef} style={{ position: "relative" }}>
+                            <button
+                                onClick={() => setShowMacrosMenu(!showMacrosMenu)}
+                                style={{
+                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
+                                    background: showMacrosMenu ? "var(--accent)" : "transparent",
+                                    color: showMacrosMenu ? "white" : "var(--text-secondary)",
+                                    fontSize: 12, cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
+                                }}
+                            >
+                                <Zap size={14} /> Macros
+                            </button>
+                            {showMacrosMenu && (
+                                <div style={{
+                                    position: "absolute", top: "100%", right: 0, marginTop: 4,
+                                    background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                                    borderRadius: 10, padding: 4, zIndex: 100, minWidth: 200,
+                                    maxHeight: 240, overflowY: "auto",
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                                }}>
+                                    {macros.length === 0 ? (
+                                        <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--text-secondary)" }}>
+                                            No hay macros configurados
+                                        </div>
+                                    ) : macros.map((m: any) => (
+                                        <button
+                                            key={m.id}
+                                            onClick={() => handleExecuteMacro(m.id)}
+                                            style={{
+                                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                                width: "100%", padding: "8px 12px", border: "none", borderRadius: 6,
+                                                background: "transparent", color: "var(--text-primary)",
+                                                fontSize: 13, cursor: "pointer", textAlign: "left",
+                                            }}
+                                            onMouseOver={e => (e.currentTarget.style.background = "var(--bg-tertiary)")}
+                                            onMouseOut={e => (e.currentTarget.style.background = "transparent")}
+                                        >
+                                            <span>{m.name}</span>
+                                            {m.actions && (
+                                                <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                                    {Array.isArray(m.actions) ? m.actions.length : 0} acciones
+                                                </span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

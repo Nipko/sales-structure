@@ -4,8 +4,15 @@ import Sidebar from "@/components/Sidebar";
 import CopilotWidget from "@/components/CopilotWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantProvider, TenantSelector } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
+
+const agentStatuses = [
+    { key: "online", label: "Online", color: "#2ecc71" },
+    { key: "busy", label: "Ocupado", color: "#f1c40f" },
+    { key: "offline", label: "Desconectado", color: "#95a5a6" },
+] as const;
 
 export default function AdminLayout({
     children,
@@ -14,12 +21,39 @@ export default function AdminLayout({
 }) {
     const { isAuthenticated, isLoading, user, logout } = useAuth();
     const router = useRouter();
+    const [agentStatus, setAgentStatus] = useState<string>("online");
+    const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+    const statusRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
             router.push("/login");
         }
     }, [isLoading, isAuthenticated, router]);
+
+    // Load agent status
+    useEffect(() => {
+        if ((user as any)?.status) setAgentStatus((user as any).status);
+    }, [user]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (statusRef.current && !statusRef.current.contains(e.target as Node)) {
+                setShowStatusDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    const handleStatusChange = async (status: string) => {
+        setAgentStatus(status);
+        setShowStatusDropdown(false);
+        if (user?.id) {
+            try { await api.updateAgentStatus(user.id, status); } catch {}
+        }
+    };
 
     if (isLoading) {
         return (
@@ -62,6 +96,50 @@ export default function AdminLayout({
                         marginBottom: 16, gap: 12,
                     }}>
                         <TenantSelector />
+                        {/* Agent Status Dropdown */}
+                        <div ref={statusRef} style={{ position: "relative" }}>
+                            <button
+                                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                                style={{
+                                    display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+                                    borderRadius: 8, border: "1px solid var(--border)", background: "transparent",
+                                    cursor: "pointer", fontSize: 12, color: "var(--text-secondary)", fontWeight: 500,
+                                }}
+                            >
+                                <div style={{
+                                    width: 8, height: 8, borderRadius: "50%",
+                                    background: agentStatuses.find(s => s.key === agentStatus)?.color || "#95a5a6",
+                                }} />
+                                {agentStatuses.find(s => s.key === agentStatus)?.label || "Online"}
+                            </button>
+                            {showStatusDropdown && (
+                                <div style={{
+                                    position: "absolute", top: "100%", right: 0, marginTop: 4,
+                                    background: "var(--bg-secondary)", border: "1px solid var(--border)",
+                                    borderRadius: 10, padding: 4, zIndex: 100, minWidth: 140,
+                                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                                }}>
+                                    {agentStatuses.map(s => (
+                                        <button
+                                            key={s.key}
+                                            onClick={() => handleStatusChange(s.key)}
+                                            style={{
+                                                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                                                padding: "8px 12px", border: "none", borderRadius: 6,
+                                                background: agentStatus === s.key ? "var(--bg-tertiary)" : "transparent",
+                                                color: "var(--text-primary)", fontSize: 13, cursor: "pointer",
+                                                textAlign: "left",
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: 8, height: 8, borderRadius: "50%", background: s.color,
+                                            }} />
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <div style={{ textAlign: "right" }}>
                             <div style={{ fontSize: 13, fontWeight: 600 }}>
                                 {user?.firstName} {user?.lastName}

@@ -14,10 +14,14 @@ import {
     Tag,
     User,
     UserPlus,
+    Users,
+    Upload,
+    Download,
     MoreVertical,
     ChevronDown,
     ArrowUpDown,
     Eye,
+    X,
 } from "lucide-react";
 
 const segmentColors: Record<string, { bg: string; color: string }> = {
@@ -36,6 +40,11 @@ export default function ContactsPage() {
     const [activeSegment, setActiveSegment] = useState<string>("all");
     const [isLive, setIsLive] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [csvContent, setCsvContent] = useState("");
+    const [importResult, setImportResult] = useState<any>(null);
+    const [importing, setImporting] = useState(false);
+    const [exporting, setExporting] = useState(false);
 
     // Load contacts from API
     useEffect(() => {
@@ -99,6 +108,57 @@ export default function ContactsPage() {
 
     const totalValue = contacts.reduce((sum, contact) => sum + Number(contact.lifetimeValue || 0), 0);
 
+    const handleImport = async () => {
+        if (!activeTenantId || !csvContent.trim()) return;
+        setImporting(true);
+        setImportResult(null);
+        try {
+            const result = await api.fetch(`/crm/import/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify({ csvContent }),
+            });
+            setImportResult(result);
+        } catch (err) {
+            setImportResult({ success: false, error: "Error al importar" });
+        } finally {
+            setImporting(false);
+        }
+    };
+
+    const handleExport = async () => {
+        if (!activeTenantId) return;
+        setExporting(true);
+        try {
+            const result = await api.fetch(`/crm/export/${activeTenantId}`);
+            const blob = new Blob([typeof result === "string" ? result : JSON.stringify(result)], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `contactos_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Export failed:", err);
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const handleDownloadTemplate = async () => {
+        try {
+            const result = await api.fetch("/crm/import-template");
+            const blob = new Blob([typeof result === "string" ? result : JSON.stringify(result)], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "plantilla_contactos.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Template download failed:", err);
+        }
+    };
+
     return (
         <div>
             {/* Header */}
@@ -112,13 +172,47 @@ export default function ContactsPage() {
                         {contacts.length} contactos · Valor total: ${totalValue.toLocaleString()} COP
                     </p>
                 </div>
-                <button style={{
-                    display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-                    borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
-                    fontWeight: 600, fontSize: 14, cursor: "pointer",
-                }}>
-                    <UserPlus size={18} /> Nuevo contacto
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button
+                        onClick={() => router.push("/admin/contacts/segments")}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 6, padding: "10px 16px",
+                            borderRadius: 10, border: "1px solid var(--border)", background: "transparent",
+                            color: "var(--text-secondary)", fontWeight: 500, fontSize: 13, cursor: "pointer",
+                        }}
+                    >
+                        <Users size={16} /> Segmentos
+                    </button>
+                    <button
+                        onClick={() => setShowImportModal(true)}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 6, padding: "10px 16px",
+                            borderRadius: 10, border: "1px solid var(--border)", background: "transparent",
+                            color: "var(--text-secondary)", fontWeight: 500, fontSize: 13, cursor: "pointer",
+                        }}
+                    >
+                        <Upload size={16} /> Importar CSV
+                    </button>
+                    <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 6, padding: "10px 16px",
+                            borderRadius: 10, border: "1px solid var(--border)", background: "transparent",
+                            color: "var(--text-secondary)", fontWeight: 500, fontSize: 13, cursor: "pointer",
+                            opacity: exporting ? 0.6 : 1,
+                        }}
+                    >
+                        <Download size={16} /> {exporting ? "Exportando..." : "Exportar CSV"}
+                    </button>
+                    <button style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
+                        borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
+                        fontWeight: 600, fontSize: 14, cursor: "pointer",
+                    }}>
+                        <UserPlus size={18} /> Nuevo contacto
+                    </button>
+                </div>
             </div>
 
             {/* Stats Cards */}
@@ -260,6 +354,91 @@ export default function ContactsPage() {
                     </tbody>
                 </table>
             </div>
+
+            {/* Import CSV Modal */}
+            {showImportModal && (
+                <div
+                    onClick={() => setShowImportModal(false)}
+                    style={{
+                        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+                        backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+                        justifyContent: "center", zIndex: 1000,
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            background: "var(--bg-secondary)", borderRadius: 16,
+                            border: "1px solid var(--border)", padding: 28, width: 520,
+                            maxHeight: "80vh", overflow: "auto",
+                        }}
+                    >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Importar Contactos</h2>
+                            <button
+                                onClick={() => setShowImportModal(false)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 4 }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={handleDownloadTemplate}
+                            style={{
+                                fontSize: 13, color: "var(--accent)", background: "none", border: "none",
+                                cursor: "pointer", textDecoration: "underline", padding: 0, marginBottom: 12, display: "block",
+                            }}
+                        >
+                            Descargar plantilla CSV
+                        </button>
+
+                        <textarea
+                            value={csvContent}
+                            onChange={e => setCsvContent(e.target.value)}
+                            placeholder="Pega aquí el contenido CSV...&#10;nombre,telefono,email&#10;Juan,+573001234567,juan@email.com"
+                            rows={8}
+                            style={{
+                                width: "100%", padding: 12, borderRadius: 10, border: "1px solid var(--border)",
+                                background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 13,
+                                fontFamily: "monospace", resize: "vertical", outline: "none", boxSizing: "border-box",
+                            }}
+                        />
+
+                        {importResult && (
+                            <div style={{
+                                marginTop: 12, padding: 12, borderRadius: 8, fontSize: 13,
+                                background: importResult.success ? "rgba(46, 204, 113, 0.12)" : "rgba(231, 76, 60, 0.12)",
+                                color: importResult.success ? "#2ecc71" : "#e74c3c",
+                                border: `1px solid ${importResult.success ? "rgba(46, 204, 113, 0.25)" : "rgba(231, 76, 60, 0.25)"}`,
+                            }}>
+                                {importResult.success ? (
+                                    <div>
+                                        Importados: {importResult.imported ?? 0} |
+                                        Omitidos: {importResult.skipped ?? 0} |
+                                        Errores: {importResult.errors ?? 0}
+                                    </div>
+                                ) : (
+                                    <div>{importResult.error || "Error al importar"}</div>
+                                )}
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleImport}
+                            disabled={importing || !csvContent.trim()}
+                            style={{
+                                marginTop: 16, width: "100%", padding: "12px 0", borderRadius: 10,
+                                border: "none", background: "var(--accent)", color: "white",
+                                fontWeight: 600, fontSize: 14, cursor: importing ? "not-allowed" : "pointer",
+                                opacity: importing || !csvContent.trim() ? 0.6 : 1,
+                            }}
+                        >
+                            {importing ? "Importando..." : "Importar"}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

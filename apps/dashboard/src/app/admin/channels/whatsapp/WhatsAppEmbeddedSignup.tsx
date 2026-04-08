@@ -50,7 +50,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         appId: META_APP_ID,
         autoLogAppEvents: true,
         xfbml: true,
-        version: "v21.0",
+        version: "v25.0",
       });
       setSdkLoaded(true);
     };
@@ -166,8 +166,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         override_default_response_type: true,
         extras: {
           setup: {},
-          featureType: "",
+          featureType: "whatsapp_business_app_onboarding",
           sessionInfoVersion: "3",
+          version: "v4",
         },
       },
     );

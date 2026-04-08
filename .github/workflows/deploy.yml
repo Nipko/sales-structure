@@ -278,11 +278,14 @@ jobs:
                 );
               " || true
 
-            echo "===> Ensuring users.name generated column exists..."
+            echo "===> Ensuring users columns exist..."
             docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
               psql -U parallext -d parallext_engine -c "
                 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS name TEXT
                   GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS availability_status VARCHAR(20) DEFAULT 'offline';
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS max_capacity INTEGER DEFAULT 5;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
               " || true
 
             echo "===> Running Prisma public schema migrations..."

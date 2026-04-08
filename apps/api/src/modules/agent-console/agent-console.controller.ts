@@ -2,6 +2,9 @@ import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nest
 import { AuthGuard } from '@nestjs/passport';
 import { AgentConsoleService } from './agent-console.service';
 import { CannedResponsesService } from './canned-responses.service';
+import { AgentAvailabilityService } from './agent-availability.service';
+import { MacrosService } from './macros.service';
+import { SnoozeService } from './snooze.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -12,6 +15,9 @@ export class AgentConsoleController {
     constructor(
         private agentConsoleService: AgentConsoleService,
         private cannedResponsesService: CannedResponsesService,
+        private availabilityService: AgentAvailabilityService,
+        private macrosService: MacrosService,
+        private snoozeService: SnoozeService,
     ) { }
 
     // ---- Inbox ----
@@ -128,5 +134,83 @@ export class AgentConsoleController {
     ) {
         await this.cannedResponsesService.update(tenantId, id, body);
         return { success: true, message: 'Canned response updated' };
+    }
+
+    // ---- Agent Availability ----
+
+    @Put('status/:userId')
+    async updateAgentStatus(
+        @Param('userId') userId: string,
+        @Body() body: { status: string },
+    ) {
+        await this.availabilityService.updateStatus(userId, body.status as any);
+        return { success: true };
+    }
+
+    @Get('agents/:tenantId/available')
+    async getAvailableAgents(@Param('tenantId') tenantId: string) {
+        const data = await this.availabilityService.getAvailableAgents(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('agents/:tenantId/status')
+    async getAgentsWithStatus(@Param('tenantId') tenantId: string) {
+        const data = await this.availabilityService.getAgentsWithStatus(tenantId);
+        return { success: true, data };
+    }
+
+    // ---- Snooze ----
+
+    @Put('conversation/:tenantId/:conversationId/snooze')
+    async snoozeConversation(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Body() body: { snoozeUntil: string },
+    ) {
+        await this.snoozeService.snooze(tenantId, conversationId, new Date(body.snoozeUntil));
+        return { success: true, message: 'Conversation snoozed' };
+    }
+
+    @Put('conversation/:tenantId/:conversationId/unsnooze')
+    async unsnoozeConversation(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+    ) {
+        await this.snoozeService.unsnooze(tenantId, conversationId);
+        return { success: true, message: 'Conversation unsnoozed' };
+    }
+
+    // ---- Macros ----
+
+    @Get('macros/:tenantId')
+    async getMacros(@Param('tenantId') tenantId: string) {
+        const data = await this.macrosService.getMacros(tenantId);
+        return { success: true, data };
+    }
+
+    @Post('macros/:tenantId')
+    async createMacro(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const data = await this.macrosService.createMacro(tenantId, body);
+        return { success: true, data };
+    }
+
+    @Put('macros/:tenantId/:macroId')
+    async updateMacro(
+        @Param('tenantId') tenantId: string,
+        @Param('macroId') macroId: string,
+        @Body() body: any,
+    ) {
+        const data = await this.macrosService.updateMacro(tenantId, macroId, body);
+        return { success: true, data };
+    }
+
+    @Post('macros/:tenantId/:macroId/execute')
+    async executeMacro(
+        @Param('tenantId') tenantId: string,
+        @Param('macroId') macroId: string,
+        @Body() body: { conversationId: string; agentId: string },
+    ) {
+        const result = await this.macrosService.executeMacro(tenantId, macroId, body.conversationId, body.agentId);
+        return { success: true, data: result };
     }
 }

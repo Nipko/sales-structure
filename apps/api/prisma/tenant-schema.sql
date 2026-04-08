@@ -966,3 +966,79 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."merge_suggestions" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "ms_status_idx" ON "{{SCHEMA_NAME}}"."merge_suggestions" ("status");
+
+-- ============================================
+-- CRM Features V2 — Custom Attributes, Segments, Macros, Snooze, CSAT, Pre-Chat, KB
+-- ============================================
+
+-- ---- Conversation Snooze (A2) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "snoozed_until" TIMESTAMP;
+CREATE INDEX IF NOT EXISTS "conv_snoozed_idx" ON "{{SCHEMA_NAME}}"."conversations" ("snoozed_until") WHERE snoozed_until IS NOT NULL;
+
+-- ---- CSAT Survey extensions (B1) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."csat_surveys" ADD COLUMN IF NOT EXISTS "sent_at" TIMESTAMP;
+ALTER TABLE "{{SCHEMA_NAME}}"."csat_surveys" ADD COLUMN IF NOT EXISTS "responded_at" TIMESTAMP;
+
+-- ---- Macros (A3) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."macros" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255),
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "actions_json" JSONB NOT NULL DEFAULT '[]',
+    "visibility" VARCHAR(50) DEFAULT 'team',
+    "created_by" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "macros_tenant_idx" ON "{{SCHEMA_NAME}}"."macros" ("tenant_id");
+
+-- ---- Custom Attribute Definitions (C1) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."custom_attribute_definitions" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255) NOT NULL,
+    "entity_type" VARCHAR(50) NOT NULL DEFAULT 'contact',
+    "attribute_key" VARCHAR(100) NOT NULL,
+    "attribute_label" VARCHAR(255) NOT NULL,
+    "attribute_type" VARCHAR(50) NOT NULL,
+    "options" JSONB DEFAULT '[]',
+    "required" BOOLEAN DEFAULT false,
+    "position" INTEGER DEFAULT 0,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW(),
+    UNIQUE ("tenant_id", "entity_type", "attribute_key")
+);
+CREATE INDEX IF NOT EXISTS "cad_entity_idx" ON "{{SCHEMA_NAME}}"."custom_attribute_definitions" ("tenant_id", "entity_type");
+
+-- ---- Contact Segments (C2) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."contact_segments" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "filter_rules" JSONB NOT NULL DEFAULT '[]',
+    "contact_count" INTEGER DEFAULT 0,
+    "created_by" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "cs_tenant_idx" ON "{{SCHEMA_NAME}}"."contact_segments" ("tenant_id");
+
+-- ---- Pre-Chat Forms (D1) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pre_chat_forms" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(255) DEFAULT 'default',
+    "fields_json" JSONB NOT NULL DEFAULT '[]',
+    "greeting_message" TEXT,
+    "is_active" BOOLEAN DEFAULT true,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- Knowledge Base Public Portal (D2) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "category" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "slug" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "published_at" TIMESTAMP;
+CREATE INDEX IF NOT EXISTS "kr_public_idx" ON "{{SCHEMA_NAME}}"."knowledge_resources" ("is_public", "status");

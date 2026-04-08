@@ -7,6 +7,8 @@ import { NotesService } from './services/notes/notes.service';
 import { TasksService } from './services/tasks/tasks.service';
 import { ActivityService } from './services/activity/activity.service';
 import { LeadScoringService } from './services/lead-scoring/lead-scoring.service';
+import { CustomAttributesService } from './services/custom-attributes/custom-attributes.service';
+import { SegmentsService } from './services/segments/segments.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -22,6 +24,8 @@ export class CrmController {
         private tasksService: TasksService,
         private activityService: ActivityService,
         private leadScoring: LeadScoringService,
+        private customAttrs: CustomAttributesService,
+        private segmentsService: SegmentsService,
     ) {}
 
     // ---- Kanban (Pipeline Board using Opportunities) ----
@@ -267,6 +271,70 @@ export class CrmController {
         @Param('campaignId') campaignId: string,
     ) {
         const data = await this.catalogRepo.getCampaignById(tenantId, campaignId);
+        return { success: true, data };
+    }
+
+    // ---- Custom Attributes ----
+
+    @Get('custom-attributes/:tenantId')
+    async getCustomAttributes(
+        @Param('tenantId') tenantId: string,
+        @Query('entityType') entityType?: string,
+    ) {
+        const data = await this.customAttrs.getDefinitions(tenantId, entityType);
+        return { success: true, data };
+    }
+
+    @Post('custom-attributes/:tenantId')
+    async createCustomAttribute(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const data = await this.customAttrs.createDefinition(tenantId, body);
+        return { success: true, data };
+    }
+
+    @Put('custom-attributes/:tenantId/:id')
+    async updateCustomAttribute(
+        @Param('tenantId') tenantId: string,
+        @Param('id') id: string,
+        @Body() body: any,
+    ) {
+        const data = await this.customAttrs.updateDefinition(tenantId, id, body);
+        return { success: true, data };
+    }
+
+    // ---- Contact Segments ----
+
+    @Get('segments/:tenantId')
+    async getSegments(@Param('tenantId') tenantId: string) {
+        const data = await this.segmentsService.getSegments(tenantId);
+        return { success: true, data };
+    }
+
+    @Post('segments/:tenantId')
+    async createSegment(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const data = await this.segmentsService.createSegment(tenantId, body);
+        return { success: true, data };
+    }
+
+    @Put('segments/:tenantId/:segmentId')
+    async updateSegment(
+        @Param('tenantId') tenantId: string,
+        @Param('segmentId') segmentId: string,
+        @Body() body: any,
+    ) {
+        const data = await this.segmentsService.updateSegment(tenantId, segmentId, body);
+        return { success: true, data };
+    }
+
+    @Get('segments/:tenantId/:segmentId/contacts')
+    async getSegmentContacts(
+        @Param('tenantId') tenantId: string,
+        @Param('segmentId') segmentId: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const data = await this.segmentsService.getSegmentContacts(
+            tenantId, segmentId, Number(page) || 1, Number(limit) || 25,
+        );
         return { success: true, data };
     }
 }

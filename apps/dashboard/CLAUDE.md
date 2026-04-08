@@ -1,7 +1,7 @@
 # Dashboard — Claude Code Context
 
 ## Overview
-Next.js 16 admin panel. Port 3001. React 19 + Tailwind CSS 4. App Router.
+Next.js 16 admin panel. Port 3001. React 19. App Router. Dark theme with inline CSS.
 
 ## Structure
 ```
@@ -10,27 +10,43 @@ src/
     layout.tsx          — Root layout with Providers
     page.tsx            — Landing/redirect
     login/page.tsx      — Login form
-    signup/page.tsx     — Tenant self-signup
+    signup/page.tsx      — Tenant self-signup
+    kb/[tenantSlug]/    — Public KB portal (light theme, no auth)
     admin/
       layout.tsx        — Authenticated layout with Sidebar
       page.tsx          — Dashboard overview
-      inbox/            — Agent console (messaging)
+      inbox/            — Agent console (WhatsApp-style chat + bell notifications)
       contacts/         — CRM contacts + lead detail
+      contacts/segments/ — Saved contact filters
       pipeline/         — Kanban board
       conversations/    — Global conversation view
-      automation/       — Rules builder
-      broadcast/        — Campaign manager
+      automation/       — Rules wizard (4-step)
+      agent/            — AI agent config (6-step wizard + custom prompt mode)
+      agent-analytics/  — Reports (4 tabs: Overview/Agents/Channels/CSAT)
       ai/               — LLM router config
+      broadcast/        — Campaign manager
+      channels/         — Channel overview (WhatsApp/IG/Messenger)
+      channels/whatsapp/ — WhatsApp Embedded Signup
+      channels/instagram/ — Instagram DM setup
+      channels/messenger/ — Messenger setup
+      identity/         — Merge suggestions (approve/reject)
       knowledge/        — RAG document management
-      channels/whatsapp/ — Embedded Signup UI
       analytics/        — Platform analytics
-      agent-analytics/  — Agent performance
+      compliance/       — Consent & opt-out management
+      inventory/        — Stock management
+      orders/           — Order tracking
+      landings/         — Landing page builder
+      catalog/courses/  — Course management
+      catalog/campaigns/ — Campaign management
       settings/         — Platform config
+      settings/custom-attributes/ — Dynamic field definitions
+      settings/macros/  — Saved action sequences
+      settings/prechat/ — Pre-chat form builder
       users/            — User management
-      ... (25+ pages total)
+      tenants/          — Tenant management (super_admin only)
+      ... (35+ pages total)
   components/
-    Sidebar.tsx         — Navigation (role-based)
-    CopilotWidget.tsx   — AI assistant
+    Sidebar.tsx         — Navigation (role-based, 16 items)
     Providers.tsx       — Client providers wrapper
   contexts/
     AuthContext.tsx      — JWT auth + auto-refresh + tenant switching
@@ -38,17 +54,33 @@ src/
   hooks/
     useApiData.tsx      — API hook with LIVE/DEMO badge
   lib/
-    api.ts              — HTTP client (30+ methods wrapping fetch)
+    api.ts              — HTTP client (89+ methods wrapping fetch)
 ```
 
 ## Key patterns
 - All API calls go through `src/lib/api.ts` which handles auth headers and base URL
-- Auth state in `AuthContext` — provides `user`, `token`, `login()`, `logout()`, `switchTenant()`
+- Auth state in `AuthContext` — provides `user`, `token`, `login()`, `logout()`, `hasRole()`
+- Tenant state in `TenantContext` — provides `activeTenantId`, `setActiveTenant()`
 - Pages under `/admin/` are protected by AuthContext redirect
-- WebSocket connection via socket.io-client for real-time inbox updates
-- LIVE/DEMO badge system in useApiData to show data source
+- WebSocket via socket.io-client for real-time inbox updates (namespace `/inbox`)
+- Socket URL: strips `/api/v1` from `NEXT_PUBLIC_API_URL` before connecting
+- Styling: inline CSS with CSS variables (dark theme), NO Tailwind classes in most pages
+- Icons: lucide-react throughout
+- Forms: useState objects + onChange handlers + toast notifications
+- Modals: fixed overlay, backdrop blur, click-outside dismiss
+
+## CSS Variables
+```
+--bg-primary: #0a0a12    --text-primary: #e8e8f0
+--bg-secondary: #12121e  --text-secondary: #9898b0
+--bg-card: #1a1a2e       --accent: #6c5ce7
+--border: #2a2a45        --success: #00d68f
+                         --warning: #ffaa00
+                         --danger: #ff4757
+```
 
 ## Environment
-- `NEXT_PUBLIC_API_URL` — API base URL (e.g., http://localhost:3000/api/v1)
+- `NEXT_PUBLIC_API_URL` — API base URL (e.g., https://api.parallly-chat.cloud/api/v1)
 - `NEXT_PUBLIC_WA_SERVICE_URL` — WhatsApp service URL
 - `NEXT_PUBLIC_META_APP_ID` — For Embedded Signup widget
+- `NEXT_PUBLIC_META_CONFIG_ID` — For Embedded Signup config

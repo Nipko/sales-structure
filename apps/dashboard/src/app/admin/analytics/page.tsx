@@ -58,31 +58,31 @@ export default function AnalyticsV4Page() {
     return (
         <div>
             {/* Header */}
-            <div style={{ marginBottom: 24 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                    <BarChart3 size={28} color="var(--accent)" /> Analytics V4
+            <div className="mb-6">
+                <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                    <BarChart3 size={28} className="text-primary" /> Analytics V4
                 </h1>
-                <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>Métricas ejecutivas, funnel de conversión y rendimiento por campaña</p>
+                <p className="text-muted-foreground mt-1">Metricas ejecutivas, funnel de conversion y rendimiento por campana</p>
             </div>
 
             {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
+            <div className="grid grid-cols-5 gap-3 mb-6">
                 {[
                     { icon: Users, color: "#3498db", label: "Total Leads", value: totalLeads },
                     { icon: Target, color: "#2ecc71", label: "Ganados", value: wonLeads },
-                    { icon: TrendingUp, color: "#f39c12", label: "Conversión", value: `${globalConversion}%` },
+                    { icon: TrendingUp, color: "#f39c12", label: "Conversion", value: `${globalConversion}%` },
                     { icon: Zap, color: "#e74c3c", label: "Perdidos", value: lostLeads },
-                    { icon: Megaphone, color: "#9b59b6", label: "Campañas", value: campaigns.length },
+                    { icon: Megaphone, color: "#9b59b6", label: "Campanas", value: campaigns.length },
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
-                        <div key={i} style={{ padding: "16px", borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)", display: "flex", alignItems: "center", gap: 12 }}>
-                            <div style={{ width: 44, height: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: `${kpi.color}18` }}>
+                        <div key={i} className="p-4 rounded-[14px] border border-border bg-card flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${kpi.color}18` }}>
                                 <Icon size={22} color={kpi.color} />
                             </div>
                             <div>
-                                <div style={{ fontSize: 22, fontWeight: 700 }}>{kpi.value}</div>
-                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{kpi.label}</div>
+                                <div className="text-[22px] font-bold">{kpi.value}</div>
+                                <div className="text-xs text-muted-foreground">{kpi.label}</div>
                             </div>
                         </div>
                     );
@@ -90,28 +90,30 @@ export default function AnalyticsV4Page() {
             </div>
 
             {/* Funnel */}
-            <div style={{ padding: 20, borderRadius: 16, border: "1px solid var(--border)", background: "var(--bg-secondary)", marginBottom: 24 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>📊 Funnel de Conversión</h2>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="p-5 rounded-2xl border border-border bg-card mb-6">
+                <h2 className="text-base font-bold mb-4">📊 Funnel de Conversion</h2>
+                <div className="flex flex-col gap-2">
                     {funnel.filter(f => f.stage !== "perdido").map((f, i) => {
                         const pct = maxFunnel > 0 ? (f.count / maxFunnel) * 100 : 0;
                         const color = stageColors[f.stage] || "#3498db";
                         return (
-                            <div key={f.stage} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                <div style={{ width: 120, fontSize: 13, fontWeight: 600, textAlign: "right", color: "var(--text-secondary)" }}>
+                            <div key={f.stage} className="flex items-center gap-3">
+                                <div className="w-[120px] text-[13px] font-semibold text-right text-muted-foreground">
                                     {stageLabels[f.stage] || f.stage}
                                 </div>
-                                <div style={{ flex: 1, height: 28, borderRadius: 6, background: "var(--bg-primary)", overflow: "hidden", position: "relative" }}>
-                                    <div style={{
-                                        width: `${Math.max(pct, 2)}%`, height: "100%", borderRadius: 6,
-                                        background: `linear-gradient(90deg, ${color}cc, ${color})`,
-                                        transition: "width 0.6s ease", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 8
-                                    }}>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: "white" }}>{f.count}</span>
+                                <div className="flex-1 h-7 rounded-md bg-background overflow-hidden relative">
+                                    <div
+                                        className="h-full rounded-md flex items-center justify-end pr-2 transition-[width] duration-[600ms]"
+                                        style={{
+                                            width: `${Math.max(pct, 2)}%`,
+                                            background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                                        }}
+                                    >
+                                        <span className="text-xs font-bold text-white">{f.count}</span>
                                     </div>
                                 </div>
                                 {i < funnel.filter(f2 => f2.stage !== "perdido").length - 1 && (
-                                    <ArrowRight size={14} color="var(--text-secondary)" style={{ opacity: 0.3 }} />
+                                    <ArrowRight size={14} className="text-muted-foreground opacity-30" />
                                 )}
                             </div>
                         );
@@ -120,56 +122,61 @@ export default function AnalyticsV4Page() {
             </div>
 
             {/* Campaign Analytics Table */}
-            <div style={{ padding: 20, borderRadius: 16, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
-                <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>📈 Rendimiento por Campaña</h2>
+            <div className="p-5 rounded-2xl border border-border bg-card">
+                <h2 className="text-base font-bold mb-4">📈 Rendimiento por Campana</h2>
                 {campaigns.length > 0 ? (
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <table className="w-full border-collapse text-[13px]">
                         <thead>
-                            <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                                {["Campaña", "Estado", "Canal", "Leads", "Calificados", "Calientes", "Convertidos", "Score Prom.", "Conversión"].map(h => (
-                                    <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 600, color: "var(--text-secondary)", fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                            <tr className="border-b border-border">
+                                {["Campana", "Estado", "Canal", "Leads", "Calificados", "Calientes", "Convertidos", "Score Prom.", "Conversion"].map(h => (
+                                    <th key={h} className="px-2.5 py-2 text-left font-semibold text-muted-foreground text-[11px] uppercase">{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {campaigns.map(c => (
-                                <tr key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                                    <td style={{ padding: "10px", fontWeight: 600 }}>{c.name}</td>
-                                    <td style={{ padding: "10px" }}>
-                                        <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: c.status === "active" ? "#2ecc7122" : "#95a5a622", color: c.status === "active" ? "#2ecc71" : "#95a5a6", fontWeight: 600 }}>{c.status}</span>
+                                <tr key={c.id} className="border-b border-border">
+                                    <td className="p-2.5 font-semibold">{c.name}</td>
+                                    <td className="p-2.5">
+                                        <span
+                                            className="text-[10px] px-2 py-0.5 rounded-md font-semibold"
+                                            style={{ background: c.status === "active" ? "#2ecc7122" : "#95a5a622", color: c.status === "active" ? "#2ecc71" : "#95a5a6" }}
+                                        >{c.status}</span>
                                     </td>
-                                    <td style={{ padding: "10px", color: "var(--text-secondary)" }}>{c.channel}</td>
-                                    <td style={{ padding: "10px", fontWeight: 600 }}>{c.total_leads}</td>
-                                    <td style={{ padding: "10px" }}>{c.qualified_leads}</td>
-                                    <td style={{ padding: "10px", color: "#e74c3c", fontWeight: 600 }}>{c.hot_leads}</td>
-                                    <td style={{ padding: "10px", color: "#2ecc71", fontWeight: 600 }}>{c.converted}</td>
-                                    <td style={{ padding: "10px" }}>{c.avg_score || "—"}</td>
-                                    <td style={{ padding: "10px", fontWeight: 700, color: parseFloat(c.conversion_rate) > 0 ? "#2ecc71" : "var(--text-secondary)" }}>{c.conversion_rate || 0}%</td>
+                                    <td className="p-2.5 text-muted-foreground">{c.channel}</td>
+                                    <td className="p-2.5 font-semibold">{c.total_leads}</td>
+                                    <td className="p-2.5">{c.qualified_leads}</td>
+                                    <td className="p-2.5 text-red-500 font-semibold">{c.hot_leads}</td>
+                                    <td className="p-2.5 text-emerald-500 font-semibold">{c.converted}</td>
+                                    <td className="p-2.5">{c.avg_score || "—"}</td>
+                                    <td className="p-2.5 font-bold" style={{ color: parseFloat(c.conversion_rate) > 0 ? "#2ecc71" : undefined }}>
+                                        {c.conversion_rate || 0}%
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 ) : (
-                    <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>
-                        {loading ? "Cargando métricas..." : "No hay datos de campañas aún."}
+                    <div className="text-center py-10 text-muted-foreground">
+                        {loading ? "Cargando metricas..." : "No hay datos de campanas aun."}
                     </div>
                 )}
             </div>
 
             {/* CRM Quick Stats */}
             {crmStats && (
-                <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                    <div style={{ padding: 16, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>Oportunidades Totales</div>
-                        <div style={{ fontSize: 22, fontWeight: 700 }}>{crmStats.opportunities?.total || 0}</div>
+                <div className="mt-6 grid grid-cols-3 gap-3">
+                    <div className="p-4 rounded-[14px] border border-border bg-card">
+                        <div className="text-xs text-muted-foreground mb-1">Oportunidades Totales</div>
+                        <div className="text-[22px] font-bold">{crmStats.opportunities?.total || 0}</div>
                     </div>
-                    <div style={{ padding: 16, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>Valor Total Pipeline</div>
-                        <div style={{ fontSize: 22, fontWeight: 700 }}>${(crmStats.opportunities?.totalValue || 0).toLocaleString()}</div>
+                    <div className="p-4 rounded-[14px] border border-border bg-card">
+                        <div className="text-xs text-muted-foreground mb-1">Valor Total Pipeline</div>
+                        <div className="text-[22px] font-bold">${(crmStats.opportunities?.totalValue || 0).toLocaleString()}</div>
                     </div>
-                    <div style={{ padding: 16, borderRadius: 14, border: "1px solid var(--border)", background: "var(--bg-secondary)" }}>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>Win Rate</div>
-                        <div style={{ fontSize: 22, fontWeight: 700, color: "#2ecc71" }}>{crmStats.opportunities?.winRate || 0}%</div>
+                    <div className="p-4 rounded-[14px] border border-border bg-card">
+                        <div className="text-xs text-muted-foreground mb-1">Win Rate</div>
+                        <div className="text-[22px] font-bold text-emerald-500">{crmStats.opportunities?.winRate || 0}%</div>
                     </div>
                 </div>
             )}

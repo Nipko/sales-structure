@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const TABS = [
     { key: "overview", label: "Overview" },
@@ -114,41 +115,38 @@ export default function AgentAnalyticsPage() {
     const renderOverview = () => (
         <div>
             {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+            <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
                     { title: "Conversaciones", value: totals.conversations ?? 0, color: "#3498db" },
                     { title: "Tiempo Resp. Promedio", value: totals.avgFirstResponse ?? "0s", color: "#f39c12" },
-                    { title: "Tasa Resolución", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
+                    { title: "Tasa Resolucion", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
                     { title: "CSAT Promedio", value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
                 ].map((card) => (
-                    <div key={card.title} style={{
-                        background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-                        padding: "18px 20px", display: "flex", flexDirection: "column", gap: 8,
-                    }}>
-                        <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.title}</span>
-                        <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: card.color }}>{card.value}</div>
+                    <div key={card.title} className="rounded-2xl border border-border bg-[var(--bg-secondary)] px-5 py-[18px] flex flex-col gap-2">
+                        <span className="text-xs text-[var(--text-secondary)] font-semibold uppercase tracking-wide">{card.title}</span>
+                        <div className="text-[28px] font-extrabold leading-none" style={{ color: card.color }}>{card.value}</div>
                     </div>
                 ))}
             </div>
 
             {/* Daily Bar Chart */}
-            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Volumen Diario de Conversaciones</h3>
+            <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] p-5">
+                <h3 className="m-0 mb-4 text-[15px] font-bold">Volumen Diario de Conversaciones</h3>
                 {series.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>Sin datos para el rango seleccionado</div>
+                    <div className="text-center py-10 text-[var(--text-secondary)]">Sin datos para el rango seleccionado</div>
                 ) : (
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 180, padding: "0 4px" }}>
+                    <div className="flex items-end gap-0.5 h-[180px] px-1">
                         {series.map((s: any, i: number) => {
                             const height = Math.max(2, (s.conversations / maxConv) * 160);
                             return (
-                                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                                    <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>{s.conversations}</span>
-                                    <div style={{
-                                        width: "100%", maxWidth: 24, height, borderRadius: 4,
-                                        background: "#3498db", minHeight: 2,
-                                    }} />
+                                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                                    <span className="text-[10px] text-[var(--text-secondary)]">{s.conversations}</span>
+                                    <div
+                                        className="w-full max-w-6 rounded bg-[#3498db]"
+                                        style={{ height, minHeight: 2 }}
+                                    />
                                     {(i === 0 || i === series.length - 1 || i === Math.floor(series.length / 2)) && (
-                                        <span style={{ fontSize: 9, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                                        <span className="text-[9px] text-[var(--text-secondary)] whitespace-nowrap">
                                             {s.date?.slice(5)}
                                         </span>
                                     )}
@@ -171,23 +169,19 @@ export default function AgentAnalyticsPage() {
         ];
 
         return (
-            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                <table className="w-full border-collapse">
                     <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                        <tr className="border-b border-border">
                             {columns.map((col) => (
                                 <th
                                     key={col.key}
                                     onClick={() => handleSort(col.key)}
-                                    style={{
-                                        padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 600,
-                                        color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5,
-                                        cursor: "pointer", userSelect: "none",
-                                    }}
+                                    className="px-4 py-3 text-left text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide cursor-pointer select-none"
                                 >
                                     {col.label}
                                     {sortCol === col.key && (
-                                        <span style={{ marginLeft: 4 }}>{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>
+                                        <span className="ml-1">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>
                                     )}
                                 </th>
                             ))}
@@ -195,20 +189,25 @@ export default function AgentAnalyticsPage() {
                     </thead>
                     <tbody>
                         {sortedAgents.length === 0 ? (
-                            <tr><td colSpan={5} style={{ padding: "30px 0", textAlign: "center", color: "var(--text-secondary)" }}>Sin datos de agentes</td></tr>
+                            <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">Sin datos de agentes</td></tr>
                         ) : sortedAgents.map((agent: any) => (
-                            <tr key={agent.agentId} style={{ borderBottom: "1px solid var(--border)" }}>
-                                <td style={{ padding: "10px 16px", fontWeight: 600 }}>{agent.agentName}</td>
-                                <td style={{ padding: "10px 16px" }}>{agent.totalConversations}</td>
-                                <td style={{ padding: "10px 16px" }}>{agent.resolvedConversations}</td>
-                                <td style={{ padding: "10px 16px" }}>{formatDuration(agent.avgFirstResponseSecs)}</td>
-                                <td style={{ padding: "10px 16px" }}>
-                                    <span style={{
-                                        padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700,
-                                        background: agent.csatAvg >= 4 ? "#27ae6020" : agent.csatAvg >= 3 ? "#f39c1220" : "#e74c3c20",
-                                        color: agent.csatAvg >= 4 ? "#27ae60" : agent.csatAvg >= 3 ? "#f39c12" : "#e74c3c",
-                                    }}>
-                                        {agent.csatAvg ? agent.csatAvg.toFixed(1) : "—"}
+                            <tr key={agent.agentId} className="border-b border-border">
+                                <td className="px-4 py-2.5 font-semibold">{agent.agentName}</td>
+                                <td className="px-4 py-2.5">{agent.totalConversations}</td>
+                                <td className="px-4 py-2.5">{agent.resolvedConversations}</td>
+                                <td className="px-4 py-2.5">{formatDuration(agent.avgFirstResponseSecs)}</td>
+                                <td className="px-4 py-2.5">
+                                    <span
+                                        className={cn(
+                                            "px-2 py-0.5 rounded text-xs font-bold",
+                                            agent.csatAvg >= 4
+                                                ? "bg-[#27ae6020] text-[#27ae60]"
+                                                : agent.csatAvg >= 3
+                                                    ? "bg-[#f39c1220] text-[#f39c12]"
+                                                    : "bg-[#e74c3c20] text-[#e74c3c]"
+                                        )}
+                                    >
+                                        {agent.csatAvg ? agent.csatAvg.toFixed(1) : "\u2014"}
                                     </span>
                                 </td>
                             </tr>
@@ -220,35 +219,31 @@ export default function AgentAnalyticsPage() {
     };
 
     const renderCanales = () => (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+        <div className="grid grid-cols-3 gap-4">
             {channelsData.length === 0 ? (
-                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>Sin datos de canales</div>
+                <div className="col-span-full text-center py-10 text-[var(--text-secondary)]">Sin datos de canales</div>
             ) : channelsData.map((ch: any) => {
                 const color = CHANNEL_COLORS[ch.channel] || "#95a5a6";
                 const label = CHANNEL_LABELS[ch.channel] || ch.channel;
                 return (
-                    <div key={ch.channel} style={{
-                        background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-                        padding: "24px 20px", display: "flex", flexDirection: "column", gap: 12,
-                    }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{
-                                width: 40, height: 40, borderRadius: 10, background: `${color}18`,
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 18, fontWeight: 800, color,
-                            }}>
+                    <div key={ch.channel} className="rounded-2xl border border-border bg-[var(--bg-secondary)] px-5 py-6 flex flex-col gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <div
+                                className="w-10 h-10 rounded-[10px] flex items-center justify-center text-lg font-extrabold"
+                                style={{ background: `${color}18`, color }}
+                            >
                                 {label[0]}
                             </div>
                             <div>
-                                <div style={{ fontSize: 15, fontWeight: 700 }}>{label}</div>
-                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{ch.percentage}% del total</div>
+                                <div className="text-[15px] font-bold">{label}</div>
+                                <div className="text-xs text-[var(--text-secondary)]">{ch.percentage}% del total</div>
                             </div>
                         </div>
-                        <div style={{ fontSize: 32, fontWeight: 800, color }}>{ch.count}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>conversaciones</div>
+                        <div className="text-[32px] font-extrabold" style={{ color }}>{ch.count}</div>
+                        <div className="text-xs text-[var(--text-secondary)]">conversaciones</div>
                         {/* Percentage bar */}
-                        <div style={{ height: 6, borderRadius: 3, background: "var(--bg-tertiary)" }}>
-                            <div style={{ height: "100%", width: `${ch.percentage}%`, background: color, borderRadius: 3 }} />
+                        <div className="h-1.5 rounded-full bg-[var(--bg-tertiary)]">
+                            <div className="h-full rounded-full" style={{ width: `${ch.percentage}%`, background: color }} />
                         </div>
                     </div>
                 );
@@ -267,38 +262,35 @@ export default function AgentAnalyticsPage() {
         return (
             <div>
                 {/* Big Average */}
-                <div style={{
-                    background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-                    padding: "32px 24px", textAlign: "center", marginBottom: 24,
-                }}>
-                    <div style={{ fontSize: 14, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] px-6 py-8 text-center mb-6">
+                    <div className="text-sm text-[var(--text-secondary)] font-semibold uppercase tracking-wide mb-2">
                         Promedio CSAT
                     </div>
-                    <div style={{ fontSize: 56, fontWeight: 800, color: avg >= 4 ? "#27ae60" : avg >= 3 ? "#f39c12" : "#e74c3c" }}>
-                        {avg ? avg.toFixed(1) : "—"}
+                    <div
+                        className="text-[56px] font-extrabold"
+                        style={{ color: avg >= 4 ? "#27ae60" : avg >= 3 ? "#f39c12" : "#e74c3c" }}
+                    >
+                        {avg ? avg.toFixed(1) : "\u2014"}
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
+                    <div className="text-[13px] text-[var(--text-secondary)] mt-1">
                         {total} {total === 1 ? "respuesta" : "respuestas"}
                     </div>
                 </div>
 
                 {/* Rating Bars */}
-                <div style={{
-                    background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-                    padding: 20, marginBottom: 24,
-                }}>
-                    <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Distribucion por Estrellas</h3>
+                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] p-5 mb-6">
+                    <h3 className="m-0 mb-4 text-[15px] font-bold">Distribucion por Estrellas</h3>
                     {[5, 4, 3, 2, 1].map((rating) => {
                         const count = dist[rating] || 0;
                         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
                         return (
-                            <div key={rating} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                                <span style={{ width: 24, fontSize: 14, fontWeight: 700, color: ratingColors[rating] }}>{rating}</span>
-                                <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--bg-tertiary)" }}>
-                                    <div style={{ height: "100%", width: `${pct}%`, background: ratingColors[rating], borderRadius: 4, transition: "width 0.3s" }} />
+                            <div key={rating} className="flex items-center gap-3 mb-2.5">
+                                <span className="w-6 text-sm font-bold" style={{ color: ratingColors[rating] }}>{rating}</span>
+                                <div className="flex-1 h-2 rounded bg-[var(--bg-tertiary)]">
+                                    <div className="h-full rounded transition-[width] duration-300" style={{ width: `${pct}%`, background: ratingColors[rating] }} />
                                 </div>
-                                <span style={{ width: 40, fontSize: 12, color: "var(--text-secondary)", textAlign: "right" }}>{pct}%</span>
-                                <span style={{ width: 32, fontSize: 12, fontWeight: 700, textAlign: "right" }}>{count}</span>
+                                <span className="w-10 text-xs text-[var(--text-secondary)] text-right">{pct}%</span>
+                                <span className="w-8 text-xs font-bold text-right">{count}</span>
                             </div>
                         );
                     })}
@@ -306,35 +298,29 @@ export default function AgentAnalyticsPage() {
 
                 {/* Recent Feedback */}
                 {feedback.length > 0 && (
-                    <div style={{
-                        background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-                        padding: 20,
-                    }}>
-                        <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Feedback Reciente</h3>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] p-5">
+                        <h3 className="m-0 mb-4 text-[15px] font-bold">Feedback Reciente</h3>
+                        <div className="flex flex-col gap-3">
                             {feedback.map((f: any) => (
-                                <div key={f.id} style={{
-                                    padding: 12, borderRadius: 8, border: "1px solid var(--border)",
-                                    background: "var(--bg-primary)",
-                                }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <span style={{ fontWeight: 600, fontSize: 13 }}>{f.contactName}</span>
-                                            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>/ {f.agentName}</span>
+                                <div key={f.id} className="p-3 rounded-lg border border-border bg-[var(--bg-primary)]">
+                                    <div className="flex justify-between items-center mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-[13px]">{f.contactName}</span>
+                                            <span className="text-[11px] text-[var(--text-secondary)]">/ {f.agentName}</span>
                                         </div>
-                                        <span style={{
-                                            padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700,
-                                            background: `${ratingColors[f.rating]}20`, color: ratingColors[f.rating],
-                                        }}>
+                                        <span
+                                            className="px-2 py-0.5 rounded text-xs font-bold"
+                                            style={{ background: `${ratingColors[f.rating]}20`, color: ratingColors[f.rating] }}
+                                        >
                                             {f.rating}/5
                                         </span>
                                     </div>
                                     {f.feedback && (
-                                        <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>
+                                        <p className="m-0 text-[13px] text-[var(--text-secondary)] italic">
                                             &quot;{f.feedback}&quot;
                                         </p>
                                     )}
-                                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 6 }}>
+                                    <div className="text-[11px] text-[var(--text-secondary)] mt-1.5">
                                         {new Date(f.createdAt).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                                     </div>
                                 </div>
@@ -359,53 +345,43 @@ export default function AgentAnalyticsPage() {
     return (
         <div>
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>Agent Analytics</h1>
-                    <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: 13 }}>
+                    <h1 className="m-0 text-[26px] font-bold">Agent Analytics</h1>
+                    <p className="mt-1 mb-0 text-[var(--text-secondary)] text-[13px]">
                         Rendimiento de agentes y canales
                     </p>
                 </div>
                 {/* Date Range */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="flex items-center gap-2">
                     <input
                         type="date"
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
-                        style={{
-                            padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)",
-                            background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13,
-                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-border bg-[var(--bg-secondary)] text-foreground text-[13px]"
                     />
-                    <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>a</span>
+                    <span className="text-[var(--text-secondary)] text-[13px]">a</span>
                     <input
                         type="date"
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        style={{
-                            padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)",
-                            background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13,
-                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-border bg-[var(--bg-secondary)] text-foreground text-[13px]"
                     />
                 </div>
             </div>
 
             {/* Tabs */}
-            <div style={{
-                display: "flex", gap: 4, marginBottom: 24, background: "var(--bg-secondary)",
-                borderRadius: 12, padding: 4, border: "1px solid var(--border)",
-            }}>
+            <div className="flex gap-1 mb-6 bg-[var(--bg-secondary)] rounded-xl p-1 border border-border">
                 {TABS.map((tab) => (
                     <button
                         key={tab.key}
                         onClick={() => setActiveTab(tab.key)}
-                        style={{
-                            flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-                            background: activeTab === tab.key ? "var(--accent)" : "transparent",
-                            color: activeTab === tab.key ? "white" : "var(--text-secondary)",
-                            fontWeight: activeTab === tab.key ? 600 : 400, fontSize: 13,
-                            transition: "all 0.15s ease",
-                        }}
+                        className={cn(
+                            "flex-1 px-3 py-2 rounded-lg border-none cursor-pointer text-[13px] transition-all duration-150",
+                            activeTab === tab.key
+                                ? "bg-primary text-white font-semibold"
+                                : "bg-transparent text-[var(--text-secondary)] font-normal"
+                        )}
                     >
                         {tab.label}
                     </button>
@@ -414,8 +390,8 @@ export default function AgentAnalyticsPage() {
 
             {/* Content */}
             {loading ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300, gap: 12, color: "var(--text-secondary)" }}>
-                    <div style={{ width: 24, height: 24, border: "2px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                <div className="flex items-center justify-center h-[300px] gap-3 text-[var(--text-secondary)]">
+                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     Cargando datos...
                 </div>
             ) : renderTab()}

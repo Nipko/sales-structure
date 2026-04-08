@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { cn } from "@/lib/utils";
 import {
     Globe,
     MessageSquare,
@@ -13,16 +14,6 @@ import {
     AlertCircle,
     ArrowRight,
 } from "lucide-react";
-
-// ---- Styles ----
-const card = {
-    background: "var(--bg-card, #1a1a2e)",
-    border: "1px solid var(--border, #2a2a45)",
-    borderRadius: 16,
-    overflow: "hidden" as const,
-    transition: "transform 0.15s, box-shadow 0.15s",
-    cursor: "pointer" as const,
-};
 
 const channels = [
     {
@@ -76,123 +67,72 @@ export default function ChannelsOverviewPage() {
 
     if (loading) {
         return (
-            <div style={{ padding: 32, textAlign: "center", color: "var(--text-secondary, #9898b0)" }}>
+            <div className="p-8 text-center text-[var(--text-secondary)]">
                 Cargando canales...
             </div>
         );
     }
 
     return (
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+        <div className="mx-auto max-w-[960px]">
             {/* Header */}
-            <div style={{ marginBottom: 32 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                    <div style={{
-                        background: "var(--accent, #6c5ce7)",
-                        width: 40,
-                        height: 40,
-                        borderRadius: 10,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                    }}>
-                        <Globe size={20} color="white" />
+            <div className="mb-8">
+                <div className="flex items-center gap-2.5 mb-1">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-[10px] bg-primary">
+                        <Globe size={20} className="text-white" />
                     </div>
-                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, color: "var(--text-primary, #e8e8f0)" }}>
+                    <h1 className="text-[28px] font-bold m-0 text-foreground">
                         Canales
                     </h1>
                 </div>
-                <p style={{ color: "var(--text-secondary, #9898b0)", margin: "4px 0 0", paddingLeft: 50 }}>
+                <p className="text-[var(--text-secondary)] mt-1 ml-[50px]">
                     Gestiona tus canales de comunicacion
                 </p>
             </div>
 
             {/* Channel Cards Grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+            <div className="grid grid-cols-3 gap-6">
                 {channels.map((ch) => {
                     const isConnected = connectedChannels.includes(ch.key);
                     return (
                         <div
                             key={ch.key}
-                            style={card}
+                            className="rounded-2xl border border-border bg-card overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
                             onClick={() => router.push(ch.href)}
-                            onMouseEnter={(e) => {
-                                (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
-                                (e.currentTarget as HTMLDivElement).style.boxShadow = `0 8px 24px rgba(0,0,0,0.3)`;
-                            }}
-                            onMouseLeave={(e) => {
-                                (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
-                                (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
-                            }}
                         >
                             {/* Card Top */}
-                            <div style={{
-                                padding: 24,
-                                display: "flex",
-                                flexDirection: "column" as const,
-                                alignItems: "center",
-                                gap: 16,
-                            }}>
-                                <div style={{
-                                    background: ch.color,
-                                    width: 56,
-                                    height: 56,
-                                    borderRadius: 14,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                }}>
-                                    <ch.Icon size={28} color="white" />
+                            <div className="p-6 flex flex-col items-center gap-4">
+                                <div
+                                    className="w-14 h-14 rounded-[14px] flex items-center justify-center"
+                                    style={{ background: ch.color }}
+                                >
+                                    <ch.Icon size={28} className="text-white" />
                                 </div>
-                                <div style={{ textAlign: "center" }}>
-                                    <h2 style={{
-                                        fontSize: 18,
-                                        fontWeight: 700,
-                                        margin: 0,
-                                        color: "var(--text-primary, #e8e8f0)",
-                                    }}>
+                                <div className="text-center">
+                                    <h2 className="text-lg font-bold m-0 text-foreground">
                                         {ch.name}
                                     </h2>
-                                    <p style={{
-                                        fontSize: 12,
-                                        color: "var(--text-secondary, #9898b0)",
-                                        margin: "6px 0 0",
-                                        lineHeight: 1.4,
-                                    }}>
+                                    <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
                                         {ch.description}
                                     </p>
                                 </div>
 
                                 {/* Status Badge */}
-                                <div style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "6px 14px",
-                                    borderRadius: 20,
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    background: isConnected ? "rgba(0, 214, 143, 0.1)" : "rgba(152, 152, 176, 0.1)",
-                                    color: isConnected ? "var(--success, #00d68f)" : "var(--text-secondary, #9898b0)",
-                                    border: `1px solid ${isConnected ? "rgba(0, 214, 143, 0.2)" : "rgba(152, 152, 176, 0.15)"}`,
-                                }}>
+                                <div
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border",
+                                        isConnected
+                                            ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
+                                            : "bg-[rgba(152,152,176,0.1)] text-[var(--text-secondary)] border-[rgba(152,152,176,0.15)]"
+                                    )}
+                                >
                                     {isConnected ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
                                     {isConnected ? "Conectado" : "Desconectado"}
                                 </div>
                             </div>
 
                             {/* Card Footer */}
-                            <div style={{
-                                padding: "14px 24px",
-                                borderTop: "1px solid var(--border, #2a2a45)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: 8,
-                                color: "var(--accent, #6c5ce7)",
-                                fontSize: 13,
-                                fontWeight: 600,
-                            }}>
+                            <div className="px-6 py-3.5 border-t border-border flex items-center justify-center gap-2 text-primary text-[13px] font-semibold">
                                 Configurar
                                 <ArrowRight size={14} />
                             </div>

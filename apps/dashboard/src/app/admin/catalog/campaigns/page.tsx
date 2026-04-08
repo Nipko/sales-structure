@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
     Megaphone, Plus, Edit2, Power, Clock, Layers, X, Play, Pause
 } from "lucide-react";
@@ -31,10 +32,8 @@ export default function CampaignsPage() {
                     api.fetch(`/catalog/campaigns/${activeTenantId}`),
                     api.fetch(`/catalog/courses/${activeTenantId}`),
                 ]);
-                const campData = campRes;
-                const courseData = courseRes;
-                if (Array.isArray(campData)) setCampaigns(campData);
-                if (Array.isArray(courseData)) setCourses(courseData);
+                if (Array.isArray(campRes)) setCampaigns(campRes);
+                if (Array.isArray(courseRes)) setCourses(courseRes);
             } catch (err) { console.error(err); }
         }
         load();
@@ -52,7 +51,7 @@ export default function CampaignsPage() {
                 setCampaigns(prev => [created, ...prev]);
                 setShowModal(false);
                 setForm({ name: "", course_id: "", channel: "whatsapp", wa_template_name: "", source_type: "landing", fallback_email: false });
-                setToast("Campaña creada exitosamente");
+                setToast("Campana creada exitosamente");
                 setTimeout(() => setToast(null), 2500);
             }
         } catch (err) { console.error(err); } finally { setSaving(false); }
@@ -63,32 +62,30 @@ export default function CampaignsPage() {
     return (
         <>
             <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                            <Megaphone size={28} color="var(--accent)" /> Campañas
+                        <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                            <Megaphone size={28} className="text-primary" /> Campanas
                         </h1>
-                        <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>{activeCount} activas · {campaigns.length} total</p>
+                        <p className="text-muted-foreground mt-1">{activeCount} activas · {campaigns.length} total</p>
                     </div>
-                    <button onClick={() => setShowModal(true)} style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-                        borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
-                        fontWeight: 600, fontSize: 14, cursor: "pointer",
-                    }}><Plus size={18} /> Nueva Campaña</button>
+                    <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
+                        <Plus size={18} /> Nueva Campana
+                    </button>
                 </div>
 
                 {/* Stats */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+                <div className="grid grid-cols-4 gap-3 mb-6">
                     {Object.entries(statusColors).map(([key, config]) => {
                         const count = campaigns.filter(c => c.status === key).length;
                         return (
-                            <div key={key} style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--bg-secondary)", display: "flex", alignItems: "center", gap: 12 }}>
-                                <div style={{ width: 40, height: 40, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: config.bg }}>
+                            <div key={key} className="px-4 py-3.5 rounded-xl border border-border bg-card flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center" style={{ background: config.bg }}>
                                     {key === "active" ? <Play size={20} color={config.text} /> : key === "paused" ? <Pause size={20} color={config.text} /> : <Layers size={20} color={config.text} />}
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: 18, fontWeight: 700 }}>{count}</div>
-                                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{config.label}</div>
+                                    <div className="text-lg font-bold">{count}</div>
+                                    <div className="text-xs text-muted-foreground">{config.label}</div>
                                 </div>
                             </div>
                         );
@@ -96,33 +93,30 @@ export default function CampaignsPage() {
                 </div>
 
                 {/* List */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div className="flex flex-col gap-2.5">
                     {campaigns.map(camp => {
                         const s = statusColors[camp.status] || statusColors.draft;
                         return (
-                            <div key={camp.id} style={{
-                                padding: "16px 20px", borderRadius: 14, border: "1px solid var(--border)",
-                                background: "var(--bg-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center"
-                            }}>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontWeight: 600, fontSize: 15 }}>{camp.name}</span>
-                                        <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: s.bg, color: s.text, fontWeight: 600 }}>{s.label}</span>
+                            <div key={camp.id} className="px-5 py-4 rounded-[14px] border border-border bg-card flex justify-between items-center">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-[15px]">{camp.name}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold" style={{ background: s.bg, color: s.text }}>{s.label}</span>
                                     </div>
-                                    <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 12, color: "var(--text-secondary)" }}>
+                                    <div className="flex gap-4 mt-1.5 text-xs text-muted-foreground">
                                         <span>Canal: {camp.channel}</span>
                                         {camp.course_name && <span>Curso: {camp.course_name}</span>}
                                         {camp.wa_template_name && <span>Template: {camp.wa_template_name}</span>}
                                         <span>Fuente: {camp.source_type || "landing"}</span>
                                     </div>
                                 </div>
-                                <button style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", padding: 4 }}><Edit2 size={16} /></button>
+                                <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1"><Edit2 size={16} /></button>
                             </div>
                         );
                     })}
                     {campaigns.length === 0 && (
-                        <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>
-                            No hay campañas registradas. Crea la primera.
+                        <div className="text-center py-10 text-muted-foreground">
+                            No hay campanas registradas. Crea la primera.
                         </div>
                     )}
                 </div>
@@ -130,62 +124,47 @@ export default function CampaignsPage() {
 
             {/* Create Modal */}
             {showModal && (
-                <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} onClick={() => setShowModal(false)}>
-                    <div onClick={e => e.stopPropagation()} style={{ width: 480, padding: 28, borderRadius: 18, background: "var(--bg-secondary)", border: "1px solid var(--border)", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Nueva Campaña</h2>
-                            <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}><X size={20} /></button>
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h2 className="text-xl font-bold m-0">Nueva Campana</h2>
+                            <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
-                        <div style={{ marginBottom: 12 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Nombre</label>
-                            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Campaña Enero 2026" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-                        </div>
-                        <div style={{ marginBottom: 12 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Curso Principal</label>
-                            <select value={form.course_id} onChange={e => setForm(p => ({ ...p, course_id: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}>
-                                <option value="">— Sin curso —</option>
-                                {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                        </div>
-                        <div style={{ marginBottom: 12 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Canal</label>
-                            <select value={form.channel} onChange={e => setForm(p => ({ ...p, channel: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}>
-                                <option value="whatsapp">WhatsApp</option>
-                                <option value="email">Email</option>
-                                <option value="mixed">Mixto</option>
-                            </select>
-                        </div>
-                        <div style={{ marginBottom: 12 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Template WhatsApp</label>
-                            <input value={form.wa_template_name} onChange={e => setForm(p => ({ ...p, wa_template_name: e.target.value }))} placeholder="welcome_message" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-                        </div>
-                        <div style={{ marginBottom: 12 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Fuente de Entrada</label>
-                            <select value={form.source_type} onChange={e => setForm(p => ({ ...p, source_type: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}>
-                                <option value="landing">Landing Page</option>
-                                <option value="csv">Importación CSV</option>
-                                <option value="api">API Externa</option>
-                                <option value="meta_ads">Meta Lead Ads</option>
-                            </select>
-                        </div>
-                        <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                        {[
+                            { label: "Nombre", key: "name", el: "input" },
+                            { label: "Curso Principal", key: "course_id", el: "select", options: [{ value: "", label: "— Sin curso —" }, ...courses.map(c => ({ value: c.id, label: c.name }))] },
+                            { label: "Canal", key: "channel", el: "select", options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "mixed", label: "Mixto" }] },
+                            { label: "Template WhatsApp", key: "wa_template_name", el: "input" },
+                            { label: "Fuente de Entrada", key: "source_type", el: "select", options: [{ value: "landing", label: "Landing Page" }, { value: "csv", label: "Importacion CSV" }, { value: "api", label: "API Externa" }, { value: "meta_ads", label: "Meta Lead Ads" }] },
+                        ].map(f => (
+                            <div key={f.key} className="mb-3">
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{f.label}</label>
+                                {f.el === "select" ? (
+                                    <select value={(form as any)[f.key]} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
+                                        {f.options!.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                    </select>
+                                ) : (
+                                    <input value={(form as any)[f.key]} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                                )}
+                            </div>
+                        ))}
+                        <div className="mb-3 flex items-center gap-2">
                             <input type="checkbox" checked={form.fallback_email} onChange={e => setForm(p => ({ ...p, fallback_email: e.target.checked }))} id="fallback" />
-                            <label htmlFor="fallback" style={{ fontSize: 13, color: "var(--text-secondary)" }}>Activar fallback a Email si falla WhatsApp</label>
+                            <label htmlFor="fallback" className="text-[13px] text-muted-foreground">Activar fallback a Email si falla WhatsApp</label>
                         </div>
-                        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-                            <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-primary)", fontSize: 14, cursor: "pointer" }}>Cancelar</button>
-                            <button onClick={handleCreate} disabled={saving || !form.name} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: saving ? "var(--border)" : "var(--accent)", color: "white", fontSize: 14, fontWeight: 600, cursor: saving ? "wait" : "pointer" }}>{saving ? "Guardando..." : "Crear Campaña"}</button>
+                        <div className="flex gap-2.5 mt-5">
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
+                            <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? "Guardando..." : "Crear Campana"}</button>
                         </div>
                     </div>
                 </div>
             )}
 
             {toast && (
-                <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1100, padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: "#2ecc71", color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.2)", animation: "slideUp 0.3s ease" }}>
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
                     ✓ {toast}
                 </div>
             )}
-            <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
         </>
     );
 }

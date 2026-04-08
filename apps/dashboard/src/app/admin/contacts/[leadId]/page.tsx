@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
@@ -14,7 +15,7 @@ import {
 const STAGES: Record<string, { label: string; color: string }> = {
     nuevo: { label: "Nuevo", color: "#95a5a6" },
     contactado: { label: "Contactado", color: "#3498db" },
-    respondio: { label: "Respondió", color: "#9b59b6" },
+    respondio: { label: "Respondio", color: "#9b59b6" },
     calificado: { label: "Calificado", color: "#f39c12" },
     tibio: { label: "Tibio", color: "#e67e22" },
     caliente: { label: "Caliente", color: "#e74c3c" },
@@ -25,11 +26,7 @@ const STAGES: Record<string, { label: string; color: string }> = {
 };
 
 const EVENT_ICONS: Record<string, typeof MessageSquare> = {
-    note: StickyNote,
-    task: CheckSquare,
-    stage_change: TrendingUp,
-    event: Zap,
-    message: MessageSquare,
+    note: StickyNote, task: CheckSquare, stage_change: TrendingUp, event: Zap, message: MessageSquare,
 };
 
 export default function Lead360Page() {
@@ -45,7 +42,6 @@ export default function Lead360Page() {
     const [activeTab, setActiveTab] = useState<"timeline" | "notes" | "tasks">("timeline");
     const [loading, setLoading] = useState(true);
 
-    // Note/Task input states
     const [newNote, setNewNote] = useState("");
     const [addingNote, setAddingNote] = useState(false);
     const [newTask, setNewTask] = useState({ title: "", dueAt: "", type: "follow_up" });
@@ -79,10 +75,7 @@ export default function Lead360Page() {
     const handleAddNote = async () => {
         if (!newNote.trim() || !tenantId) return;
         setAddingNote(true);
-        await api.fetch(`/crm/notes/${tenantId}`, {
-            method: "POST",
-            body: JSON.stringify({ leadId, content: newNote }),
-        });
+        await api.fetch(`/crm/notes/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, content: newNote }) });
         setNewNote("");
         setAddingNote(false);
         load();
@@ -91,10 +84,7 @@ export default function Lead360Page() {
     const handleAddTask = async () => {
         if (!newTask.title.trim() || !tenantId) return;
         setAddingTask(true);
-        await api.fetch(`/crm/tasks/${tenantId}`, {
-            method: "POST",
-            body: JSON.stringify({ leadId, ...newTask }),
-        });
+        await api.fetch(`/crm/tasks/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, ...newTask }) });
         setNewTask({ title: "", dueAt: "", type: "follow_up" });
         setAddingTask(false);
         load();
@@ -102,17 +92,14 @@ export default function Lead360Page() {
 
     const handleCompleteTask = async (taskId: string) => {
         if (!tenantId) return;
-        await api.fetch(`/crm/tasks/${tenantId}/${taskId}/status`, {
-            method: "PUT",
-            body: JSON.stringify({ status: "done" }),
-        });
+        await api.fetch(`/crm/tasks/${tenantId}/${taskId}/status`, { method: "PUT", body: JSON.stringify({ status: "done" }) });
         load();
     };
 
     if (loading) {
         return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 400, gap: 12, color: "var(--text-secondary)" }}>
-                <div style={{ width: 24, height: 24, border: "2px solid var(--accent)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 Cargando perfil...
             </div>
         );
@@ -127,36 +114,26 @@ export default function Lead360Page() {
     return (
         <div>
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-                <button
-                    onClick={() => router.back()}
-                    style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", cursor: "pointer", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}
-                >
+            <div className="flex items-center gap-3 mb-6">
+                <button onClick={() => router.back()} className="bg-transparent border border-border rounded-lg px-2.5 py-1.5 cursor-pointer text-muted-foreground flex items-center gap-1">
                     <ArrowLeft size={16} /> Volver
                 </button>
-                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Lead 360°</h1>
+                <h1 className="m-0 text-[22px] font-bold">Lead 360°</h1>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 20 }}>
-
+            <div className="grid grid-cols-[340px_1fr] gap-5">
                 {/* === LEFT PANEL: Profile === */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
+                <div className="flex flex-col gap-4">
                     {/* Profile Card */}
-                    <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-                            <div style={{
-                                width: 52, height: 52, borderRadius: "50%",
-                                background: "linear-gradient(135deg, var(--accent), #9b59b6)",
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                color: "white", fontWeight: 700, fontSize: 20, flexShrink: 0,
-                            }}>
+                    <div className="bg-card rounded-2xl border border-border p-5">
+                        <div className="flex items-center gap-3.5 mb-4">
+                            <div className="w-[52px] h-[52px] rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-bold text-xl shrink-0">
                                 {(lead.first_name || "?").charAt(0)}
                             </div>
                             <div>
-                                <div style={{ fontWeight: 700, fontSize: 18 }}>{lead.first_name} {lead.last_name}</div>
+                                <div className="font-bold text-lg">{lead.first_name} {lead.last_name}</div>
                                 {lead.company_name && (
-                                    <div style={{ fontSize: 13, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
+                                    <div className="text-[13px] text-muted-foreground flex items-center gap-1">
                                         <Building2 size={12} /> {lead.company_name}
                                     </div>
                                 )}
@@ -164,43 +141,43 @@ export default function Lead360Page() {
                         </div>
 
                         {/* Score bar */}
-                        <div style={{ marginBottom: 14 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                                <span style={{ color: "var(--text-secondary)" }}>Score</span>
-                                <span style={{ fontWeight: 700, color: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }}>{score}/10</span>
+                        <div className="mb-3.5">
+                            <div className="flex justify-between text-xs mb-1">
+                                <span className="text-muted-foreground">Score</span>
+                                <span className="font-bold" style={{ color: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }}>{score}/10</span>
                             </div>
-                            <div style={{ height: 6, borderRadius: 4, background: "var(--bg-tertiary)", overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${score * 10}%`, background: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c", borderRadius: 4, transition: "width 0.5s" }} />
+                            <div className="h-1.5 rounded bg-muted overflow-hidden">
+                                <div className="h-full rounded transition-[width] duration-500" style={{ width: `${score * 10}%`, background: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }} />
                             </div>
                         </div>
 
                         {/* Stage */}
-                        <span style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600, background: `${stageInfo.color}22`, color: stageInfo.color }}>
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: `${stageInfo.color}22`, color: stageInfo.color }}>
                             {stageInfo.label}
                         </span>
                         {lead.is_vip && (
-                            <span style={{ marginLeft: 6, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
+                            <span className="ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
                                 ⭐ VIP
                             </span>
                         )}
 
-                        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div className="mt-4 flex flex-col gap-2">
                             {lead.phone && (
-                                <a href={`tel:${lead.phone}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)", textDecoration: "none" }}>
-                                    <Phone size={14} color="var(--accent)" /> {lead.phone}
+                                <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-[13px] text-muted-foreground no-underline">
+                                    <Phone size={14} className="text-primary" /> {lead.phone}
                                 </a>
                             )}
                             {lead.email && (
-                                <a href={`mailto:${lead.email}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-secondary)", textDecoration: "none" }}>
-                                    <Mail size={14} color="var(--accent)" /> {lead.email}
+                                <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-[13px] text-muted-foreground no-underline">
+                                    <Mail size={14} className="text-primary" /> {lead.email}
                                 </a>
                             )}
                         </div>
 
                         {tags.length > 0 && (
-                            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            <div className="mt-3 flex flex-wrap gap-1">
                                 {tags.map((t: any) => (
-                                    <span key={t.name} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: `${t.color}22`, color: t.color, fontWeight: 600 }}>
+                                    <span key={t.name} className="text-[10px] px-2 py-0.5 rounded font-semibold" style={{ background: `${t.color}22`, color: t.color }}>
                                         {t.name}
                                     </span>
                                 ))}
@@ -209,19 +186,19 @@ export default function Lead360Page() {
                     </div>
 
                     {/* Opportunities */}
-                    <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 16 }}>
-                        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                            <Briefcase size={14} color="var(--accent)" /> Oportunidades
+                    <div className="bg-card rounded-2xl border border-border p-4">
+                        <h3 className="m-0 mb-3 text-sm font-bold flex items-center gap-1.5">
+                            <Briefcase size={14} className="text-primary" /> Oportunidades
                         </h3>
                         {opportunities.length === 0 ? (
-                            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Sin oportunidades</p>
+                            <p className="text-[13px] text-muted-foreground m-0">Sin oportunidades</p>
                         ) : opportunities.map((op: any) => (
-                            <div key={op.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                                <div style={{ fontSize: 13, fontWeight: 600 }}>{op.course_name || "Oportunidad"}</div>
-                                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                                    <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{STAGES[op.stage]?.label || op.stage}</span>
+                            <div key={op.id} className="py-2 border-b border-border">
+                                <div className="text-[13px] font-semibold">{op.course_name || "Oportunidad"}</div>
+                                <div className="flex gap-2 mt-1">
+                                    <span className="text-[11px] text-muted-foreground">{STAGES[op.stage]?.label || op.stage}</span>
                                     {op.estimated_value && (
-                                        <span style={{ fontSize: 11, fontWeight: 600, color: "#2ecc71" }}>
+                                        <span className="text-[11px] font-semibold text-emerald-500">
                                             ${Number(op.estimated_value).toLocaleString()} COP
                                         </span>
                                     )}
@@ -232,9 +209,9 @@ export default function Lead360Page() {
                 </div>
 
                 {/* === RIGHT PANEL: Timeline / Notes / Tasks === */}
-                <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden" }}>
+                <div className="bg-card rounded-2xl border border-border overflow-hidden">
                     {/* Tabs */}
-                    <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
+                    <div className="flex border-b border-border">
                         {[
                             { key: "timeline", label: "Timeline", icon: Clock },
                             { key: "notes", label: `Notas (${notes.length})`, icon: StickyNote },
@@ -243,43 +220,36 @@ export default function Lead360Page() {
                             <button
                                 key={tab.key}
                                 onClick={() => setActiveTab(tab.key as any)}
-                                style={{
-                                    flex: 1, padding: "12px 16px", border: "none", cursor: "pointer",
-                                    background: activeTab === tab.key ? "var(--bg-tertiary)" : "transparent",
-                                    color: activeTab === tab.key ? "var(--accent)" : "var(--text-secondary)",
-                                    fontWeight: activeTab === tab.key ? 600 : 400, fontSize: 13,
-                                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                                    borderBottom: activeTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
-                                }}
+                                className={cn(
+                                    "flex-1 px-4 py-3 border-none cursor-pointer text-[13px] flex items-center justify-center gap-1.5 border-b-2",
+                                    activeTab === tab.key
+                                        ? "bg-muted text-primary font-semibold border-b-primary"
+                                        : "bg-transparent text-muted-foreground font-normal border-b-transparent"
+                                )}
                             >
                                 <tab.icon size={14} /> {tab.label}
                             </button>
                         ))}
                     </div>
 
-                    <div style={{ padding: 20, maxHeight: "calc(100vh - 280px)", overflowY: "auto" }}>
-
-                        {/* ---- TIMELINE ---- */}
+                    <div className="p-5 max-h-[calc(100vh-280px)] overflow-y-auto">
+                        {/* TIMELINE */}
                         {activeTab === "timeline" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                            <div className="flex flex-col gap-3">
                                 {timeline.length === 0 && (
-                                    <p style={{ color: "var(--text-secondary)", textAlign: "center", padding: "40px 0" }}>Sin actividad registrada aún.</p>
+                                    <p className="text-muted-foreground text-center py-10">Sin actividad registrada aun.</p>
                                 )}
                                 {timeline.map((event: any, i: number) => {
                                     const Icon = EVENT_ICONS[event.event_type] || Zap;
                                     return (
-                                        <div key={i} style={{ display: "flex", gap: 12 }}>
-                                            <div style={{
-                                                width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-                                                background: "var(--bg-tertiary)", border: "1px solid var(--border)",
-                                                display: "flex", alignItems: "center", justifyContent: "center",
-                                            }}>
-                                                <Icon size={14} color="var(--accent)" />
+                                        <div key={i} className="flex gap-3">
+                                            <div className="w-8 h-8 rounded-full shrink-0 bg-muted border border-border flex items-center justify-center">
+                                                <Icon size={14} className="text-primary" />
                                             </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: 13 }}>{event.description}</div>
-                                                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
-                                                    {event.actor && <span style={{ marginRight: 6 }}>{event.actor}</span>}
+                                            <div className="flex-1">
+                                                <div className="text-[13px]">{event.description}</div>
+                                                <div className="text-[11px] text-muted-foreground mt-0.5">
+                                                    {event.actor && <span className="mr-1.5">{event.actor}</span>}
                                                     {new Date(event.created_at).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                                                 </div>
                                             </div>
@@ -289,126 +259,100 @@ export default function Lead360Page() {
                             </div>
                         )}
 
-                        {/* ---- NOTES ---- */}
+                        {/* NOTES */}
                         {activeTab === "notes" && (
                             <div>
-                                {/* Add note */}
-                                <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                                <div className="mb-4 flex flex-col gap-2">
                                     <textarea
                                         value={newNote}
                                         onChange={e => setNewNote(e.target.value)}
                                         placeholder="Agregar una nota interna..."
                                         rows={3}
-                                        style={{
-                                            width: "100%", padding: "10px 12px", borderRadius: 8,
-                                            border: "1px solid var(--border)", background: "var(--bg-tertiary)",
-                                            color: "var(--text-primary)", fontSize: 13, resize: "vertical",
-                                            outline: "none", boxSizing: "border-box",
-                                        }}
+                                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-muted text-foreground text-[13px] resize-y outline-none box-border"
                                     />
                                     <button
                                         onClick={handleAddNote}
                                         disabled={addingNote || !newNote.trim()}
-                                        style={{
-                                            alignSelf: "flex-end", padding: "8px 16px", borderRadius: 8,
-                                            border: "none", background: "var(--accent)", color: "white",
-                                            fontWeight: 600, fontSize: 13, cursor: "pointer",
-                                            display: "flex", alignItems: "center", gap: 6,
-                                            opacity: !newNote.trim() ? 0.5 : 1,
-                                        }}
+                                        className={cn(
+                                            "self-end px-4 py-2 rounded-lg border-none bg-primary text-white font-semibold text-[13px] cursor-pointer flex items-center gap-1.5",
+                                            !newNote.trim() && "opacity-50"
+                                        )}
                                     >
                                         <Send size={14} /> Guardar nota
                                     </button>
                                 </div>
-
-                                {/* Notes list */}
                                 {notes.map((note: any) => (
-                                    <div key={note.id} style={{
-                                        padding: 12, borderRadius: 10, background: "var(--bg-tertiary)",
-                                        marginBottom: 10, borderLeft: "3px solid #f39c12",
-                                    }}>
-                                        <p style={{ margin: "0 0 4px", fontSize: 14, lineHeight: 1.5 }}>{note.content}</p>
-                                        <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                    <div key={note.id} className="p-3 rounded-[10px] bg-muted mb-2.5 border-l-[3px] border-l-amber-500">
+                                        <p className="m-0 mb-1 text-sm leading-relaxed">{note.content}</p>
+                                        <span className="text-[11px] text-muted-foreground">
                                             {note.created_by && `${note.created_by} · `}
                                             {new Date(note.created_at).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                                         </span>
                                     </div>
                                 ))}
                                 {notes.length === 0 && (
-                                    <p style={{ color: "var(--text-secondary)", textAlign: "center", padding: "30px 0" }}>Sin notas aún.</p>
+                                    <p className="text-muted-foreground text-center py-8">Sin notas aun.</p>
                                 )}
                             </div>
                         )}
 
-                        {/* ---- TASKS ---- */}
+                        {/* TASKS */}
                         {activeTab === "tasks" && (
                             <div>
-                                {/* Add task */}
-                                <div style={{ marginBottom: 16, padding: 12, background: "var(--bg-tertiary)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                                <div className="mb-4 p-3 bg-muted rounded-[10px] flex flex-col gap-2">
                                     <input
                                         value={newTask.title}
                                         onChange={e => setNewTask(t => ({ ...t, title: e.target.value }))}
                                         placeholder="Nueva tarea... (ej: Llamar al cliente)"
-                                        style={{
-                                            width: "100%", padding: "8px 12px", borderRadius: 8,
-                                            border: "1px solid var(--border)", background: "var(--bg-secondary)",
-                                            color: "var(--text-primary)", fontSize: 13, outline: "none", boxSizing: "border-box",
-                                        }}
+                                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-[13px] outline-none box-border"
                                     />
-                                    <div style={{ display: "flex", gap: 8 }}>
+                                    <div className="flex gap-2">
                                         <select
                                             value={newTask.type}
                                             onChange={e => setNewTask(t => ({ ...t, type: e.target.value }))}
-                                            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, outline: "none" }}
+                                            className="flex-1 px-2.5 py-2 rounded-lg border border-border bg-card text-foreground text-xs outline-none"
                                         >
                                             <option value="follow_up">Follow-up</option>
                                             <option value="call">Llamada</option>
                                             <option value="email">Email</option>
-                                            <option value="meeting">Reunión</option>
+                                            <option value="meeting">Reunion</option>
                                             <option value="handoff">Handoff</option>
                                         </select>
                                         <input
                                             type="datetime-local"
                                             value={newTask.dueAt}
                                             onChange={e => setNewTask(t => ({ ...t, dueAt: e.target.value }))}
-                                            style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, outline: "none" }}
+                                            className="flex-1 px-2.5 py-2 rounded-lg border border-border bg-card text-foreground text-xs outline-none"
                                         />
                                         <button
                                             onClick={handleAddTask}
                                             disabled={addingTask || !newTask.title.trim()}
-                                            style={{
-                                                padding: "8px 14px", borderRadius: 8,
-                                                border: "none", background: "var(--accent)", color: "white",
-                                                fontWeight: 600, fontSize: 12, cursor: "pointer",
-                                                opacity: !newTask.title.trim() ? 0.5 : 1,
-                                            }}
+                                            className={cn(
+                                                "px-3.5 py-2 rounded-lg border-none bg-primary text-white font-semibold text-xs cursor-pointer",
+                                                !newTask.title.trim() && "opacity-50"
+                                            )}
                                         >
                                             <Plus size={14} />
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* Tasks list */}
                                 {tasks.map((task: any) => (
-                                    <div key={task.id} style={{
-                                        display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0",
-                                        borderBottom: "1px solid var(--border)",
-                                        opacity: task.status === "done" ? 0.5 : 1,
-                                    }}>
-                                        <button onClick={() => handleCompleteTask(task.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, marginTop: 1 }}>
+                                    <div key={task.id} className={cn("flex items-start gap-2.5 py-2.5 border-b border-border", task.status === "done" && "opacity-50")}>
+                                        <button onClick={() => handleCompleteTask(task.id)} className="bg-transparent border-none cursor-pointer p-0.5 mt-px">
                                             {task.status === "done"
                                                 ? <CheckCircle size={18} color="#2ecc71" />
-                                                : <Circle size={18} color="var(--text-secondary)" />
+                                                : <Circle size={18} className="text-muted-foreground" />
                                             }
                                         </button>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: 14, fontWeight: 500, textDecoration: task.status === "done" ? "line-through" : "none" }}>
+                                        <div className="flex-1">
+                                            <div className={cn("text-sm font-medium", task.status === "done" && "line-through")}>
                                                 {task.title}
                                             </div>
-                                            <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-                                                <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{task.type}</span>
+                                            <div className="flex gap-2 mt-0.5">
+                                                <span className="text-[11px] text-muted-foreground">{task.type}</span>
                                                 {task.due_at && (
-                                                    <span style={{ fontSize: 11, color: new Date(task.due_at) < new Date() && task.status !== "done" ? "#e74c3c" : "var(--text-secondary)", display: "flex", alignItems: "center", gap: 2 }}>
+                                                    <span className={cn("text-[11px] flex items-center gap-0.5", new Date(task.due_at) < new Date() && task.status !== "done" ? "text-red-500" : "text-muted-foreground")}>
                                                         <Calendar size={10} /> {new Date(task.due_at).toLocaleDateString("es-CO")}
                                                     </span>
                                                 )}
@@ -417,7 +361,7 @@ export default function Lead360Page() {
                                     </div>
                                 ))}
                                 {tasks.length === 0 && (
-                                    <p style={{ color: "var(--text-secondary)", textAlign: "center", padding: "30px 0" }}>Sin tareas creadas.</p>
+                                    <p className="text-muted-foreground text-center py-8">Sin tareas creadas.</p>
                                 )}
                             </div>
                         )}

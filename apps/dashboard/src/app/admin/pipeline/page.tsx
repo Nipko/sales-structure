@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
 import {
     DollarSign,
     TrendingUp,
@@ -14,6 +15,7 @@ import {
     GripVertical,
     Loader2,
 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 
@@ -51,10 +53,9 @@ export default function PipelinePage() {
 
     if (loading) {
         return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 400, gap: 12, color: "var(--text-secondary)" }}>
-                <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
+            <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
+                <Loader2 size={24} className="animate-spin" />
                 Cargando pipeline...
-                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
         );
     }
@@ -63,49 +64,42 @@ export default function PipelinePage() {
         <>
             <div>
                 {/* Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div className="flex justify-between items-center mb-4">
                     <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Pipeline de Ventas</h1>
+                        <div className="flex items-center gap-2.5">
+                            <h1 className="text-[28px] font-bold m-0">Pipeline de Ventas</h1>
                             <DataSourceBadge isLive={isLive} />
                         </div>
-                        <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
+                        <p className="text-muted-foreground mt-1 mb-0">
                             Arrastra las oportunidades entre etapas · {forecast.dealCount} oportunidades abiertas
                         </p>
                     </div>
                 </div>
 
                 {/* Forecast Cards */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+                <div className="grid grid-cols-4 gap-3 mb-5">
                     {[
-                        { icon: DollarSign, label: "Valor total", value: formatCurrency(forecast.total), color: "#3498db" },
-                        { icon: TrendingUp, label: "Ponderado", value: formatCurrency(Math.round(forecast.weighted)), color: "#2ecc71" },
-                        { icon: Target, label: "Oportunidades", value: String(forecast.dealCount), color: "#e67e22" },
-                        { icon: Users, label: "Promedio", value: formatCurrency(Math.round(forecast.avgDealValue)), color: "#9b59b6" },
+                        { icon: DollarSign, label: "Valor total", value: formatCurrency(forecast.total), color: "#3498db", bg: "bg-blue-500/10" },
+                        { icon: TrendingUp, label: "Ponderado", value: formatCurrency(Math.round(forecast.weighted)), color: "#2ecc71", bg: "bg-emerald-500/10" },
+                        { icon: Target, label: "Oportunidades", value: String(forecast.dealCount), color: "#e67e22", bg: "bg-orange-500/10" },
+                        { icon: Users, label: "Promedio", value: formatCurrency(Math.round(forecast.avgDealValue)), color: "#9b59b6", bg: "bg-purple-500/10" },
                     ].map(card => (
-                        <div key={card.label} style={{
-                            padding: "14px 16px", borderRadius: 12, border: "1px solid var(--border)",
-                            background: "var(--bg-secondary)", display: "flex", alignItems: "center", gap: 12,
-                        }}>
-                            <div style={{
-                                width: 40, height: 40, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
-                                background: `${card.color}22`,
-                            }}>
-                                <card.icon size={20} color={card.color} />
-                            </div>
-                            <div>
-                                <div style={{ fontSize: 20, fontWeight: 700 }}>{card.value}</div>
-                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{card.label}</div>
-                            </div>
-                        </div>
+                        <Card key={card.label} className="border-border bg-card">
+                            <CardContent className="flex items-center gap-3 p-3.5">
+                                <div className={cn("w-10 h-10 rounded-[10px] flex items-center justify-center", card.bg)}>
+                                    <card.icon size={20} color={card.color} />
+                                </div>
+                                <div>
+                                    <div className="text-xl font-bold">{card.value}</div>
+                                    <div className="text-xs text-muted-foreground">{card.label}</div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     ))}
                 </div>
 
                 {/* Kanban Board */}
-                <div style={{
-                    display: "flex", gap: 12, overflowX: "auto", paddingBottom: 16,
-                    minHeight: "calc(100vh - 320px)",
-                }}>
+                <div className="flex gap-3 overflow-x-auto pb-4 min-h-[calc(100vh-320px)]">
                     {stages.map((stage: any) => {
                         const isDragOver = dragOverStage === stage.id;
 
@@ -150,99 +144,88 @@ export default function PipelinePage() {
                                     setDragOverStage(null);
                                     setDraggedDeal(null);
                                 }}
-                                style={{
-                                    minWidth: 260, width: 260, flexShrink: 0, display: "flex", flexDirection: "column",
-                                    background: isDragOver ? "rgba(108, 92, 231, 0.05)" : "var(--bg-secondary)",
-                                    borderRadius: 12, border: isDragOver ? "2px dashed var(--accent)" : "1px solid var(--border)",
-                                    transition: "all 0.2s ease",
-                                }}
+                                className={cn(
+                                    "min-w-[260px] w-[260px] flex-shrink-0 flex flex-col rounded-xl transition-all duration-200",
+                                    isDragOver
+                                        ? "bg-indigo-600/5 border-2 border-dashed border-indigo-600"
+                                        : "bg-card border border-border"
+                                )}
                             >
                                 {/* Stage Header */}
-                                <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <div style={{
-                                                width: 10, height: 10, borderRadius: "50%",
-                                                background: stage.color,
-                                            }} />
-                                            <span style={{ fontWeight: 600, fontSize: 13 }}>{stage.name}</span>
-                                            <span style={{
-                                                fontSize: 11, padding: "1px 6px", borderRadius: 10,
-                                                background: "var(--bg-tertiary)", color: "var(--text-secondary)",
-                                            }}>
+                                <div className="p-3 border-b border-border">
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <div
+                                                className="w-2.5 h-2.5 rounded-full"
+                                                style={{ background: stage.color }}
+                                            />
+                                            <span className="font-semibold text-[13px]">{stage.name}</span>
+                                            <span className="text-[11px] px-1.5 py-px rounded-full bg-neutral-100 dark:bg-neutral-800 text-muted-foreground">
                                                 {stage.deals?.length || 0}
                                             </span>
                                         </div>
                                     </div>
                                     {stage.totalValue > 0 && (
-                                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+                                        <div className="text-xs text-muted-foreground mt-1">
                                             {formatCurrency(stage.totalValue)} COP
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Deals */}
-                                <div style={{ flex: 1, padding: 8, display: "flex", flexDirection: "column", gap: 8, overflow: "auto" }}>
+                                <div className="flex-1 p-2 flex flex-col gap-2 overflow-auto">
                                     {(stage.deals || []).map((deal: any) => (
                                         <div
                                             key={deal.id}
                                             draggable
                                             onDragStart={() => setDraggedDeal(deal.id)}
                                             onDragEnd={() => { setDraggedDeal(null); setDragOverStage(null); }}
-                                            style={{
-                                                padding: "12px", borderRadius: 10,
-                                                background: "var(--bg-primary)",
-                                                border: draggedDeal === deal.id ? "1px solid var(--accent)" : "1px solid var(--border)",
-                                                cursor: "grab", transition: "all 0.15s ease",
-                                                opacity: draggedDeal === deal.id ? 0.5 : 1,
-                                            }}
+                                            className={cn(
+                                                "p-3 rounded-[10px] bg-background cursor-grab transition-all duration-150",
+                                                draggedDeal === deal.id
+                                                    ? "border border-indigo-600 opacity-50"
+                                                    : "border border-border opacity-100"
+                                            )}
                                         >
-                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                                <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3 }}>{deal.title}</div>
-                                                <GripVertical size={14} color="var(--text-secondary)" style={{ flexShrink: 0, marginTop: 2 }} />
+                                            <div className="flex justify-between items-start">
+                                                <div className="font-semibold text-[13px] leading-tight">{deal.title}</div>
+                                                <GripVertical size={14} className="text-muted-foreground flex-shrink-0 mt-0.5" />
                                             </div>
 
-                                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 12, color: "var(--text-secondary)" }}>
-                                                <div style={{
-                                                    width: 22, height: 22, borderRadius: "50%",
-                                                    background: `linear-gradient(135deg, ${stage.color}, ${stage.color}88)`,
-                                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                                    fontSize: 10, fontWeight: 700, color: "white",
-                                                }}>
+                                            <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+                                                <div
+                                                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                                                    style={{ background: `linear-gradient(135deg, ${stage.color}, ${stage.color}88)` }}
+                                                >
                                                     {deal.contactName.charAt(0)}
                                                 </div>
                                                 {deal.contactName}
                                             </div>
 
-                                            <div style={{
-                                                display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10,
-                                            }}>
-                                                <span style={{ fontSize: 15, fontWeight: 700, color: "#2ecc71" }}>
-                                                    {deal.value > 0 ? formatCurrency(deal.value) : "—"}
+                                            <div className="flex justify-between items-center mt-2.5">
+                                                <span className="text-[15px] font-bold text-emerald-500">
+                                                    {deal.value > 0 ? formatCurrency(deal.value) : "\u2014"}
                                                 </span>
-                                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                                <div className="flex gap-1.5 items-center">
                                                     {deal.daysInStage > 3 && (
-                                                        <span style={{
-                                                            fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                                                            background: "rgba(231, 76, 60, 0.15)", color: "#e74c3c",
-                                                        }}>
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-500">
                                                             {deal.daysInStage}d ⚠️
                                                         </span>
                                                     )}
                                                     {deal.score > 0 && (
-                                                        <span style={{
-                                                            fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                                                            background: deal.score >= 7 ? "rgba(46,204,113,0.15)" : "rgba(243,156,18,0.15)",
-                                                            color: deal.score >= 7 ? "#2ecc71" : "#f39c12",
-                                                            fontWeight: 600,
-                                                        }}>
+                                                        <span className={cn(
+                                                            "text-[10px] px-1.5 py-0.5 rounded font-semibold",
+                                                            deal.score >= 7
+                                                                ? "bg-emerald-500/15 text-emerald-500"
+                                                                : "bg-amber-500/15 text-amber-500"
+                                                        )}>
                                                             ★{deal.score}
                                                         </span>
                                                     )}
-                                                    <span style={{
-                                                        fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                                                        background: `${stage.color}22`, color: stage.color,
-                                                    }}>
+                                                    <span
+                                                        className="text-[10px] px-1.5 py-0.5 rounded"
+                                                        style={{ background: `${stage.color}22`, color: stage.color }}
+                                                    >
                                                         {deal.probability}%
                                                     </span>
                                                 </div>
@@ -251,10 +234,7 @@ export default function PipelinePage() {
                                     ))}
 
                                     {(!stage.deals || stage.deals.length === 0) && (
-                                        <div style={{
-                                            padding: 20, textAlign: "center", color: "var(--text-secondary)",
-                                            fontSize: 12, opacity: 0.6,
-                                        }}>
+                                        <div className="p-5 text-center text-muted-foreground text-xs opacity-60">
                                             Arrastra oportunidades aquí
                                         </div>
                                     )}
@@ -267,16 +247,10 @@ export default function PipelinePage() {
 
             {/* Toast */}
             {toast && (
-                <div style={{
-                    position: "fixed", bottom: 24, right: 24, zIndex: 1100,
-                    padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-                    background: "#2ecc71", color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
-                    animation: "slideUp 0.3s ease",
-                }}>
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-[0_4px_20px_rgba(0,0,0,0.2)] animate-in slide-in-from-bottom-2 fade-in duration-300">
                     ✓ {toast}
                 </div>
             )}
-            <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
         </>
     );
 }

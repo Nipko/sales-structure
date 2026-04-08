@@ -5,16 +5,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
     Send, Users, MessageSquare, Calendar, Clock, Plus, X,
     CheckCircle2, AlertCircle, Megaphone, BarChart3, Target,
     FileText, Zap, ChevronRight,
 } from "lucide-react";
-
-// ============================================
-// MOCK DATA
-// ============================================
-// Replaced mock data with API fetching
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
     draft: { label: "Borrador", color: "#95a5a6", icon: FileText },
@@ -68,11 +64,11 @@ export default function BroadcastPage() {
             setNewCampaign({ name: "", channel: "whatsapp", template: "", targetAudience: "all", scheduledAt: "" });
             loadCampaigns();
             setShowNewCampaign(false);
-            setToast("Campaña creada exitosamente");
+            setToast("Campana creada exitosamente");
             setTimeout(() => setToast(null), 2000);
         } else {
             setCreating(false);
-            setToast("Error al crear campaña");
+            setToast("Error al crear campana");
             setTimeout(() => setToast(null), 2000);
         }
     };
@@ -81,7 +77,6 @@ export default function BroadcastPage() {
         if (!activeTenantId) return;
         setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "sending" } : c));
         await api.sendCampaign(activeTenantId, id);
-        // Refresh after a short delay to get the 'sent' status
         setTimeout(loadCampaigns, 2000);
     };
 
@@ -89,43 +84,39 @@ export default function BroadcastPage() {
         <>
             <div>
                 {/* Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                            <Megaphone size={28} color="var(--accent)" /> Broadcast & Campañas
+                        <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                            <Megaphone size={28} className="text-primary" /> Broadcast & Campanas
                             <DataSourceBadge isLive={false} />
                         </h1>
-                        <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
-                            {stats.total} campañas · {stats.totalRecipients} destinatarios totales
+                        <p className="text-muted-foreground mt-1">
+                            {stats.total} campanas · {stats.totalRecipients} destinatarios totales
                         </p>
                     </div>
-                    <button onClick={() => setShowNewCampaign(true)} style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-                        borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
-                        fontWeight: 600, fontSize: 14, cursor: "pointer",
-                    }}>
-                        <Plus size={18} /> Nueva Campaña
+                    <button
+                        onClick={() => setShowNewCampaign(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer"
+                    >
+                        <Plus size={18} /> Nueva Campana
                     </button>
                 </div>
 
                 {/* Stats */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+                <div className="grid grid-cols-4 gap-4 mb-6">
                     {[
-                        { label: "Campañas", value: stats.total, color: "var(--accent)", icon: Megaphone },
+                        { label: "Campanas", value: stats.total, color: "#6c5ce7", icon: Megaphone },
                         { label: "Enviadas", value: stats.sent, color: "#2ecc71", icon: Send },
                         { label: "Programadas", value: stats.scheduled, color: "#f39c12", icon: Calendar },
                         { label: "Respuestas", value: stats.totalReplies, color: "#9b59b6", icon: MessageSquare },
                     ].map(stat => (
-                        <div key={stat.label} style={{
-                            padding: 20, borderRadius: 14, background: "var(--bg-secondary)",
-                            border: "1px solid var(--border)",
-                        }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
+                            <div className="flex justify-between items-center">
                                 <div>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>{stat.label}</div>
-                                    <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
+                                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
+                                    <div className="text-[28px] font-bold mt-1">{stat.value}</div>
                                 </div>
-                                <div style={{ width: 44, height: 44, borderRadius: 12, background: `${stat.color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                                     <stat.icon size={22} color={stat.color} />
                                 </div>
                             </div>
@@ -134,7 +125,7 @@ export default function BroadcastPage() {
                 </div>
 
                 {/* Campaign List */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="flex flex-col gap-3">
                     {campaigns.map(campaign => {
                         const sc = statusConfig[campaign.status];
                         const Icon = sc.icon;
@@ -143,68 +134,63 @@ export default function BroadcastPage() {
                         const replyRate = campaign.deliveredCount > 0 ? Math.round((campaign.repliedCount / campaign.deliveredCount) * 100) : 0;
 
                         return (
-                            <div key={campaign.id} onClick={() => setSelectedCampaign(campaign)} style={{
-                                padding: 20, borderRadius: 14, background: "var(--bg-secondary)",
-                                border: `1px solid ${selectedCampaign?.id === campaign.id ? "var(--accent)" : "var(--border)"}`,
-                                cursor: "pointer", transition: "border-color 0.2s ease",
-                            }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                                            <span style={{ fontSize: 16, fontWeight: 600 }}>{campaign.name}</span>
-                                            <span style={{
-                                                fontSize: 10, padding: "3px 8px", borderRadius: 6,
-                                                background: `${sc.color}15`, color: sc.color, fontWeight: 600,
-                                                display: "flex", alignItems: "center", gap: 4,
-                                            }}>
+                            <div
+                                key={campaign.id}
+                                onClick={() => setSelectedCampaign(campaign)}
+                                className={cn(
+                                    "p-5 rounded-[14px] bg-card border cursor-pointer transition-colors duration-200",
+                                    selectedCampaign?.id === campaign.id ? "border-primary" : "border-border"
+                                )}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2.5 mb-1.5">
+                                            <span className="text-base font-semibold">{campaign.name}</span>
+                                            <span
+                                                className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex items-center gap-1"
+                                                style={{ background: `${sc.color}15`, color: sc.color }}
+                                            >
                                                 <Icon size={12} /> {sc.label}
                                             </span>
                                         </div>
-                                        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10, lineHeight: 1.4, maxWidth: 600 }}>
+                                        <div className="text-[13px] text-muted-foreground mb-2.5 leading-snug max-w-[600px]">
                                             {campaign.template.length > 120 ? campaign.template.slice(0, 120) + "..." : campaign.template}
                                         </div>
                                         {campaign.status === "sent" && (
-                                            <div style={{ display: "flex", gap: 20, fontSize: 12 }}>
-                                                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                                    <Target size={12} color="var(--text-secondary)" />
+                                            <div className="flex gap-5 text-xs">
+                                                <span className="flex items-center gap-1">
+                                                    <Target size={12} className="text-muted-foreground" />
                                                     <strong>{campaign.recipientCount}</strong> destinatarios
                                                 </span>
-                                                <span style={{ color: "#2ecc71" }}>
-                                                    📬 {deliveryRate}% entregados
-                                                </span>
-                                                <span style={{ color: "#3498db" }}>
-                                                    👁️ {readRate}% leídos
-                                                </span>
-                                                <span style={{ color: "#9b59b6" }}>
-                                                    💬 {replyRate}% respondieron
-                                                </span>
+                                                <span className="text-emerald-500">📬 {deliveryRate}% entregados</span>
+                                                <span className="text-blue-500">👁️ {readRate}% leidos</span>
+                                                <span className="text-purple-500">💬 {replyRate}% respondieron</span>
                                             </div>
                                         )}
                                         {campaign.status === "scheduled" && campaign.scheduledAt && (
-                                            <div style={{ fontSize: 12, color: "#f39c12", display: "flex", alignItems: "center", gap: 4 }}>
+                                            <div className="text-xs text-amber-500 flex items-center gap-1">
                                                 <Clock size={12} /> Programada: {campaign.scheduledAt}
                                             </div>
                                         )}
                                         {campaign.status === "draft" && (
-                                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                                            <div className="text-xs text-muted-foreground">
                                                 Borrador — sin programar
                                             </div>
                                         )}
                                     </div>
-                                    <ChevronRight size={20} color="var(--text-secondary)" />
+                                    <ChevronRight size={20} className="text-muted-foreground" />
                                 </div>
 
-                                {/* Progress bar for sent campaigns */}
                                 {campaign.status === "sent" && campaign.recipientCount > 0 && (
-                                    <div style={{ marginTop: 12 }}>
-                                        <div style={{ height: 6, borderRadius: 3, background: "var(--bg-tertiary)", overflow: "hidden", display: "flex" }}>
-                                            <div style={{ width: `${replyRate}%`, background: "#9b59b6", transition: "width 0.5s ease" }} />
-                                            <div style={{ width: `${readRate - replyRate}%`, background: "#3498db", transition: "width 0.5s ease" }} />
-                                            <div style={{ width: `${deliveryRate - readRate}%`, background: "#2ecc71", transition: "width 0.5s ease" }} />
+                                    <div className="mt-3">
+                                        <div className="h-1.5 rounded-sm bg-muted overflow-hidden flex">
+                                            <div className="transition-[width] duration-500" style={{ width: `${replyRate}%`, background: "#9b59b6" }} />
+                                            <div className="transition-[width] duration-500" style={{ width: `${readRate - replyRate}%`, background: "#3498db" }} />
+                                            <div className="transition-[width] duration-500" style={{ width: `${deliveryRate - readRate}%`, background: "#2ecc71" }} />
                                         </div>
-                                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4, fontSize: 10, color: "var(--text-secondary)" }}>
+                                        <div className="flex justify-end gap-3 mt-1 text-[10px] text-muted-foreground">
                                             <span>🟣 respondido</span>
-                                            <span>🔵 leído</span>
+                                            <span>🔵 leido</span>
                                             <span>🟢 entregado</span>
                                         </div>
                                     </div>
@@ -217,50 +203,46 @@ export default function BroadcastPage() {
 
             {/* New Campaign Modal */}
             {showNewCampaign && (
-                <div style={{
-                    position: "fixed", inset: 0, zIndex: 1000, display: "flex",
-                    alignItems: "center", justifyContent: "center",
-                    background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-                }} onClick={() => setShowNewCampaign(false)}>
-                    <div onClick={e => e.stopPropagation()} style={{
-                        width: 500, padding: 28, borderRadius: 18,
-                        background: "var(--bg-secondary)", border: "1px solid var(--border)",
-                        boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-                    }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Nueva Campaña</h2>
-                            <button onClick={() => setShowNewCampaign(false)} style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}><X size={20} /></button>
+                <div
+                    className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onClick={() => setShowNewCampaign(false)}
+                >
+                    <div onClick={e => e.stopPropagation()} className="w-[500px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h2 className="text-xl font-bold m-0">Nueva Campana</h2>
+                            <button onClick={() => setShowNewCampaign(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Nombre de la campaña</label>
-                            <input value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} placeholder="Promo Verano 2026 ☀️" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Nombre de la campana</label>
+                            <input value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} placeholder="Promo Verano 2026 ☀️" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
-                                Mensaje template <span style={{ fontWeight: 400 }}>(usa {"{{name}}"} para personalizar)</span>
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                                Mensaje template <span className="font-normal">(usa {"{{name}}"} para personalizar)</span>
                             </label>
-                            <textarea value={newCampaign.template} onChange={e => setNewCampaign(p => ({ ...p, template: e.target.value }))} placeholder={"¡Hola {{name}}! Tenemos una oferta especial para ti..."} rows={4} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+                            <textarea value={newCampaign.template} onChange={e => setNewCampaign(p => ({ ...p, template: e.target.value }))} placeholder={"¡Hola {{name}}! Tenemos una oferta especial para ti..."} rows={4} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
                         </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Fecha de envío (opcional)</label>
-                            <input type="datetime-local" value={newCampaign.scheduledAt} onChange={e => setNewCampaign(p => ({ ...p, scheduledAt: e.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-                            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-                                Dejar vacío para guardar como borrador
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Fecha de envio (opcional)</label>
+                            <input type="datetime-local" value={newCampaign.scheduledAt} onChange={e => setNewCampaign(p => ({ ...p, scheduledAt: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <div className="text-[11px] text-muted-foreground mt-1">Dejar vacio para guardar como borrador</div>
+                        </div>
+                        <div className="p-3.5 rounded-[10px] bg-primary/[0.08] border border-primary/15 mb-3.5">
+                            <div className="text-xs font-semibold text-primary mb-1">📋 Vista previa del mensaje</div>
+                            <div className="text-[13px] text-foreground leading-relaxed">
+                                {newCampaign.template ? newCampaign.template.replace(/\{\{name\}\}/g, "Carlos Medina") : "Tu mensaje aparecera aqui..."}
                             </div>
                         </div>
-                        <div style={{ padding: 14, borderRadius: 10, background: "rgba(108,92,231,0.08)", border: "1px solid rgba(108,92,231,0.15)", marginBottom: 14 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>📋 Vista previa del mensaje</div>
-                            <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>
-                                {newCampaign.template ? newCampaign.template.replace(/\{\{name\}\}/g, "Carlos Medina") : "Tu mensaje aparecerá aquí..."}
-                            </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-                            <button onClick={() => setShowNewCampaign(false)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", color: "var(--text-primary)", fontSize: 14, cursor: "pointer" }}>Cancelar</button>
-                            <button onClick={handleCreateCampaign} disabled={!newCampaign.name || !newCampaign.template} style={{
-                                flex: 1, padding: "10px", borderRadius: 10, border: "none",
-                                background: (!newCampaign.name || !newCampaign.template) ? "var(--border)" : "var(--accent)", color: "white",
-                                fontSize: 14, fontWeight: 600, cursor: (!newCampaign.name || !newCampaign.template) ? "not-allowed" : "pointer",
-                            }}>
+                        <div className="flex gap-2.5 mt-5">
+                            <button onClick={() => setShowNewCampaign(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
+                            <button
+                                onClick={handleCreateCampaign}
+                                disabled={!newCampaign.name || !newCampaign.template}
+                                className={cn(
+                                    "flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold",
+                                    (!newCampaign.name || !newCampaign.template) ? "bg-muted cursor-not-allowed" : "bg-primary cursor-pointer"
+                                )}
+                            >
                                 {newCampaign.scheduledAt ? "📅 Programar" : "📝 Guardar borrador"}
                             </button>
                         </div>
@@ -270,16 +252,10 @@ export default function BroadcastPage() {
 
             {/* Toast */}
             {toast && (
-                <div style={{
-                    position: "fixed", bottom: 24, right: 24, zIndex: 1100,
-                    padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
-                    background: "#2ecc71", color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
-                    animation: "slideUp 0.3s ease",
-                }}>
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
                     ✓ {toast}
                 </div>
             )}
-            <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
         </>
     );
 }

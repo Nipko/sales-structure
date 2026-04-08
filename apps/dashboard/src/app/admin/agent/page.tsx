@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
     Bot, User, MessageSquare, Brain, Clock, Cpu, CheckCircle,
     ChevronLeft, ChevronRight, Plus, X, Save, Sparkles,
@@ -118,12 +119,19 @@ const STEPS = [
 const DAY_LABELS: Record<string, string> = {
     lun: "Lunes",
     mar: "Martes",
-    mie: "Miércoles",
+    mie: "Miercoles",
     jue: "Jueves",
     vie: "Viernes",
-    sab: "Sábado",
+    sab: "Sabado",
     dom: "Domingo",
 };
+
+// ── Shared class constants ────────────────────────────────────
+
+const inputCls = "w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm outline-none";
+const selectCls = "w-full px-3.5 py-2.5 pr-8 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2712%27%20height=%2712%27%20fill=%27%239898b0%27%20viewBox=%270%200%2024%2024%27%3E%3Cpath%20d=%27M7%2010l5%205%205-5z%27/%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]";
+const labelCls = "block text-[13px] font-semibold text-[var(--text-secondary)] mb-1.5";
+const cardCls = "p-6 rounded-[14px] bg-[var(--bg-secondary)] border border-border";
 
 // ── Component ──────────────────────────────────────────────────
 
@@ -254,123 +262,85 @@ export default function AgentConfigPage() {
             }
             const res = await api.savePersonaConfig(activeTenantId, payload);
             if (res?.success) {
-                setToast("Configuración guardada exitosamente");
+                setToast("Configuracion guardada exitosamente");
             } else {
-                setToast("Error al guardar la configuración");
+                setToast("Error al guardar la configuracion");
             }
         } catch {
-            setToast("Error al guardar la configuración");
+            setToast("Error al guardar la configuracion");
         } finally {
             setSaving(false);
         }
     }
 
-    // ── Shared styles ──────────────────────────────────────────
-
-    const inputStyle: React.CSSProperties = {
-        width: "100%",
-        padding: "10px 14px",
-        borderRadius: 10,
-        border: "1px solid var(--border)",
-        background: "var(--bg-primary)",
-        color: "var(--text-primary)",
-        fontSize: 14,
-        outline: "none",
-        boxSizing: "border-box",
-    };
-
-    const selectStyle: React.CSSProperties = {
-        ...inputStyle,
-        appearance: "none" as const,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239898b0' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`,
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "right 12px center",
-        paddingRight: 32,
-    };
-
-    const labelStyle: React.CSSProperties = {
-        display: "block",
-        fontSize: 13,
-        fontWeight: 600,
-        color: "var(--text-secondary)",
-        marginBottom: 6,
-    };
-
-    const cardStyle: React.CSSProperties = {
-        padding: 24,
-        borderRadius: 14,
-        background: "var(--bg-secondary)",
-        border: "1px solid var(--border)",
-    };
-
     // ── Step renderers ─────────────────────────────────────────
 
     function renderStep0() {
         return (
-            <div style={cardStyle}>
-                <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                    <User size={20} color="var(--accent)" /> Identidad del Agente
+            <div className={cardCls}>
+                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                    <User size={20} className="text-primary" /> Identidad del Agente
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                <div className="grid grid-cols-2 gap-5">
                     <div>
-                        <label style={labelStyle}>Nombre del agente</label>
+                        <label className={labelCls}>Nombre del agente</label>
                         <input
-                            style={inputStyle}
+                            className={inputCls}
                             placeholder="Ej: Sofia Henao"
                             value={config.persona.name}
                             onChange={e => updatePersona("name", e.target.value)}
                         />
                     </div>
                     <div>
-                        <label style={labelStyle}>Rol</label>
+                        <label className={labelCls}>Rol</label>
                         <input
-                            style={inputStyle}
+                            className={inputCls}
                             placeholder="Ej: Asesora de ventas"
                             value={config.persona.role}
                             onChange={e => updatePersona("role", e.target.value)}
                         />
                     </div>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                        <label style={labelStyle}>Mensaje de bienvenida</label>
+                    <div className="col-span-2">
+                        <label className={labelCls}>Mensaje de bienvenida</label>
                         <textarea
-                            style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
-                            placeholder="Escribe el saludo que enviará el agente al iniciar una conversación..."
+                            className={cn(inputCls, "min-h-20 resize-y")}
+                            placeholder="Escribe el saludo que enviara el agente al iniciar una conversacion..."
                             value={config.persona.greeting}
                             onChange={e => updatePersona("greeting", e.target.value)}
                         />
                     </div>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                        <label style={labelStyle}>Mensaje cuando no puede responder</label>
+                    <div className="col-span-2">
+                        <label className={labelCls}>Mensaje cuando no puede responder</label>
                         <textarea
-                            style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
-                            placeholder="Mensaje de fallback cuando el agente no sabe qué responder..."
+                            className={cn(inputCls, "min-h-20 resize-y")}
+                            placeholder="Mensaje de fallback cuando el agente no sabe que responder..."
                             value={config.persona.fallbackMessage}
                             onChange={e => updatePersona("fallbackMessage", e.target.value)}
                         />
                     </div>
                     <div>
-                        <label style={labelStyle}>Idioma</label>
+                        <label className={labelCls}>Idioma</label>
                         <select
-                            style={selectStyle}
+                            className={selectCls}
                             value={config.language}
                             onChange={e => setConfig(prev => ({ ...prev, language: e.target.value }))}
                         >
-                            <option value="es-CO">Español (Colombia)</option>
-                            <option value="es-MX">Español (México)</option>
+                            <option value="es-CO">Espanol (Colombia)</option>
+                            <option value="es-MX">Espanol (Mexico)</option>
                             <option value="en-US">English (US)</option>
-                            <option value="pt-BR">Português (Brasil)</option>
+                            <option value="pt-BR">Portugues (Brasil)</option>
                         </select>
                     </div>
                     <div>
-                        <label style={labelStyle}>Industria</label>
+                        <label className={labelCls}>Industria</label>
                         <select
-                            style={selectStyle}
+                            className={selectCls}
                             value={config.industry}
                             onChange={e => setConfig(prev => ({ ...prev, industry: e.target.value }))}
                         >
                             <option value="general">General</option>
                             <option value="tourism">Turismo</option>
-                            <option value="education">Educación</option>
+                            <option value="education">Educacion</option>
                             <option value="ecommerce">E-commerce</option>
                             <option value="health">Salud</option>
                             <option value="services">Servicios</option>
@@ -383,15 +353,15 @@ export default function AgentConfigPage() {
 
     function renderStep1() {
         return (
-            <div style={cardStyle}>
-                <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                    <Smile size={20} color="var(--accent)" /> Personalidad
+            <div className={cardCls}>
+                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                    <Smile size={20} className="text-primary" /> Personalidad
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                <div className="grid grid-cols-2 gap-5">
                     <div>
-                        <label style={labelStyle}>Tono</label>
+                        <label className={labelCls}>Tono</label>
                         <select
-                            style={selectStyle}
+                            className={selectCls}
                             value={config.persona.personality.tone}
                             onChange={e => updatePersonality("tone", e.target.value)}
                         >
@@ -399,13 +369,13 @@ export default function AgentConfigPage() {
                             <option value="profesional">Profesional</option>
                             <option value="formal">Formal</option>
                             <option value="casual">Casual</option>
-                            <option value="empático">Empático</option>
+                            <option value="empatico">Empatico</option>
                         </select>
                     </div>
                     <div>
-                        <label style={labelStyle}>Formalidad</label>
+                        <label className={labelCls}>Formalidad</label>
                         <select
-                            style={selectStyle}
+                            className={selectCls}
                             value={config.persona.personality.formality}
                             onChange={e => updatePersonality("formality", e.target.value)}
                         >
@@ -415,23 +385,23 @@ export default function AgentConfigPage() {
                         </select>
                     </div>
                     <div>
-                        <label style={labelStyle}>Uso de emojis</label>
+                        <label className={labelCls}>Uso de emojis</label>
                         <select
-                            style={selectStyle}
+                            className={selectCls}
                             value={config.persona.personality.emojiUsage}
                             onChange={e => updatePersonality("emojiUsage", e.target.value)}
                         >
                             <option value="none">Ninguno</option>
-                            <option value="minimal">Mínimo</option>
+                            <option value="minimal">Minimo</option>
                             <option value="moderate">Moderado</option>
                             <option value="heavy">Abundante</option>
                         </select>
                     </div>
                     <div>
-                        <label style={labelStyle}>Humor</label>
+                        <label className={labelCls}>Humor</label>
                         <input
-                            style={inputStyle}
-                            placeholder="Ej: ligero, temática de aventura"
+                            className={inputCls}
+                            placeholder="Ej: ligero, tematica de aventura"
                             value={config.persona.personality.humor}
                             onChange={e => updatePersonality("humor", e.target.value)}
                         />
@@ -449,28 +419,24 @@ export default function AgentConfigPage() {
         ];
 
         return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div className="flex flex-col gap-5">
                 {sections.map(section => (
-                    <div key={section.key} style={cardStyle}>
-                        <h3 style={{ fontSize: 16, fontWeight: 700, marginTop: 0, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                            <section.icon size={18} color="var(--accent)" /> {section.title}
+                    <div key={section.key} className={cardCls}>
+                        <h3 className="text-base font-bold mt-0 mb-3.5 flex items-center gap-2">
+                            <section.icon size={18} className="text-primary" /> {section.title}
                         </h3>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div className="flex flex-col gap-2.5">
                             {config.behavior[section.key].map((item, idx) => (
-                                <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <div key={idx} className="flex gap-2 items-center">
                                     <input
-                                        style={{ ...inputStyle, flex: 1 }}
+                                        className={cn(inputCls, "flex-1")}
                                         placeholder={section.placeholder}
                                         value={item}
                                         onChange={e => updateBehaviorList(section.key, idx, e.target.value)}
                                     />
                                     <button
                                         onClick={() => removeBehaviorItem(section.key, idx)}
-                                        style={{
-                                            width: 36, height: 36, borderRadius: 8, border: "1px solid var(--border)",
-                                            background: "var(--bg-primary)", color: "var(--danger)", cursor: "pointer",
-                                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                        }}
+                                        className="w-9 h-9 rounded-lg border border-border bg-[var(--bg-primary)] text-[var(--danger)] cursor-pointer flex items-center justify-center shrink-0"
                                     >
                                         <X size={16} />
                                     </button>
@@ -478,12 +444,7 @@ export default function AgentConfigPage() {
                             ))}
                             <button
                                 onClick={() => addBehaviorItem(section.key)}
-                                style={{
-                                    padding: "8px 16px", borderRadius: 8, border: "1px dashed var(--border)",
-                                    background: "transparent", color: "var(--accent)", cursor: "pointer",
-                                    fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6,
-                                    alignSelf: "flex-start",
-                                }}
+                                className="px-4 py-2 rounded-lg border border-dashed border-border bg-transparent text-primary cursor-pointer text-[13px] font-semibold flex items-center gap-1.5 self-start"
                             >
                                 <Plus size={14} /> Agregar
                             </button>
@@ -496,22 +457,22 @@ export default function AgentConfigPage() {
 
     function renderStep3() {
         const timezones = [
-            { value: "America/Bogota", label: "Bogotá (GMT-5)" },
-            { value: "America/Mexico_City", label: "Ciudad de México (GMT-6)" },
+            { value: "America/Bogota", label: "Bogota (GMT-5)" },
+            { value: "America/Mexico_City", label: "Ciudad de Mexico (GMT-6)" },
             { value: "America/Lima", label: "Lima (GMT-5)" },
             { value: "America/Santiago", label: "Santiago (GMT-4)" },
             { value: "America/Buenos_Aires", label: "Buenos Aires (GMT-3)" },
         ];
 
         return (
-            <div style={cardStyle}>
-                <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                    <Calendar size={20} color="var(--accent)" /> Horario Comercial
+            <div className={cardCls}>
+                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                    <Calendar size={20} className="text-primary" /> Horario Comercial
                 </h3>
-                <div style={{ marginBottom: 20 }}>
-                    <label style={labelStyle}>Zona horaria</label>
+                <div className="mb-5">
+                    <label className={labelCls}>Zona horaria</label>
                     <select
-                        style={{ ...selectStyle, maxWidth: 320 }}
+                        className={cn(selectCls, "max-w-80")}
                         value={config.hours.timezone}
                         onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, timezone: e.target.value } }))}
                     >
@@ -520,60 +481,58 @@ export default function AgentConfigPage() {
                         ))}
                     </select>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                <div className="flex flex-col gap-2.5 mb-5">
                     {Object.entries(DAY_LABELS).map(([key, label]) => {
                         const daySchedule = config.hours.schedule[key];
                         const isActive = daySchedule !== null;
                         return (
-                            <div key={key} style={{
-                                display: "flex", alignItems: "center", gap: 14, padding: "10px 14px",
-                                borderRadius: 10, background: "var(--bg-primary)", border: "1px solid var(--border)",
-                            }}>
+                            <div key={key} className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-[10px] bg-[var(--bg-primary)] border border-border">
                                 <button
                                     onClick={() => updateScheduleDay(key, !isActive)}
-                                    style={{
-                                        width: 42, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                                        background: isActive ? "var(--success)" : "var(--border)",
-                                        position: "relative", transition: "background 0.2s",
-                                    }}
+                                    className={cn(
+                                        "w-[42px] h-6 rounded-xl border-none cursor-pointer relative transition-colors duration-200",
+                                        isActive ? "bg-[var(--success)]" : "bg-border"
+                                    )}
                                 >
-                                    <div style={{
-                                        width: 18, height: 18, borderRadius: 9, background: "#fff",
-                                        position: "absolute", top: 3,
-                                        left: isActive ? 21 : 3, transition: "left 0.2s",
-                                    }} />
+                                    <div
+                                        className="w-[18px] h-[18px] rounded-full bg-white absolute top-[3px] transition-[left] duration-200"
+                                        style={{ left: isActive ? 21 : 3 }}
+                                    />
                                 </button>
-                                <span style={{ width: 90, fontSize: 14, fontWeight: 600, color: isActive ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                                <span className={cn(
+                                    "w-[90px] text-sm font-semibold",
+                                    isActive ? "text-foreground" : "text-[var(--text-secondary)]"
+                                )}>
                                     {label}
                                 </span>
                                 {isActive ? (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <div className="flex items-center gap-2">
                                         <input
                                             type="time"
-                                            style={{ ...inputStyle, width: 130 }}
+                                            className={cn(inputCls, "w-[130px]")}
                                             value={(daySchedule as any).start}
                                             onChange={e => updateScheduleTime(key, "start", e.target.value)}
                                         />
-                                        <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>a</span>
+                                        <span className="text-[var(--text-secondary)] text-[13px]">a</span>
                                         <input
                                             type="time"
-                                            style={{ ...inputStyle, width: 130 }}
+                                            className={cn(inputCls, "w-[130px]")}
                                             value={(daySchedule as any).end}
                                             onChange={e => updateScheduleTime(key, "end", e.target.value)}
                                         />
                                     </div>
                                 ) : (
-                                    <span style={{ fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>Cerrado</span>
+                                    <span className="text-[13px] text-[var(--text-secondary)] italic">Cerrado</span>
                                 )}
                             </div>
                         );
                     })}
                 </div>
                 <div>
-                    <label style={labelStyle}>Mensaje fuera de horario</label>
+                    <label className={labelCls}>Mensaje fuera de horario</label>
                     <textarea
-                        style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
-                        placeholder="Mensaje que se envía fuera del horario comercial..."
+                        className={cn(inputCls, "min-h-[70px] resize-y")}
+                        placeholder="Mensaje que se envia fuera del horario comercial..."
                         value={config.hours.afterHoursMessage}
                         onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, afterHoursMessage: e.target.value } }))}
                     />
@@ -584,48 +543,45 @@ export default function AgentConfigPage() {
 
     function renderStep4() {
         return (
-            <div style={cardStyle}>
-                <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                    <Cpu size={20} color="var(--accent)" /> Modelo de IA
+            <div className={cardCls}>
+                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                    <Cpu size={20} className="text-primary" /> Modelo de IA
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                <div className="grid grid-cols-2 gap-6">
                     <div>
-                        <label style={labelStyle}>Temperatura: {config.llm.temperature}</label>
+                        <label className={labelCls}>Temperatura: {config.llm.temperature}</label>
                         <input
                             type="range"
                             min={0} max={1} step={0.1}
                             value={config.llm.temperature}
                             onChange={e => setConfig(prev => ({ ...prev, llm: { ...prev.llm, temperature: parseFloat(e.target.value) } }))}
-                            style={{ width: "100%", accentColor: "var(--accent)" }}
+                            className="w-full accent-primary"
                         />
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                        <div className="flex justify-between text-[11px] text-[var(--text-secondary)] mt-1">
                             <span>Preciso (0)</span>
                             <span>Creativo (1)</span>
                         </div>
                     </div>
                     <div>
-                        <label style={labelStyle}>Max tokens</label>
+                        <label className={labelCls}>Max tokens</label>
                         <input
                             type="number"
-                            style={inputStyle}
+                            className={inputCls}
                             min={100} max={4000}
                             value={config.llm.maxTokens}
                             onChange={e => setConfig(prev => ({ ...prev, llm: { ...prev.llm, maxTokens: parseInt(e.target.value) || 800 } }))}
                         />
                     </div>
                 </div>
-                <div style={{
-                    marginTop: 20, padding: 16, borderRadius: 10,
-                    background: "var(--accent-glow)", border: "1px solid var(--accent)",
-                }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                        <Sparkles size={18} color="var(--accent)" style={{ marginTop: 2, flexShrink: 0 }} />
-                        <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                            <strong style={{ color: "var(--text-primary)" }}>Temperatura</strong> controla la creatividad de las respuestas.
+                <div className="mt-5 p-4 rounded-[10px] bg-[var(--accent-glow)] border border-primary">
+                    <div className="flex items-start gap-2.5">
+                        <Sparkles size={18} className="text-primary mt-0.5 shrink-0" />
+                        <div className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+                            <strong className="text-foreground">Temperatura</strong> controla la creatividad de las respuestas.
                             Valores bajos (0-0.3) producen respuestas consistentes y predecibles.
-                            Valores altos (0.7-1) generan respuestas más variadas y creativas.<br />
-                            <strong style={{ color: "var(--text-primary)" }}>Max tokens</strong> limita la longitud máxima de cada respuesta.
-                            800 tokens equivalen aproximadamente a 2-3 párrafos.
+                            Valores altos (0.7-1) generan respuestas mas variadas y creativas.<br />
+                            <strong className="text-foreground">Max tokens</strong> limita la longitud maxima de cada respuesta.
+                            800 tokens equivalen aproximadamente a 2-3 parrafos.
                         </div>
                     </div>
                 </div>
@@ -635,18 +591,18 @@ export default function AgentConfigPage() {
 
     function renderStep5() {
         const summarySection = (title: string, icon: any, items: { label: string; value: string }[]) => (
-            <div style={{ ...cardStyle, marginBottom: 16 }}>
-                <h4 style={{ fontSize: 15, fontWeight: 700, marginTop: 0, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <div className={cn(cardCls, "mb-4")}>
+                <h4 className="text-[15px] font-bold mt-0 mb-3.5 flex items-center gap-2">
                     {icon} {title}
                 </h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div className="grid grid-cols-2 gap-2.5">
                     {items.map((item, i) => (
                         <div key={i}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            <div className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
                                 {item.label}
                             </div>
-                            <div style={{ fontSize: 14, color: "var(--text-primary)", marginTop: 2 }}>
-                                {item.value || "—"}
+                            <div className="text-sm text-foreground mt-0.5">
+                                {item.value || "\u2014"}
                             </div>
                         </div>
                     ))}
@@ -661,7 +617,7 @@ export default function AgentConfigPage() {
 
         return (
             <div>
-                {summarySection("Identidad", <User size={16} color="var(--accent)" />, [
+                {summarySection("Identidad", <User size={16} className="text-primary" />, [
                     { label: "Nombre", value: config.persona.name },
                     { label: "Rol", value: config.persona.role },
                     { label: "Idioma", value: config.language },
@@ -669,41 +625,36 @@ export default function AgentConfigPage() {
                     { label: "Saludo", value: config.persona.greeting },
                     { label: "Fallback", value: config.persona.fallbackMessage },
                 ])}
-                {summarySection("Personalidad", <Smile size={16} color="var(--accent)" />, [
+                {summarySection("Personalidad", <Smile size={16} className="text-primary" />, [
                     { label: "Tono", value: config.persona.personality.tone },
                     { label: "Formalidad", value: config.persona.personality.formality },
                     { label: "Emojis", value: config.persona.personality.emojiUsage },
                     { label: "Humor", value: config.persona.personality.humor },
                 ])}
-                {summarySection("Comportamiento", <Shield size={16} color="var(--accent)" />, [
+                {summarySection("Comportamiento", <Shield size={16} className="text-primary" />, [
                     { label: "Reglas", value: config.behavior.rules.filter(Boolean).join("; ") },
                     { label: "Temas prohibidos", value: config.behavior.forbiddenTopics.filter(Boolean).join("; ") },
                     { label: "Triggers handoff", value: config.behavior.handoffTriggers.filter(Boolean).join("; ") },
                 ])}
-                {summarySection("Horario", <Calendar size={16} color="var(--accent)" />, [
+                {summarySection("Horario", <Calendar size={16} className="text-primary" />, [
                     { label: "Zona horaria", value: config.hours.timezone },
-                    { label: "Días activos", value: activeDays },
+                    { label: "Dias activos", value: activeDays },
                     { label: "Mensaje fuera de horario", value: config.hours.afterHoursMessage },
                 ])}
-                {summarySection("Modelo IA", <Cpu size={16} color="var(--accent)" />, [
+                {summarySection("Modelo IA", <Cpu size={16} className="text-primary" />, [
                     { label: "Temperatura", value: String(config.llm.temperature) },
                     { label: "Max tokens", value: String(config.llm.maxTokens) },
                 ])}
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    style={{
-                        width: "100%", padding: "14px 24px", borderRadius: 12, border: "none",
-                        background: saving ? "var(--border)" : "var(--accent)",
-                        color: "#fff", fontSize: 16, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                        transition: "background 0.2s",
-                    }}
-                    onMouseEnter={e => { if (!saving) (e.currentTarget.style.background = "var(--accent-hover)"); }}
-                    onMouseLeave={e => { if (!saving) (e.currentTarget.style.background = "var(--accent)"); }}
+                    className={cn(
+                        "w-full py-3.5 px-6 rounded-xl border-none text-white text-base font-bold cursor-pointer flex items-center justify-center gap-2 transition-colors duration-200",
+                        saving ? "bg-border cursor-not-allowed" : "bg-primary hover:bg-[var(--accent-hover)]"
+                    )}
                 >
                     <Save size={18} />
-                    {saving ? "Guardando..." : "Guardar Configuración"}
+                    {saving ? "Guardando..." : "Guardar Configuracion"}
                 </button>
             </div>
         );
@@ -713,10 +664,10 @@ export default function AgentConfigPage() {
 
     if (loading) {
         return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
-                <div style={{ textAlign: "center" }}>
-                    <Bot size={40} color="var(--accent)" style={{ marginBottom: 12 }} />
-                    <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>Cargando configuración del agente...</div>
+            <div className="flex items-center justify-center h-[60vh]">
+                <div className="text-center">
+                    <Bot size={40} className="text-primary mb-3" />
+                    <div className="text-[var(--text-secondary)] text-sm">Cargando configuracion del agente...</div>
                 </div>
             </div>
         );
@@ -727,42 +678,36 @@ export default function AgentConfigPage() {
     return (
         <div>
             {/* Header */}
-            <div style={{ marginBottom: 24 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                    <Bot size={28} color="var(--accent)" /> Agente IA
+            <div className="mb-6">
+                <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                    <Bot size={28} className="text-primary" /> Agente IA
                 </h1>
-                <p style={{ color: "var(--text-secondary)", margin: "4px 0 0", fontSize: 14 }}>
+                <p className="text-[var(--text-secondary)] mt-1 text-sm">
                     Configura el comportamiento de tu agente conversacional
                 </p>
             </div>
 
             {/* Mode toggle */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+            <div className="flex gap-2 mb-6">
                 <button
                     onClick={() => setMode("wizard")}
-                    style={{
-                        flex: 1, padding: "14px 20px", borderRadius: 12,
-                        border: `2px solid ${mode === "wizard" ? "var(--accent)" : "var(--border)"}`,
-                        background: mode === "wizard" ? "var(--accent-glow)" : "var(--bg-secondary)",
-                        color: mode === "wizard" ? "var(--accent)" : "var(--text-secondary)",
-                        fontSize: 14, fontWeight: 600, cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                        transition: "all 0.2s",
-                    }}
+                    className={cn(
+                        "flex-1 py-3.5 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all duration-200",
+                        mode === "wizard"
+                            ? "border-primary bg-[var(--accent-glow)] text-primary"
+                            : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
+                    )}
                 >
                     <Sparkles size={16} /> Wizard guiado
                 </button>
                 <button
                     onClick={() => setMode("prompt")}
-                    style={{
-                        flex: 1, padding: "14px 20px", borderRadius: 12,
-                        border: `2px solid ${mode === "prompt" ? "var(--accent)" : "var(--border)"}`,
-                        background: mode === "prompt" ? "var(--accent-glow)" : "var(--bg-secondary)",
-                        color: mode === "prompt" ? "var(--accent)" : "var(--text-secondary)",
-                        fontSize: 14, fontWeight: 600, cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                        transition: "all 0.2s",
-                    }}
+                    className={cn(
+                        "flex-1 py-3.5 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all duration-200",
+                        mode === "prompt"
+                            ? "border-primary bg-[var(--accent-glow)] text-primary"
+                            : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
+                    )}
                 >
                     <Brain size={16} /> Prompt personalizado
                 </button>
@@ -771,44 +716,33 @@ export default function AgentConfigPage() {
             {mode === "prompt" ? (
                 /* ── Prompt mode ─────────────────────────── */
                 <>
-                    <div style={{
-                        padding: 24, borderRadius: 14,
-                        background: "var(--bg-secondary)", border: "1px solid var(--border)",
-                        marginBottom: 24,
-                    }}>
-                        <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                            <Brain size={20} color="var(--accent)" /> System Prompt personalizado
+                    <div className={cn(cardCls, "mb-6")}>
+                        <h3 className="text-lg font-bold mt-0 mb-2 flex items-center gap-2">
+                            <Brain size={20} className="text-primary" /> System Prompt personalizado
                         </h3>
-                        <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "0 0 16px" }}>
-                            Escribe el prompt completo que recibirá el modelo de IA como instrucción del sistema.
-                            Este prompt reemplaza toda la configuración del wizard.
+                        <p className="text-[var(--text-secondary)] text-[13px] mb-4">
+                            Escribe el prompt completo que recibira el modelo de IA como instruccion del sistema.
+                            Este prompt reemplaza toda la configuracion del wizard.
                         </p>
                         <textarea
                             value={customPrompt}
                             onChange={e => setCustomPrompt(e.target.value)}
-                            placeholder={`Eres Sofia Henao, asesora de ventas de Gecko Aventura Extrema.\n\nTu personalidad:\n- Tono amigable y entusiasta\n- Uso moderado de emojis\n- Siempre respondes en español colombiano\n\nReglas:\n1. Nunca inventes precios\n2. Si no puedes resolver en 3 mensajes, ofrece hablar con un humano\n3. Siempre confirma fecha y número de personas antes de cotizar\n\nHorario: Lunes a Viernes 8am-6pm, Sábados 8am-2pm (Colombia)`}
-                            style={{
-                                width: "100%", minHeight: 400, padding: "16px",
-                                borderRadius: 10, border: "1px solid var(--border)",
-                                background: "var(--bg-primary)", color: "var(--text-primary)",
-                                fontSize: 14, lineHeight: 1.6, fontFamily: "monospace",
-                                outline: "none", boxSizing: "border-box", resize: "vertical",
-                            }}
+                            placeholder={`Eres Sofia Henao, asesora de ventas de Gecko Aventura Extrema.\n\nTu personalidad:\n- Tono amigable y entusiasta\n- Uso moderado de emojis\n- Siempre respondes en espanol colombiano\n\nReglas:\n1. Nunca inventes precios\n2. Si no puedes resolver en 3 mensajes, ofrece hablar con un humano\n3. Siempre confirma fecha y numero de personas antes de cotizar\n\nHorario: Lunes a Viernes 8am-6pm, Sabados 8am-2pm (Colombia)`}
+                            className="w-full min-h-[400px] p-4 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm leading-relaxed font-mono outline-none resize-y"
                         />
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-                            <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                        <div className="flex justify-between items-center mt-3">
+                            <span className="text-[var(--text-secondary)] text-xs">
                                 {customPrompt.length} caracteres
                             </span>
                             <button
                                 onClick={handleSave}
                                 disabled={saving || !customPrompt.trim()}
-                                style={{
-                                    padding: "10px 24px", borderRadius: 10, border: "none",
-                                    background: saving || !customPrompt.trim() ? "var(--border)" : "var(--accent)",
-                                    color: "#fff", fontSize: 14, fontWeight: 600,
-                                    cursor: saving || !customPrompt.trim() ? "not-allowed" : "pointer",
-                                    display: "flex", alignItems: "center", gap: 6,
-                                }}
+                                className={cn(
+                                    "px-6 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5",
+                                    saving || !customPrompt.trim()
+                                        ? "bg-border cursor-not-allowed"
+                                        : "bg-primary"
+                                )}
                             >
                                 <Save size={16} /> {saving ? "Guardando..." : "Guardar Prompt"}
                             </button>
@@ -819,7 +753,7 @@ export default function AgentConfigPage() {
                 /* ── Wizard mode ─────────────────────────── */
                 <>
                     {/* Step indicator */}
-                    <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
+                    <div className="flex gap-1.5 mb-6 flex-wrap">
                         {STEPS.map((s, i) => {
                             const isActive = i === step;
                             const isDone = i < step;
@@ -827,15 +761,14 @@ export default function AgentConfigPage() {
                                 <button
                                     key={i}
                                     onClick={() => setStep(i)}
-                                    style={{
-                                        padding: "8px 16px", borderRadius: 20,
-                                        border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
-                                        background: isActive ? "var(--accent)" : isDone ? "var(--accent-glow)" : "var(--bg-secondary)",
-                                        color: isActive ? "#fff" : isDone ? "var(--accent)" : "var(--text-secondary)",
-                                        fontSize: 13, fontWeight: 600, cursor: "pointer",
-                                        display: "flex", alignItems: "center", gap: 6,
-                                        transition: "all 0.2s",
-                                    }}
+                                    className={cn(
+                                        "px-4 py-2 rounded-full border text-[13px] font-semibold cursor-pointer flex items-center gap-1.5 transition-all duration-200",
+                                        isActive
+                                            ? "border-primary bg-primary text-white"
+                                            : isDone
+                                                ? "border-border bg-[var(--accent-glow)] text-primary"
+                                                : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
+                                    )}
                                 >
                                     <s.icon size={14} />
                                     {s.label}
@@ -845,37 +778,28 @@ export default function AgentConfigPage() {
                     </div>
 
                     {/* Step content */}
-                    <div style={{ marginBottom: 24 }}>
+                    <div className="mb-6">
                         {stepRenderers[step]()}
                     </div>
 
                     {/* Navigation */}
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <div className="flex justify-between gap-3">
                         <button
                             onClick={() => setStep(prev => prev - 1)}
                             disabled={step === 0}
-                            style={{
-                                padding: "10px 20px", borderRadius: 10,
-                                border: "1px solid var(--border)",
-                                background: "var(--bg-secondary)",
-                                color: step === 0 ? "var(--border)" : "var(--text-primary)",
-                                fontSize: 14, fontWeight: 600, cursor: step === 0 ? "not-allowed" : "pointer",
-                                display: "flex", alignItems: "center", gap: 6,
-                            }}
+                            className={cn(
+                                "px-5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-secondary)] text-sm font-semibold flex items-center gap-1.5",
+                                step === 0
+                                    ? "text-border cursor-not-allowed"
+                                    : "text-foreground cursor-pointer"
+                            )}
                         >
                             <ChevronLeft size={16} /> Anterior
                         </button>
                         {step < 5 ? (
                             <button
                                 onClick={() => setStep(prev => prev + 1)}
-                                style={{
-                                    padding: "10px 20px", borderRadius: 10, border: "none",
-                                    background: "var(--accent)", color: "#fff",
-                                    fontSize: 14, fontWeight: 600, cursor: "pointer",
-                                    display: "flex", alignItems: "center", gap: 6,
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.background = "var(--accent-hover)")}
-                                onMouseLeave={e => (e.currentTarget.style.background = "var(--accent)")}
+                                className="px-5 py-2.5 rounded-[10px] border-none bg-primary text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 hover:bg-[var(--accent-hover)]"
                             >
                                 Siguiente <ChevronRight size={16} />
                             </button>
@@ -883,13 +807,10 @@ export default function AgentConfigPage() {
                             <button
                                 onClick={handleSave}
                                 disabled={saving}
-                                style={{
-                                    padding: "10px 20px", borderRadius: 10, border: "none",
-                                    background: saving ? "var(--border)" : "var(--accent)",
-                                    color: "#fff", fontSize: 14, fontWeight: 600,
-                                    cursor: saving ? "not-allowed" : "pointer",
-                                    display: "flex", alignItems: "center", gap: 6,
-                                }}
+                                className={cn(
+                                    "px-5 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold flex items-center gap-1.5",
+                                    saving ? "bg-border cursor-not-allowed" : "bg-primary cursor-pointer"
+                                )}
                             >
                                 <Save size={16} /> {saving ? "Guardando..." : "Guardar"}
                             </button>
@@ -900,15 +821,12 @@ export default function AgentConfigPage() {
 
             {/* Toast */}
             {toast && (
-                <div style={{
-                    position: "fixed", bottom: 24, right: 24,
-                    padding: "12px 20px", borderRadius: 10,
-                    background: toast.includes("Error") ? "var(--danger)" : "var(--success)",
-                    color: "#fff", fontSize: 14, fontWeight: 600,
-                    boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-                    zIndex: 9999, display: "flex", alignItems: "center", gap: 8,
-                    animation: "slideIn 0.3s ease",
-                }}>
+                <div
+                    className={cn(
+                        "fixed bottom-6 right-6 px-5 py-3 rounded-[10px] text-white text-sm font-semibold shadow-[0_4px_20px_rgba(0,0,0,0.3)] z-[9999] flex items-center gap-2 animate-in",
+                        toast.includes("Error") ? "bg-[var(--danger)]" : "bg-[var(--success)]"
+                    )}
+                >
                     {toast.includes("Error") ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
                     {toast}
                 </div>

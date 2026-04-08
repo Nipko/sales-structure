@@ -4,42 +4,17 @@ import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
 import {
-    ShoppingCart,
-    Search,
-    Plus,
-    CreditCard,
-    DollarSign,
-    Package,
-    CheckCircle,
-    Clock,
-    XCircle,
-    X,
-    User,
-    Check,
-    FileText,
+    ShoppingCart, Search, Plus, CreditCard, DollarSign, Package, CheckCircle, Clock, XCircle, X, User, Check, FileText,
 } from "lucide-react";
 
-// ---- Types ----
-interface OrderItem {
-    id: string; productId: string; productName: string; quantity: number; unitPrice: number; totalPrice: number;
-}
-
-interface Order {
-    id: string; contactId: string; contactName: string; status: "pending" | "confirmed" | "paid" | "cancelled";
-    totalAmount: number; currency: string; paymentMethod: string; notes: string;
-    createdAt: string; updatedAt: string;
-    items: OrderItem[];
-}
-
-interface OrdersOverview {
-    totalRevenue: number; pendingRevenue: number; orderCount: number; pendingCount: number; orders: Order[];
-}
-
+interface OrderItem { id: string; productId: string; productName: string; quantity: number; unitPrice: number; totalPrice: number; }
+interface Order { id: string; contactId: string; contactName: string; status: "pending" | "confirmed" | "paid" | "cancelled"; totalAmount: number; currency: string; paymentMethod: string; notes: string; createdAt: string; updatedAt: string; items: OrderItem[]; }
+interface OrdersOverview { totalRevenue: number; pendingRevenue: number; orderCount: number; pendingCount: number; orders: Order[]; }
 interface Contact { id: string; name: string; phone: string; }
 interface Product { id: string; name: string; price: number; stock: number; unit: string; }
 
-// ---- Helpers ----
 const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
 const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
 
@@ -58,8 +33,6 @@ export default function OrdersPage() {
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(true);
-
-    // Form data for dropdowns
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
 
@@ -67,25 +40,13 @@ export default function OrdersPage() {
         async function load() {
             setLoading(true);
             if (!activeTenantId) { setLoading(false); return; }
-
-            // Load Orders Overview
             const result = await api.getOrdersOverview(activeTenantId);
-            if (result.success && result.data) {
-                setData(result.data);
-                setIsLive(true);
-            } else {
-                setData({ totalRevenue: 0, pendingRevenue: 0, orderCount: 0, pendingCount: 0, orders: [] });
-            }
-
-            // Prefetch Contacts and Products for the Create Order Modal
-            Promise.all([
-                api.getOrderContacts(activeTenantId),
-                api.getInventoryProducts(activeTenantId)
-            ]).then(([contactsRes, productsRes]) => {
-                if (contactsRes?.success) setContacts(contactsRes.data || []);
-                if (productsRes?.success) setProducts(productsRes.data || []);
+            if (result.success && result.data) { setData(result.data); setIsLive(true); }
+            else { setData({ totalRevenue: 0, pendingRevenue: 0, orderCount: 0, pendingCount: 0, orders: [] }); }
+            Promise.all([api.getOrderContacts(activeTenantId), api.getInventoryProducts(activeTenantId)]).then(([c, p]) => {
+                if (c?.success) setContacts(c.data || []);
+                if (p?.success) setProducts(p.data || []);
             }).catch(console.error);
-
             setLoading(false);
         }
         load();
@@ -94,27 +55,15 @@ export default function OrdersPage() {
     const handleUpdateStatus = async (orderId: string, status: string) => {
         if (!activeTenantId) return;
         const res = await api.updateOrderStatus(activeTenantId, orderId, status);
-        if (res.success) {
-            setData(prev => {
-                if (!prev) return prev;
-                return {
-                    ...prev,
-                    orders: prev.orders.map(o => o.id === orderId ? { ...o, status: status as any } : o)
-                };
-            });
-        }
+        if (res.success) { setData(prev => prev ? { ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, status: status as any } : o) } : prev); }
     };
 
     const handleOpenInvoice = async (orderId: string) => {
         if (!activeTenantId) return;
         const token = localStorage.getItem("accessToken");
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
-
-        const res = await fetch(`${baseUrl}/orders/${activeTenantId}/${orderId}/invoice`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetch(`${baseUrl}/orders/${activeTenantId}/${orderId}/invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         if (!res.ok) return;
-
         const html = await res.text();
         const blob = new Blob([html], { type: "text/html" });
         const blobUrl = URL.createObjectURL(blob);
@@ -123,9 +72,7 @@ export default function OrdersPage() {
     };
 
     if (loading || !data) {
-        return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 400 }}>
-            <div style={{ width: 40, height: 40, border: "3px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-        </div>;
+        return <div className="flex justify-center items-center h-[400px]"><div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin" /></div>;
     }
 
     const filteredOrders = data.orders.filter(o => {
@@ -136,81 +83,63 @@ export default function OrdersPage() {
 
     return (
         <div>
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Órdenes y Reservas</h1>
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-[28px] font-bold m-0">Ordenes y Reservas</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
-                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>Gestiona las ventas, pagos y reservas de tus clientes</p>
+                    <p className="text-muted-foreground mt-1">Gestiona las ventas, pagos y reservas de tus clientes</p>
                 </div>
-                <button onClick={() => setShowCreateModal(true)} style={{
-                    display: "flex", alignItems: "center", gap: 8, padding: "12px 20px",
-                    borderRadius: 12, border: "none", background: "var(--accent)",
-                    color: "white", fontWeight: 600, fontSize: 14, cursor: "pointer",
-                }}>
+                <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">
                     <Plus size={18} /> Nueva Orden
                 </button>
             </div>
 
-            {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+            <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { label: "Ingresos Totales (Pagado)", value: formatCurrency(data.totalRevenue), icon: DollarSign, color: "#2ecc71", sub: `${data.orders.filter(o => o.status === "paid").length} órdenes completadas` },
-                    { label: "Cuentas por Cobrar", value: formatCurrency(data.pendingRevenue), icon: Clock, color: "#ffa502", sub: `${data.pendingCount} órdenes pendientes` },
-                    { label: "Total Órdenes", value: data.orderCount, icon: ShoppingCart, color: "#6c5ce7", sub: "Histórico general" },
-                    { label: "Ticket Promedio", value: formatCurrency(data.orderCount ? (data.totalRevenue + data.pendingRevenue) / data.orderCount : 0), icon: CreditCard, color: "#00b4d8", sub: "Por transacción" },
+                    { label: "Ingresos Totales (Pagado)", value: formatCurrency(data.totalRevenue), icon: DollarSign, color: "#2ecc71", sub: `${data.orders.filter(o => o.status === "paid").length} ordenes completadas` },
+                    { label: "Cuentas por Cobrar", value: formatCurrency(data.pendingRevenue), icon: Clock, color: "#ffa502", sub: `${data.pendingCount} ordenes pendientes` },
+                    { label: "Total Ordenes", value: data.orderCount, icon: ShoppingCart, color: "#6c5ce7", sub: "Historico general" },
+                    { label: "Ticket Promedio", value: formatCurrency(data.orderCount ? (data.totalRevenue + data.pendingRevenue) / data.orderCount : 0), icon: CreditCard, color: "#00b4d8", sub: "Por transaccion" },
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
-                        <div key={i} style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", padding: 20 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{kpi.label}</span>
-                                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${kpi.color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <div key={i} className="bg-card rounded-2xl border border-border p-5">
+                            <div className="flex justify-between mb-3">
+                                <span className="text-[13px] text-muted-foreground">{kpi.label}</span>
+                                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
                                     <Icon size={18} color={kpi.color} />
                                 </div>
                             </div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)" }}>{kpi.value}</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{kpi.sub}</div>
+                            <div className="text-2xl font-bold">{kpi.value}</div>
+                            <div className="text-xs text-muted-foreground mt-1">{kpi.sub}</div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* Filters & Search */}
-            <div style={{ display: "flex", gap: 16, marginBottom: 20, justifyContent: "space-between" }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => setStatusFilter(null)} style={{
-                        padding: "8px 16px", borderRadius: 10, border: statusFilter === null ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: statusFilter === null ? "rgba(108,92,231,0.1)" : "transparent", color: statusFilter === null ? "var(--accent)" : "var(--text-secondary)",
-                        fontWeight: 600, fontSize: 13, cursor: "pointer",
-                    }}>Todas ({data.orderCount})</button>
-
+            <div className="flex gap-4 mb-5 justify-between">
+                <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => setStatusFilter(null)} className={cn("px-4 py-2 rounded-[10px] font-semibold text-[13px] cursor-pointer", statusFilter === null ? "border border-primary bg-primary/10 text-primary" : "border border-border bg-transparent text-muted-foreground")}>Todas ({data.orderCount})</button>
                     {Object.entries(statusConfig).map(([key, config]) => (
-                        <button key={key} onClick={() => setStatusFilter(key)} style={{
-                            padding: "8px 16px", borderRadius: 10, border: statusFilter === key ? `1px solid ${config.color}` : "1px solid var(--border)",
-                            background: statusFilter === key ? config.bg : "transparent", color: statusFilter === key ? config.color : "var(--text-secondary)",
-                            fontWeight: 500, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-                        }}>
+                        <button key={key} onClick={() => setStatusFilter(key)} className="px-4 py-2 rounded-[10px] font-medium text-[13px] cursor-pointer flex items-center gap-1.5" style={{ border: statusFilter === key ? `1px solid ${config.color}` : "1px solid var(--border)", background: statusFilter === key ? config.bg : "transparent", color: statusFilter === key ? config.color : undefined }}>
                             <config.icon size={14} /> {config.label} ({data.orders.filter(o => o.status === key).length})
                         </button>
                     ))}
                 </div>
-                <div style={{ position: "relative", width: 280 }}>
-                    <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-secondary)" }} />
-                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente u orden..."
-                        style={{ width: "100%", padding: "10px 14px 10px 36px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                <div className="relative w-[280px]">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente u orden..." className="w-full py-2.5 pl-9 pr-3.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                 </div>
             </div>
 
-            {/* Orders Table */}
-            <div style={{ background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)", overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                <table className="w-full border-collapse text-sm">
                     <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                            {["Detalle de Orden", "Cliente", "Fecha", "Monto", "Estado", "Acción rápida"].map(h => (
-                                <th key={h} style={{ padding: "14px 20px", textAlign: "left", fontWeight: 600, color: "var(--text-secondary)", fontSize: 12, textTransform: "uppercase" }}>{h}</th>
+                        <tr className="border-b border-border">
+                            {["Detalle de Orden", "Cliente", "Fecha", "Monto", "Estado", "Accion rapida"].map(h => (
+                                <th key={h} className="px-5 py-3.5 text-left font-semibold text-muted-foreground text-xs uppercase">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -218,65 +147,38 @@ export default function OrdersPage() {
                         {filteredOrders.map(order => {
                             const status = statusConfig[order.status];
                             const StatusIcon = status.icon;
-
                             return (
-                                <tr key={order.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                                    <td style={{ padding: "16px 20px" }}>
-                                        <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
-                                            #{order.id.split("-")[0].toUpperCase()}
-                                        </div>
-                                        <div style={{ fontSize: 13, fontWeight: 500 }}>
-                                            {order.items.length} ítem(s)
-                                        </div>
-                                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-                                            {order.items.slice(0, 2).map(i => `${i.quantity}x ${i.productName}`).join(", ")}
-                                            {order.items.length > 2 ? ` (+${order.items.length - 2} más)` : ""}
-                                        </div>
+                                <tr key={order.id} className="border-b border-border">
+                                    <td className="px-5 py-4">
+                                        <div className="font-mono text-xs text-muted-foreground mb-1">#{order.id.split("-")[0].toUpperCase()}</div>
+                                        <div className="text-[13px] font-medium">{order.items.length} item(s)</div>
+                                        <div className="text-xs text-muted-foreground mt-0.5">{order.items.slice(0, 2).map(i => `${i.quantity}x ${i.productName}`).join(", ")}{order.items.length > 2 ? ` (+${order.items.length - 2} mas)` : ""}</div>
                                     </td>
-                                    <td style={{ padding: "16px 20px" }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--bg-tertiary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                <User size={16} color="var(--text-secondary)" />
-                                            </div>
-                                            <span style={{ fontWeight: 600 }}>{order.contactName}</span>
+                                    <td className="px-5 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center"><User size={16} className="text-muted-foreground" /></div>
+                                            <span className="font-semibold">{order.contactName}</span>
                                         </div>
                                     </td>
-                                    <td style={{ padding: "16px 20px", color: "var(--text-secondary)", fontSize: 13 }}>
-                                        {formatDate(order.createdAt)}
+                                    <td className="px-5 py-4 text-muted-foreground text-[13px]">{formatDate(order.createdAt)}</td>
+                                    <td className="px-5 py-4">
+                                        <div className="font-bold text-[15px] text-primary">{formatCurrency(order.totalAmount)}</div>
+                                        <div className="text-[11px] text-muted-foreground uppercase">{order.paymentMethod.replace("_", " ")}</div>
                                     </td>
-                                    <td style={{ padding: "16px 20px" }}>
-                                        <div style={{ fontWeight: 700, fontSize: 15, color: "var(--accent)" }}>{formatCurrency(order.totalAmount)}</div>
-                                        <div style={{ fontSize: 11, color: "var(--text-secondary)", textTransform: "uppercase" }}>{order.paymentMethod.replace("_", " ")}</div>
-                                    </td>
-                                    <td style={{ padding: "16px 20px" }}>
-                                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: status.bg, color: status.color, fontSize: 12, fontWeight: 600 }}>
+                                    <td className="px-5 py-4">
+                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: status.bg, color: status.color }}>
                                             <StatusIcon size={14} /> {status.label}
                                         </div>
                                     </td>
-                                    <td style={{ padding: "16px 20px" }}>
-                                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                                            <select
-                                                value={order.status}
-                                                onChange={(e) => handleUpdateStatus(order.id, e.target.value)}
-                                                style={{
-                                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                                                    background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 13, cursor: "pointer", outline: "none",
-                                                }}
-                                            >
+                                    <td className="px-5 py-4">
+                                        <div className="flex gap-2 items-center">
+                                            <select value={order.status} onChange={(e) => handleUpdateStatus(order.id, e.target.value)} className="px-3 py-1.5 rounded-lg border border-border bg-muted text-foreground text-[13px] cursor-pointer outline-none">
                                                 <option value="pending">Pendiente</option>
                                                 <option value="confirmed">Confirmada</option>
                                                 <option value="paid">Pagada</option>
                                                 <option value="cancelled">Cancelada</option>
                                             </select>
-
-                                            <button
-                                                onClick={() => handleOpenInvoice(order.id)}
-                                                style={{
-                                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--accent)",
-                                                    background: "rgba(108,92,231,0.1)", color: "var(--accent)", fontSize: 13, fontWeight: 600,
-                                                    cursor: "pointer", display: "flex", alignItems: "center", gap: 6
-                                                }}
-                                            >
+                                            <button onClick={() => handleOpenInvoice(order.id)} className="px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary text-[13px] font-semibold cursor-pointer flex items-center gap-1.5">
                                                 <FileText size={14} /> Ver Recibo
                                             </button>
                                         </div>
@@ -284,20 +186,16 @@ export default function OrdersPage() {
                                 </tr>
                             );
                         })}
-                        {filteredOrders.length === 0 && (
-                            <tr><td colSpan={6} style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)" }}>No se encontraron órdenes</td></tr>
-                        )}
+                        {filteredOrders.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-muted-foreground">No se encontraron ordenes</td></tr>}
                     </tbody>
                 </table>
             </div>
 
-            {/* Create Order Modal */}
             {showCreateModal && <CreateOrderModal onClose={() => setShowCreateModal(false)} tenantId={activeTenantId || ""} products={products} contacts={contacts} onCreated={() => { setShowCreateModal(false); window.location.reload(); }} />}
         </div>
     );
 }
 
-// ---- Create Order Modal ----
 function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; contacts: Contact[]; onCreated: () => void }) {
     const [status, setStatus] = useState("pending");
     const [paymentMethod, setPaymentMethod] = useState("transfer");
@@ -307,126 +205,88 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
     const [saving, setSaving] = useState(false);
 
     const handleAddItem = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const id = e.target.value;
-        if (!id) return;
+        const id = e.target.value; if (!id) return;
         const prod = products.find(p => p.id === id);
-        if (prod && !selectedItems.find(i => i.productId === id)) {
-            setSelectedItems([...selectedItems, { productId: prod.id, productName: prod.name, quantity: 1, unitPrice: prod.price, maxStock: prod.stock }]);
-        }
+        if (prod && !selectedItems.find(i => i.productId === id)) setSelectedItems([...selectedItems, { productId: prod.id, productName: prod.name, quantity: 1, unitPrice: prod.price, maxStock: prod.stock }]);
     };
 
-    const updateQuantity = (id: string, q: string) => {
-        const qty = parseInt(q);
-        if (isNaN(qty) || qty < 1) return;
-        setSelectedItems(items => items.map(i => i.productId === id ? { ...i, quantity: Math.min(qty, i.maxStock) } : i));
-    };
-
-    const removeItem = (id: string) => {
-        setSelectedItems(items => items.filter(i => i.productId !== id));
-    };
+    const updateQuantity = (id: string, q: string) => { const qty = parseInt(q); if (isNaN(qty) || qty < 1) return; setSelectedItems(items => items.map(i => i.productId === id ? { ...i, quantity: Math.min(qty, i.maxStock) } : i)); };
+    const removeItem = (id: string) => setSelectedItems(items => items.filter(i => i.productId !== id));
 
     const handleSubmit = async () => {
         if (selectedItems.length === 0) return;
         setSaving(true);
-        await api.createOrder(tenantId, {
-            contactId: contactId || undefined, status, paymentMethod, notes,
-            items: selectedItems.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }))
-        });
+        await api.createOrder(tenantId, { contactId: contactId || undefined, status, paymentMethod, notes, items: selectedItems.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice })) });
         onCreated();
     };
 
     const total = selectedItems.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0);
+    const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
 
     return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
-            <div onClick={e => e.stopPropagation()} style={{ background: "var(--bg-secondary)", borderRadius: 20, border: "1px solid var(--border)", padding: 28, width: 560, maxHeight: "90vh", overflowY: "auto" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                    <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Nueva Orden</h2>
-                    <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)" }}><X size={20} /></button>
+        <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
+            <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[560px] max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-5">
+                    <h2 className="text-xl font-bold m-0">Nueva Orden</h2>
+                    <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                <div className="grid grid-cols-2 gap-4 mb-5">
                     <div>
-                        <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Cliente</label>
-                        <select value={contactId} onChange={e => setContactId(e.target.value)} style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
+                        <label className="text-[13px] font-semibold block mb-1">Cliente</label>
+                        <select value={contactId} onChange={e => setContactId(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
                             <option value="">Consumidor final</option>
-                            {contacts.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ""}</option>
-                            ))}
+                            {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ""}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Estado de la Orden</label>
-                        <select value={status} onChange={e => setStatus(e.target.value)} style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
+                        <label className="text-[13px] font-semibold block mb-1">Estado</label>
+                        <select value={status} onChange={e => setStatus(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
                             <option value="pending">Pendiente de pago</option>
                             <option value="confirmed">Confirmada</option>
                             <option value="paid">Pagada / Completada</option>
                         </select>
                     </div>
-                    <div style={{ gridColumn: "1 / span 2" }}>
-                        <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Método de pago</label>
-                        <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
+                    <div className="col-span-2">
+                        <label className="text-[13px] font-semibold block mb-1">Metodo de pago</label>
+                        <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
                             <option value="cash">Efectivo / Contraentrega</option>
                             <option value="transfer">Transferencia / Nequi</option>
-                            <option value="credit_card">Tarjeta de Crédito</option>
+                            <option value="credit_card">Tarjeta de Credito</option>
                             <option value="link">Link de Pago</option>
                         </select>
                     </div>
                 </div>
-
-                <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Agregar Productos del Inventario</label>
-                    <select onChange={handleAddItem} value="" style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", cursor: "pointer" }}>
+                <div className="mb-5">
+                    <label className="text-[13px] font-semibold block mb-1">Agregar Productos del Inventario</label>
+                    <select onChange={handleAddItem} value="" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
                         <option value="" disabled>Selecciona un producto...</option>
-                        {products.filter(p => p.stock > 0).map(p => (
-                            <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price)} (Stock: {p.stock} {p.unit})</option>
-                        ))}
+                        {products.filter(p => p.stock > 0).map(p => <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price)} (Stock: {p.stock} {p.unit})</option>)}
                     </select>
                 </div>
-
                 {selectedItems.length > 0 && (
-                    <div style={{ marginBottom: 20 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Items agregados:</div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="mb-5">
+                        <div className="text-[13px] font-semibold mb-2">Items agregados:</div>
+                        <div className="flex flex-col gap-2">
                             {selectedItems.map(item => (
-                                <div key={item.productId} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--bg-tertiary)", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)" }}>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 600, fontSize: 14 }}>{item.productName}</div>
-                                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{formatCurrency(item.unitPrice)} c/u</div>
-                                    </div>
-                                    <input
-                                        type="number" value={item.quantity} min={1} max={item.maxStock}
-                                        onChange={e => updateQuantity(item.productId, e.target.value)}
-                                        style={{ width: 60, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", textAlign: "center" }}
-                                    />
-                                    <div style={{ fontWeight: 700, width: 90, textAlign: "right", color: "var(--accent)" }}>
-                                        {formatCurrency(item.quantity * item.unitPrice)}
-                                    </div>
-                                    <button onClick={() => removeItem(item.productId)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ff4757", padding: 4 }}>
-                                        <X size={16} />
-                                    </button>
+                                <div key={item.productId} className="flex items-center gap-3 bg-muted px-3.5 py-2.5 rounded-[10px] border border-border">
+                                    <div className="flex-1"><div className="font-semibold text-sm">{item.productName}</div><div className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</div></div>
+                                    <input type="number" value={item.quantity} min={1} max={item.maxStock} onChange={e => updateQuantity(item.productId, e.target.value)} className="w-[60px] px-2 py-1.5 rounded-lg border border-border bg-card text-foreground text-center" />
+                                    <div className="font-bold w-[90px] text-right text-primary">{formatCurrency(item.quantity * item.unitPrice)}</div>
+                                    <button onClick={() => removeItem(item.productId)} className="bg-transparent border-none cursor-pointer text-destructive p-1"><X size={16} /></button>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
-
-                <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 4 }}>Notas adicionales</label>
-                    <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Requisitos especiales, observaciones..."
-                        style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "none" }} />
+                <div className="mb-5">
+                    <label className="text-[13px] font-semibold block mb-1">Notas adicionales</label>
+                    <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Requisitos especiales, observaciones..." className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border resize-none" />
                 </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "rgba(108,92,231,0.1)", borderRadius: 12, marginBottom: 20 }}>
-                    <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>Total de la Orden:</span>
-                    <span style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)" }}>{formatCurrency(total)}</span>
+                <div className="flex items-center justify-between px-5 py-4 bg-primary/10 rounded-xl mb-5">
+                    <span className="font-semibold text-muted-foreground">Total de la Orden:</span>
+                    <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
                 </div>
-
-                <button onClick={handleSubmit} disabled={saving || selectedItems.length === 0} style={{
-                    width: "100%", padding: "14px", borderRadius: 12, border: "none",
-                    background: "var(--accent)", color: "white", fontWeight: 600, fontSize: 15, cursor: "pointer",
-                    opacity: saving || selectedItems.length === 0 ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8
-                }}>
+                <button onClick={handleSubmit} disabled={saving || selectedItems.length === 0} className={cn("w-full py-3.5 rounded-xl border-none bg-primary text-white font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2", (saving || selectedItems.length === 0) && "opacity-50")}>
                     {saving ? "Creando..." : <><Check size={18} /> Crear Orden</>}
                 </button>
             </div>

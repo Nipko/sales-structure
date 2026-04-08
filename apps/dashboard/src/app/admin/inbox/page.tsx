@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
 import { io } from "socket.io-client";
 import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
@@ -275,7 +276,7 @@ export default function InboxPage() {
                 if (result.success && result.data) {
                     const conv = result.data;
                     const msgs = (conv.messages || []).map((m: any) => {
-                        // FIX: Use direction field — 'inbound' = customer, 'outbound' = AI/agent
+                        // FIX: Use direction field -- 'inbound' = customer, 'outbound' = AI/agent
                         // The API returns direction aliased as 'sender' in SQL, so check both fields
                         const dir = m.direction || m.sender;
                         const isInbound = dir === 'inbound';
@@ -339,7 +340,7 @@ export default function InboxPage() {
         socket.on('newMessage', (payload: any) => {
             const { conversationId, message } = payload;
 
-            // FIX: Use direction field — 'inbound' = customer, 'outbound' = AI/agent
+            // FIX: Use direction field -- 'inbound' = customer, 'outbound' = AI/agent
             const isInbound = message.direction === 'inbound';
             const isHumanAgent = !isInbound && (message.metadata?.source === 'agent');
             const uiMsg = {
@@ -494,7 +495,7 @@ export default function InboxPage() {
             const result = await api.assignConversation(activeTenantId, selectedConv.id, user.id);
             if (result.success) {
                 const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Agente';
-                // Update the selected conversation — backend assignConversation() sets status 'with_human'
+                // Update the selected conversation -- backend assignConversation() sets status 'with_human'
                 setSelectedConv((prev: any) => ({
                     ...prev,
                     assignedAgentId: user.id,
@@ -561,7 +562,7 @@ export default function InboxPage() {
     };
 
     const handleResolve = async () => {
-        // Optimistic update — backend resolveConversation() returns status 'active' (back to AI handling)
+        // Optimistic update -- backend resolveConversation() returns status 'active' (back to AI handling)
         setConversations((prev: any[]) => prev.map(c =>
             c.id === selectedConv.id ? { ...c, status: "active" as any } : c
         ));
@@ -589,13 +590,12 @@ export default function InboxPage() {
 
 
     return (
-        <div style={{ display: "flex", height: "calc(100vh - 64px)", margin: "-32px -40px", overflow: "hidden" }}>
+        <div className="flex h-[calc(100vh-64px)] -m-8 -mx-10 overflow-hidden">
             {/* Keyframes for animations */}
             <style>{`
-                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
                 .inbox-msg-bubble { animation: fadeIn 0.2s ease-out; }
-                .inbox-conv-item:hover { background: var(--bg-tertiary) !important; }
+                .inbox-conv-item:hover { background: var(--bg-tertiary, hsl(var(--muted))) !important; }
                 .inbox-scrollbar::-webkit-scrollbar { width: 6px; }
                 .inbox-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .inbox-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
@@ -603,28 +603,17 @@ export default function InboxPage() {
             `}</style>
 
             {/* ======== LEFT: Conversation List ======== */}
-            <div style={{
-                width: 340, borderRight: "1px solid var(--border)", display: "flex",
-                flexDirection: "column", background: "var(--bg-secondary)",
-            }}>
+            <div className="w-[340px] border-r border-border flex flex-col bg-card">
                 {/* Header */}
-                <div style={{ padding: "16px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                        <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Inbox</h2>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="p-4 border-b border-border">
+                    <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-xl font-bold m-0">Inbox</h2>
+                        <div className="flex items-center gap-2.5">
                             {/* Notification Bell */}
-                            <div style={{ position: "relative", cursor: "pointer" }}>
-                                <Bell size={20} color="var(--text-secondary)" />
+                            <div className="relative cursor-pointer">
+                                <Bell size={20} className="text-muted-foreground" />
                                 {totalUnread > 0 && (
-                                    <span style={{
-                                        position: "absolute", top: -6, right: -8,
-                                        background: "#e74c3c", color: "white",
-                                        fontSize: 10, fontWeight: 700,
-                                        borderRadius: 10, padding: "1px 5px",
-                                        minWidth: 16, textAlign: "center",
-                                        lineHeight: "14px",
-                                        boxShadow: "0 0 0 2px var(--bg-secondary)",
-                                    }}>
+                                    <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-[5px] py-px min-w-[16px] text-center leading-[14px] shadow-[0_0_0_2px_hsl(var(--card))]">
                                         {totalUnread > 99 ? "99+" : totalUnread}
                                     </span>
                                 )}
@@ -634,22 +623,18 @@ export default function InboxPage() {
                     </div>
 
                     {/* Search */}
-                    <div style={{ position: "relative", marginBottom: 12 }}>
-                        <Search size={16} style={{ position: "absolute", left: 10, top: 10, color: "var(--text-secondary)" }} />
+                    <div className="relative mb-3">
+                        <Search size={16} className="absolute left-2.5 top-2.5 text-muted-foreground" />
                         <input
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             placeholder="Buscar conversaciones..."
-                            style={{
-                                width: "100%", padding: "8px 12px 8px 34px", borderRadius: 8,
-                                border: "1px solid var(--border)", background: "var(--bg-tertiary)",
-                                color: "var(--text-primary)", fontSize: 13, outline: "none", boxSizing: "border-box",
-                            }}
+                            className="w-full py-2 px-3 pl-[34px] rounded-lg border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-[13px] outline-none"
                         />
                     </div>
 
                     {/* Filters */}
-                    <div style={{ display: "flex", gap: 4 }}>
+                    <div className="flex gap-1">
                         {([
                             { key: "all" as const, label: "Todas", count: conversations.length },
                             { key: "handoff" as const, label: "Handoff", count: conversations.filter(c => c.status === "handoff").length },
@@ -658,12 +643,12 @@ export default function InboxPage() {
                             <button
                                 key={f.key}
                                 onClick={() => setFilter(f.key)}
-                                style={{
-                                    padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 12,
-                                    fontWeight: filter === f.key ? 600 : 400, cursor: "pointer",
-                                    background: filter === f.key ? "var(--accent)" : "transparent",
-                                    color: filter === f.key ? "white" : "var(--text-secondary)",
-                                }}
+                                className={cn(
+                                    "py-1 px-2.5 rounded-md border-none text-xs cursor-pointer transition-colors",
+                                    filter === f.key
+                                        ? "font-semibold bg-indigo-600 text-white"
+                                        : "font-normal bg-transparent text-muted-foreground hover:bg-muted"
+                                )}
                             >
                                 {f.label} ({f.count})
                             </button>
@@ -672,7 +657,7 @@ export default function InboxPage() {
                 </div>
 
                 {/* Conversation List */}
-                <div className="inbox-scrollbar" style={{ flex: 1, overflow: "auto" }}>
+                <div className="inbox-scrollbar flex-1 overflow-auto">
                     {filteredConversations.map(conv => {
                         const hasUnread = (conv.unreadCount || 0) > 0;
                         const isSelected = selectedConv?.id === conv.id;
@@ -688,83 +673,64 @@ export default function InboxPage() {
                                 ));
                             }}
                             style={{
-                                padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
-                                background: isSelected ? "var(--accent-glow)" : "transparent",
+                                padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid hsl(var(--border))",
+                                background: isSelected ? "rgba(108, 92, 231, 0.08)" : "transparent",
                                 transition: "background 0.15s ease",
                             }}
                         >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                <div style={{ display: "flex", gap: 10, alignItems: "center", flex: 1 }}>
+                            <div className="flex justify-between items-start">
+                                <div className="flex gap-2.5 items-center flex-1">
                                     {/* Avatar with unread green dot */}
-                                    <div style={{ position: "relative", flexShrink: 0 }}>
-                                        <div style={{
-                                            width: 40, height: 40, borderRadius: "50%",
-                                            background: `linear-gradient(135deg, ${priorityColors[conv.priority]}, ${priorityColors[conv.priority]}88)`,
-                                            display: "flex", alignItems: "center", justifyContent: "center",
-                                            fontSize: 16, fontWeight: 700, color: "white",
-                                        }}>
+                                    <div className="relative flex-shrink-0">
+                                        <div
+                                            className="w-10 h-10 rounded-full flex items-center justify-center text-base font-bold text-white"
+                                            style={{ background: `linear-gradient(135deg, ${priorityColors[conv.priority]}, ${priorityColors[conv.priority]}88)` }}
+                                        >
                                             {conv.contactName.charAt(0)}
                                         </div>
                                         {hasUnread && !isSelected && (
-                                            <div style={{
-                                                position: "absolute", bottom: 0, right: 0,
-                                                width: 12, height: 12, borderRadius: "50%",
-                                                background: "#2ecc71",
-                                                border: "2px solid var(--bg-secondary)",
-                                            }} />
+                                            <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
                                         )}
                                     </div>
-                                    <div style={{ overflow: "hidden", flex: 1 }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                            <span style={{
-                                                fontWeight: hasUnread ? 700 : 600,
-                                                fontSize: 14,
-                                                color: hasUnread ? "var(--text-primary)" : undefined,
-                                            }}>
+                                    <div className="overflow-hidden flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={cn("text-sm", hasUnread ? "font-bold text-foreground" : "font-semibold")}>
                                                 {conv.contactName}
                                             </span>
-                                            {conv.isAiHandled && <Bot size={14} color="var(--accent)" />}
+                                            {conv.isAiHandled && <Bot size={14} className="text-indigo-600" />}
                                         </div>
-                                        <div style={{
-                                            fontSize: 12,
-                                            color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
-                                            fontWeight: hasUnread ? 500 : 400,
-                                            marginTop: 2,
-                                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                                        }}>
+                                        <div className={cn(
+                                            "text-xs mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis",
+                                            hasUnread ? "text-foreground font-medium" : "text-muted-foreground font-normal"
+                                        )}>
                                             {conv.lastMessage}
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                                    <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{conv.lastMessageAt}</span>
-                                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                    <span className="text-[11px] text-muted-foreground">{conv.lastMessageAt}</span>
+                                    <div className="flex gap-1 items-center">
                                         {hasUnread && (
-                                            <span style={{
-                                                background: "#2ecc71", color: "white", fontSize: 10,
-                                                borderRadius: 10, padding: "1px 6px", fontWeight: 700,
-                                                minWidth: 18, textAlign: "center",
-                                            }}>
+                                            <span className="bg-emerald-500 text-white text-[10px] rounded-full px-1.5 py-px font-bold min-w-[18px] text-center">
                                                 {conv.unreadCount}
                                             </span>
                                         )}
-                                        <span style={{
-                                            background: `${(statusLabels[conv.status]?.color || '#95a5a6')}22`,
-                                            color: statusLabels[conv.status]?.color || '#95a5a6',
-                                            fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
-                                        }}>
+                                        <span
+                                            className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                                            style={{
+                                                background: `${(statusLabels[conv.status]?.color || '#95a5a6')}22`,
+                                                color: statusLabels[conv.status]?.color || '#95a5a6',
+                                            }}
+                                        >
                                             {statusLabels[conv.status]?.label || conv.status}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             {conv.tags.length > 0 && (
-                                <div style={{ display: "flex", gap: 4, marginTop: 6, marginLeft: 50 }}>
+                                <div className="flex gap-1 mt-1.5 ml-[50px]">
                                     {conv.tags.map((tag: string) => (
-                                        <span key={tag} style={{
-                                            fontSize: 10, padding: "1px 6px", borderRadius: 4,
-                                            background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
-                                        }}>
+                                        <span key={tag} className="text-[10px] px-1.5 py-px rounded bg-indigo-600/15 text-indigo-600 dark:text-indigo-400">
                                             {tag}
                                         </span>
                                     ))}
@@ -777,93 +743,77 @@ export default function InboxPage() {
             </div>
 
             {/* ======== CENTER: Chat Thread ======== */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)" }}>
+            <div className="flex-1 flex flex-col bg-background">
                 {selectedConv ? (
                     <>
                 {/* Chat Header */}
-                <div style={{
-                    padding: "12px 20px", borderBottom: "1px solid var(--border)",
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    background: "var(--bg-secondary)",
-                }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{
-                            width: 36, height: 36, borderRadius: "50%",
-                            background: `linear-gradient(135deg, ${priorityColors[selectedConv.priority]}, ${priorityColors[selectedConv.priority]}88)`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 14, fontWeight: 700, color: "white",
-                        }}>
+                <div className="px-5 py-3 border-b border-border flex justify-between items-center bg-card">
+                    <div className="flex items-center gap-2.5">
+                        <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white"
+                            style={{ background: `linear-gradient(135deg, ${priorityColors[selectedConv.priority]}, ${priorityColors[selectedConv.priority]}88)` }}
+                        >
                             {selectedConv.contactName.charAt(0)}
                         </div>
                         <div>
-                            <div style={{ fontWeight: 600, fontSize: 15 }}>{selectedConv.contactName}</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{selectedConv.contactPhone} · {selectedConv.channel}</div>
+                            <div className="font-semibold text-[15px]">{selectedConv.contactName}</div>
+                            <div className="text-xs text-muted-foreground">{selectedConv.contactPhone} · {selectedConv.channel}</div>
                         </div>
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => setShowNotes(!showNotes)} style={{
-                            padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                            background: showNotes ? "var(--accent)" : "transparent",
-                            color: showNotes ? "white" : "var(--text-secondary)",
-                            fontSize: 12, cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
-                        }}>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setShowNotes(!showNotes)}
+                            className={cn(
+                                "py-1.5 px-3 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
+                                showNotes
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                            )}
+                        >
                             <StickyNote size={14} /> Notas
                         </button>
                         {selectedConv.assignedAgentName && (
-                            <div style={{
-                                padding: "4px 10px", borderRadius: 6, fontSize: 11,
-                                background: "rgba(52, 152, 219, 0.12)", color: "#3498db",
-                                display: "flex", gap: 4, alignItems: "center", fontWeight: 500,
-                            }}>
+                            <div className="py-1 px-2.5 rounded-md text-[11px] bg-blue-500/10 text-blue-500 flex gap-1 items-center font-medium">
                                 <UserCheck size={12} />
                                 {selectedConv.assignedAgentName}
                             </div>
                         )}
-                        <button onClick={handleResolve} style={{
-                            padding: "6px 12px", borderRadius: 8, border: "none",
-                            background: "#2ecc71", color: "white", fontSize: 12, fontWeight: 600,
-                            cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
-                        }}>
+                        <button
+                            onClick={handleResolve}
+                            className="py-1.5 px-3 rounded-lg border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1 items-center hover:bg-emerald-600"
+                        >
                             <CheckCircle size={14} /> Resolver
                         </button>
                         <button
                             onClick={handleAssign}
                             disabled={assignLoading}
-                            style={{
-                                padding: "6px 12px", borderRadius: 8, border: "none",
-                                background: assignLoading ? "var(--bg-tertiary)" : "var(--accent)",
-                                color: assignLoading ? "var(--text-secondary)" : "white",
-                                fontSize: 12, fontWeight: 600,
-                                cursor: assignLoading ? "not-allowed" : "pointer",
-                                display: "flex", gap: 4, alignItems: "center",
-                                opacity: assignLoading ? 0.7 : 1,
-                            }}
+                            className={cn(
+                                "py-1.5 px-3 rounded-lg border-none text-xs font-semibold flex gap-1 items-center transition-opacity",
+                                assignLoading
+                                    ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+                                    : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
+                            )}
                         >
                             {assignLoading
-                                ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Asignando...</>
+                                ? <><Loader2 size={14} className="animate-spin" /> Asignando...</>
                                 : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mi' : 'Asignarme'}</>
                             }
                         </button>
                         {/* Snooze Button */}
-                        <div ref={snoozeRef} style={{ position: "relative" }}>
+                        <div ref={snoozeRef} className="relative">
                             <button
                                 onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
-                                style={{
-                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                                    background: showSnoozeMenu ? "var(--accent)" : "transparent",
-                                    color: showSnoozeMenu ? "white" : "var(--text-secondary)",
-                                    fontSize: 12, cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
-                                }}
+                                className={cn(
+                                    "py-1.5 px-3 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
+                                    showSnoozeMenu
+                                        ? "bg-indigo-600 text-white border-indigo-600"
+                                        : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                )}
                             >
                                 <Clock size={14} /> Snooze
                             </button>
                             {showSnoozeMenu && (
-                                <div style={{
-                                    position: "absolute", top: "100%", right: 0, marginTop: 4,
-                                    background: "var(--bg-secondary)", border: "1px solid var(--border)",
-                                    borderRadius: 10, padding: 4, zIndex: 100, minWidth: 160,
-                                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-                                }}>
+                                <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-[10px] p-1 z-[100] min-w-[160px] shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
                                     {[
                                         { key: "1h", label: "1 hora" },
                                         { key: "3h", label: "3 horas" },
@@ -873,16 +823,9 @@ export default function InboxPage() {
                                         <button
                                             key={opt.key}
                                             onClick={() => handleSnooze(opt.key)}
-                                            style={{
-                                                display: "flex", alignItems: "center", gap: 8, width: "100%",
-                                                padding: "8px 12px", border: "none", borderRadius: 6,
-                                                background: "transparent", color: "var(--text-primary)",
-                                                fontSize: 13, cursor: "pointer", textAlign: "left",
-                                            }}
-                                            onMouseOver={e => (e.currentTarget.style.background = "var(--bg-tertiary)")}
-                                            onMouseOut={e => (e.currentTarget.style.background = "transparent")}
+                                            className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-md bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted"
                                         >
-                                            <Clock size={13} color="var(--text-secondary)" />
+                                            <Clock size={13} className="text-muted-foreground" />
                                             {opt.label}
                                         </button>
                                     ))}
@@ -890,46 +833,33 @@ export default function InboxPage() {
                             )}
                         </div>
                         {/* Macros Button */}
-                        <div ref={macrosRef} style={{ position: "relative" }}>
+                        <div ref={macrosRef} className="relative">
                             <button
                                 onClick={() => setShowMacrosMenu(!showMacrosMenu)}
-                                style={{
-                                    padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                                    background: showMacrosMenu ? "var(--accent)" : "transparent",
-                                    color: showMacrosMenu ? "white" : "var(--text-secondary)",
-                                    fontSize: 12, cursor: "pointer", display: "flex", gap: 4, alignItems: "center",
-                                }}
+                                className={cn(
+                                    "py-1.5 px-3 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
+                                    showMacrosMenu
+                                        ? "bg-indigo-600 text-white border-indigo-600"
+                                        : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                )}
                             >
                                 <Zap size={14} /> Macros
                             </button>
                             {showMacrosMenu && (
-                                <div style={{
-                                    position: "absolute", top: "100%", right: 0, marginTop: 4,
-                                    background: "var(--bg-secondary)", border: "1px solid var(--border)",
-                                    borderRadius: 10, padding: 4, zIndex: 100, minWidth: 200,
-                                    maxHeight: 240, overflowY: "auto",
-                                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-                                }}>
+                                <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-[10px] p-1 z-[100] min-w-[200px] max-h-60 overflow-y-auto shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
                                     {macros.length === 0 ? (
-                                        <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--text-secondary)" }}>
+                                        <div className="py-3 px-3.5 text-[13px] text-muted-foreground">
                                             No hay macros configurados
                                         </div>
                                     ) : macros.map((m: any) => (
                                         <button
                                             key={m.id}
                                             onClick={() => handleExecuteMacro(m.id)}
-                                            style={{
-                                                display: "flex", alignItems: "center", justifyContent: "space-between",
-                                                width: "100%", padding: "8px 12px", border: "none", borderRadius: 6,
-                                                background: "transparent", color: "var(--text-primary)",
-                                                fontSize: 13, cursor: "pointer", textAlign: "left",
-                                            }}
-                                            onMouseOver={e => (e.currentTarget.style.background = "var(--bg-tertiary)")}
-                                            onMouseOut={e => (e.currentTarget.style.background = "transparent")}
+                                            className="flex items-center justify-between w-full py-2 px-3 border-none rounded-md bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted"
                                         >
                                             <span>{m.name}</span>
                                             {m.actions && (
-                                                <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                                <span className="text-[11px] text-muted-foreground">
                                                     {Array.isArray(m.actions) ? m.actions.length : 0} acciones
                                                 </span>
                                             )}
@@ -944,10 +874,8 @@ export default function InboxPage() {
                 {/* Messages Area */}
                 <div
                     ref={messagesContainerRef}
-                    className="inbox-scrollbar"
+                    className="inbox-scrollbar flex-1 overflow-auto px-6 py-4 flex flex-col gap-1"
                     style={{
-                        flex: 1, overflow: "auto", padding: "16px 24px",
-                        display: "flex", flexDirection: "column", gap: 4,
                         backgroundImage: "radial-gradient(circle at 20% 80%, rgba(108, 92, 231, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(46, 204, 113, 0.03) 0%, transparent 50%)",
                     }}
                 >
@@ -955,21 +883,12 @@ export default function InboxPage() {
                         // Date separator
                         if (item._type === "date-separator") {
                             return (
-                                <div key={item.key} style={{
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    padding: "12px 0", gap: 12,
-                                }}>
-                                    <div style={{ flex: 1, height: 1, background: "var(--border)", opacity: 0.5 }} />
-                                    <span style={{
-                                        fontSize: 11, color: "var(--text-secondary)",
-                                        background: "var(--bg-primary)", padding: "4px 12px",
-                                        borderRadius: 12, fontWeight: 500,
-                                        border: "1px solid var(--border)",
-                                        textTransform: "capitalize",
-                                    }}>
+                                <div key={item.key} className="flex items-center justify-center py-3 gap-3">
+                                    <div className="flex-1 h-px bg-border opacity-50" />
+                                    <span className="text-[11px] text-muted-foreground bg-background px-3 py-1 rounded-xl font-medium border border-border capitalize">
                                         {formatDateLabel(item.date)}
                                     </span>
-                                    <div style={{ flex: 1, height: 1, background: "var(--border)", opacity: 0.5 }} />
+                                    <div className="flex-1 h-px bg-border opacity-50" />
                                 </div>
                             );
                         }
@@ -980,90 +899,59 @@ export default function InboxPage() {
                         // System messages
                         if (msg.type === "system") {
                             return (
-                                <div key={msg.id} className="inbox-msg-bubble" style={{
-                                    textAlign: "center", fontSize: 11, color: "var(--text-secondary)",
-                                    padding: "8px 16px", background: "rgba(231, 76, 60, 0.08)",
-                                    borderRadius: 8, margin: "4px auto", maxWidth: "80%",
-                                    display: "flex", gap: 6, alignItems: "center", justifyContent: "center",
-                                }}>
-                                    <AlertCircle size={14} color="#e74c3c" />
+                                <div key={msg.id} className="inbox-msg-bubble text-center text-[11px] text-muted-foreground px-4 py-2 bg-red-500/[0.08] rounded-lg mx-auto max-w-[80%] flex gap-1.5 items-center justify-center">
+                                    <AlertCircle size={14} className="text-red-500" />
                                     {msg.content}
                                 </div>
                             );
                         }
 
                         return (
-                            <div key={msg.id} className="inbox-msg-bubble" style={{
-                                display: "flex",
-                                justifyContent: isInbound ? "flex-start" : "flex-end",
-                                alignItems: "flex-end",
-                                gap: 6,
-                                marginBottom: 4,
-                            }}>
+                            <div key={msg.id} className={cn(
+                                "inbox-msg-bubble flex items-end gap-1.5 mb-1",
+                                isInbound ? "justify-start" : "justify-end"
+                            )}>
                                 {/* Customer avatar (left side) */}
                                 {isInbound && (
-                                    <div style={{
-                                        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-                                        background: "var(--bg-tertiary)",
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        marginBottom: 2,
-                                    }}>
-                                        <User size={14} color="var(--text-secondary)" />
+                                    <div className="w-7 h-7 rounded-full flex-shrink-0 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-0.5">
+                                        <User size={14} className="text-muted-foreground" />
                                     </div>
                                 )}
 
-                                <div style={{ maxWidth: "65%" }}>
+                                <div className="max-w-[65%]">
                                     {/* Sender label + timestamp */}
-                                    <div style={{
-                                        fontSize: 10, color: "var(--text-secondary)", marginBottom: 3,
-                                        textAlign: isInbound ? "left" : "right",
-                                        display: "flex", gap: 4, alignItems: "center",
-                                        justifyContent: isInbound ? "flex-start" : "flex-end",
-                                        paddingLeft: isInbound ? 4 : 0,
-                                        paddingRight: isInbound ? 0 : 4,
-                                    }}>
-                                        {!isInbound && msg.senderLabel === "IA" && <Bot size={10} color="var(--accent)" />}
+                                    <div className={cn(
+                                        "text-[10px] text-muted-foreground mb-[3px] flex gap-1 items-center",
+                                        isInbound ? "text-left justify-start pl-1" : "text-right justify-end pr-1"
+                                    )}>
+                                        {!isInbound && msg.senderLabel === "IA" && <Bot size={10} className="text-indigo-600" />}
                                         {!isInbound && msg.senderLabel === "Agente" && <User size={10} />}
-                                        <span style={{ fontWeight: 600 }}>{msg.senderLabel || msg.senderName}</span>
-                                        <span style={{ opacity: 0.6 }}>{msg.timestamp}</span>
+                                        <span className="font-semibold">{msg.senderLabel || msg.senderName}</span>
+                                        <span className="opacity-60">{msg.timestamp}</span>
                                     </div>
 
                                     {/* Bubble */}
-                                    <div style={{
-                                        padding: "10px 14px",
-                                        borderRadius: 16,
-                                        // Inbound: light dark bubble, Outbound: accent-colored
-                                        background: isInbound
-                                            ? "var(--bg-secondary)"
-                                            : (msg.senderLabel === "IA" ? "rgba(108, 92, 231, 0.18)" : "var(--accent)"),
-                                        color: (!isInbound && msg.senderLabel !== "IA") ? "white" : "var(--text-primary)",
-                                        fontSize: 14, lineHeight: 1.55,
-                                        // Tail effect
-                                        borderBottomLeftRadius: isInbound ? 4 : 16,
-                                        borderBottomRightRadius: isInbound ? 16 : 4,
-                                        border: isInbound
-                                            ? "1px solid var(--border)"
-                                            : (msg.senderLabel === "IA" ? "1px solid rgba(108, 92, 231, 0.3)" : "none"),
-                                        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-                                        wordBreak: "break-word" as const,
-                                    }}>
+                                    <div className={cn(
+                                        "px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-words",
+                                        isInbound
+                                            ? "bg-card border border-border rounded-bl-sm"
+                                            : msg.senderLabel === "IA"
+                                                ? "bg-indigo-600/[0.18] border border-indigo-600/30 rounded-br-sm text-foreground"
+                                                : "bg-indigo-600 border-none rounded-br-sm text-white"
+                                    )}>
                                         {msg.content}
                                     </div>
                                 </div>
 
                                 {/* Outbound: small icon on right */}
                                 {!isInbound && (
-                                    <div style={{
-                                        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-                                        background: msg.senderLabel === "IA"
-                                            ? "rgba(108, 92, 231, 0.15)"
-                                            : "rgba(108, 92, 231, 0.25)",
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        marginBottom: 2,
-                                    }}>
+                                    <div className={cn(
+                                        "w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center mb-0.5",
+                                        msg.senderLabel === "IA" ? "bg-indigo-600/15" : "bg-indigo-600/25"
+                                    )}>
                                         {msg.senderLabel === "IA"
-                                            ? <Bot size={14} color="var(--accent)" />
-                                            : <User size={14} color="var(--accent)" />
+                                            ? <Bot size={14} className="text-indigo-600" />
+                                            : <User size={14} className="text-indigo-600" />
                                         }
                                     </div>
                                 )}
@@ -1074,49 +962,33 @@ export default function InboxPage() {
                     {/* AI Suggestion Banner -- only when conversation is active */}
                     {selectedConv && ['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(selectedConv.status) && (
                         aiSuggestionLoading ? (
-                            <div style={{
-                                padding: "10px 14px", borderRadius: 10,
-                                background: "rgba(46, 204, 113, 0.08)", border: "1px solid rgba(46, 204, 113, 0.2)",
-                                display: "flex", gap: 8, alignItems: "center", marginTop: 8,
-                            }}>
-                                <Loader2 size={16} color="#2ecc71" style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} />
-                                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                            <div className="px-3.5 py-2.5 rounded-[10px] bg-emerald-500/[0.08] border border-emerald-500/20 flex gap-2 items-center mt-2">
+                                <Loader2 size={16} className="text-emerald-500 animate-spin flex-shrink-0" />
+                                <div className="text-[13px] text-muted-foreground">
                                     Generando sugerencia de IA...
                                 </div>
                             </div>
                         ) : aiSuggestion ? (
-                            <div style={{
-                                padding: "10px 14px", borderRadius: 10,
-                                background: "rgba(46, 204, 113, 0.08)", border: "1px solid rgba(46, 204, 113, 0.2)",
-                                display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8,
-                            }}>
-                                <Sparkles size={16} color="#2ecc71" style={{ marginTop: 2, flexShrink: 0 }} />
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#2ecc71", marginBottom: 4 }}>Sugerencia IA</div>
-                                    <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                            <div className="px-3.5 py-2.5 rounded-[10px] bg-emerald-500/[0.08] border border-emerald-500/20 flex gap-2 items-start mt-2">
+                                <Sparkles size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                    <div className="text-[11px] font-semibold text-emerald-500 mb-1">Sugerencia IA</div>
+                                    <div className="text-[13px] text-muted-foreground">
                                         &quot;{aiSuggestion}&quot;
                                     </div>
-                                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                    <div className="flex gap-1.5 mt-1.5">
                                         <button
                                             onClick={() => {
                                                 setMessageInput(aiSuggestion);
                                                 messageInputRef.current?.focus();
                                             }}
-                                            style={{
-                                                padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(46, 204, 113, 0.3)",
-                                                background: "transparent", color: "#2ecc71", fontSize: 12, cursor: "pointer",
-                                                display: "flex", gap: 4, alignItems: "center",
-                                            }}
+                                            className="py-1 px-2.5 rounded-md border border-emerald-500/30 bg-transparent text-emerald-500 text-xs cursor-pointer flex gap-1 items-center hover:bg-emerald-500/10"
                                         >
                                             <Zap size={12} /> Usar sugerencia
                                         </button>
                                         <button
                                             onClick={() => fetchAiSuggestion()}
-                                            style={{
-                                                padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)",
-                                                background: "transparent", color: "var(--text-secondary)", fontSize: 12, cursor: "pointer",
-                                                display: "flex", gap: 4, alignItems: "center",
-                                            }}
+                                            className="py-1 px-2.5 rounded-md border border-border bg-transparent text-muted-foreground text-xs cursor-pointer flex gap-1 items-center hover:bg-muted"
                                         >
                                             <RefreshCw size={12} /> Actualizar
                                         </button>
@@ -1127,7 +999,7 @@ export default function InboxPage() {
                     )}
 
                     {/* Typing indicator area (visual placeholder for future use) */}
-                    <div style={{ minHeight: 4 }} />
+                    <div className="min-h-1" />
 
                     {/* Scroll anchor */}
                     <div ref={messagesEndRef} />
@@ -1135,38 +1007,29 @@ export default function InboxPage() {
 
                 {/* Notes Panel (conditional) */}
                 {showNotes && (
-                    <div style={{
-                        borderTop: "1px solid var(--border)", padding: "12px 20px",
-                        background: "rgba(255, 170, 0, 0.05)", maxHeight: 200, overflow: "auto",
-                    }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#ffaa00", marginBottom: 8, display: "flex", gap: 4, alignItems: "center" }}>
+                    <div className="border-t border-border px-5 py-3 bg-amber-500/5 max-h-[200px] overflow-auto">
+                        <div className="text-xs font-semibold text-amber-500 mb-2 flex gap-1 items-center">
                             <StickyNote size={14} /> Notas internas
                         </div>
                         {notes.length > 0 ? notes.map(note => (
-                            <div key={note.id} style={{
-                                padding: "6px 10px", borderRadius: 6, background: "var(--bg-secondary)",
-                                marginBottom: 6, fontSize: 13,
-                            }}>
+                            <div key={note.id} className="px-2.5 py-1.5 rounded-md bg-card mb-1.5 text-[13px]">
                                 <div>{note.content}</div>
-                                <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4 }}>— {note.agentName}, {note.createdAt}</div>
+                                <div className="text-[10px] text-muted-foreground mt-1">— {note.agentName}, {note.createdAt}</div>
                             </div>
                         )) : (
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", opacity: 0.6 }}>No hay notas para esta conversacion</div>
+                            <div className="text-xs text-muted-foreground opacity-60">No hay notas para esta conversacion</div>
                         )}
-                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <div className="flex gap-2 mt-2">
                             <input
                                 value={noteInput}
                                 onChange={e => setNoteInput(e.target.value)}
                                 placeholder="Agregar nota interna..."
-                                style={{
-                                    flex: 1, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)",
-                                    background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 12, outline: "none",
-                                }}
+                                className="flex-1 py-1.5 px-2.5 rounded-md border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
                             />
-                            <button onClick={handleAddNote} style={{
-                                padding: "6px 12px", borderRadius: 6, border: "none",
-                                background: "#ffaa00", color: "white", fontSize: 12, cursor: "pointer",
-                            }}>
+                            <button
+                                onClick={handleAddNote}
+                                className="py-1.5 px-3 rounded-md border-none bg-amber-500 text-white text-xs cursor-pointer hover:bg-amber-600"
+                            >
                                 Guardar
                             </button>
                         </div>
@@ -1174,59 +1037,37 @@ export default function InboxPage() {
                 )}
 
                 {/* Message Input */}
-                <div style={{
-                    padding: "12px 20px", borderTop: "1px solid var(--border)",
-                    display: "flex", gap: 8, alignItems: "center", background: "var(--bg-secondary)",
-                }}>
-                    <button style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", padding: 4 }}>
+                <div className="px-5 py-3 border-t border-border flex gap-2 items-center bg-card">
+                    <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1 hover:text-foreground">
                         <Paperclip size={20} />
                     </button>
-                    <div style={{ position: "relative", flex: 1 }}>
+                    <div className="relative flex-1">
                         {/* Canned Responses Dropdown */}
                         {showCannedMenu && filteredCanned.length > 0 && (
-                            <div style={{
-                                position: "absolute", bottom: "100%", left: 0, right: 0,
-                                marginBottom: 4, background: "var(--bg-secondary)",
-                                border: "1px solid var(--border)", borderRadius: 10,
-                                boxShadow: "0 -4px 20px rgba(0,0,0,0.15)", maxHeight: 220, overflow: "auto",
-                                zIndex: 50,
-                            }}>
-                                <div style={{
-                                    padding: "8px 12px", fontSize: 11, fontWeight: 600,
-                                    color: "var(--text-secondary)", borderBottom: "1px solid var(--border)",
-                                    display: "flex", gap: 4, alignItems: "center",
-                                }}>
+                            <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-[10px] shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[220px] overflow-auto z-50">
+                                <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground border-b border-border flex gap-1 items-center">
                                     <Zap size={12} /> Respuestas rapidas
                                 </div>
                                 {filteredCanned.map((cr, idx) => (
                                     <div
                                         key={cr.id}
                                         onClick={() => selectCannedResponse(cr)}
-                                        style={{
-                                            padding: "8px 12px", cursor: "pointer",
-                                            background: idx === cannedSelectedIndex ? "var(--accent-glow)" : "transparent",
-                                            borderBottom: idx < filteredCanned.length - 1 ? "1px solid var(--border)" : "none",
-                                            transition: "background 0.1s ease",
-                                        }}
+                                        className={cn(
+                                            "px-3 py-2 cursor-pointer transition-colors duration-100",
+                                            idx === cannedSelectedIndex ? "bg-indigo-600/[0.08]" : "bg-transparent",
+                                            idx < filteredCanned.length - 1 && "border-b border-border"
+                                        )}
                                         onMouseEnter={() => setCannedSelectedIndex(idx)}
                                     >
-                                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                            <span style={{
-                                                fontSize: 11, fontWeight: 600, color: "var(--accent)",
-                                                background: "rgba(108, 92, 231, 0.1)", padding: "2px 6px", borderRadius: 4,
-                                                fontFamily: "monospace",
-                                            }}>
+                                        <div className="flex gap-2 items-center">
+                                            <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-600/10 px-1.5 py-0.5 rounded font-mono">
                                                 /{cr.shortcode}
                                             </span>
-                                            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-primary)" }}>
+                                            <span className="text-xs font-medium text-foreground">
                                                 {cr.title}
                                             </span>
                                         </div>
-                                        <div style={{
-                                            fontSize: 11, color: "var(--text-secondary)", marginTop: 2,
-                                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                                            maxWidth: "100%",
-                                        }}>
+                                        <div className="text-[11px] text-muted-foreground mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
                                             {cr.content}
                                         </div>
                                     </div>
@@ -1234,14 +1075,8 @@ export default function InboxPage() {
                             </div>
                         )}
                         {showCannedMenu && filteredCanned.length === 0 && cannedFilter && (
-                            <div style={{
-                                position: "absolute", bottom: "100%", left: 0, right: 0,
-                                marginBottom: 4, background: "var(--bg-secondary)",
-                                border: "1px solid var(--border)", borderRadius: 10,
-                                boxShadow: "0 -4px 20px rgba(0,0,0,0.15)", padding: "12px 14px",
-                                zIndex: 50,
-                            }}>
-                                <div style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
+                            <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-[10px] shadow-[0_-4px_20px_rgba(0,0,0,0.15)] px-3.5 py-3 z-50">
+                                <div className="text-xs text-muted-foreground text-center">
                                     No se encontraron respuestas para &quot;/{cannedFilter}&quot;
                                 </div>
                             </div>
@@ -1253,119 +1088,90 @@ export default function InboxPage() {
                             onKeyDown={handleInputKeyDown}
                             onBlur={() => { setTimeout(() => setShowCannedMenu(false), 150); }}
                             placeholder="Escribe un mensaje... (/ para respuestas rapidas)"
-                            style={{
-                                width: "100%", padding: "10px 14px", borderRadius: 20,
-                                border: "1px solid var(--border)", background: "var(--bg-tertiary)",
-                                color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box",
-                            }}
+                            className="w-full py-2.5 px-3.5 rounded-full border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-sm outline-none"
                         />
                     </div>
-                    <button style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", padding: 4 }}>
+                    <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1 hover:text-foreground">
                         <Smile size={20} />
                     </button>
                     <button
                         onClick={handleSend}
-                        style={{
-                            padding: "10px", borderRadius: "50%", border: "none",
-                            background: "var(--accent)", color: "white", cursor: "pointer",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            transition: "transform 0.1s ease",
-                        }}
+                        className="p-2.5 rounded-full border-none bg-indigo-600 text-white cursor-pointer flex items-center justify-center hover:bg-indigo-700 transition-transform duration-100 active:scale-95"
                     >
                         <Send size={18} />
                     </button>
                 </div>
                     </>
                 ) : (
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", gap: 16 }}>
-                        <MessageSquare size={48} opacity={0.2} />
+                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+                        <MessageSquare size={48} className="opacity-20" />
                         <span>Selecciona una conversacion para ver los mensajes.</span>
                     </div>
                 )}
             </div>
 
             {/* ======== RIGHT: Contact Panel ======== */}
-            <div className="inbox-scrollbar" style={{
-                width: 300, borderLeft: "1px solid var(--border)", overflow: "auto",
-                background: "var(--bg-secondary)", padding: "16px",
-            }}>
+            <div className="inbox-scrollbar w-[300px] border-l border-border overflow-auto bg-card p-4">
                 {/* Contact Header -- derived from selected conversation */}
                 {selectedConv && (
                     <>
-                    <div style={{ textAlign: "center", marginBottom: 20 }}>
-                        <div style={{
-                            width: 64, height: 64, borderRadius: "50%", margin: "0 auto 10px",
-                            background: "linear-gradient(135deg, var(--accent), #9b59b6)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 24, fontWeight: 700, color: "white",
-                        }}>
+                    <div className="text-center mb-5">
+                        <div className="w-16 h-16 rounded-full mx-auto mb-2.5 bg-gradient-to-br from-indigo-600 to-purple-500 flex items-center justify-center text-2xl font-bold text-white">
                             {selectedConv.contactName?.charAt(0) || '?'}
                         </div>
-                        <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedConv.contactName}</div>
-                        <div style={{
-                            padding: "2px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600,
-                            background: `${statusLabels[selectedConv.status]?.color || '#95a5a6'}22`,
-                            color: statusLabels[selectedConv.status]?.color || '#95a5a6',
-                            display: "inline-block", marginTop: 4,
-                        }}>
+                        <div className="font-bold text-base">{selectedConv.contactName}</div>
+                        <span
+                            className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                            style={{
+                                background: `${statusLabels[selectedConv.status]?.color || '#95a5a6'}22`,
+                                color: statusLabels[selectedConv.status]?.color || '#95a5a6',
+                            }}
+                        >
                             {statusLabels[selectedConv.status]?.label || selectedConv.status}
-                        </div>
+                        </span>
                     </div>
 
                     {/* Contact Details */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                            <Phone size={14} color="var(--text-secondary)" />
+                    <div className="flex flex-col gap-2.5 mb-5">
+                        <div className="flex items-center gap-2 text-[13px]">
+                            <Phone size={14} className="text-muted-foreground" />
                             <span>{selectedConv.contactPhone || 'Sin telefono'}</span>
                         </div>
                         {selectedConv.contactEmail && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                                <Mail size={14} color="var(--text-secondary)" />
+                            <div className="flex items-center gap-2 text-[13px]">
+                                <Mail size={14} className="text-muted-foreground" />
                                 <span>{selectedConv.contactEmail}</span>
                             </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                            <Clock size={14} color="var(--text-secondary)" />
+                        <div className="flex items-center gap-2 text-[13px]">
+                            <Clock size={14} className="text-muted-foreground" />
                             <span>{selectedConv.lastMessageAt || 'Sin interacciones'}</span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                            <MessageSquare size={14} color="var(--text-secondary)" />
+                        <div className="flex items-center gap-2 text-[13px]">
+                            <MessageSquare size={14} className="text-muted-foreground" />
                             <span>{selectedConv.channel}</span>
                         </div>
                     </div>
 
                     {/* Assigned Agent */}
-                    <div style={{ marginBottom: 20 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                    <div className="mb-5">
+                        <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
                             <UserCheck size={12} /> Agente asignado
                         </div>
                         {selectedConv.assignedAgentName ? (
-                            <div style={{
-                                padding: "8px 12px", borderRadius: 8,
-                                background: "rgba(52, 152, 219, 0.08)", border: "1px solid rgba(52, 152, 219, 0.2)",
-                                display: "flex", alignItems: "center", gap: 8,
-                            }}>
-                                <div style={{
-                                    width: 28, height: 28, borderRadius: "50%",
-                                    background: "linear-gradient(135deg, #3498db, #2980b9)",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    fontSize: 12, fontWeight: 700, color: "white", flexShrink: 0,
-                                }}>
+                            <div className="px-3 py-2 rounded-lg bg-blue-500/[0.08] border border-blue-500/20 flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
                                     {selectedConv.assignedAgentName.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: 13, fontWeight: 500 }}>{selectedConv.assignedAgentName}</div>
+                                    <div className="text-[13px] font-medium">{selectedConv.assignedAgentName}</div>
                                     {selectedConv.assignedAgentId === user?.id && (
-                                        <div style={{ fontSize: 10, color: "var(--accent)" }}>Tu</div>
+                                        <div className="text-[10px] text-indigo-600">Tu</div>
                                     )}
                                 </div>
                             </div>
                         ) : (
-                            <div style={{
-                                padding: "8px 12px", borderRadius: 8,
-                                background: "var(--bg-tertiary)", fontSize: 12,
-                                color: "var(--text-secondary)", textAlign: "center",
-                            }}>
+                            <div className="px-3 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs text-muted-foreground text-center">
                                 Sin asignar
                             </div>
                         )}
@@ -1373,16 +1179,13 @@ export default function InboxPage() {
 
                     {/* Tags */}
                     {selectedConv.tags?.length > 0 && (
-                        <div style={{ marginBottom: 20 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                        <div className="mb-5">
+                            <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
                                 <Tag size={12} /> Tags
                             </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            <div className="flex flex-wrap gap-1">
                                 {selectedConv.tags.map((tag: string) => (
-                                    <span key={tag} style={{
-                                        fontSize: 11, padding: "3px 8px", borderRadius: 6,
-                                        background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
-                                    }}>
+                                    <span key={tag} className="text-[11px] px-2 py-[3px] rounded-md bg-indigo-600/15 text-indigo-600 dark:text-indigo-400">
                                         {tag}
                                     </span>
                                 ))}
@@ -1392,12 +1195,9 @@ export default function InboxPage() {
 
                     {/* Estimated Value */}
                     {selectedConv.estimatedValue > 0 && (
-                        <div style={{
-                            padding: "12px", borderRadius: 10, background: "var(--bg-tertiary)",
-                            border: "1px solid var(--border)", marginBottom: 20,
-                        }}>
-                            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Valor estimado</div>
-                            <div style={{ fontSize: 20, fontWeight: 700, color: "#2ecc71" }}>
+                        <div className="p-3 rounded-[10px] bg-neutral-100 dark:bg-neutral-800 border border-border mb-5">
+                            <div className="text-[11px] text-muted-foreground">Valor estimado</div>
+                            <div className="text-xl font-bold text-emerald-500">
                                 ${selectedConv.estimatedValue.toLocaleString()} COP
                             </div>
                         </div>

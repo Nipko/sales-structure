@@ -5,13 +5,12 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
 import {
     MessageSquare, Search, Filter, Clock, User, Bot, Phone,
     CheckCircle2, AlertCircle, ArrowUpDown, ChevronRight,
     Calendar, Hash, Tag,
 } from "lucide-react";
-
-// No mock data — all loaded from API
 
 const statusConfig: Record<string, { label: string; color: string }> = {
     active: { label: "Activa", color: "#2ecc71" },
@@ -35,7 +34,6 @@ export default function ConversationsPage() {
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [sortBy, setSortBy] = useState<"recent" | "messages">("recent");
 
-    // Load from API
     useEffect(() => {
         async function load() {
             if (!activeTenantId) return;
@@ -50,9 +48,7 @@ export default function ConversationsPage() {
 
     const filtered = conversations
         .filter(c => {
-            const matchSearch = searchQuery
-                ? `${c.contactName} ${c.contactPhone} ${c.lastMessage}`.toLowerCase().includes(searchQuery.toLowerCase())
-                : true;
+            const matchSearch = searchQuery ? `${c.contactName} ${c.contactPhone} ${c.lastMessage}`.toLowerCase().includes(searchQuery.toLowerCase()) : true;
             const matchStatus = statusFilter === "all" || c.status === statusFilter;
             return matchSearch && matchStatus;
         })
@@ -68,34 +64,30 @@ export default function ConversationsPage() {
 
     return (
         <div>
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                        <MessageSquare size={28} color="var(--accent)" /> Conversaciones
+                    <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                        <MessageSquare size={28} className="text-primary" /> Conversaciones
                         <DataSourceBadge isLive={isLive} />
                     </h1>
-                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
-                        {stats.total} conversaciones · {stats.totalMessages} mensajes totales
-                    </p>
+                    <p className="text-muted-foreground mt-1">{stats.total} conversaciones · {stats.totalMessages} mensajes totales</p>
                 </div>
             </div>
 
-            {/* Stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+            <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { label: "Total", value: stats.total, color: "var(--accent)", icon: MessageSquare },
+                    { label: "Total", value: stats.total, color: "#6c5ce7", icon: MessageSquare },
                     { label: "Activas", value: stats.active, color: "#2ecc71", icon: CheckCircle2 },
                     { label: "Esperando", value: stats.waiting, color: "#f39c12", icon: Clock },
                     { label: "Resueltas", value: stats.resolved, color: "#95a5a6", icon: CheckCircle2 },
                 ].map(stat => (
-                    <div key={stat.label} style={{ padding: 20, borderRadius: 14, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
+                        <div className="flex justify-between items-center">
                             <div>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>{stat.label}</div>
-                                <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{stat.value}</div>
+                                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
+                                <div className="text-[28px] font-bold mt-1">{stat.value}</div>
                             </div>
-                            <div style={{ width: 44, height: 44, borderRadius: 12, background: `${stat.color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                                 <stat.icon size={22} color={stat.color} />
                             </div>
                         </div>
@@ -103,31 +95,28 @@ export default function ConversationsPage() {
                 ))}
             </div>
 
-            {/* Filters */}
-            <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center" }}>
-                <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
-                    <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-secondary)" }} />
-                    <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar contacto, teléfono o mensaje..."
-                        style={{ width: "100%", padding: "10px 10px 10px 36px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+            <div className="flex gap-3 mb-5 items-center">
+                <div className="relative flex-1 max-w-[360px]">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar contacto, telefono o mensaje..." className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                 </div>
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 14, outline: "none" }}>
+                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
                     <option value="all">Todos</option>
                     <option value="active">Activas</option>
                     <option value="waiting">Esperando</option>
                     <option value="resolved">Resueltas</option>
                 </select>
-                <button onClick={() => setSortBy(s => s === "recent" ? "messages" : "recent")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13, cursor: "pointer" }}>
-                    <ArrowUpDown size={14} /> {sortBy === "recent" ? "Recientes" : "Más mensajes"}
+                <button onClick={() => setSortBy(s => s === "recent" ? "messages" : "recent")} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-[13px] cursor-pointer">
+                    <ArrowUpDown size={14} /> {sortBy === "recent" ? "Recientes" : "Mas mensajes"}
                 </button>
             </div>
 
-            {/* Conversation Table */}
-            <div style={{ borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="rounded-[14px] border border-border overflow-hidden">
+                <table className="w-full border-collapse">
                     <thead>
-                        <tr style={{ background: "var(--bg-secondary)" }}>
-                            {["Contacto", "Último mensaje", "Mensajes", "Estado", "Agente", "Sentimiento", "Fecha"].map(h => (
-                                <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid var(--border)" }}>{h}</th>
+                        <tr className="bg-card">
+                            {["Contacto", "Ultimo mensaje", "Mensajes", "Estado", "Agente", "Sentimiento", "Fecha"].map(h => (
+                                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
                             ))}
                         </tr>
                     </thead>
@@ -136,36 +125,30 @@ export default function ConversationsPage() {
                             const sc = statusConfig[conv.status];
                             const sm = sentimentConfig[conv.sentiment];
                             return (
-                                <tr key={conv.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, var(--accent), #9b59b6)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: 14 }}>
+                                <tr key={conv.id} className="border-b border-border cursor-pointer">
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-bold text-sm">
                                                 {conv.contactName.charAt(0)}
                                             </div>
                                             <div>
-                                                <div style={{ fontWeight: 600, fontSize: 14 }}>{conv.contactName}</div>
-                                                <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{conv.contactPhone}</div>
+                                                <div className="font-semibold text-sm">{conv.contactName}</div>
+                                                <div className="text-[11px] text-muted-foreground">{conv.contactPhone}</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-secondary)", maxWidth: 250, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                        {conv.lastMessage}
-                                    </td>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 600 }}>
-                                            <Hash size={12} color="var(--text-secondary)" /> {conv.messageCount}
+                                    <td className="px-4 py-3 text-[13px] text-muted-foreground max-w-[250px] overflow-hidden text-ellipsis whitespace-nowrap">{conv.lastMessage}</td>
+                                    <td className="px-4 py-3">
+                                        <span className="flex items-center gap-1 text-[13px] font-semibold">
+                                            <Hash size={12} className="text-muted-foreground" /> {conv.messageCount}
                                         </span>
                                     </td>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: `${sc.color}15`, color: sc.color, fontWeight: 600 }}>
-                                            {sc.label}
-                                        </span>
+                                    <td className="px-4 py-3">
+                                        <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${sc.color}15`, color: sc.color }}>{sc.label}</span>
                                     </td>
-                                    <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-secondary)" }}>{conv.assignedAgent}</td>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <span title={sm.label}>{sm.emoji}</span>
-                                    </td>
-                                    <td style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-secondary)" }}>{conv.lastMessageAt}</td>
+                                    <td className="px-4 py-3 text-[13px] text-muted-foreground">{conv.assignedAgent}</td>
+                                    <td className="px-4 py-3"><span title={sm.label}>{sm.emoji}</span></td>
+                                    <td className="px-4 py-3 text-xs text-muted-foreground">{conv.lastMessageAt}</td>
                                 </tr>
                             );
                         })}
@@ -173,18 +156,15 @@ export default function ConversationsPage() {
                 </table>
             </div>
 
-            {/* Tags Summary */}
-            <div style={{ marginTop: 20, padding: 16, borderRadius: 14, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                    <Tag size={14} color="var(--accent)" /> Tags más usados
+            <div className="mt-5 p-4 rounded-[14px] bg-card border border-border">
+                <div className="text-[13px] font-semibold mb-2.5 flex items-center gap-1.5">
+                    <Tag size={14} className="text-primary" /> Tags mas usados
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="flex gap-2 flex-wrap">
                     {Array.from(new Set(conversations.flatMap(c => c.tags))).filter(Boolean).map(tag => {
                         const count = conversations.filter(c => c.tags.includes(tag)).length;
                         return (
-                            <span key={tag} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, background: "rgba(108,92,231,0.1)", color: "var(--accent)", fontWeight: 500 }}>
-                                {tag} ({count})
-                            </span>
+                            <span key={tag} className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary font-medium">{tag} ({count})</span>
                         );
                     })}
                 </div>

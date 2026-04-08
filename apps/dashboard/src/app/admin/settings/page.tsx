@@ -4,6 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
     Brain,
     MessageSquare,
@@ -25,13 +30,13 @@ import {
 } from "lucide-react";
 
 const tabs = [
-    { id: "llm", label: "LLM Providers", icon: Brain, color: "#6c5ce7" },
-    { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, color: "#25d366" },
-    { id: "instagram", label: "Instagram", icon: Instagram, color: "#e1306c" },
-    { id: "messenger", label: "Messenger", icon: Facebook, color: "#0084ff" },
-    { id: "telegram", label: "Telegram", icon: Send, color: "#0088cc" },
-    { id: "chatwoot", label: "Chatwoot", icon: Headphones, color: "#1f93ff" },
-    { id: "general", label: "General", icon: SettingsIcon, color: "#00b4d8" },
+    { id: "llm", label: "LLM Providers", icon: Brain, color: "text-indigo-500", activeBg: "bg-indigo-500/10", activeBorder: "border-indigo-500" },
+    { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, color: "text-green-500", activeBg: "bg-green-500/10", activeBorder: "border-green-500" },
+    { id: "instagram", label: "Instagram", icon: Instagram, color: "text-pink-500", activeBg: "bg-pink-500/10", activeBorder: "border-pink-500" },
+    { id: "messenger", label: "Messenger", icon: Facebook, color: "text-blue-500", activeBg: "bg-blue-500/10", activeBorder: "border-blue-500" },
+    { id: "telegram", label: "Telegram", icon: Send, color: "text-sky-500", activeBg: "bg-sky-500/10", activeBorder: "border-sky-500" },
+    { id: "chatwoot", label: "Chatwoot", icon: Headphones, color: "text-blue-400", activeBg: "bg-blue-400/10", activeBorder: "border-blue-400" },
+    { id: "general", label: "General", icon: SettingsIcon, color: "text-sky-500", activeBg: "bg-sky-500/10", activeBorder: "border-sky-500" },
 ];
 
 interface FieldConfig {
@@ -102,21 +107,24 @@ const toolCards = [
         description: "Define campos dinámicos para contactos y conversaciones",
         icon: Database,
         href: "/admin/settings/custom-attributes",
-        color: "#3498db",
+        iconColor: "text-blue-500",
+        iconBg: "bg-blue-500/10",
     },
     {
         title: "Macros",
         description: "Secuencias de acciones guardadas para ejecutar rápidamente",
         icon: Zap,
         href: "/admin/settings/macros",
-        color: "#e67e22",
+        iconColor: "text-orange-500",
+        iconBg: "bg-orange-500/10",
     },
     {
         title: "Formulario Pre-Chat",
         description: "Configura los campos que se solicitan antes de iniciar un chat",
         icon: MessageSquare,
         href: "/admin/settings/prechat",
-        color: "#2ecc71",
+        iconColor: "text-emerald-500",
+        iconBg: "bg-emerald-500/10",
     },
 ];
 
@@ -181,28 +189,25 @@ export default function SettingsPage() {
 
         if (field.type === "boolean") {
             return (
-                <div key={field.key} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "16px 20px", borderRadius: 12, background: "var(--bg-tertiary)",
-                    border: "1px solid var(--border)",
-                }}>
+                <div
+                    key={field.key}
+                    className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-800/50"
+                >
                     <div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{field.label}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{field.description}</div>
+                        <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{field.label}</div>
+                        <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{field.description}</div>
                     </div>
                     <button
                         onClick={() => handleChange(field.key, value === "true" ? "false" : "true")}
-                        style={{
-                            width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer",
-                            background: value === "true" ? "var(--accent)" : "var(--border)",
-                            position: "relative", transition: "background 0.2s ease",
-                        }}
+                        className={cn(
+                            "relative h-6 w-12 shrink-0 cursor-pointer rounded-full border-none transition-colors duration-200",
+                            value === "true" ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
+                        )}
                     >
-                        <div style={{
-                            width: 20, height: 20, borderRadius: "50%", background: "white",
-                            position: "absolute", top: 3, transition: "left 0.2s ease",
-                            left: value === "true" ? 25 : 3,
-                        }} />
+                        <div className={cn(
+                            "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[left] duration-200",
+                            value === "true" ? "left-[27px]" : "left-[3px]"
+                        )} />
                     </button>
                 </div>
             );
@@ -210,17 +215,13 @@ export default function SettingsPage() {
 
         if (field.type === "select") {
             return (
-                <div key={field.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <label style={{ fontWeight: 600, fontSize: 14 }}>{field.label}</label>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{field.description}</div>
+                <div key={field.key} className="flex flex-col gap-1.5">
+                    <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{field.label}</Label>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{field.description}</p>
                     <select
                         value={value}
                         onChange={e => handleChange(field.key, e.target.value)}
-                        style={{
-                            padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)",
-                            background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 14,
-                            outline: "none", cursor: "pointer",
-                        }}
+                        className="h-9 w-full cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
                     >
                         {field.options?.map(opt => (
                             <option key={opt} value={opt}>{opt}</option>
@@ -234,34 +235,28 @@ export default function SettingsPage() {
         const isVisible = showSecrets[field.key];
 
         return (
-            <div key={field.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
-                    {isPassword && <Key size={14} color="var(--accent)" />}
+            <div key={field.key} className="flex flex-col gap-1.5">
+                <Label className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                    {isPassword && <Key size={14} className="text-indigo-600" />}
                     {field.label}
-                </label>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{field.description}</div>
-                <div style={{ position: "relative" }}>
-                    <input
+                </Label>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{field.description}</p>
+                <div className="relative">
+                    <Input
                         type={isPassword && !isVisible ? "password" : field.type === "number" ? "number" : "text"}
                         value={value}
                         onChange={e => handleChange(field.key, e.target.value)}
                         placeholder={field.placeholder}
-                        style={{
-                            width: "100%", padding: "10px 14px", paddingRight: isPassword ? 44 : 14,
-                            borderRadius: 10, border: "1px solid var(--border)",
-                            background: "var(--bg-tertiary)", color: "var(--text-primary)",
-                            fontSize: 14, outline: "none", boxSizing: "border-box",
-                            fontFamily: isPassword && !isVisible ? "monospace" : "inherit",
-                        }}
+                        className={cn(
+                            "h-9 rounded-lg border-neutral-200 bg-white text-sm dark:border-neutral-700 dark:bg-neutral-800",
+                            isPassword && "pr-11",
+                            isPassword && !isVisible && "font-mono"
+                        )}
                     />
                     {isPassword && (
                         <button
                             onClick={() => toggleSecret(field.key)}
-                            style={{
-                                position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                                background: "none", border: "none", cursor: "pointer",
-                                color: "var(--text-secondary)", padding: 4,
-                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
                         >
                             {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -271,80 +266,67 @@ export default function SettingsPage() {
         );
     };
 
+    const activeTabConfig = tabs.find(t => t.id === activeTab);
+
     return (
-        <div>
+        <div className="space-y-6">
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
+            <div className="flex items-center justify-between">
                 <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Configuración</h1>
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Configuración</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
-                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
+                    <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                         Gestiona las API keys, credenciales y parámetros de la plataforma
                     </p>
                 </div>
-                <button
+                <Button
                     onClick={handleSave}
                     disabled={saving}
-                    style={{
-                        display: "flex", alignItems: "center", gap: 8,
-                        padding: "12px 24px", borderRadius: 12, border: "none",
-                        background: saved ? "#2ecc71" : "var(--accent)",
-                        color: "white", fontWeight: 600, fontSize: 14, cursor: "pointer",
-                        transition: "all 0.3s ease", opacity: saving ? 0.7 : 1,
-                    }}
+                    className={cn(
+                        "gap-2 rounded-xl px-6",
+                        saved
+                            ? "bg-emerald-500 hover:bg-emerald-600"
+                            : "bg-indigo-600 hover:bg-indigo-700",
+                        saving && "opacity-70"
+                    )}
                 >
                     {saved ? <CheckCircle size={18} /> : <Save size={18} />}
                     {saving ? "Guardando..." : saved ? "¡Guardado!" : "Guardar cambios"}
-                </button>
+                </Button>
             </div>
 
             {/* Security Badge */}
-            <div style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "10px 16px",
-                borderRadius: 10, background: "rgba(108, 92, 231, 0.1)", border: "1px solid rgba(108, 92, 231, 0.2)",
-                marginBottom: 24, fontSize: 13, color: "var(--text-secondary)",
-            }}>
-                <Shield size={16} color="#6c5ce7" />
+            <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
+                <Shield size={16} className="shrink-0 text-indigo-600" />
                 Las API keys se almacenan encriptadas y se muestran enmascaradas. Solo super_admin puede modificarlas.
             </div>
 
             {/* Herramientas */}
-            <div style={{ marginBottom: 24 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 12px" }}>Herramientas</h2>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <div>
+                <h2 className="mb-3 text-base font-semibold text-neutral-900 dark:text-neutral-100">Herramientas</h2>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     {toolCards.map(card => {
                         const Icon = card.icon;
                         return (
                             <button
                                 key={card.href}
                                 onClick={() => router.push(card.href)}
-                                style={{
-                                    display: "flex", alignItems: "center", gap: 14,
-                                    padding: "16px 20px", borderRadius: 12,
-                                    border: "1px solid var(--border)", background: "var(--bg-secondary)",
-                                    cursor: "pointer", textAlign: "left", transition: "all 0.2s ease",
-                                }}
-                                onMouseOver={e => (e.currentTarget.style.borderColor = card.color)}
-                                onMouseOut={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                                className="group flex items-center gap-3.5 rounded-xl border border-neutral-200 bg-white px-5 py-4 text-left transition-colors hover:border-indigo-400 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-indigo-500"
                             >
-                                <div style={{
-                                    width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                                    background: `${card.color}18`, display: "flex",
-                                    alignItems: "center", justifyContent: "center",
-                                }}>
-                                    <Icon size={20} color={card.color} />
+                                <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", card.iconBg)}>
+                                    <Icon size={20} className={card.iconColor} />
                                 </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary)" }}>
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                                         {card.title}
                                     </div>
-                                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                                    <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
                                         {card.description}
                                     </div>
                                 </div>
-                                <ArrowRight size={16} color="var(--text-secondary)" />
+                                <ArrowRight size={16} className="shrink-0 text-neutral-400 transition-transform group-hover:translate-x-0.5" />
                             </button>
                         );
                     })}
@@ -352,7 +334,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Tabs */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+            <div className="flex flex-wrap gap-2">
                 {tabs.map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -360,15 +342,12 @@ export default function SettingsPage() {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            style={{
-                                display: "flex", alignItems: "center", gap: 8,
-                                padding: "10px 20px", borderRadius: 10,
-                                border: isActive ? `1px solid ${tab.color}` : "1px solid var(--border)",
-                                background: isActive ? `${tab.color}15` : "transparent",
-                                color: isActive ? tab.color : "var(--text-secondary)",
-                                fontWeight: isActive ? 600 : 500, fontSize: 14, cursor: "pointer",
-                                transition: "all 0.2s ease",
-                            }}
+                            className={cn(
+                                "flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-medium transition-colors",
+                                isActive
+                                    ? cn(tab.activeBorder, tab.activeBg, tab.color)
+                                    : "border-neutral-200 text-neutral-500 hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/50"
+                            )}
                         >
                             <Icon size={18} />
                             {tab.label}
@@ -378,21 +357,19 @@ export default function SettingsPage() {
             </div>
 
             {/* Active Tab Content */}
-            <div style={{
-                background: "var(--bg-secondary)", borderRadius: 16,
-                border: "1px solid var(--border)", padding: 24,
-            }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-                    <Globe size={18} color={tabs.find(t => t.id === activeTab)?.color} />
-                    <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
-                        {tabs.find(t => t.id === activeTab)?.label}
-                    </h2>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    {settingsSchema[activeTab]?.map(field => renderField(field))}
-                </div>
-            </div>
+            <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                        <Globe size={18} className={activeTabConfig?.color} />
+                        <span className="text-neutral-900 dark:text-neutral-100">{activeTabConfig?.label}</span>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col gap-4">
+                        {settingsSchema[activeTab]?.map(field => renderField(field))}
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

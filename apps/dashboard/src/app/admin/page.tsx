@@ -12,16 +12,30 @@ import {
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Stat card config (icons + colors only — values come from API)
 const statConfig = [
-    { key: "leadsToday",        label: "Leads Hoy",            icon: Building2,     color: "#6c5ce7", suffix: "" },
-    { key: "leadsHot",          label: "Leads Calientes 🔥",   icon: TrendingUp,    color: "#00d68f", suffix: "" },
-    { key: "messagesProcessed", label: "Mensajes Procesados",  icon: Activity,      color: "#00b4d8", suffix: "" },
-    { key: "llmCostToday",      label: "Costo LLM Hoy",        icon: Brain,         color: "#ffaa00", suffix: "$" },
+    { key: "leadsToday",        label: "Leads Hoy",            icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
+    { key: "leadsHot",          label: "Leads Calientes 🔥",   icon: TrendingUp,    color: "text-emerald-500", bgIcon: "bg-emerald-500/10", suffix: "" },
+    { key: "messagesProcessed", label: "Mensajes Procesados",  icon: Activity,      color: "text-sky-500",     bgIcon: "bg-sky-500/10", suffix: "" },
+    { key: "llmCostToday",      label: "Costo LLM Hoy",        icon: Brain,         color: "text-amber-500",   bgIcon: "bg-amber-500/10", suffix: "$" },
 ];
 
+const activityDotColors: Record<string, string> = {
+    conversation: "bg-emerald-500",
+    handoff: "bg-amber-500",
+    order: "bg-indigo-500",
+};
 
+const modelBarColors = [
+    "bg-emerald-500",
+    "bg-sky-500",
+    "bg-amber-500",
+    "bg-indigo-500",
+    "bg-red-500",
+];
 
 export default function AdminDashboard() {
     const { user } = useAuth();
@@ -60,13 +74,12 @@ export default function AdminDashboard() {
                     }
                     if (Array.isArray(dashResult.data.modelUsage)) {
                         const total = dashResult.data.modelUsage.reduce((s: number, m: any) => s + (m.requests || m.count || 0), 0) || 1;
-                        const modelColors = ['#00d68f', '#00b4d8', '#ffaa00', '#6c5ce7', '#e74c3c'];
                         setModelUsage(dashResult.data.modelUsage.map((m: any, i: number) => ({
                             model: m.model || m.llm_model || 'Unknown',
                             tier: m.tier || `Tier ${i + 1}`,
                             requests: m.requests || m.count || 0,
                             pct: Math.round(((m.requests || m.count || 0) / total) * 100),
-                            color: modelColors[i % modelColors.length],
+                            colorClass: modelBarColors[i % modelBarColors.length],
                         })));
                     }
                 }
@@ -80,12 +93,12 @@ export default function AdminDashboard() {
     return (
         <div className="animate-in">
             {/* Header */}
-            <div style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div className="mb-8 flex items-center justify-between">
                 <div>
-                    <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>
+                    <h1 className="text-2xl font-extrabold text-neutral-900 dark:text-neutral-100">
                         Dashboard
                     </h1>
-                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
+                    <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                         Bienvenido, {user?.firstName || "Admin"} · Vista general de la plataforma
                     </p>
                 </div>
@@ -93,14 +106,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div
-                style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                    gap: 20,
-                    marginBottom: 32,
-                }}
-            >
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {statConfig.map((stat) => {
                     const Icon = stat.icon;
                     const rawValue = overview[stat.key] ?? 0;
@@ -108,223 +114,120 @@ export default function AdminDashboard() {
                         ? `$${rawValue.toFixed(2)}`
                         : rawValue.toLocaleString("es-CO");
                     return (
-                        <div key={stat.key} className="glass-card">
-                            <div
-                                style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "flex-start",
-                                }}
-                            >
-                                <div>
-                                    <p
-                                        style={{
-                                            fontSize: 13,
-                                            color: "var(--text-secondary)",
-                                            margin: "0 0 8px",
-                                        }}
-                                    >
-                                        {stat.label}
-                                    </p>
-                                    <p style={{ fontSize: 32, fontWeight: 800, margin: 0 }}>
-                                        {displayValue}
-                                    </p>
-                                    <p
-                                        style={{
-                                            fontSize: 12,
-                                            color: stat.color,
-                                            margin: "8px 0 0",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 4,
-                                        }}
-                                    >
-                                        <ArrowUpRight size={14} />
-                                        {isLive ? "En vivo" : "Cargando..."}
-                                    </p>
+                        <Card key={stat.key} className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                            <CardContent className="pt-0">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+                                            {stat.label}
+                                        </p>
+                                        <p className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">
+                                            {displayValue}
+                                        </p>
+                                        <p className={cn("mt-2 flex items-center gap-1 text-xs", stat.color)}>
+                                            <ArrowUpRight size={14} />
+                                            {isLive ? "En vivo" : "Cargando..."}
+                                        </p>
+                                    </div>
+                                    <div className={cn("flex h-11 w-11 items-center justify-center rounded-xl", stat.bgIcon)}>
+                                        <Icon size={22} className={stat.color} />
+                                    </div>
                                 </div>
-                                <div
-                                    style={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 12,
-                                        background: `${stat.color}15`,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                    }}
-                                >
-                                    <Icon size={22} color={stat.color} />
-                                </div>
-                            </div>
-                        </div>
+                            </CardContent>
+                        </Card>
                     );
                 })}
             </div>
 
             {/* Two Column Layout */}
-            <div
-                style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 24,
-                }}
-            >
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {/* Recent Activity */}
-                <div className="glass-card">
-                    <h3
-                        style={{
-                            fontSize: 16,
-                            fontWeight: 700,
-                            margin: "0 0 20px",
-                        }}
-                    >
-                        Actividad Reciente
-                    </h3>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                        {activity.length > 0 ? activity.map((item, i) => (
-                            <div
-                                key={i}
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 14,
-                                    padding: "10px 0",
-                                    borderBottom:
-                                        i < activity.length - 1
-                                            ? "1px solid rgba(42,42,69,0.5)"
-                                            : "none",
-                                }}
-                            >
+                <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                    <CardHeader>
+                        <CardTitle className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                            Actividad Reciente
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col gap-3.5">
+                            {activity.length > 0 ? activity.map((item, i) => (
                                 <div
-                                    style={{
-                                        width: 8,
-                                        height: 8,
-                                        borderRadius: "50%",
-                                        background:
-                                            item.type === "conversation"
-                                                ? "#00d68f"
-                                                : item.type === "handoff"
-                                                    ? "#ffaa00"
-                                                    : item.type === "order"
-                                                        ? "#6c5ce7"
-                                                        : "#00b4d8",
-                                        flexShrink: 0,
-                                    }}
-                                />
-                                <div style={{ flex: 1 }}>
-                                    <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>
-                                        {item.event}
-                                    </p>
-                                    <p
-                                        style={{
-                                            margin: "2px 0 0",
-                                            fontSize: 12,
-                                            color: "var(--text-secondary)",
-                                        }}
-                                    >
-                                        {item.tenant}
-                                    </p>
-                                </div>
-                                <span
-                                    style={{
-                                        fontSize: 12,
-                                        color: "var(--text-secondary)",
-                                        whiteSpace: "nowrap",
-                                    }}
-                                >
-                                    {item.time}
-                                </span>
-                            </div>
-                        )) : (
-                            <div style={{ padding: 20, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
-                                No hay actividad reciente disponible
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* LLM Model Usage */}
-                <div className="glass-card">
-                    <h3
-                        style={{
-                            fontSize: 16,
-                            fontWeight: 700,
-                            margin: "0 0 20px",
-                        }}
-                    >
-                        Distribución de Modelos LLM
-                    </h3>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                        {modelUsage.length > 0 ? modelUsage.map((model) => (
-                            <div key={model.model}>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        marginBottom: 6,
-                                    }}
-                                >
-                                    <span style={{ fontSize: 14, fontWeight: 500 }}>
-                                        {model.model}{" "}
-                                        <span
-                                            style={{
-                                                fontSize: 11,
-                                                color: "var(--text-secondary)",
-                                            }}
-                                        >
-                                            ({model.tier})
-                                        </span>
-                                    </span>
-                                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                                        {model.requests} req · {model.pct}%
-                                    </span>
-                                </div>
-                                <div
-                                    style={{
-                                        height: 6,
-                                        background: "var(--bg-primary)",
-                                        borderRadius: 3,
-                                        overflow: "hidden",
-                                    }}
+                                    key={i}
+                                    className={cn(
+                                        "flex items-center gap-3.5 py-2.5",
+                                        i < activity.length - 1 && "border-b border-neutral-100 dark:border-neutral-800"
+                                    )}
                                 >
                                     <div
-                                        style={{
-                                            height: "100%",
-                                            width: `${model.pct}%`,
-                                            background: model.color,
-                                            borderRadius: 3,
-                                            transition: "width 1s ease",
-                                        }}
+                                        className={cn(
+                                            "h-2 w-2 shrink-0 rounded-full",
+                                            activityDotColors[item.type] || "bg-sky-500"
+                                        )}
                                     />
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                            {item.event}
+                                        </p>
+                                        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                                            {item.tenant}
+                                        </p>
+                                    </div>
+                                    <span className="whitespace-nowrap text-xs text-neutral-500 dark:text-neutral-400">
+                                        {item.time}
+                                    </span>
                                 </div>
-                            </div>
-                        )) : (
-                            <div style={{ padding: 20, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
-                                Sin datos de uso de modelos disponibles
-                            </div>
-                        )}
-                    </div>
-                    <div
-                        style={{
-                            marginTop: 20,
-                            padding: "12px 16px",
-                            background: "var(--bg-primary)",
-                            borderRadius: 10,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                        }}
-                    >
-                        <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                            <TrendingUp
-                                size={14}
-                                style={{ marginRight: 6, verticalAlign: "middle" }}
-                            />
-                            El Router ahorra ~42% en costos usando Tier 3-4 para mensajes simples
-                        </span>
-                    </div>
-                </div>
+                            )) : (
+                                <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
+                                    No hay actividad reciente disponible
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* LLM Model Usage */}
+                <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                    <CardHeader>
+                        <CardTitle className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                            Distribución de Modelos LLM
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col gap-4">
+                            {modelUsage.length > 0 ? modelUsage.map((model) => (
+                                <div key={model.model}>
+                                    <div className="mb-1.5 flex items-center justify-between">
+                                        <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                            {model.model}{" "}
+                                            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                                                ({model.tier})
+                                            </span>
+                                        </span>
+                                        <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                            {model.requests} req · {model.pct}%
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                                        <div
+                                            className={cn("h-full rounded-full transition-all duration-1000 ease-out", model.colorClass)}
+                                            style={{ width: `${model.pct}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            )) : (
+                                <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
+                                    Sin datos de uso de modelos disponibles
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-5 flex items-center justify-between rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">
+                            <span className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                                <TrendingUp size={14} />
+                                El Router ahorra ~42% en costos usando Tier 3-4 para mensajes simples
+                            </span>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         </div>
     );

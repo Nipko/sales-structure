@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import {
     Search,
     Filter,
@@ -24,12 +29,12 @@ import {
     X,
 } from "lucide-react";
 
-const segmentColors: Record<string, { bg: string; color: string }> = {
-    new: { bg: "rgba(149, 165, 166, 0.15)", color: "#95a5a6" },
-    lead: { bg: "rgba(52, 152, 219, 0.15)", color: "#3498db" },
-    qualified: { bg: "rgba(230, 126, 34, 0.15)", color: "#e67e22" },
-    customer: { bg: "rgba(46, 204, 113, 0.15)", color: "#2ecc71" },
-    churned: { bg: "rgba(231, 76, 60, 0.15)", color: "#e74c3c" },
+const segmentStyles: Record<string, string> = {
+    new: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
+    lead: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400",
+    qualified: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400",
+    customer: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
+    churned: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
 };
 
 export default function ContactsPage() {
@@ -54,7 +59,7 @@ export default function ContactsPage() {
             try {
                 // Fetch leads matching the API model
                 const data = await api.fetch(`/crm/leads/${activeTenantId}`);
-                
+
                 if (data.success && Array.isArray(data.data)) {
                     // Map Real Lead data to UI variables we use
                     const mappedLeads = data.data.map((l: any) => {
@@ -160,108 +165,93 @@ export default function ContactsPage() {
     };
 
     return (
-        <div>
+        <div className="space-y-6">
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Contactos</h1>
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Contactos</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
-                    <p style={{ color: "var(--text-secondary)", margin: "4px 0 0" }}>
+                    <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                         {contacts.length} contactos · Valor total: ${totalValue.toLocaleString()} COP
                     </p>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <button
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => router.push("/admin/contacts/segments")}
-                        style={{
-                            display: "flex", alignItems: "center", gap: 6, padding: "10px 16px",
-                            borderRadius: 10, border: "1px solid var(--border)", background: "transparent",
-                            color: "var(--text-secondary)", fontWeight: 500, fontSize: 13, cursor: "pointer",
-                        }}
+                        className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
                     >
                         <Users size={16} /> Segmentos
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => setShowImportModal(true)}
-                        style={{
-                            display: "flex", alignItems: "center", gap: 6, padding: "10px 16px",
-                            borderRadius: 10, border: "1px solid var(--border)", background: "transparent",
-                            color: "var(--text-secondary)", fontWeight: 500, fontSize: 13, cursor: "pointer",
-                        }}
+                        className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
                     >
                         <Upload size={16} /> Importar CSV
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={handleExport}
                         disabled={exporting}
-                        style={{
-                            display: "flex", alignItems: "center", gap: 6, padding: "10px 16px",
-                            borderRadius: 10, border: "1px solid var(--border)", background: "transparent",
-                            color: "var(--text-secondary)", fontWeight: 500, fontSize: 13, cursor: "pointer",
-                            opacity: exporting ? 0.6 : 1,
-                        }}
+                        className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
                     >
                         <Download size={16} /> {exporting ? "Exportando..." : "Exportar CSV"}
-                    </button>
-                    <button style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-                        borderRadius: 10, border: "none", background: "var(--accent)", color: "white",
-                        fontWeight: 600, fontSize: 14, cursor: "pointer",
-                    }}>
+                    </Button>
+                    <Button
+                        size="sm"
+                        className="gap-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                    >
                         <UserPlus size={18} /> Nuevo contacto
-                    </button>
+                    </Button>
                 </div>
             </div>
 
             {/* Stats Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {segments.map(seg => (
                     <button
                         key={seg.key}
                         onClick={() => setActiveSegment(seg.key)}
-                        style={{
-                            padding: "14px 16px", borderRadius: 12, cursor: "pointer",
-                            border: activeSegment === seg.key ? "1px solid var(--accent)" : "1px solid var(--border)",
-                            background: activeSegment === seg.key ? "var(--accent-glow)" : "var(--bg-secondary)",
-                            textAlign: "left",
-                        }}
+                        className={cn(
+                            "rounded-xl border p-4 text-left transition-colors",
+                            activeSegment === seg.key
+                                ? "border-indigo-500 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-500/10"
+                                : "border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800/50"
+                        )}
                     >
-                        <div style={{ fontSize: 24, fontWeight: 700 }}>{seg.count}</div>
-                        <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{seg.label}</div>
+                        <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{seg.count}</div>
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400">{seg.label}</div>
                     </button>
                 ))}
             </div>
 
             {/* Search */}
-            <div style={{ position: "relative", marginBottom: 16 }}>
-                <Search size={16} style={{ position: "absolute", left: 14, top: 12, color: "var(--text-secondary)" }} />
-                <input
+            <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <Input
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Buscar por nombre, teléfono o email..."
-                    style={{
-                        width: "100%", padding: "10px 14px 10px 38px", borderRadius: 10,
-                        border: "1px solid var(--border)", background: "var(--bg-secondary)",
-                        color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box",
-                    }}
+                    className="h-10 rounded-lg border-neutral-200 bg-white pl-10 text-sm dark:border-neutral-800 dark:bg-neutral-900"
                 />
             </div>
 
             {/* Table */}
-            <div style={{
-                background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border)",
-                overflow: "hidden",
-            }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <table className="w-full border-collapse">
                     <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             {["Contacto", "Segmento", "Conversaciones", "Valor (COP)", "Última interacción", "Tags", ""].map(h => (
-                                <th key={h} style={{
-                                    padding: "12px 16px", textAlign: "left", fontSize: 12, fontWeight: 600,
-                                    color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5,
-                                }}>
+                                <th
+                                    key={h}
+                                    className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"
+                                >
                                     {h}
                                 </th>
                             ))}
@@ -269,81 +259,65 @@ export default function ContactsPage() {
                     </thead>
                     <tbody>
                         {filtered.map(contact => {
-                            const seg = segmentColors[contact.segment] || segmentColors.new;
+                            const segClass = segmentStyles[contact.segment] || segmentStyles.new;
                             return (
                                 <tr
                                     key={contact.id}
-                                    style={{
-                                        borderBottom: "1px solid var(--border)",
-                                        cursor: "pointer",
-                                        transition: "background 0.15s ease",
-                                    }}
-                                    onMouseOver={e => (e.currentTarget.style.background = "var(--bg-tertiary)")}
-                                    onMouseOut={e => (e.currentTarget.style.background = "transparent")}
+                                    className="border-b border-neutral-100 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/50"
                                 >
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                            <div style={{
-                                                width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                                                background: "linear-gradient(135deg, var(--accent), #9b59b6)",
-                                                display: "flex", alignItems: "center", justifyContent: "center",
-                                                color: "white", fontWeight: 700, fontSize: 14,
-                                            }}>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-bold text-white">
                                                 {contact.name.charAt(0)}
                                             </div>
                                             <div>
-                                                <div style={{ fontWeight: 600, fontSize: 14 }}>{contact.name}</div>
-                                                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                                                <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{contact.name}</div>
+                                                <div className="text-xs text-neutral-500 dark:text-neutral-400">
                                                     {contact.phone}
                                                     {contact.city && ` · ${contact.city}`}
                                                 </div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <span style={{
-                                            padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                                            background: seg.bg, color: seg.color,
-                                        }}>
+                                    <td className="px-4 py-3">
+                                        <Badge variant="secondary" className={cn("rounded-md text-xs font-semibold", segClass)}>
                                             {contact.segment}
-                                        </span>
+                                        </Badge>
                                     </td>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 14 }}>
-                                            <MessageSquare size={14} color="var(--text-secondary)" />
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-1 text-sm text-neutral-700 dark:text-neutral-300">
+                                            <MessageSquare size={14} className="text-neutral-400" />
                                             {contact.conversations}
                                         </div>
                                     </td>
-                                    <td style={{ padding: "12px 16px", fontWeight: 600, fontSize: 14 }}>
+                                    <td className="px-4 py-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                                         {contact.lifetimeValue > 0 ? `$${contact.lifetimeValue.toLocaleString()}` : "—"}
                                     </td>
-                                    <td style={{ padding: "12px 16px", fontSize: 13, color: "var(--text-secondary)" }}>
+                                    <td className="px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400">
                                         {contact.lastInteraction}
                                     </td>
-                                    <td style={{ padding: "12px 16px" }}>
-                                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                    <td className="px-4 py-3">
+                                        <div className="flex flex-wrap gap-1">
                                             {contact.tags.slice(0, 3).map((tag: string) => (
-                                                <span key={tag} style={{
-                                                    fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                                                    background: "rgba(108, 92, 231, 0.15)", color: "#6c5ce7",
-                                                }}>
+                                                <Badge
+                                                    key={tag}
+                                                    variant="secondary"
+                                                    className="rounded bg-indigo-100 px-1.5 py-0 text-[10px] text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400"
+                                                >
                                                     {tag}
-                                                </span>
+                                                </Badge>
                                             ))}
                                             {contact.tags.length > 3 && (
-                                                <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>
+                                                <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
                                                     +{contact.tags.length - 3}
                                                 </span>
                                             )}
                                         </div>
                                     </td>
-                                    <td style={{ padding: "12px 16px" }}>
+                                    <td className="px-4 py-3">
                                         <button
                                             onClick={() => router.push(`/admin/contacts/${contact.id}`)}
-                                            style={{
-                                                background: "none", border: "none", cursor: "pointer",
-                                                color: "var(--text-secondary)", padding: 4,
-                                            }}
+                                            className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
                                         >
                                             <Eye size={16} />
                                         </button>
@@ -359,25 +333,17 @@ export default function ContactsPage() {
             {showImportModal && (
                 <div
                     onClick={() => setShowImportModal(false)}
-                    style={{
-                        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
-                        backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
-                        justifyContent: "center", zIndex: 1000,
-                    }}
+                    className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
                 >
                     <div
                         onClick={e => e.stopPropagation()}
-                        style={{
-                            background: "var(--bg-secondary)", borderRadius: 16,
-                            border: "1px solid var(--border)", padding: 28, width: 520,
-                            maxHeight: "80vh", overflow: "auto",
-                        }}
+                        className="max-h-[80vh] w-[520px] overflow-auto rounded-2xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900"
                     >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Importar Contactos</h2>
+                        <div className="mb-5 flex items-center justify-between">
+                            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Importar Contactos</h2>
                             <button
                                 onClick={() => setShowImportModal(false)}
-                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 4 }}
+                                className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
                             >
                                 <X size={18} />
                             </button>
@@ -385,10 +351,7 @@ export default function ContactsPage() {
 
                         <button
                             onClick={handleDownloadTemplate}
-                            style={{
-                                fontSize: 13, color: "var(--accent)", background: "none", border: "none",
-                                cursor: "pointer", textDecoration: "underline", padding: 0, marginBottom: 12, display: "block",
-                            }}
+                            className="mb-3 block border-none bg-transparent p-0 text-xs text-indigo-600 underline hover:text-indigo-700 dark:text-indigo-400"
                         >
                             Descargar plantilla CSV
                         </button>
@@ -396,22 +359,18 @@ export default function ContactsPage() {
                         <textarea
                             value={csvContent}
                             onChange={e => setCsvContent(e.target.value)}
-                            placeholder="Pega aquí el contenido CSV...&#10;nombre,telefono,email&#10;Juan,+573001234567,juan@email.com"
+                            placeholder={"Pega aquí el contenido CSV...\nnombre,telefono,email\nJuan,+573001234567,juan@email.com"}
                             rows={8}
-                            style={{
-                                width: "100%", padding: 12, borderRadius: 10, border: "1px solid var(--border)",
-                                background: "var(--bg-tertiary)", color: "var(--text-primary)", fontSize: 13,
-                                fontFamily: "monospace", resize: "vertical", outline: "none", boxSizing: "border-box",
-                            }}
+                            className="w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 p-3 font-mono text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
                         />
 
                         {importResult && (
-                            <div style={{
-                                marginTop: 12, padding: 12, borderRadius: 8, fontSize: 13,
-                                background: importResult.success ? "rgba(46, 204, 113, 0.12)" : "rgba(231, 76, 60, 0.12)",
-                                color: importResult.success ? "#2ecc71" : "#e74c3c",
-                                border: `1px solid ${importResult.success ? "rgba(46, 204, 113, 0.25)" : "rgba(231, 76, 60, 0.25)"}`,
-                            }}>
+                            <div className={cn(
+                                "mt-3 rounded-lg border p-3 text-xs",
+                                importResult.success
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-400"
+                                    : "border-red-200 bg-red-50 text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-400"
+                            )}>
                                 {importResult.success ? (
                                     <div>
                                         Importados: {importResult.imported ?? 0} |
@@ -424,18 +383,13 @@ export default function ContactsPage() {
                             </div>
                         )}
 
-                        <button
+                        <Button
                             onClick={handleImport}
                             disabled={importing || !csvContent.trim()}
-                            style={{
-                                marginTop: 16, width: "100%", padding: "12px 0", borderRadius: 10,
-                                border: "none", background: "var(--accent)", color: "white",
-                                fontWeight: 600, fontSize: 14, cursor: importing ? "not-allowed" : "pointer",
-                                opacity: importing || !csvContent.trim() ? 0.6 : 1,
-                            }}
+                            className="mt-4 w-full rounded-lg bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
                         >
                             {importing ? "Importando..." : "Importar"}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             )}

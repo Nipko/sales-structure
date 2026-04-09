@@ -29,6 +29,8 @@ const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || "";
 // Solution ID from Meta Business Manager → Partner Center → Solutions
 // Required for Tech Provider Embedded Signup
 const META_SOLUTION_ID = process.env.NEXT_PUBLIC_META_SOLUTION_ID || "";
+// Your Tech Provider Business ID from Meta Business Manager
+const META_BUSINESS_ID = process.env.NEXT_PUBLIC_META_BUSINESS_ID || "";
 
 // ============================================
 // Component
@@ -211,7 +213,10 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
       response_type: "code",
       override_default_response_type: true,
       extras: {
-        setup: META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {},
+        setup: {
+          ...(META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {}),
+          ...(META_BUSINESS_ID ? { business_id: META_BUSINESS_ID } : {}),
+        },
         featureType: "whatsapp_business_app_onboarding",
         sessionInfoVersion: "3",
         version: "v4",

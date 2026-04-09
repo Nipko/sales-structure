@@ -198,7 +198,19 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
     [tenantId, onSuccess, onError],
   );
 
-  // ---- Launch Embedded Signup ----
+  // ---- Handle redirect callback (code in URL query params) ----
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code) {
+      console.log("[EmbeddedSignup] Redirect callback detected with code:", code.substring(0, 20) + "...");
+      window.history.replaceState({}, "", window.location.pathname);
+      handleFBResponse({ authResponse: { code }, status: "connected" });
+    }
+  }, [handleFBResponse]);
+
+  // ---- Launch Embedded Signup (Popup mode via SDK) ----
   const launchSignup = () => {
     const FB = (window as any).FB;
     if (!FB) {
@@ -226,10 +238,34 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
     console.log("[EmbeddedSignup] Launching FB.login() with options:", JSON.stringify(loginOptions, null, 2));
     console.log("[EmbeddedSignup] META_APP_ID:", META_APP_ID);
     console.log("[EmbeddedSignup] META_CONFIG_ID:", META_CONFIG_ID);
-    console.log("[EmbeddedSignup] WA_SERVICE_URL:", WA_SERVICE_URL);
-    console.log("[EmbeddedSignup] tenantId:", tenantId);
 
     FB.login(handleFBResponse, loginOptions);
+  };
+
+  // ---- Launch Embedded Signup (Direct redirect — no SDK popup) ----
+  const launchRedirect = () => {
+    const redirectUri = encodeURIComponent(window.location.origin + "/admin/channels/whatsapp");
+    const extras = encodeURIComponent(JSON.stringify({
+      setup: {
+        ...(META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {}),
+        ...(META_BUSINESS_ID ? { business_id: META_BUSINESS_ID } : {}),
+      },
+      featureType: "whatsapp_business_app_onboarding",
+      sessionInfoVersion: "3",
+      version: "v4",
+    }));
+
+    const url = `https://www.facebook.com/v25.0/dialog/oauth`
+      + `?client_id=${META_APP_ID}`
+      + `&config_id=${META_CONFIG_ID}`
+      + `&redirect_uri=${redirectUri}`
+      + `&response_type=code`
+      + `&override_default_response_type=true`
+      + `&display=popup`
+      + `&extras=${extras}`;
+
+    console.log("[EmbeddedSignup] Redirect URL:", url);
+    window.open(url, "_blank", "width=800,height=700");
   };
 
   // ---- Render ----
@@ -272,6 +308,31 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
             : processing
               ? step || "Procesando..."
               : "Conectar con WhatsApp Embedded Signup"}
+      </button>
+
+      {/* Alternative: Direct redirect (bypasses SDK popup issues) */}
+      <button
+        onClick={launchRedirect}
+        disabled={processing}
+        style={{
+          width: "100%",
+          marginTop: 10,
+          padding: "10px 20px",
+          borderRadius: 10,
+          border: "1px solid var(--border, #2a2a45)",
+          background: "transparent",
+          color: "var(--text-primary, #e8e8f0)",
+          fontWeight: 600,
+          fontSize: 13,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          opacity: processing ? 0.5 : 1,
+        }}
+      >
+        Método alternativo (si el botón anterior no funciona)
       </button>
 
       {/* Subtle info text */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // ============================================
 // Types
@@ -40,8 +40,8 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
   const [launching, setLaunching] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState<string>("");
-  // Capture session info from window message event (Embedded Signup v4)
-  const [sessionData, setSessionData] = useState<{ waba_id?: string; phone_number_id?: string }>({});
+  // Use a ref to capture session data from window message (available immediately, no React state delay)
+  const sessionDataRef = useRef<{ waba_id?: string; phone_number_id?: string }>({});
 
   // ---- Listen for Embedded Signup session completion messages ----
   useEffect(() => {
@@ -53,10 +53,11 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         if (data.type === "WA_EMBEDDED_SIGNUP") {
           if (data.event === "FINISH" || data.event === "FINISH_ONLY_WABA") {
             console.log("[EmbeddedSignup] Signup FINISH event:", data.data);
-            setSessionData({
+            // Store in ref (synchronous, available immediately for handleFBResponse)
+            sessionDataRef.current = {
               waba_id: data.data?.waba_id,
               phone_number_id: data.data?.phone_number_id,
-            });
+            };
           } else if (data.event === "CANCEL") {
             console.log("[EmbeddedSignup] User cancelled signup");
           } else if (data.event === "ERROR") {
@@ -121,9 +122,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         const code = response.authResponse.code;
         console.log("[EmbeddedSignup] Auth code received:", code.substring(0, 20) + "...");
 
-        // Extract session info: try authResponse first, then window message data (sessionData)
-        const sessionPhoneNumberId = response.authResponse.phone_number_id || sessionData.phone_number_id || null;
-        const sessionWabaId = response.authResponse.waba_id || sessionData.waba_id || null;
+        // Extract session info: try authResponse first, then ref from window message (synchronous)
+        const sessionPhoneNumberId = response.authResponse.phone_number_id || sessionDataRef.current.phone_number_id || null;
+        const sessionWabaId = response.authResponse.waba_id || sessionDataRef.current.waba_id || null;
 
         if (!sessionPhoneNumberId || !sessionWabaId) {
           console.warn(
@@ -144,7 +145,30 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         setStep("Intercambiando código con Meta...");
 
         try {
-          const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+          // Get fresh token from API (refresh if needed)
+          let token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+
+          // Also try to refresh token via API before calling WhatsApp service
+          try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+            const meRes = await fetch(`${apiUrl}/auth/me`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+            });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              if (meData.token) {
+                token = meData.token;
+                localStorage.setItem("accessToken", token!);
+                console.log("[EmbeddedSignup] Token refreshed successfully");
+              }
+            }
+          } catch {
+            console.warn("[EmbeddedSignup] Token refresh failed, using existing token");
+          }
 
           setStep("Registrando cuenta de WhatsApp Business...");
 

@@ -41,7 +41,8 @@ export default function LoginPage() {
             <div className="w-full max-w-[420px] relative z-10">
                 {/* Logo */}
                 <div className="text-center mb-8">
-                    <AnimatedLogo height={44} animate showPoweredBy={false} />
+                    <img src="/parallly-logo-black.svg" alt="Parallly" className="h-10 mx-auto dark:hidden" />
+                    <img src="/parallly-logo-white.svg" alt="Parallly" className="h-10 mx-auto hidden dark:block" />
                     <p className="text-muted-foreground text-sm mt-3">
                         Plataforma de IA Conversacional
                     </p>

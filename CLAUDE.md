@@ -26,14 +26,16 @@ Customer (WhatsApp/IG/Messenger) → Meta Cloud API → WhatsApp Service (port 3
 ```
 apps/
   api/          — NestJS 10, port 3000. Core business logic, 31 modules
-  dashboard/    — Next.js 16, port 3001. Admin panel (35+ pages), React 19, inline CSS
+  dashboard/    — Next.js 16, port 3001. Admin panel (35+ pages), React 19, Tailwind + shadcn/ui
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
+  landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud)
 packages/
   shared/       — TypeScript types (NormalizedMessage, OutboundMessage, TenantConfig, etc.)
 infra/
-  docker/       — docker-compose.yml (dev), docker-compose.prod.yml (prod), Dockerfiles
+  docker/       — docker-compose.yml (dev), docker-compose.prod.yml (prod), 5 Dockerfiles
   nginx/        — Reverse proxy config (WebSocket upgrade enabled)
   scripts/      — setup-vps.sh, setup-fresh.sh, reset-db.sh
+docs/           — Architecture specs, visual guide, logo, API reference, changelog
 ```
 
 ## Key conventions
@@ -168,10 +170,11 @@ See `.env.example`. Key ones:
 
 ## Production
 
-- Dashboard: https://admin.parallly-chat.cloud
-- API: https://api.parallly-chat.cloud
-- WhatsApp: https://wa.parallly-chat.cloud
+- Landing: https://parallly-chat.cloud (static, nginx container)
+- Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui)
+- API: https://api.parallly-chat.cloud (NestJS, 31 modules)
+- WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - GitHub: https://github.com/Nipko/sales-structure
-- VPS: Hostinger Ubuntu, Docker, Cloudflare Tunnel
-- Deploy: Push to main → GitHub Actions → build images → SSH deploy → Prisma migrate → restart
+- VPS: Hostinger Ubuntu, Docker (8 containers), Cloudflare Tunnel
+- Deploy: Push to main → GitHub Actions → build 5 images → SSH deploy → migrate → restart

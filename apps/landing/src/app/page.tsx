@@ -364,7 +364,7 @@ export default function LandingPage() {
           <img
             src="/parallly-logo.svg"
             alt="Parallly"
-            className="h-7"
+            className="h-10"
           />
         </a>
 

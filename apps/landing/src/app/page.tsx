@@ -494,7 +494,7 @@ export default function LandingPage() {
           <img
             src="/parallly-logo.svg"
             alt="Parallly"
-            className="h-10"
+            className="h-10 w-auto"
           />
         </a>
 
@@ -1303,7 +1303,7 @@ export default function LandingPage() {
             <img
               src="/parallly-logo.svg"
               alt="Parallly"
-              className="h-10 mb-4"
+              className="h-10 w-auto mb-4"
             />
             <p className="text-text-muted text-sm leading-relaxed">
               La plataforma de IA conversacional para ventas en Latinoamérica.

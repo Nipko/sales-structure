@@ -365,7 +365,9 @@ jobs:
           echo "| Image | SHA |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| API | \`${{ env.API_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Worker | \`${{ env.WORKER_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Dashboard | \`${{ env.DASHBOARD_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| WhatsApp | \`${{ env.WHATSAPP_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Landing | \`${{ env.LANDING_IMAGE }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Branch: \`${{ github.ref_name }}\` | Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

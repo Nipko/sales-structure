@@ -41,9 +41,7 @@ export default function LoginPage() {
             <div className="w-full max-w-[420px] relative z-10">
                 {/* Logo */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20">
-                        <AnimatedLogo height={40} animate showPoweredBy={false} />
-                    </div>
+                    <AnimatedLogo height={44} animate showPoweredBy={false} />
                     <p className="text-muted-foreground text-sm mt-3">
                         Plataforma de IA Conversacional
                     </p>

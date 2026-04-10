@@ -10,6 +10,7 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
+import AnimatedLogo from "@/components/AnimatedLogo";
 import {
   LayoutDashboard,
   Inbox,
@@ -112,7 +113,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         )}
       >
         {showExpanded && (
-          <img src="/parallly-logo.svg" alt="Parallly" className="h-6" />
+          <AnimatedLogo height={22} />
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}

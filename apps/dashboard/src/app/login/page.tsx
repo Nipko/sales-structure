@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { Lock, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import AnimatedLogo from "@/components/AnimatedLogo";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -41,7 +42,7 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20">
-                        <img src="/parallly-logo.svg" alt="Parallly" className="h-8" />
+                        <AnimatedLogo height={40} animate showPoweredBy={false} />
                     </div>
                     <p className="text-muted-foreground text-sm mt-3">
                         Plataforma de IA Conversacional

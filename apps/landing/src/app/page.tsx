@@ -72,6 +72,136 @@ function CountUp({ target, suffix = "" }: { target: number; suffix?: string }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Multichannel Demo Animation                                        */
+/* ------------------------------------------------------------------ */
+
+function MultichannelDemo() {
+  const channels = [
+    {
+      name: "WhatsApp",
+      color: "bg-green-500",
+      borderColor: "border-green-500/40",
+      bgColor: "bg-green-500/10",
+      textColor: "text-green-400",
+      icon: (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.146.565 4.157 1.549 5.897L0 24l6.304-1.654A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82a9.78 9.78 0 01-5.202-1.49l-.373-.222-3.87 1.015 1.034-3.777-.244-.388A9.78 9.78 0 012.18 12 9.82 9.82 0 0112 2.18 9.82 9.82 0 0121.82 12 9.82 9.82 0 0112 21.82z" />
+        </svg>
+      ),
+      message: "Hola, quiero info del plan Pro",
+      delay: 0.5,
+    },
+    {
+      name: "Instagram",
+      color: "bg-pink-500",
+      borderColor: "border-pink-500/40",
+      bgColor: "bg-pink-500/10",
+      textColor: "text-pink-400",
+      icon: (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
+        </svg>
+      ),
+      message: "Vi su story, tienen descuento?",
+      delay: 1.0,
+    },
+    {
+      name: "Messenger",
+      color: "bg-blue-500",
+      borderColor: "border-blue-500/40",
+      bgColor: "bg-blue-500/10",
+      textColor: "text-blue-400",
+      icon: (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.373 0 0 4.974 0 11.111c0 3.498 1.744 6.614 4.469 8.654V24l4.088-2.242c1.092.3 2.246.464 3.443.464 6.627 0 12-4.975 12-11.111S18.627 0 12 0zm1.191 14.963l-3.055-3.26-5.963 3.26L10.732 8.2l3.131 3.259L19.752 8.2l-6.561 6.763z" />
+        </svg>
+      ),
+      message: "Necesito cotizar para mi empresa",
+      delay: 1.5,
+    },
+  ];
+
+  const aiResponse = "Con gusto te ayudo. Nuestro plan Pro incluye canales ilimitados, 5 agentes IA y CRM avanzado por $199/mes.";
+
+  return (
+    <div className="space-y-3">
+      {/* Three channel windows */}
+      {channels.map((ch, i) => (
+        <motion.div
+          key={ch.name}
+          className={`${ch.bgColor} border ${ch.borderColor} rounded-xl p-3`}
+          initial={{ opacity: 0, x: 40 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: ch.delay, duration: 0.4, ease: "easeOut" }}
+        >
+          {/* Channel header */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`${ch.textColor}`}>{ch.icon}</div>
+            <span className={`text-xs font-semibold ${ch.textColor}`}>
+              {ch.name}
+            </span>
+          </div>
+
+          {/* Customer message */}
+          <motion.div
+            className="mb-2"
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: ch.delay + 0.2, duration: 0.3 }}
+          >
+            <div className="bg-white/10 text-text-primary text-xs px-3 py-1.5 rounded-lg rounded-br-sm inline-block max-w-[90%]">
+              {ch.message}
+            </div>
+          </motion.div>
+
+          {/* AI response — all appear at once at 2.0s */}
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2.0, duration: 0.4 }}
+          >
+            <div className="flex items-start gap-1.5">
+              <div className="w-4 h-4 rounded-full bg-accent/30 flex items-center justify-center text-accent shrink-0 mt-0.5">
+                <span className="text-[8px] font-bold">IA</span>
+              </div>
+              <div className="bg-accent/15 border border-accent/20 text-text-primary text-xs px-3 py-1.5 rounded-lg rounded-bl-sm max-w-[90%]">
+                {aiResponse}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      ))}
+
+      {/* CRM notification */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 2.5, duration: 0.4 }}
+        className="bg-accent/10 border border-accent/30 rounded-xl p-3"
+      >
+        <div className="flex items-center gap-2 text-accent text-xs font-medium">
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          Nuevo lead capturado — 3 canales sincronizados
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  SVG Icons (inline, no external deps)                               */
 /* ------------------------------------------------------------------ */
 
@@ -374,7 +504,7 @@ export default function LandingPage() {
             href="#caracteristicas"
             className="hover:text-text-primary transition-colors"
           >
-            Caracteristicas
+            Características
           </a>
           <a
             href="#precios"
@@ -402,7 +532,7 @@ export default function LandingPage() {
             href={SIGNUP}
             className="text-sm bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
-            Comenzar Gratis
+            Empezar gratis
           </a>
         </div>
 
@@ -452,7 +582,7 @@ export default function LandingPage() {
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
-                Caracteristicas
+                Características
               </a>
               <a
                 href="#precios"
@@ -479,7 +609,7 @@ export default function LandingPage() {
                 href={SIGNUP}
                 className="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-medium text-center transition-colors"
               >
-                Comenzar Gratis
+                Empezar gratis
               </a>
             </div>
           </motion.div>
@@ -503,35 +633,34 @@ export default function LandingPage() {
           transition={{ duration: 0.7, delay: 0.2 }}
         >
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
-            Automatiza tus ventas en{" "}
+            Respondé{" "}
             <span className="text-accent">WhatsApp</span>, Instagram y
-            Messenger
+            Messenger desde un solo lugar
           </h1>
           <p className="mt-6 text-lg sm:text-xl text-text-secondary max-w-xl mx-auto lg:mx-0 leading-relaxed">
-            Tu agente IA responde en segundos. Tu equipo cierra en minutos.
-            Todo en una sola plataforma, sin codigo.
+            Tu agente IA atiende todos tus canales en segundos. Sin código, sin
+            complicaciones. Configuralo en una hora y empezá a vender más.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
             <a
               href={SIGNUP}
               className="inline-flex items-center justify-center px-8 py-4 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_40px_rgba(16,185,129,0.3)]"
             >
-              Comenzar Prueba Gratis — 14 dias
+              Empezar gratis — 7 días
             </a>
             <a
               href="#como-funciona"
               className="inline-flex items-center justify-center px-8 py-4 border border-border hover:border-border-light text-text-primary rounded-xl text-lg font-medium transition-colors"
             >
-              Ver como funciona
+              Mirá cómo funciona ↓
             </a>
           </div>
           <p className="mt-6 text-sm text-text-muted">
-            Sin tarjeta de credito &middot; Configuracion en 1 hora &middot;
-            Soporte en espanol
+            ✓ Sin tarjeta de crédito · ✓ Listo en 1 hora · ✓ Soporte en español 24/7
           </p>
         </motion.div>
 
-        {/* Right — chat mockup */}
+        {/* Right — multichannel demo mockup */}
         <motion.div
           className="flex-1 w-full max-w-md"
           initial={{ opacity: 0, x: 60 }}
@@ -539,97 +668,21 @@ export default function LandingPage() {
           transition={{ duration: 0.8, delay: 0.4 }}
         >
           <div className="bg-surface border border-border rounded-2xl p-5 shadow-2xl">
-            {/* phone header */}
+            {/* header */}
             <div className="flex items-center gap-3 mb-4 pb-3 border-b border-border">
               <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center text-accent text-sm font-bold">
                 IA
               </div>
               <div>
                 <p className="text-sm font-medium text-text-primary">
-                  Sofia — Agente IA
+                  Bandeja Unificada
                 </p>
-                <p className="text-xs text-accent">En linea</p>
+                <p className="text-xs text-accent">3 canales activos</p>
               </div>
             </div>
 
-            {/* chat bubbles */}
-            <div className="space-y-3">
-              {/* customer */}
-              <motion.div
-                className="flex justify-end"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1 }}
-              >
-                <div className="bg-brand/20 text-text-primary text-sm px-4 py-2.5 rounded-2xl rounded-br-md max-w-[80%]">
-                  Hola! Quiero info sobre el tour de rafting
-                </div>
-              </motion.div>
-
-              {/* AI */}
-              <motion.div
-                className="flex justify-start"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.5 }}
-              >
-                <div className="bg-surface-light border border-border text-text-primary text-sm px-4 py-2.5 rounded-2xl rounded-bl-md max-w-[80%]">
-                  Hola! El tour de rafting nivel III sale manana a las 8AM.
-                  Incluye transporte, almuerzo y seguro. $85 USD por persona.
-                  Quieres reservar?
-                </div>
-              </motion.div>
-
-              {/* customer */}
-              <motion.div
-                className="flex justify-end"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 2 }}
-              >
-                <div className="bg-brand/20 text-text-primary text-sm px-4 py-2.5 rounded-2xl rounded-br-md max-w-[80%]">
-                  Si, para 2 personas!
-                </div>
-              </motion.div>
-
-              {/* AI */}
-              <motion.div
-                className="flex justify-start"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 2.5 }}
-              >
-                <div className="bg-surface-light border border-border text-text-primary text-sm px-4 py-2.5 rounded-2xl rounded-bl-md max-w-[80%]">
-                  Perfecto! Reserva confirmada para 2 personas. Total: $170
-                  USD. Te envio el link de pago ahora.
-                </div>
-              </motion.div>
-
-              {/* CRM notification */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 3 }}
-                className="bg-accent/10 border border-accent/30 rounded-xl p-3 mt-2"
-              >
-                <div className="flex items-center gap-2 text-accent text-xs font-medium">
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Lead convertido — Pipeline actualizado
-                </div>
-              </motion.div>
-            </div>
+            {/* Multichannel animation */}
+            <MultichannelDemo />
           </div>
         </motion.div>
       </div>
@@ -643,7 +696,7 @@ export default function LandingPage() {
   const socialProof = (
     <Section>
       <p className="text-center text-text-muted text-sm uppercase tracking-widest mb-10">
-        Mas de 500 empresas en Latinoamerica confian en Parallly
+        Más de 500 empresas en Latinoamérica confían en Parallly
       </p>
 
       {/* logos */}
@@ -674,14 +727,14 @@ export default function LandingPage() {
           <p className="text-4xl font-bold text-text-primary">
             <CountUp target={4.9} suffix="/5" />
           </p>
-          <p className="mt-1 text-text-secondary text-sm">satisfaccion</p>
+          <p className="mt-1 text-text-secondary text-sm">satisfacción</p>
         </div>
         <div>
           <p className="text-4xl font-bold text-text-primary">
             <CountUp target={45} suffix="%" />
           </p>
           <p className="mt-1 text-text-secondary text-sm">
-            mas conversiones
+            más conversiones
           </p>
         </div>
       </div>
@@ -695,23 +748,23 @@ export default function LandingPage() {
   const problemCards = [
     {
       icon: icons.clock,
-      title: "Tus clientes esperan respuesta en segundos. Tu equipo tarda horas.",
+      title: "Tus clientes escriben por WhatsApp, Instagram y Messenger... y vos respondés horas después.",
     },
     {
       icon: icons.users,
       title:
-        "Contactos dispersos entre WhatsApp, Instagram y email. Leads perdidos.",
+        "Cada lead queda en un chat diferente. No sabés quién es quién ni qué le dijiste.",
     },
     {
       icon: icons.chart,
-      title: "Sin visibilidad de que funciona. Decisiones a ciegas.",
+      title: "No tenés datos. No sabés qué canal vende más ni cuánto te cuesta cada lead.",
     },
   ];
 
   const problem = (
     <Section id="problema" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Aun pierdes ventas por no responder a tiempo?
+        ¿Cuántas ventas perdés por no responder a tiempo?
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
         Cada minuto sin responder es un cliente que se va con tu competencia.
@@ -746,27 +799,27 @@ export default function LandingPage() {
     {
       num: "1",
       icon: icons.link,
-      title: "Conecta tus canales",
-      desc: "WhatsApp, Instagram, Messenger en minutos. Sin configuracion tecnica.",
+      title: "Conectá tus canales",
+      desc: "WhatsApp, Instagram y Messenger en 5 minutos. Solo necesitás tu cuenta de Meta.",
     },
     {
       num: "2",
       icon: icons.cog,
-      title: "Configura tu agente IA",
-      desc: "Sube tu info, define personalidad, activa respuestas. Sin codigo.",
+      title: "Configurá tu agente IA",
+      desc: "Subí tu catálogo, precios y preguntas frecuentes. Dale personalidad a tu asistente virtual.",
     },
     {
       num: "3",
       icon: icons.rocket,
-      title: "Vende automaticamente",
-      desc: "Tu IA responde, califica leads y escala a humanos cuando es necesario.",
+      title: "Vendé en piloto automático",
+      desc: "Tu IA responde al instante, califica leads y pasa los casos importantes a tu equipo.",
     },
   ];
 
   const howItWorks = (
     <Section id="como-funciona">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        Automatiza en 3 pasos
+        Automatizá en 3 pasos
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
         {steps.map((step, i) => (
@@ -801,40 +854,40 @@ export default function LandingPage() {
   const features = [
     {
       icon: icons.bot,
-      title: "Agente IA 24/7",
-      desc: "Responde instantaneamente con tu tono de marca, a cualquier hora.",
+      title: "Agente IA que suena como vos",
+      desc: "Configurá el tono, el estilo y las reglas. Tu IA responde como si fueras vos, pero 24/7.",
     },
     {
       icon: icons.messageSquare,
-      title: "Inbox Unificado",
-      desc: "WhatsApp, Instagram y Messenger en un solo panel.",
+      title: "Todos tus chats en un solo lugar",
+      desc: "WhatsApp, Instagram y Messenger en una bandeja unificada. Nunca más saltés entre apps.",
     },
     {
       icon: icons.users,
-      title: "CRM Inteligente",
-      desc: "Leads, pipeline y scoring automatico integrado.",
+      title: "CRM que se llena solo",
+      desc: "Cada conversación crea un lead automáticamente. Pipeline, scoring, seguimiento... todo automático.",
     },
     {
       icon: icons.zap,
-      title: "Automatizaciones",
-      desc: "Reglas, nurturing y seguimiento sin esfuerzo.",
+      title: "Automatizaciones sin código",
+      desc: "Reglas de negocio, nurturing, seguimiento... configuralo con clicks, no con código.",
     },
     {
       icon: icons.barChart,
-      title: "Analytics en Tiempo Real",
-      desc: "Metricas de conversion, CSAT y rendimiento de agentes.",
+      title: "Métricas que importan",
+      desc: "Tiempo de respuesta, conversión por canal, CSAT, rendimiento de agentes. Todo en tiempo real.",
     },
     {
       icon: icons.shield,
-      title: "Seguridad Enterprise",
-      desc: "Cifrado AES-256, multi-tenant, roles granulares.",
+      title: "Seguridad de verdad",
+      desc: "Cifrado AES-256, datos por tenant, roles granulares. Tu info y la de tus clientes están protegidas.",
     },
   ];
 
   const featuresSection = (
     <Section id="caracteristicas" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Todo lo que necesitas para vender mas
+        Todo lo que necesitás para vender más
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
         Una plataforma completa que reemplaza 5 herramientas diferentes.
@@ -873,14 +926,14 @@ export default function LandingPage() {
     { label: "Entiende contexto", manual: false, basic: false, parallly: true },
     { label: "Multi-canal", manual: false, basic: false, parallly: true },
     { label: "CRM integrado", manual: false, basic: false, parallly: true },
-    { label: "Sin codigo", manual: true, basic: false, parallly: true },
+    { label: "Sin código", manual: true, basic: false, parallly: true },
     { label: "Escalada humana", manual: true, basic: false, parallly: true },
   ];
 
   const comparison = (
     <Section>
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        Por que Parallly?
+        ¿Por qué Parallly?
       </h2>
       <div className="overflow-x-auto">
         <table className="w-full max-w-3xl mx-auto">
@@ -891,7 +944,7 @@ export default function LandingPage() {
                 Manual
               </th>
               <th className="py-4 px-4 text-text-secondary text-sm font-medium text-center">
-                Chatbots basicos
+                Chatbots básicos
               </th>
               <th className="py-4 px-4 text-text-primary text-sm font-semibold text-center bg-accent/5 rounded-t-xl border-x border-t border-accent/20">
                 Parallly
@@ -936,30 +989,30 @@ export default function LandingPage() {
   const testimonials = [
     {
       quote:
-        "Desde que implementamos Parallly, nuestras ventas por WhatsApp crecieron un 45%. La IA responde mejor que muchos vendedores.",
-      name: "Maria Rodriguez",
-      role: "Directora Comercial",
-      company: "Ecomarket Colombia",
+        "Antes tardábamos horas en responder por WhatsApp. Ahora la IA responde en 3 segundos. Las ventas subieron 45% en el primer mes.",
+      name: "María López",
+      role: "Fundadora",
+      company: "Tienda Online Bogotá",
       stat: "+45% ventas",
-      initials: "MR",
+      initials: "ML",
     },
     {
       quote:
-        "Configuramos todo en una tarde. Al dia siguiente ya teniamos leads calificados automaticamente. Increible.",
-      name: "Carlos Mendez",
-      role: "CEO",
-      company: "TurboVentas MX",
-      stat: "3x leads",
-      initials: "CM",
+        "Manejamos 15 clientes con WhatsApp e Instagram. Con Parallly todo llega a un solo panel. Mi equipo dejó de volverse loco.",
+      name: "Carlos Gómez",
+      role: "Director Comercial",
+      company: "Agencia Digital Medellín",
+      stat: "+60% productividad",
+      initials: "CG",
     },
     {
       quote:
-        "La integracion multi-canal nos ahorro contratar 4 personas. El ROI se pago en el primer mes.",
-      name: "Ana Lucia Vargas",
-      role: "Gerente de Operaciones",
-      company: "CloudShop Peru",
-      stat: "70% ahorro",
-      initials: "AV",
+        "Los pedidos por WhatsApp los maneja la IA. Mi equipo se enfoca en cocinar, no en contestar mensajes.",
+      name: "Valentina Ríos",
+      role: "Dueña",
+      company: "Restaurante Cali",
+      stat: "800+ pedidos/mes",
+      initials: "VR",
     },
   ];
 
@@ -1011,23 +1064,23 @@ export default function LandingPage() {
     {
       name: "Starter",
       price: annual ? 49 : 59,
-      period: "/mes",
-      desc: "Para equipos pequenos que inician con automatizacion.",
+      period: " USD/mes",
+      desc: "Para emprendedores y equipos pequeños.",
       features: [
         "3 canales conectados",
         "5,000 conversaciones/mes",
         "1 agente IA",
-        "CRM basico",
+        "CRM básico",
         "Soporte por email",
       ],
-      cta: "Comenzar con Starter",
+      cta: "Empezar con Starter",
       highlighted: false,
     },
     {
       name: "Pro",
       price: annual ? 199 : 239,
-      period: "/mes",
-      desc: "Para empresas en crecimiento que necesitan mas poder.",
+      period: " USD/mes",
+      desc: "Para equipos que quieren crecer.",
       features: [
         "Canales ilimitados",
         "Conversaciones ilimitadas",
@@ -1036,15 +1089,15 @@ export default function LandingPage() {
         "Analytics completo",
         "Soporte prioritario",
       ],
-      cta: "Comenzar con Pro",
+      cta: "Empezar con Pro",
       highlighted: true,
-      badge: "Mas popular",
+      badge: "Más popular",
     },
     {
       name: "Enterprise",
       price: null,
       period: "",
-      desc: "Para grandes operaciones con necesidades especificas.",
+      desc: "Para empresas con necesidades especiales.",
       features: [
         "Todo ilimitado",
         "SLA garantizado",
@@ -1053,7 +1106,7 @@ export default function LandingPage() {
         "Integraciones custom",
         "Onboarding personalizado",
       ],
-      cta: "Contactar Ventas",
+      cta: "Hablemos",
       highlighted: false,
     },
   ];
@@ -1061,10 +1114,10 @@ export default function LandingPage() {
   const pricing = (
     <Section id="precios">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Planes que crecen contigo
+        Planes que crecen con vos
       </h2>
       <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
-        Sin sorpresas. Cancela cuando quieras.
+        7 días gratis. Sin tarjeta. Sin letra pequeña.
       </p>
 
       {/* Toggle */}
@@ -1126,7 +1179,7 @@ export default function LandingPage() {
                 </span>
               ) : (
                 <span className="text-4xl font-bold text-text-primary">
-                  Personalizado
+                  Hablemos
                 </span>
               )}
             </div>
@@ -1163,28 +1216,28 @@ export default function LandingPage() {
 
   const faqs = [
     {
-      q: "Necesito conocimientos tecnicos?",
-      a: "No. Parallly esta disenado para que cualquier persona pueda configurar su agente IA sin escribir una sola linea de codigo. Nuestro asistente de configuracion te guia paso a paso.",
+      q: "¿Necesito saber programar?",
+      a: "Para nada. Todo se configura con clicks. Si sabés usar WhatsApp, sabés usar Parallly.",
     },
     {
-      q: "Como funciona la IA?",
-      a: "Usamos modelos de lenguaje avanzados (GPT-4, Claude, y otros) entrenados con la informacion de tu negocio. La IA entiende el contexto de cada conversacion y responde de forma natural, como lo haria tu mejor vendedor.",
+      q: "¿Cómo funciona la IA?",
+      a: "Subís tu info (catálogo, preguntas frecuentes, reglas). La IA aprende y responde como si fueras vos. Usamos modelos avanzados como GPT-4 y Claude, entrenados con la información de tu negocio.",
     },
     {
-      q: "Que pasa si la IA no entiende algo?",
-      a: "Cuando la IA detecta que no puede resolver una consulta, escala automaticamente la conversacion a un agente humano a traves de nuestro sistema de handoff inteligente. Tu equipo recibe una notificacion instantanea con todo el contexto.",
+      q: "¿Y si la IA mete la pata?",
+      a: "Tranqui. Si la IA no sabe qué decir, pasa la conversación a tu equipo al instante. Nuestro sistema de handoff inteligente le envía todo el contexto a tu agente humano para que no tenga que empezar de cero.",
     },
     {
-      q: "Puedo integrar con mi CRM actual?",
-      a: "Si. Parallly incluye un CRM integrado, pero tambien puedes conectarlo con herramientas externas a traves de nuestra API REST y webhooks. Soportamos integraciones con HubSpot, Salesforce y mas.",
+      q: "¿Se integra con mi sistema actual?",
+      a: "Sí. Tenemos API abierta y nos conectamos con los CRMs más usados. Parallly incluye su propio CRM, pero también se integra con HubSpot, Salesforce y más vía webhooks.",
     },
     {
-      q: "Es seguro para datos de clientes?",
-      a: "Absolutamente. Usamos cifrado AES-256-GCM para datos sensibles, arquitectura multi-tenant con aislamiento por esquema de base de datos, y cumplimos con estandares de seguridad enterprise. Tus datos nunca se comparten entre tenants.",
+      q: "¿Es seguro?",
+      a: "100%. Cifrado militar (AES-256-GCM), datos aislados por empresa, backups diarios. Cumplimos con todas las normas. Tu info y la de tus clientes nunca se comparten entre tenants.",
     },
     {
-      q: "Cuanto tiempo toma implementar?",
-      a: "La mayoria de nuestros clientes estan operativos en menos de 1 hora. Solo necesitas conectar tu numero de WhatsApp (a traves de Meta Business), subir tu informacion de productos/servicios, y definir la personalidad de tu agente.",
+      q: "¿En cuánto tiempo lo tengo funcionando?",
+      a: "En 1 hora ya tenés tu agente IA respondiendo. En serio, 1 hora. Solo conectás tu cuenta de Meta, subís tu información y listo.",
     },
   ];
 
@@ -1194,7 +1247,7 @@ export default function LandingPage() {
         Preguntas frecuentes
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        Todo lo que necesitas saber para empezar.
+        Todo lo que necesitás saber para empezar.
       </p>
       <div className="max-w-3xl mx-auto space-y-3">
         {faqs.map((faq, i) => (
@@ -1217,20 +1270,20 @@ export default function LandingPage() {
         </div>
         <div className="relative">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
-            Listo para automatizar tus ventas?
+            ¿Listo para dejar de perder ventas?
           </h2>
           <p className="text-text-secondary text-lg mb-10 max-w-xl mx-auto">
-            Empieza tu prueba gratis hoy. 14 dias, sin tarjeta de credito.
+            Empezá tu prueba gratis hoy. 7 días, sin tarjeta, sin compromiso.
           </p>
           <a
             href={SIGNUP}
             className="inline-flex items-center justify-center px-10 py-5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_60px_rgba(16,185,129,0.3)]"
           >
-            Comenzar Prueba Gratis
+            Empezar prueba gratis — 7 días
           </a>
           <p className="mt-8 text-sm text-text-muted">
-            Configuracion en 1 hora &middot; Soporte en espanol 24/7 &middot;
-            Garantia 30 dias
+            Configuración en 1 hora · Soporte en español 24/7 ·
+            Garantía 30 días
           </p>
         </div>
       </div>
@@ -1253,7 +1306,7 @@ export default function LandingPage() {
               className="h-10 mb-4"
             />
             <p className="text-text-muted text-sm leading-relaxed">
-              La plataforma de IA conversacional para ventas en Latinoamerica.
+              La plataforma de IA conversacional para ventas en Latinoamérica.
             </p>
           </div>
 
@@ -1268,7 +1321,7 @@ export default function LandingPage() {
                   href="#caracteristicas"
                   className="hover:text-text-secondary transition-colors"
                 >
-                  Caracteristicas
+                  Características
                 </a>
               </li>
               <li>
@@ -1327,7 +1380,7 @@ export default function LandingPage() {
               </li>
               <li>
                 <a href="#" className="hover:text-text-secondary transition-colors">
-                  Terminos
+                  Términos
                 </a>
               </li>
             </ul>
@@ -1336,7 +1389,7 @@ export default function LandingPage() {
 
         <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-text-muted">
-            Developed by Parallext
+            Desarrollado con ❤️ por Parallext
           </p>
           <p className="text-xs text-text-muted">
             &copy; 2026 Parallly. Todos los derechos reservados.

@@ -16,8 +16,10 @@ export default function AnimatedLogo({
   animate = false,
   showPoweredBy = false,
 }: AnimatedLogoProps) {
-  // Calculate width based on aspect ratio (original: 1500x392 content area)
-  const aspectRatio = 1359 / 392;
+  // Content bounds: x=37..1349, y=106..320 → width=1312, height=214
+  const contentWidth = 1312;
+  const contentHeight = 214;
+  const aspectRatio = contentWidth / contentHeight;
   const width = height * aspectRatio;
 
   const iconVariants = {
@@ -74,7 +76,7 @@ export default function AnimatedLogo({
     <div className={cn("inline-flex flex-col items-center", className)}>
       <motion.svg
         xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 1359 392"
+        viewBox="30 100 1325 230"
         style={{ width, height }}
         initial={animate ? "hidden" : undefined}
         animate={animate ? "visible" : undefined}
@@ -85,7 +87,6 @@ export default function AnimatedLogo({
         <motion.path
           d={iconPath}
           fill="#3897f0"
-          transform="translate(-37, -106)"
           variants={animate ? iconVariants : undefined}
           initial={animate ? "hidden" : undefined}
           animate={animate ? "visible" : undefined}
@@ -97,8 +98,7 @@ export default function AnimatedLogo({
             key={i}
             d={d}
             className="fill-neutral-900 dark:fill-neutral-100"
-            transform="translate(-37, -106)"
-            variants={animate ? letterVariants : undefined}
+              variants={animate ? letterVariants : undefined}
             initial={animate ? "hidden" : undefined}
             animate={animate ? "visible" : undefined}
             custom={i}

@@ -112,9 +112,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         )}
       >
         {showExpanded && (
-          <span className="font-bold text-lg text-neutral-900 dark:text-neutral-100 whitespace-nowrap">
-            Parallly
-          </span>
+          <img src="/parallly-logo.svg" alt="Parallly" className="h-6" />
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}

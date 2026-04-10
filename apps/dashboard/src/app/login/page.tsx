@@ -4,7 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lock, Mail, Eye, EyeOff, AlertCircle, Zap } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
@@ -41,10 +41,7 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20">
-                        <Zap size={24} className="text-indigo-600" />
-                        <span className="text-[22px] font-extrabold tracking-tight text-gray-900 dark:text-white">
-                            Parallext
-                        </span>
+                        <img src="/parallly-logo.svg" alt="Parallly" className="h-8" />
                     </div>
                     <p className="text-muted-foreground text-sm mt-3">
                         Plataforma de IA Conversacional
@@ -138,9 +135,7 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-muted-foreground/60 mt-3">
-                    Parallext Engine v1.0 · ©2026 Nipko
-                </p>
+                <p className="text-center text-xs text-neutral-400 mt-6">Powered by <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
             </div>
         </div>
     );

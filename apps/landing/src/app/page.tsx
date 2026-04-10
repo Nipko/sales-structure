@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import {
   motion,
   useInView,
@@ -72,131 +72,148 @@ function CountUp({ target, suffix = "" }: { target: number; suffix?: string }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Multichannel Demo Animation                                        */
+/*  WhatsApp Demo Conversations                                        */
 /* ------------------------------------------------------------------ */
 
-function MultichannelDemo() {
-  const channels = [
-    {
-      name: "WhatsApp",
-      color: "bg-green-500",
-      borderColor: "border-green-500/40",
-      bgColor: "bg-green-500/10",
-      textColor: "text-green-400",
-      icon: (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
-          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.146.565 4.157 1.549 5.897L0 24l6.304-1.654A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82a9.78 9.78 0 01-5.202-1.49l-.373-.222-3.87 1.015 1.034-3.777-.244-.388A9.78 9.78 0 012.18 12 9.82 9.82 0 0112 2.18 9.82 9.82 0 0121.82 12 9.82 9.82 0 0112 21.82z" />
-        </svg>
-      ),
-      message: "Hola, quiero info del plan Pro",
-      delay: 0.5,
-    },
-    {
-      name: "Instagram",
-      color: "bg-pink-500",
-      borderColor: "border-pink-500/40",
-      bgColor: "bg-pink-500/10",
-      textColor: "text-pink-400",
-      icon: (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
-        </svg>
-      ),
-      message: "Vi su story, tienen descuento?",
-      delay: 1.0,
-    },
-    {
-      name: "Messenger",
-      color: "bg-blue-500",
-      borderColor: "border-blue-500/40",
-      bgColor: "bg-blue-500/10",
-      textColor: "text-blue-400",
-      icon: (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 0C5.373 0 0 4.974 0 11.111c0 3.498 1.744 6.614 4.469 8.654V24l4.088-2.242c1.092.3 2.246.464 3.443.464 6.627 0 12-4.975 12-11.111S18.627 0 12 0zm1.191 14.963l-3.055-3.26-5.963 3.26L10.732 8.2l3.131 3.259L19.752 8.2l-6.561 6.763z" />
-        </svg>
-      ),
-      message: "Necesito cotizar para mi empresa",
-      delay: 1.5,
-    },
-  ];
+interface ChatMessage {
+  from: "customer" | "ai";
+  text: string;
+}
 
-  const aiResponse = "Con gusto te ayudo. Nuestro plan Pro incluye canales ilimitados, 5 agentes IA y CRM avanzado por $199/mes.";
+interface DemoConversation {
+  businessName: string;
+  businessEmoji: string;
+  messages: ChatMessage[];
+}
+
+const DEMO_CONVERSATIONS: DemoConversation[] = [
+  {
+    businessName: "Bella Hair",
+    businessEmoji: "\u{1F487}\u200D\u2640\uFE0F",
+    messages: [
+      { from: "customer", text: "Hola! Quiero una cita para corte y tinte para el s\u00E1bado \u{1F64F}" },
+      { from: "ai", text: "\u00A1Hola! \u{1F487}\u200D\u2640\uFE0F Con gusto te ayudo. Tenemos disponibilidad el s\u00E1bado a las 10am, 2pm y 4pm. \u00BFCu\u00E1l te funciona?" },
+      { from: "customer", text: "A las 2pm porfa" },
+      { from: "ai", text: "\u00A1Perfecto! Tu cita queda para el s\u00E1bado a las 2pm. Corte + tinte por $85.000 COP. \u00BFA nombre de qui\u00E9n?" },
+      { from: "customer", text: "Sandra L\u00F3pez" },
+      { from: "ai", text: "\u00A1Listo Sandra! \u2705 Cita confirmada. Te enviar\u00E9 un recordatorio el viernes. \u00A1Te esperamos!" },
+    ],
+  },
+  {
+    businessName: "Nails Studio",
+    businessEmoji: "\u{1F485}",
+    messages: [
+      { from: "customer", text: "Buenas! Cu\u00E1nto vale el semipermanente? \u{1F485}" },
+      { from: "ai", text: "\u00A1Hola! Gracias por escribirnos \u{1F60A} El semipermanente est\u00E1 en $45.000 COP. Si quieres dise\u00F1o personalizado son $65.000 COP. \u00BFTe gustar\u00EDa agendar?" },
+      { from: "customer", text: "Si! El de dise\u00F1o, para ma\u00F1ana tienen?" },
+      { from: "ai", text: "Ma\u00F1ana tenemos espacio a las 11am y a las 3pm. \u00BFCu\u00E1l prefieres?" },
+      { from: "customer", text: "11am" },
+      { from: "ai", text: "\u00A1Agendado! Ma\u00F1ana a las 11am, dise\u00F1o personalizado ($65.000). Recuerda llegar 5 minutos antes. \u00BFAlguna referencia de dise\u00F1o que te guste? \u{1F3A8}" },
+    ],
+  },
+];
+
+function WhatsAppChatDemo({ conversation, delayOffset }: { conversation: DemoConversation; delayOffset: number }) {
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [cycle, setCycle] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const runAnimation = useCallback(() => {
+    setVisibleCount(0);
+    const totalMessages = conversation.messages.length;
+
+    const showNext = (index: number) => {
+      if (index > totalMessages) {
+        // Pause 3 seconds after all messages, then restart
+        timerRef.current = setTimeout(() => {
+          setCycle((c) => c + 1);
+        }, 3000);
+        return;
+      }
+      timerRef.current = setTimeout(() => {
+        setVisibleCount(index);
+        showNext(index + 1);
+      }, index === 0 ? delayOffset : 500);
+    };
+
+    showNext(1);
+  }, [conversation.messages.length, delayOffset]);
+
+  useEffect(() => {
+    runAnimation();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [cycle, runAnimation]);
 
   return (
-    <div className="space-y-3">
-      {/* Three channel windows */}
-      {channels.map((ch, i) => (
-        <motion.div
-          key={ch.name}
-          className={`${ch.bgColor} border ${ch.borderColor} rounded-xl p-3`}
-          initial={{ opacity: 0, x: 40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: ch.delay, duration: 0.4, ease: "easeOut" }}
-        >
-          {/* Channel header */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className={`${ch.textColor}`}>{ch.icon}</div>
-            <span className={`text-xs font-semibold ${ch.textColor}`}>
-              {ch.name}
-            </span>
-          </div>
-
-          {/* Customer message */}
-          <motion.div
-            className="mb-2"
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: ch.delay + 0.2, duration: 0.3 }}
-          >
-            <div className="bg-white/10 text-text-primary text-xs px-3 py-1.5 rounded-lg rounded-br-sm inline-block max-w-[90%]">
-              {ch.message}
-            </div>
-          </motion.div>
-
-          {/* AI response — all appear at once at 2.0s */}
-          <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 2.0, duration: 0.4 }}
-          >
-            <div className="flex items-start gap-1.5">
-              <div className="w-4 h-4 rounded-full bg-accent/30 flex items-center justify-center text-accent shrink-0 mt-0.5">
-                <span className="text-[8px] font-bold">IA</span>
-              </div>
-              <div className="bg-accent/15 border border-accent/20 text-text-primary text-xs px-3 py-1.5 rounded-lg rounded-bl-sm max-w-[90%]">
-                {aiResponse}
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      ))}
-
-      {/* CRM notification */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 2.5, duration: 0.4 }}
-        className="bg-accent/10 border border-accent/30 rounded-xl p-3"
-      >
-        <div className="flex items-center gap-2 text-accent text-xs font-medium">
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          Nuevo lead capturado — 3 canales sincronizados
+    <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl flex-1 min-w-0">
+      {/* WhatsApp-style header */}
+      <div className="bg-[#075e54] px-4 py-3 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm">
+          {conversation.businessEmoji}
         </div>
-      </motion.div>
+        <div>
+          <p className="text-white text-sm font-medium">{conversation.businessName}</p>
+          <p className="text-green-200 text-[10px]">en l&iacute;nea</p>
+        </div>
+        <div className="ml-auto flex items-center gap-1">
+          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+          <span className="text-green-200 text-[10px] font-medium">IA activa</span>
+        </div>
+      </div>
+
+      {/* Chat body */}
+      <div className="bg-[#0b141a] p-3 min-h-[280px] flex flex-col gap-1.5">
+        {conversation.messages.map((msg, i) => (
+          <AnimatePresence key={`${cycle}-${i}`}>
+            {i < visibleCount && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className={`flex ${msg.from === "customer" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] px-3 py-1.5 rounded-lg text-xs leading-relaxed ${
+                    msg.from === "customer"
+                      ? "bg-[#005c4b] text-white rounded-br-sm"
+                      : "bg-[#1f2c33] text-gray-200 rounded-bl-sm"
+                  }`}
+                >
+                  {msg.from === "ai" && (
+                    <span className="text-[#3897f0] text-[10px] font-semibold block mb-0.5">
+                      {conversation.businessName} (IA)
+                    </span>
+                  )}
+                  {msg.text}
+                  <span className="text-[9px] text-gray-400 ml-2 float-right mt-1">
+                    {msg.from === "customer" ? "✓✓" : ""}
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        ))}
+      </div>
+
+      {/* Footer badge */}
+      <div className="bg-surface border-t border-border px-3 py-2 flex items-center justify-center gap-1.5">
+        <svg className="w-3.5 h-3.5 text-[#3897f0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+        </svg>
+        <span className="text-[11px] text-[#3897f0] font-medium">Respondi&oacute; en 3 segundos</span>
+      </div>
+    </div>
+  );
+}
+
+function DemoSection() {
+  return (
+    <div className="flex flex-col md:flex-row gap-6">
+      {DEMO_CONVERSATIONS.map((conv, i) => (
+        <WhatsAppChatDemo key={conv.businessName} conversation={conv} delayOffset={i * 300} />
+      ))}
     </div>
   );
 }
@@ -328,7 +345,7 @@ const icons = {
   ),
   check: (
     <svg
-      className="w-5 h-5 text-accent"
+      className="w-5 h-5 text-[#3897f0]"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -504,7 +521,7 @@ export default function LandingPage() {
             href="#caracteristicas"
             className="hover:text-text-primary transition-colors"
           >
-            Características
+            Caracter&iacute;sticas
           </a>
           <a
             href="#precios"
@@ -530,7 +547,7 @@ export default function LandingPage() {
           </a>
           <a
             href={SIGNUP}
-            className="text-sm bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            className="text-sm bg-[#3897f0] hover:bg-[#2b7fd4] text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
             Empezar gratis
           </a>
@@ -582,7 +599,7 @@ export default function LandingPage() {
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
-                Características
+                Caracter&iacute;sticas
               </a>
               <a
                 href="#precios"
@@ -607,7 +624,7 @@ export default function LandingPage() {
               </a>
               <a
                 href={SIGNUP}
-                className="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-medium text-center transition-colors"
+                className="bg-[#3897f0] hover:bg-[#2b7fd4] text-white px-4 py-2 rounded-lg font-medium text-center transition-colors"
               >
                 Empezar gratis
               </a>
@@ -633,57 +650,40 @@ export default function LandingPage() {
           transition={{ duration: 0.7, delay: 0.2 }}
         >
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
-            Respondé{" "}
-            <span className="text-accent">WhatsApp</span>, Instagram y
-            Messenger desde un solo lugar
+            Tu IA que responde{" "}
+            <span className="text-[#3897f0]">WhatsApp</span> y vende por ti, 24/7
           </h1>
           <p className="mt-6 text-lg sm:text-xl text-text-secondary max-w-xl mx-auto lg:mx-0 leading-relaxed">
-            Tu agente IA atiende todos tus canales en segundos. Sin código, sin
-            complicaciones. Configuralo en una hora y empezá a vender más.
+            Tu agente IA atiende todos tus canales en segundos. Sin c&oacute;digo, sin
+            complicaciones. Configura en una hora y empieza a vender m&aacute;s.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
             <a
               href={SIGNUP}
-              className="inline-flex items-center justify-center px-8 py-4 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_40px_rgba(16,185,129,0.3)]"
+              className="inline-flex items-center justify-center px-8 py-4 bg-[#3897f0] hover:bg-[#2b7fd4] text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_40px_rgba(56,151,240,0.3)]"
             >
-              Empezar gratis — 7 días
+              Empezar gratis — 7 d&iacute;as
             </a>
             <a
               href="#como-funciona"
               className="inline-flex items-center justify-center px-8 py-4 border border-border hover:border-border-light text-text-primary rounded-xl text-lg font-medium transition-colors"
             >
-              Mirá cómo funciona ↓
+              Mira c&oacute;mo funciona &darr;
             </a>
           </div>
           <p className="mt-6 text-sm text-text-muted">
-            ✓ Sin tarjeta de crédito · ✓ Listo en 1 hora · ✓ Soporte en español 24/7
+            &check; Sin tarjeta de cr&eacute;dito &middot; &check; Listo en 1 hora &middot; &check; Soporte en espa&ntilde;ol 24/7
           </p>
         </motion.div>
 
-        {/* Right — multichannel demo mockup */}
+        {/* Right — WhatsApp demo conversations */}
         <motion.div
           className="flex-1 w-full max-w-md"
           initial={{ opacity: 0, x: 60 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
         >
-          <div className="bg-surface border border-border rounded-2xl p-5 shadow-2xl">
-            {/* header */}
-            <div className="flex items-center gap-3 mb-4 pb-3 border-b border-border">
-              <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center text-accent text-sm font-bold">
-                IA
-              </div>
-              <div>
-                <p className="text-sm font-medium text-text-primary">
-                  Bandeja Unificada
-                </p>
-                <p className="text-xs text-accent">3 canales activos</p>
-              </div>
-            </div>
-
-            {/* Multichannel animation */}
-            <MultichannelDemo />
-          </div>
+          <WhatsAppChatDemo conversation={DEMO_CONVERSATIONS[0]} delayOffset={200} />
         </motion.div>
       </div>
     </section>
@@ -696,7 +696,7 @@ export default function LandingPage() {
   const socialProof = (
     <Section>
       <p className="text-center text-text-muted text-sm uppercase tracking-widest mb-10">
-        Más de 500 empresas en Latinoamérica confían en Parallly
+        M&aacute;s de 500 empresas en Latinoam&eacute;rica conf&iacute;an en Parallly
       </p>
 
       {/* logos */}
@@ -727,14 +727,14 @@ export default function LandingPage() {
           <p className="text-4xl font-bold text-text-primary">
             <CountUp target={4.9} suffix="/5" />
           </p>
-          <p className="mt-1 text-text-secondary text-sm">satisfacción</p>
+          <p className="mt-1 text-text-secondary text-sm">satisfacci&oacute;n</p>
         </div>
         <div>
           <p className="text-4xl font-bold text-text-primary">
             <CountUp target={45} suffix="%" />
           </p>
           <p className="mt-1 text-text-secondary text-sm">
-            más conversiones
+            m&aacute;s conversiones
           </p>
         </div>
       </div>
@@ -748,23 +748,23 @@ export default function LandingPage() {
   const problemCards = [
     {
       icon: icons.clock,
-      title: "Tus clientes escriben por WhatsApp, Instagram y Messenger... y vos respondés horas después.",
+      title: "Tus clientes escriben por WhatsApp, Instagram y Messenger... y t\u00FA respondes horas despu\u00E9s.",
     },
     {
       icon: icons.users,
       title:
-        "Cada lead queda en un chat diferente. No sabés quién es quién ni qué le dijiste.",
+        "Cada lead queda en un chat diferente. No sabes qui\u00E9n es qui\u00E9n ni qu\u00E9 le dijiste.",
     },
     {
       icon: icons.chart,
-      title: "No tenés datos. No sabés qué canal vende más ni cuánto te cuesta cada lead.",
+      title: "No tienes datos. No sabes qu\u00E9 canal vende m\u00E1s ni cu\u00E1nto te cuesta cada lead.",
     },
   ];
 
   const problem = (
     <Section id="problema" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        ¿Cuántas ventas perdés por no responder a tiempo?
+        &iquest;Cu&aacute;ntas ventas pierdes por no responder a tiempo?
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
         Cada minuto sin responder es un cliente que se va con tu competencia.
@@ -792,34 +792,50 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 5 — How it Works                                       */
+  /*  Section 5 — Demo Conversations                                 */
+  /* -------------------------------------------------------------- */
+
+  const demoConversations = (
+    <Section id="como-funciona">
+      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
+        As&iacute; se ve en acci&oacute;n
+      </h2>
+      <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
+        Dos negocios reales. Dos conversaciones autom&aacute;ticas. Cero intervenci&oacute;n humana.
+      </p>
+      <DemoSection />
+    </Section>
+  );
+
+  /* -------------------------------------------------------------- */
+  /*  Section 6 — How it Works                                       */
   /* -------------------------------------------------------------- */
 
   const steps = [
     {
       num: "1",
       icon: icons.link,
-      title: "Conectá tus canales",
-      desc: "WhatsApp, Instagram y Messenger en 5 minutos. Solo necesitás tu cuenta de Meta.",
+      title: "Conecta tus canales",
+      desc: "WhatsApp, Instagram y Messenger en 5 minutos. Solo necesitas tu cuenta de Meta.",
     },
     {
       num: "2",
       icon: icons.cog,
-      title: "Configurá tu agente IA",
-      desc: "Subí tu catálogo, precios y preguntas frecuentes. Dale personalidad a tu asistente virtual.",
+      title: "Configura tu agente IA",
+      desc: "Sube tu cat\u00E1logo, precios y preguntas frecuentes. Dale personalidad a tu asistente virtual.",
     },
     {
       num: "3",
       icon: icons.rocket,
-      title: "Vendé en piloto automático",
+      title: "Vende en piloto autom\u00E1tico",
       desc: "Tu IA responde al instante, califica leads y pasa los casos importantes a tu equipo.",
     },
   ];
 
   const howItWorks = (
-    <Section id="como-funciona">
+    <Section>
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        Automatizá en 3 pasos
+        Automatiza en 3 pasos
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
         {steps.map((step, i) => (
@@ -831,9 +847,9 @@ export default function LandingPage() {
             viewport={{ once: true, margin: "-50px" }}
             transition={{ delay: i * 0.15, duration: 0.5 }}
           >
-            <div className="relative inline-flex items-center justify-center w-16 h-16 bg-accent/10 text-accent rounded-2xl mb-6">
+            <div className="relative inline-flex items-center justify-center w-16 h-16 bg-[#3897f0]/10 text-[#3897f0] rounded-2xl mb-6">
               {step.icon}
-              <span className="absolute -top-2 -right-2 w-7 h-7 bg-accent text-white text-xs font-bold rounded-full flex items-center justify-center">
+              <span className="absolute -top-2 -right-2 w-7 h-7 bg-[#3897f0] text-white text-xs font-bold rounded-full flex items-center justify-center">
                 {step.num}
               </span>
             </div>
@@ -848,46 +864,46 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 6 — Features                                           */
+  /*  Section 7 — Features                                           */
   /* -------------------------------------------------------------- */
 
   const features = [
     {
       icon: icons.bot,
-      title: "Agente IA que suena como vos",
-      desc: "Configurá el tono, el estilo y las reglas. Tu IA responde como si fueras vos, pero 24/7.",
+      title: "Agente IA que suena como t\u00FA",
+      desc: "Configura el tono, el estilo y las reglas. Tu IA responde como si fueras t\u00FA, pero 24/7.",
     },
     {
       icon: icons.messageSquare,
       title: "Todos tus chats en un solo lugar",
-      desc: "WhatsApp, Instagram y Messenger en una bandeja unificada. Nunca más saltés entre apps.",
+      desc: "WhatsApp, Instagram y Messenger en una bandeja unificada. Nunca m\u00E1s saltes entre apps.",
     },
     {
       icon: icons.users,
       title: "CRM que se llena solo",
-      desc: "Cada conversación crea un lead automáticamente. Pipeline, scoring, seguimiento... todo automático.",
+      desc: "Cada conversaci\u00F3n crea un lead autom\u00E1ticamente. Pipeline, scoring, seguimiento... todo autom\u00E1tico.",
     },
     {
       icon: icons.zap,
-      title: "Automatizaciones sin código",
-      desc: "Reglas de negocio, nurturing, seguimiento... configuralo con clicks, no con código.",
+      title: "Automatizaciones sin c\u00F3digo",
+      desc: "Reglas de negocio, nurturing, seguimiento... configura con clicks, no con c\u00F3digo.",
     },
     {
       icon: icons.barChart,
-      title: "Métricas que importan",
-      desc: "Tiempo de respuesta, conversión por canal, CSAT, rendimiento de agentes. Todo en tiempo real.",
+      title: "M\u00E9tricas que importan",
+      desc: "Tiempo de respuesta, conversi\u00F3n por canal, CSAT, rendimiento de agentes. Todo en tiempo real.",
     },
     {
       icon: icons.shield,
       title: "Seguridad de verdad",
-      desc: "Cifrado AES-256, datos por tenant, roles granulares. Tu info y la de tus clientes están protegidas.",
+      desc: "Cifrado AES-256, datos por tenant, roles granulares. Tu info y la de tus clientes est\u00E1n protegidas.",
     },
   ];
 
   const featuresSection = (
     <Section id="caracteristicas" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Todo lo que necesitás para vender más
+        Todo lo que necesitas para vender m&aacute;s
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
         Una plataforma completa que reemplaza 5 herramientas diferentes.
@@ -896,13 +912,13 @@ export default function LandingPage() {
         {features.map((f, i) => (
           <motion.div
             key={i}
-            className="bg-surface border border-border rounded-xl p-8 hover:border-accent/30 transition-colors"
+            className="bg-surface border border-border rounded-xl p-8 hover:border-[#3897f0]/30 transition-colors"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ delay: i * 0.1, duration: 0.5 }}
           >
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 text-accent rounded-xl mb-5">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-[#3897f0]/10 text-[#3897f0] rounded-xl mb-5">
               {f.icon}
             </div>
             <h3 className="text-lg font-semibold mb-2 text-text-primary">
@@ -918,7 +934,7 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 7 — Comparison                                         */
+  /*  Section 8 — Comparison                                         */
   /* -------------------------------------------------------------- */
 
   const compRows = [
@@ -926,14 +942,14 @@ export default function LandingPage() {
     { label: "Entiende contexto", manual: false, basic: false, parallly: true },
     { label: "Multi-canal", manual: false, basic: false, parallly: true },
     { label: "CRM integrado", manual: false, basic: false, parallly: true },
-    { label: "Sin código", manual: true, basic: false, parallly: true },
+    { label: "Sin c\u00F3digo", manual: true, basic: false, parallly: true },
     { label: "Escalada humana", manual: true, basic: false, parallly: true },
   ];
 
   const comparison = (
     <Section>
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        ¿Por qué Parallly?
+        &iquest;Por qu&eacute; Parallly?
       </h2>
       <div className="overflow-x-auto">
         <table className="w-full max-w-3xl mx-auto">
@@ -944,9 +960,9 @@ export default function LandingPage() {
                 Manual
               </th>
               <th className="py-4 px-4 text-text-secondary text-sm font-medium text-center">
-                Chatbots básicos
+                Chatbots b&aacute;sicos
               </th>
-              <th className="py-4 px-4 text-text-primary text-sm font-semibold text-center bg-accent/5 rounded-t-xl border-x border-t border-accent/20">
+              <th className="py-4 px-4 text-text-primary text-sm font-semibold text-center bg-[#3897f0]/5 rounded-t-xl border-x border-t border-[#3897f0]/20">
                 Parallly
               </th>
             </tr>
@@ -963,7 +979,7 @@ export default function LandingPage() {
                 <td className="py-4 px-4 text-center">
                   {row.basic ? icons.check : icons.x}
                 </td>
-                <td className="py-4 px-4 text-center bg-accent/5 border-x border-accent/20">
+                <td className="py-4 px-4 text-center bg-[#3897f0]/5 border-x border-[#3897f0]/20">
                   {row.parallly ? icons.check : icons.x}
                 </td>
               </tr>
@@ -974,7 +990,7 @@ export default function LandingPage() {
               <td></td>
               <td></td>
               <td></td>
-              <td className="bg-accent/5 border-x border-b border-accent/20 rounded-b-xl h-2"></td>
+              <td className="bg-[#3897f0]/5 border-x border-b border-[#3897f0]/20 rounded-b-xl h-2"></td>
             </tr>
           </tfoot>
         </table>
@@ -983,33 +999,33 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 8 — Testimonials                                       */
+  /*  Section 9 — Testimonials                                       */
   /* -------------------------------------------------------------- */
 
   const testimonials = [
     {
       quote:
-        "Antes tardábamos horas en responder por WhatsApp. Ahora la IA responde en 3 segundos. Las ventas subieron 45% en el primer mes.",
-      name: "María López",
+        "Antes tard\u00E1bamos horas en responder por WhatsApp. Ahora la IA responde en 3 segundos. Las ventas subieron 45% en el primer mes.",
+      name: "Mar\u00EDa L\u00F3pez",
       role: "Fundadora",
-      company: "Tienda Online Bogotá",
+      company: "Tienda Online Bogot\u00E1",
       stat: "+45% ventas",
       initials: "ML",
     },
     {
       quote:
-        "Manejamos 15 clientes con WhatsApp e Instagram. Con Parallly todo llega a un solo panel. Mi equipo dejó de volverse loco.",
-      name: "Carlos Gómez",
+        "Manejamos 15 clientes con WhatsApp e Instagram. Con Parallly todo llega a un solo panel. Mi equipo dej\u00F3 de volverse loco.",
+      name: "Carlos G\u00F3mez",
       role: "Director Comercial",
-      company: "Agencia Digital Medellín",
+      company: "Agencia Digital Medell\u00EDn",
       stat: "+60% productividad",
       initials: "CG",
     },
     {
       quote:
         "Los pedidos por WhatsApp los maneja la IA. Mi equipo se enfoca en cocinar, no en contestar mensajes.",
-      name: "Valentina Ríos",
-      role: "Dueña",
+      name: "Valentina R\u00EDos",
+      role: "Due\u00F1a",
       company: "Restaurante Cali",
       stat: "800+ pedidos/mes",
       initials: "VR",
@@ -1035,7 +1051,7 @@ export default function LandingPage() {
               &ldquo;{t.quote}&rdquo;
             </p>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-accent text-sm font-bold">
+              <div className="w-10 h-10 rounded-full bg-[#3897f0]/20 flex items-center justify-center text-[#3897f0] text-sm font-bold">
                 {t.initials}
               </div>
               <div className="flex-1">
@@ -1046,7 +1062,7 @@ export default function LandingPage() {
                   {t.role}, {t.company}
                 </p>
               </div>
-              <span className="text-xs bg-accent/10 text-accent px-2.5 py-1 rounded-full font-medium">
+              <span className="text-xs bg-[#3897f0]/10 text-[#3897f0] px-2.5 py-1 rounded-full font-medium">
                 {t.stat}
               </span>
             </div>
@@ -1057,20 +1073,21 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 9 — Pricing                                            */
+  /*  Section 10 — Pricing                                           */
   /* -------------------------------------------------------------- */
 
   const plans = [
     {
       name: "Starter",
-      price: annual ? 49 : 59,
-      period: " USD/mes",
-      desc: "Para emprendedores y equipos pequeños.",
+      priceCOP: annual ? "$199.000" : "$239.000",
+      priceUSD: annual ? "(~$49 USD)" : "(~$59 USD)",
+      period: " COP/mes",
+      desc: "Para emprendedores.",
       features: [
         "3 canales conectados",
         "5,000 conversaciones/mes",
         "1 agente IA",
-        "CRM básico",
+        "CRM b\u00E1sico",
         "Soporte por email",
       ],
       cta: "Empezar con Starter",
@@ -1078,8 +1095,9 @@ export default function LandingPage() {
     },
     {
       name: "Pro",
-      price: annual ? 199 : 239,
-      period: " USD/mes",
+      priceCOP: annual ? "$499.000" : "$599.000",
+      priceUSD: annual ? "(~$119 USD)" : "(~$149 USD)",
+      period: " COP/mes",
       desc: "Para equipos que quieren crecer.",
       features: [
         "Canales ilimitados",
@@ -1091,11 +1109,12 @@ export default function LandingPage() {
       ],
       cta: "Empezar con Pro",
       highlighted: true,
-      badge: "Más popular",
+      badge: "M\u00E1s popular",
     },
     {
       name: "Enterprise",
-      price: null,
+      priceCOP: null,
+      priceUSD: "",
       period: "",
       desc: "Para empresas con necesidades especiales.",
       features: [
@@ -1114,10 +1133,10 @@ export default function LandingPage() {
   const pricing = (
     <Section id="precios">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Planes que crecen con vos
+        Planes que crecen contigo
       </h2>
       <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
-        7 días gratis. Sin tarjeta. Sin letra pequeña.
+        7 d&iacute;as gratis. Sin tarjeta. Sin letra peque&ntilde;a.
       </p>
 
       {/* Toggle */}
@@ -1129,7 +1148,7 @@ export default function LandingPage() {
         </span>
         <button
           onClick={() => setAnnual(!annual)}
-          className={`relative w-12 h-6 rounded-full transition-colors ${annual ? "bg-accent" : "bg-border"}`}
+          className={`relative w-12 h-6 rounded-full transition-colors ${annual ? "bg-[#3897f0]" : "bg-border"}`}
         >
           <motion.div
             className="absolute top-0.5 w-5 h-5 bg-white rounded-full"
@@ -1141,7 +1160,7 @@ export default function LandingPage() {
           className={`text-sm ${annual ? "text-text-primary" : "text-text-muted"}`}
         >
           Anual{" "}
-          <span className="text-accent text-xs font-medium">(-17%)</span>
+          <span className="text-[#3897f0] text-xs font-medium">(-17%)</span>
         </span>
       </div>
 
@@ -1151,7 +1170,7 @@ export default function LandingPage() {
             key={i}
             className={`relative rounded-2xl p-8 border flex flex-col ${
               plan.highlighted
-                ? "bg-surface border-accent/40 shadow-[0_0_60px_rgba(16,185,129,0.1)]"
+                ? "bg-surface border-[#3897f0]/40 shadow-[0_0_60px_rgba(56,151,240,0.1)]"
                 : "bg-surface border-border"
             }`}
             initial={{ opacity: 0, y: 30 }}
@@ -1161,7 +1180,7 @@ export default function LandingPage() {
             whileHover={{ scale: 1.02 }}
           >
             {plan.badge && (
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-xs font-semibold px-3 py-1 rounded-full">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#3897f0] text-white text-xs font-semibold px-3 py-1 rounded-full">
                 {plan.badge}
               </span>
             )}
@@ -1170,13 +1189,16 @@ export default function LandingPage() {
             </h3>
             <p className="text-text-muted text-sm mb-6">{plan.desc}</p>
             <div className="mb-6">
-              {plan.price !== null ? (
-                <span className="text-4xl font-bold text-text-primary">
-                  ${plan.price}
-                  <span className="text-lg font-normal text-text-muted">
+              {plan.priceCOP !== null ? (
+                <div>
+                  <span className="text-3xl font-bold text-text-primary">
+                    {plan.priceCOP}
+                  </span>
+                  <span className="text-sm font-normal text-text-muted">
                     {plan.period}
                   </span>
-                </span>
+                  <p className="text-xs text-text-muted mt-1">{plan.priceUSD}</p>
+                </div>
               ) : (
                 <span className="text-4xl font-bold text-text-primary">
                   Hablemos
@@ -1198,7 +1220,7 @@ export default function LandingPage() {
               href={SIGNUP}
               className={`block text-center py-3 px-6 rounded-xl font-medium transition-colors ${
                 plan.highlighted
-                  ? "bg-accent hover:bg-accent-hover text-white"
+                  ? "bg-[#3897f0] hover:bg-[#2b7fd4] text-white"
                   : "bg-surface-light hover:bg-border border border-border text-text-primary"
               }`}
             >
@@ -1211,33 +1233,33 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 10 — FAQ                                               */
+  /*  Section 11 — FAQ                                               */
   /* -------------------------------------------------------------- */
 
   const faqs = [
     {
-      q: "¿Necesito saber programar?",
-      a: "Para nada. Todo se configura con clicks. Si sabés usar WhatsApp, sabés usar Parallly.",
+      q: "\u00BFNecesito saber programar?",
+      a: "Para nada. Todo se configura con clicks. Si sabes usar WhatsApp, sabes usar Parallly.",
     },
     {
-      q: "¿Cómo funciona la IA?",
-      a: "Subís tu info (catálogo, preguntas frecuentes, reglas). La IA aprende y responde como si fueras vos. Usamos modelos avanzados como GPT-4 y Claude, entrenados con la información de tu negocio.",
+      q: "\u00BFC\u00F3mo funciona la IA?",
+      a: "Subes tu info (cat\u00E1logo, preguntas frecuentes, reglas). La IA aprende y responde como si fueras t\u00FA. Usamos modelos avanzados como GPT-4 y Claude, entrenados con la informaci\u00F3n de tu negocio.",
     },
     {
-      q: "¿Y si la IA mete la pata?",
-      a: "Tranqui. Si la IA no sabe qué decir, pasa la conversación a tu equipo al instante. Nuestro sistema de handoff inteligente le envía todo el contexto a tu agente humano para que no tenga que empezar de cero.",
+      q: "\u00BFY si la IA mete la pata?",
+      a: "Tranquilo. Si la IA no sabe qu\u00E9 decir, pasa la conversaci\u00F3n a tu equipo al instante. Nuestro sistema de handoff inteligente le env\u00EDa todo el contexto a tu agente humano para que no tenga que empezar de cero.",
     },
     {
-      q: "¿Se integra con mi sistema actual?",
-      a: "Sí. Tenemos API abierta y nos conectamos con los CRMs más usados. Parallly incluye su propio CRM, pero también se integra con HubSpot, Salesforce y más vía webhooks.",
+      q: "\u00BFSe integra con mi sistema actual?",
+      a: "S\u00ED. Tenemos API abierta y nos conectamos con los CRMs m\u00E1s usados. Parallly incluye su propio CRM, pero tambi\u00E9n se integra con HubSpot, Salesforce y m\u00E1s v\u00EDa webhooks.",
     },
     {
-      q: "¿Es seguro?",
+      q: "\u00BFEs seguro?",
       a: "100%. Cifrado militar (AES-256-GCM), datos aislados por empresa, backups diarios. Cumplimos con todas las normas. Tu info y la de tus clientes nunca se comparten entre tenants.",
     },
     {
-      q: "¿En cuánto tiempo lo tengo funcionando?",
-      a: "En 1 hora ya tenés tu agente IA respondiendo. En serio, 1 hora. Solo conectás tu cuenta de Meta, subís tu información y listo.",
+      q: "\u00BFEn cu\u00E1nto tiempo lo tengo funcionando?",
+      a: "En 1 hora ya tienes tu agente IA respondiendo. En serio, 1 hora. Solo conectas tu cuenta de Meta, subes tu informaci\u00F3n y listo.",
     },
   ];
 
@@ -1247,7 +1269,7 @@ export default function LandingPage() {
         Preguntas frecuentes
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        Todo lo que necesitás saber para empezar.
+        Todo lo que necesitas saber para empezar.
       </p>
       <div className="max-w-3xl mx-auto space-y-3">
         {faqs.map((faq, i) => (
@@ -1258,7 +1280,7 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 11 — Final CTA                                         */
+  /*  Section 12 — Final CTA                                         */
   /* -------------------------------------------------------------- */
 
   const finalCTA = (
@@ -1266,24 +1288,24 @@ export default function LandingPage() {
       <div className="text-center relative">
         {/* glow */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
+          <div className="w-96 h-96 bg-[#3897f0]/10 rounded-full blur-3xl" />
         </div>
         <div className="relative">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
-            ¿Listo para dejar de perder ventas?
+            &iquest;Listo para dejar de perder ventas?
           </h2>
           <p className="text-text-secondary text-lg mb-10 max-w-xl mx-auto">
-            Empezá tu prueba gratis hoy. 7 días, sin tarjeta, sin compromiso.
+            Empieza tu prueba gratis hoy. 7 d&iacute;as, sin tarjeta, sin compromiso.
           </p>
           <a
             href={SIGNUP}
-            className="inline-flex items-center justify-center px-10 py-5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_60px_rgba(16,185,129,0.3)]"
+            className="inline-flex items-center justify-center px-10 py-5 bg-[#3897f0] hover:bg-[#2b7fd4] text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_60px_rgba(56,151,240,0.3)]"
           >
-            Empezar prueba gratis — 7 días
+            Empezar prueba gratis — 7 d&iacute;as
           </a>
           <p className="mt-8 text-sm text-text-muted">
-            Configuración en 1 hora · Soporte en español 24/7 ·
-            Garantía 30 días
+            Configuraci&oacute;n en 1 hora &middot; Soporte en espa&ntilde;ol 24/7 &middot;
+            Garant&iacute;a 30 d&iacute;as
           </p>
         </div>
       </div>
@@ -1291,7 +1313,7 @@ export default function LandingPage() {
   );
 
   /* -------------------------------------------------------------- */
-  /*  Section 12 — Footer                                            */
+  /*  Section 13 — Footer                                            */
   /* -------------------------------------------------------------- */
 
   const footer = (
@@ -1306,7 +1328,7 @@ export default function LandingPage() {
               className="h-10 w-auto mb-4"
             />
             <p className="text-text-muted text-sm leading-relaxed">
-              La plataforma de IA conversacional para ventas en Latinoamérica.
+              La plataforma de IA conversacional para ventas en Latinoam&eacute;rica.
             </p>
           </div>
 
@@ -1321,7 +1343,7 @@ export default function LandingPage() {
                   href="#caracteristicas"
                   className="hover:text-text-secondary transition-colors"
                 >
-                  Características
+                  Caracter&iacute;sticas
                 </a>
               </li>
               <li>
@@ -1380,7 +1402,7 @@ export default function LandingPage() {
               </li>
               <li>
                 <a href="#" className="hover:text-text-secondary transition-colors">
-                  Términos
+                  T&eacute;rminos
                 </a>
               </li>
             </ul>
@@ -1389,7 +1411,7 @@ export default function LandingPage() {
 
         <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-text-muted">
-            Desarrollado con ❤️ por Parallext
+            Desarrollado con &hearts; por Parallext
           </p>
           <p className="text-xs text-text-muted">
             &copy; 2026 Parallly. Todos los derechos reservados.
@@ -1410,6 +1432,7 @@ export default function LandingPage() {
         {hero}
         {socialProof}
         {problem}
+        {demoConversations}
         {howItWorks}
         {featuresSection}
         {comparison}

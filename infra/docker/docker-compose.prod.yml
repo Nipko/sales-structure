@@ -14,6 +14,22 @@ services:
       - api
       - dashboard
       - whatsapp
+      - landing
+
+  # ---- Landing Page (static site) ----
+  landing:
+    image: ghcr.io/nipko/parallext-landing:latest
+    container_name: parallext-landing
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   # ---- API Server ----
   api:

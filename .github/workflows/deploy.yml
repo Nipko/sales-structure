@@ -13,6 +13,7 @@ env:
   WORKER_IMAGE: ghcr.io/nipko/parallext-worker
   DASHBOARD_IMAGE: ghcr.io/nipko/parallext-dashboard
   WHATSAPP_IMAGE: ghcr.io/nipko/parallext-whatsapp
+  LANDING_IMAGE: ghcr.io/nipko/parallext-landing
   PROJECT_PATH: /opt/parallext-engine
 
 jobs:
@@ -134,6 +135,18 @@ jobs:
           docker pull ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }}
           docker run --rm --entrypoint node ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }} -e "require('@nestjs/axios'); console.log('WhatsApp image module check OK')"
 
+      - name: Build and push Landing image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.landing
+          push: true
+          tags: |
+            ${{ env.LANDING_IMAGE }}:latest
+            ${{ env.LANDING_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ──────────────────────────────────────────────────────────────
   # JOB 2: SSH into VPS and deploy
   # Uses: SERVER_HOST, SERVER_USER, SERVER_PASSWORD, SERVER_PORT
@@ -219,6 +232,7 @@ jobs:
             docker pull ghcr.io/nipko/parallext-worker:latest
             docker pull ghcr.io/nipko/parallext-dashboard:latest
             docker pull ghcr.io/nipko/parallext-whatsapp:latest
+            docker pull ghcr.io/nipko/parallext-landing:latest
 
             echo "===> Ensuring postgres and redis are healthy..."
             docker compose -f infra/docker/docker-compose.prod.yml \
@@ -311,7 +325,7 @@ jobs:
 
             echo "===> Restarting API, Worker, Dashboard, and WhatsApp..."
             docker compose -f infra/docker/docker-compose.prod.yml \
-              up -d --force-recreate api worker dashboard whatsapp
+              up -d --force-recreate api worker dashboard whatsapp landing
 
 
             echo "===> Waiting for API health (max 3 min)..."

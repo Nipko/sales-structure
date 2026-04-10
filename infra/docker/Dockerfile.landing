@@ -11,8 +11,10 @@ COPY apps/landing/package.json apps/landing/package-lock.json* ./
 # Install dependencies
 RUN npm install
 
-# Copy source
-COPY apps/landing/ ./
+# Copy source (public assets + src)
+COPY apps/landing/public/ ./public/
+COPY apps/landing/src/ ./src/
+COPY apps/landing/next.config.ts apps/landing/tsconfig.json apps/landing/postcss.config.mjs ./
 
 # Build static export
 RUN npx next build

@@ -29,6 +29,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Building2,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 
@@ -58,6 +59,7 @@ const sections: NavSection[] = [
     items: [
       { label: "Automatización", href: "/admin/automation", icon: Workflow },
       { label: "Campañas", href: "/admin/broadcast", icon: Megaphone },
+      { label: "Citas", href: "/admin/appointments", icon: CalendarDays },
       { label: "Canales", href: "/admin/channels", icon: Phone },
     ],
   },

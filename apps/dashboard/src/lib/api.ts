@@ -354,6 +354,73 @@ export const api = {
     }) =>
         apiPost<{ reply: string }>("/copilot/chat", data),
 
+    // --- Media ---
+    uploadMedia: async (tenantId: string, file: File, entityType?: string, entityId?: string) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        let url = `/media/upload/${tenantId}`;
+        const params = new URLSearchParams();
+        if (entityType) params.set("entityType", entityType);
+        if (entityId) params.set("entityId", entityId);
+        if (params.toString()) url += `?${params}`;
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${BASE_URL}${url}`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
+        return res.json();
+    },
+    uploadLogo: async (tenantId: string, file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${BASE_URL}/media/logo/${tenantId}`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
+        return res.json();
+    },
+    getMediaList: (tenantId: string, entityType?: string) =>
+        apiGet(`/media/list/${tenantId}${entityType ? `?entityType=${entityType}` : ""}`),
+    deleteMedia: (tenantId: string, fileId: string) =>
+        apiDelete(`/media/${tenantId}/${fileId}`),
+
+    // --- Email Templates ---
+    getEmailTemplates: (tenantId: string) =>
+        apiGet(`/email-templates/${tenantId}`),
+    getEmailTemplate: (tenantId: string, templateId: string) =>
+        apiGet(`/email-templates/${tenantId}/${templateId}`),
+    saveEmailTemplate: (tenantId: string, templateId: string, data: any) =>
+        apiPut(`/email-templates/${tenantId}/${templateId}`, data),
+    createEmailTemplate: (tenantId: string, data: any) =>
+        apiPost(`/email-templates/${tenantId}`, data),
+    deleteEmailTemplate: (tenantId: string, templateId: string) =>
+        apiDelete(`/email-templates/${tenantId}/${templateId}`),
+    testEmailTemplate: (tenantId: string, templateId: string, to: string) =>
+        apiPost(`/email-templates/${tenantId}/${templateId}/test`, { to }),
+
+    // --- Appointments ---
+    getAppointments: (tenantId: string, params?: string) =>
+        apiGet(`/appointments/${tenantId}${params ? `?${params}` : ""}`),
+    createAppointment: (tenantId: string, data: any) =>
+        apiPost(`/appointments/${tenantId}`, data),
+    updateAppointment: (tenantId: string, appointmentId: string, data: any) =>
+        apiPut(`/appointments/${tenantId}/${appointmentId}`, data),
+    cancelAppointment: (tenantId: string, appointmentId: string, reason?: string) =>
+        apiPut(`/appointments/${tenantId}/${appointmentId}/cancel`, { reason }),
+    getAvailability: (tenantId: string, userId?: string) =>
+        apiGet(`/appointments/${tenantId}/availability${userId ? `?userId=${userId}` : ""}`),
+    saveAvailability: (tenantId: string, data: any) =>
+        apiPost(`/appointments/${tenantId}/availability`, data),
+    getBlockedDates: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/blocked-dates`),
+    saveBlockedDate: (tenantId: string, data: any) =>
+        apiPost(`/appointments/${tenantId}/blocked-dates`, data),
+    deleteBlockedDate: (tenantId: string, dateId: string) =>
+        apiDelete(`/appointments/${tenantId}/blocked-dates/${dateId}`),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {

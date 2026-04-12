@@ -41,8 +41,11 @@ services:
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MEDIA_STORAGE_PATH: /data/media
     env_file:
       - ../../.env
+    volumes:
+      - media_data:/data/media
     expose:
       - "3000"
     depends_on:
@@ -170,3 +173,5 @@ volumes:
     name: parallext-postgres-data
   redis_data:
     name: parallext-redis-data
+  media_data:
+    name: parallext-media-data

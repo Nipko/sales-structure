@@ -1042,3 +1042,82 @@ ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "is
 ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "slug" VARCHAR(255);
 ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_resources" ADD COLUMN IF NOT EXISTS "published_at" TIMESTAMP;
 CREATE INDEX IF NOT EXISTS "kr_public_idx" ON "{{SCHEMA_NAME}}"."knowledge_resources" ("is_public", "status");
+
+-- ============================================
+-- PARALLLY — Media, Email Templates & Appointments
+-- ============================================
+
+-- ---- Media Files ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."media_files" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "entity_type" VARCHAR(50) NOT NULL DEFAULT 'general',  -- general, product, tenant_logo, course, email_template
+    "entity_id" UUID,
+    "original_name" VARCHAR(500),
+    "file_name" VARCHAR(255) NOT NULL,
+    "mime_type" VARCHAR(100) NOT NULL,
+    "size_bytes" INTEGER DEFAULT 0,
+    "width" INTEGER,
+    "height" INTEGER,
+    "thumbnail_name" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "mf_entity_idx" ON "{{SCHEMA_NAME}}"."media_files" ("entity_type", "entity_id");
+
+-- ---- Email Templates ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."email_templates" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "slug" VARCHAR(100) NOT NULL,
+    "subject" VARCHAR(500) NOT NULL,
+    "body_html" TEXT NOT NULL,
+    "body_json" JSONB DEFAULT '{}',
+    "variables" TEXT[] DEFAULT '{}',
+    "is_active" BOOLEAN DEFAULT true,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "et_slug_idx" ON "{{SCHEMA_NAME}}"."email_templates" ("slug");
+
+-- ---- Appointments ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "assigned_to" UUID,
+    "service_name" VARCHAR(500),
+    "start_at" TIMESTAMP NOT NULL,
+    "end_at" TIMESTAMP NOT NULL,
+    "status" VARCHAR(50) DEFAULT 'pending',  -- pending, confirmed, cancelled, completed, no_show
+    "location" VARCHAR(500),
+    "notes" TEXT,
+    "reminder_sent" BOOLEAN DEFAULT false,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "appt_contact_idx" ON "{{SCHEMA_NAME}}"."appointments" ("contact_id");
+CREATE INDEX IF NOT EXISTS "appt_assigned_idx" ON "{{SCHEMA_NAME}}"."appointments" ("assigned_to");
+CREATE INDEX IF NOT EXISTS "appt_start_idx" ON "{{SCHEMA_NAME}}"."appointments" ("start_at");
+CREATE INDEX IF NOT EXISTS "appt_status_idx" ON "{{SCHEMA_NAME}}"."appointments" ("status");
+
+-- ---- Availability Slots (weekly schedule per agent) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."availability_slots" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "user_id" UUID NOT NULL,
+    "day_of_week" INTEGER NOT NULL,  -- 0=Sunday, 1=Monday, ..., 6=Saturday
+    "start_time" TIME NOT NULL,
+    "end_time" TIME NOT NULL,
+    "is_active" BOOLEAN DEFAULT true,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "avs_user_idx" ON "{{SCHEMA_NAME}}"."availability_slots" ("user_id", "day_of_week");
+
+-- ---- Blocked Dates (holidays, vacations) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."blocked_dates" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "user_id" UUID,
+    "blocked_date" DATE NOT NULL,
+    "reason" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "bd_user_date_idx" ON "{{SCHEMA_NAME}}"."blocked_dates" ("user_id", "blocked_date");

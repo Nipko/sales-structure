@@ -36,6 +36,9 @@ import { EmailModule } from './modules/email/email.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { ThrottleModule } from './modules/throttle/throttle.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { MediaModule } from './modules/media/media.module';
+import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
+import { AppointmentsModule } from './modules/appointments/appointments.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -101,6 +104,9 @@ import llmConfig from './config/llm.config';
         ComplianceModule,
         CarlaModule,
         InternalModule,
+        MediaModule,
+        EmailTemplatesModule,
+        AppointmentsModule,
     ],
 })
 export class AppModule { }

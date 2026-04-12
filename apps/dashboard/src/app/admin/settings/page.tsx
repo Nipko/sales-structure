@@ -27,6 +27,8 @@ import {
     Database,
     Zap,
     ArrowRight,
+    Mail,
+    Image,
 } from "lucide-react";
 
 const tabs = [
@@ -125,6 +127,22 @@ const toolCards = [
         href: "/admin/settings/prechat",
         iconColor: "text-emerald-500",
         iconBg: "bg-emerald-500/10",
+    },
+    {
+        title: "Plantillas de Correo",
+        description: "Personaliza emails de confirmacion, recordatorios y bienvenida",
+        icon: Mail,
+        href: "/admin/settings/email-templates",
+        iconColor: "text-purple-500",
+        iconBg: "bg-purple-500/10",
+    },
+    {
+        title: "Banco de Imagenes",
+        description: "Sube y gestiona imagenes de productos, logo de empresa y media",
+        icon: Image,
+        href: "/admin/settings/media",
+        iconColor: "text-pink-500",
+        iconBg: "bg-pink-500/10",
     },
 ];
 

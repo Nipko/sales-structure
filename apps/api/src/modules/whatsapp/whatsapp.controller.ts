@@ -16,6 +16,7 @@ import { WhatsappConnectionService } from './services/whatsapp-connection.servic
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
 import { WhatsappMessagingService } from './services/whatsapp-messaging.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -30,7 +31,17 @@ export class WhatsappController {
     private readonly webhookService: WhatsappWebhookService,
     private readonly templateService: WhatsappTemplateService,
     private readonly messagingService: WhatsappMessagingService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  private async resolveSchema(req: any): Promise<string | null> {
+    if (req.user?.schemaName) return req.user.schemaName;
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return null;
+    try {
+      return await this.prisma.getTenantSchemaName(tenantId);
+    } catch { return null; }
+  }
 
   // ======================== CONNECTION ========================
 
@@ -39,9 +50,9 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get WhatsApp channel status' })
   async getStatus(@Request() req: any) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) {
-      return { status: 'disconnected', channel: null, error: 'User does not belong to a tenant' };
+      return { status: 'disconnected', channel: null };
     }
     return this.connectionService.getChannelStatus(schemaName);
   }
@@ -89,7 +100,8 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Complete WhatsApp connection onboarding' })
   async completeConnection(@Request() req: any, @Body() data: any) {
-    const { schemaName, tenantId } = req.user;
+    const schemaName = await this.resolveSchema(req);
+    const tenantId = req.user?.tenantId;
     if (!schemaName || !tenantId) {
       throw new BadRequestException('User does not belong to a tenant');
     }
@@ -103,7 +115,7 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get synced WhatsApp templates' })
   async getTemplates(@Request() req: any) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) {
       return { success: true, data: [] };
     }
@@ -116,7 +128,7 @@ export class WhatsappController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Force sync templates from Meta' })
   async syncTemplates(@Request() req: any) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) {
       throw new BadRequestException('User does not belong to a tenant');
     }
@@ -136,7 +148,7 @@ export class WhatsappController {
     language: string;
     components?: any[];
   }) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendTemplate(
       schemaName, body.toPhone, body.templateName, body.language, body.components || []
@@ -153,7 +165,7 @@ export class WhatsappController {
     text: string;
     conversationId?: string;
   }) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendTextMessage(
       schemaName, body.toPhone, body.text, body.conversationId
@@ -170,7 +182,7 @@ export class WhatsappController {
     interactive: any;
     conversationId?: string;
   }) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendInteractiveMessage(
       schemaName, body.toPhone, body.interactive, body.conversationId
@@ -190,7 +202,7 @@ export class WhatsappController {
     filename?: string;
     conversationId?: string;
   }) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendMediaMessage(
       schemaName, body.toPhone, body.mediaType, body.mediaUrl, body.caption, body.filename, body.conversationId
@@ -210,7 +222,7 @@ export class WhatsappController {
     address?: string;
     conversationId?: string;
   }) {
-    const { schemaName } = req.user;
+    const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendLocationMessage(
       schemaName, body.toPhone, body.latitude, body.longitude, body.name, body.address, body.conversationId

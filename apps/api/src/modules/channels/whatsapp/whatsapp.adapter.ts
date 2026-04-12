@@ -68,32 +68,18 @@ export class WhatsAppAdapter implements IChannelAdapter {
                     messaging_product: 'whatsapp',
                     recipient_type: 'individual',
                     to,
-                    type: 'reaction',
-                    reaction: {
-                        message_id: '',
+                    type: 'typing_indicator',
+                    typing_indicator: {
+                        type: 'text',
                     },
                 }),
             });
 
-            // Fallback: if reaction doesn't work, try the typing action
             if (!response.ok) {
-                // Some API versions support typing_action
-                await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        messaging_product: 'whatsapp',
-                        to,
-                        type: 'contacts',
-                        contacts: [],
-                    }),
-                }).catch(() => {});
+                const data = await response.json().catch(() => ({})) as any;
+                this.logger.debug(`Typing indicator response: ${response.status} — ${data.error?.message || 'unknown'}`);
             }
         } catch (e: any) {
-            // Fire-and-forget: don't block response generation
             this.logger.debug(`Typing indicator failed (non-blocking): ${e.message}`);
         }
     }

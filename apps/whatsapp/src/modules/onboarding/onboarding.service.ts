@@ -142,8 +142,10 @@ export class OnboardingService {
     try {
       // ---- 5. Debug/validate token ----
       this.logger.log(`[Onboarding][${onboardingId}] Step 5: Debugging/validating long-lived token`);
+      let tokenDebugData: any = null;
       try {
         const tokenDebug = await this.metaGraph.debugToken(longLivedToken);
+        tokenDebugData = tokenDebug;
         this.logger.log(`[Onboarding][${onboardingId}] Token debug: valid=${tokenDebug.isValid}, type=${tokenDebug.type}, scopes=[${tokenDebug.scopes?.join(', ')}], expiresAt=${tokenDebug.expiresAt}`);
         if (tokenDebug.granularScopes) {
           this.logger.log(`[Onboarding][${onboardingId}] Granular scopes: ${JSON.stringify(tokenDebug.granularScopes)}`);
@@ -173,10 +175,29 @@ export class OnboardingService {
           wabaId = waba.id;
         }
       } else {
-        // No session info — fall back to /me/businesses discovery
-        this.logger.log(`[Onboarding][${onboardingId}] Step 6: No session info — falling back to /me/businesses discovery`);
-        waba = await this.discoverWabaViaApi(longLivedToken);
-        wabaId = waba.id;
+        // No session info — try extracting WABA from token scopes first, then /me/businesses
+        let scopeWabaId: string | null = null;
+        if (tokenDebugData?.granularScopes) {
+          const wbmScope = tokenDebugData.granularScopes.find((s: any) => s.scope === 'whatsapp_business_management');
+          if (wbmScope?.target_ids?.length > 0) {
+            scopeWabaId = wbmScope.target_ids[0];
+            this.logger.log(`[Onboarding][${onboardingId}] Step 6: Extracted WABA ID from token scopes: ${scopeWabaId}`);
+          }
+        }
+
+        if (scopeWabaId) {
+          wabaId = scopeWabaId;
+          try {
+            waba = await this.metaGraph.getWabaDirectly(wabaId, longLivedToken);
+          } catch (e: any) {
+            this.logger.warn(`[Onboarding][${onboardingId}] Direct WABA fetch failed: ${e.message}`);
+            waba = { id: wabaId, name: 'WhatsApp Business Account' };
+          }
+        } else {
+          this.logger.log(`[Onboarding][${onboardingId}] Step 6: No session info — falling back to /me/businesses discovery`);
+          waba = await this.discoverWabaViaApi(longLivedToken);
+          wabaId = waba.id;
+        }
       }
 
       this.logger.log(`[Onboarding][${onboardingId}] Resolved WABA: id=${wabaId}, name=${waba.name}, source=${usedSessionInfo ? 'session_info' : 'api_discovery'}`);

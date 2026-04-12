@@ -300,38 +300,20 @@ jobs:
 
             echo "===> Ensuring users columns exist..."
             docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
-              psql -U parallext -d parallext_engine -c "
-                DO \$\$ BEGIN
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS availability_status VARCHAR(20) DEFAULT 'offline';
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS max_capacity INTEGER DEFAULT 5;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email';
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS google_id TEXT;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS picture TEXT;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_code TEXT;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_expires TIMESTAMPTZ;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false;
-                  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
-                EXCEPTION WHEN OTHERS THEN
-                  RAISE NOTICE 'Some columns already exist, continuing...';
-                END \$\$;
-              " || true
-            # Make password nullable (separate statement to avoid conflicts)
-            docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
-              psql -U parallext -d parallext_engine -c "
-                ALTER TABLE public.users ALTER COLUMN password DROP NOT NULL;
-              " || true
-            # Add generated name column if not exists
-            docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
-              psql -U parallext -d parallext_engine -c "
-                DO \$\$ BEGIN
-                  ALTER TABLE public.users ADD COLUMN name TEXT
-                    GENERATED ALWAYS AS (TRIM(first_name || ' ' || last_name)) STORED;
-                EXCEPTION WHEN duplicate_column THEN
-                  NULL;
-                END \$\$;
-              " || true
+              psql -U parallext -d parallext_engine \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS availability_status VARCHAR(20) DEFAULT 'offline';" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS max_capacity INTEGER DEFAULT 5;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email';" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS google_id TEXT;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS picture TEXT;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_code TEXT;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_expires TIMESTAMPTZ;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;" \
+              -c "ALTER TABLE public.users ALTER COLUMN password DROP NOT NULL;" \
+              || true
 
             echo "===> Running Prisma public schema migrations..."
             docker compose -f infra/docker/docker-compose.prod.yml \

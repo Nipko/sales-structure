@@ -303,6 +303,14 @@ jobs:
                 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS availability_status VARCHAR(20) DEFAULT 'offline';
                 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS max_capacity INTEGER DEFAULT 5;
                 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email';
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS google_id TEXT;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS picture TEXT;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_code TEXT;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_expires TIMESTAMPTZ;
+                ALTER TABLE public.users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false;
+                ALTER TABLE public.users ALTER COLUMN password DROP NOT NULL;
               " || true
 
             echo "===> Running Prisma public schema migrations..."

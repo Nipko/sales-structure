@@ -78,6 +78,21 @@ export const api = {
     login: (email: string, password: string) =>
         apiPost("/auth/login", { email, password }),
 
+    googleLogin: (idToken: string) =>
+        apiPost("/auth/google", { idToken }),
+
+    setupPassword: (password: string) =>
+        apiPost("/auth/setup-password", { password }),
+
+    sendVerification: () =>
+        apiPost("/auth/send-verification", {}),
+
+    verifyEmail: (code: string) =>
+        apiPost("/auth/verify-email", { code }),
+
+    completeOnboarding: (data: any) =>
+        apiPost("/auth/complete-onboarding", data),
+
     me: () => apiPost("/auth/me", {}),
 
     // --- Tenants ---

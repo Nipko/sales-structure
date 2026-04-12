@@ -40,15 +40,22 @@ model Tenant {
 
 // ---- Users (Platform users: admins, agents) ----
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  password    String
-  firstName   String   @map("first_name")
-  lastName    String   @map("last_name")
-  role                String   @default("tenant_agent") // super_admin, tenant_admin, tenant_agent, tenant_viewer
+  id                  String   @id @default(uuid())
+  email               String   @unique
+  password            String?
+  firstName           String   @map("first_name")
+  lastName            String   @map("last_name")
+  role                String   @default("tenant_agent")
   tenantId            String?  @map("tenant_id")
   isActive            Boolean  @default(true) @map("is_active")
-  availabilityStatus  String   @default("offline") @map("availability_status") // online, busy, offline
+  authProvider        String   @default("email") @map("auth_provider")
+  googleId            String?  @map("google_id")
+  picture             String?
+  emailVerified       Boolean  @default(false) @map("email_verified")
+  emailVerifyCode     String?  @map("email_verify_code")
+  emailVerifyExpires  DateTime? @map("email_verify_expires")
+  onboardingCompleted Boolean  @default(false) @map("onboarding_completed")
+  availabilityStatus  String   @default("offline") @map("availability_status")
   maxCapacity         Int      @default(5) @map("max_capacity")
   lastActiveAt        DateTime? @map("last_active_at")
   lastLoginAt         DateTime? @map("last_login_at")

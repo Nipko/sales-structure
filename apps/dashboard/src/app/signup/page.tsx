@@ -1,13 +1,31 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useCallback, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+const GOOGLE_CLIENT_ID =
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    "950001098107-4ctk2jm3876afqktip7r4f04120kt0ou.apps.googleusercontent.com";
+
+declare global {
+    interface Window {
+        google?: {
+            accounts: {
+                id: {
+                    initialize: (config: any) => void;
+                    renderButton: (element: HTMLElement, config: any) => void;
+                    prompt: () => void;
+                };
+            };
+        };
+    }
+}
 
 const INDUSTRIES = [
     { value: "retail", label: "Retail / Comercio" },
@@ -25,6 +43,17 @@ const INDUSTRIES = [
 
 const inputClasses = "w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
 
+function GoogleLogo() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+            <path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.01 24.01 0 0 0 0 21.56l7.98-6.19z" />
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+        </svg>
+    );
+}
+
 export default function SignupPage() {
     const [form, setForm] = useState({
         companyName: "", industry: "", email: "",
@@ -33,11 +62,68 @@ export default function SignupPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+    const { googleLogin } = useAuth();
     const router = useRouter();
 
     const updateField = (field: string, value: string) => {
         setForm((prev) => ({ ...prev, [field]: value }));
     };
+
+    const handleGoogleCallback = useCallback(
+        async (response: { credential: string }) => {
+            setError("");
+            setIsGoogleLoading(true);
+            const result = await googleLogin(response.credential);
+            if (result.success && result.redirect) {
+                router.push(result.redirect);
+            } else {
+                setError(result.error || "Error al registrarse con Google");
+            }
+            setIsGoogleLoading(false);
+        },
+        [googleLogin, router]
+    );
+
+    const handleGoogleClick = useCallback(() => {
+        setError("");
+        setIsGoogleLoading(true);
+
+        const loadAndInit = () => {
+            if (window.google) {
+                window.google.accounts.id.initialize({
+                    client_id: GOOGLE_CLIENT_ID,
+                    callback: handleGoogleCallback,
+                });
+                window.google.accounts.id.prompt();
+                setIsGoogleLoading(false);
+                return;
+            }
+
+            if (!document.getElementById("google-gsi-script")) {
+                const script = document.createElement("script");
+                script.id = "google-gsi-script";
+                script.src = "https://accounts.google.com/gsi/client";
+                script.async = true;
+                script.defer = true;
+                script.onload = () => {
+                    window.google!.accounts.id.initialize({
+                        client_id: GOOGLE_CLIENT_ID,
+                        callback: handleGoogleCallback,
+                    });
+                    window.google!.accounts.id.prompt();
+                    setIsGoogleLoading(false);
+                };
+                script.onerror = () => {
+                    setError("No se pudo cargar el servicio de Google");
+                    setIsGoogleLoading(false);
+                };
+                document.head.appendChild(script);
+            }
+        };
+
+        loadAndInit();
+    }, [handleGoogleCallback]);
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -64,8 +150,17 @@ export default function SignupPage() {
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
-            // Redirect to dashboard
-            router.push("/admin");
+            // Redirect based on onboarding state
+            const user = data.data.user;
+            if (!user.hasPassword) {
+                router.push("/setup-password");
+            } else if (!user.emailVerified) {
+                router.push("/verify-email");
+            } else if (!user.onboardingCompleted) {
+                router.push("/onboarding");
+            } else {
+                router.push("/admin");
+            }
         } catch {
             setError("Error de conexión con el servidor");
         }
@@ -102,6 +197,34 @@ export default function SignupPage() {
                             <AlertCircle size={16} /> {error}
                         </div>
                     )}
+
+                    {/* Google Button */}
+                    <button
+                        type="button"
+                        onClick={handleGoogleClick}
+                        disabled={isGoogleLoading}
+                        className={cn(
+                            "w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border text-sm font-medium transition-all",
+                            "bg-white dark:bg-white/[0.06] border-gray-300 dark:border-white/15 text-gray-700 dark:text-gray-200",
+                            isGoogleLoading
+                                ? "cursor-wait opacity-70"
+                                : "cursor-pointer hover:bg-gray-50 dark:hover:bg-white/10 hover:border-gray-400 dark:hover:border-white/25"
+                        )}
+                    >
+                        {isGoogleLoading ? (
+                            <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+                        ) : (
+                            <GoogleLogo />
+                        )}
+                        Continuar con Google
+                    </button>
+
+                    {/* Separator */}
+                    <div className="flex items-center gap-3 my-6">
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+                        <span className="text-xs text-muted-foreground">o</span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+                    </div>
 
                     <form onSubmit={handleSubmit}>
                         {/* Company Section */}

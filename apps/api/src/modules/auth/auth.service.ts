@@ -1,8 +1,10 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import { GoogleAuthService } from './google-auth.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 
 @Injectable()
@@ -11,6 +13,8 @@ export class AuthService {
         private prisma: PrismaService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        private googleAuthService: GoogleAuthService,
+        private emailService: EmailService,
     ) { }
 
     async register(data: {
@@ -193,6 +197,10 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
+        if (!user.password) {
+            throw new UnauthorizedException('This account uses Google sign-in. Please log in with Google.');
+        }
+
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
             throw new UnauthorizedException('Invalid credentials');
@@ -314,6 +322,317 @@ export class AuthService {
             tenantId: user.tenantId,
             isActive: user.isActive,
             schemaName: user.tenant?.schemaName, // Flattened for controllers
+        };
+    }
+
+    // ── Google OAuth ──────────────────────────────────────────────
+
+    async googleLogin(idToken: string) {
+        const googleUser = await this.googleAuthService.verifyIdToken(idToken);
+
+        // Find existing user by email or googleId
+        let user = await this.prisma.user.findFirst({
+            where: {
+                OR: [
+                    { email: googleUser.email },
+                    { googleId: googleUser.googleId },
+                ],
+            },
+            include: { tenant: true },
+        });
+
+        if (!user) {
+            // Create new user with Google auth — no password, no tenant yet
+            user = await this.prisma.user.create({
+                data: {
+                    email: googleUser.email,
+                    firstName: googleUser.firstName,
+                    lastName: googleUser.lastName,
+                    authProvider: 'google',
+                    googleId: googleUser.googleId,
+                    picture: googleUser.picture,
+                    emailVerified: true, // Google verifies emails
+                    role: 'tenant_admin',
+                },
+                include: { tenant: true },
+            });
+        } else if (user.authProvider === 'email' && !user.googleId) {
+            // Link Google account to existing email user
+            user = await this.prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    googleId: googleUser.googleId,
+                    picture: googleUser.picture || user.picture,
+                },
+                include: { tenant: true },
+            });
+        }
+
+        // Update last login
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+        });
+
+        // Generate tokens
+        const payload: JwtPayload = {
+            sub: user.id,
+            email: user.email,
+            role: user.role as UserRole,
+            tenantId: user.tenantId || undefined,
+        };
+
+        const accessToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
+        });
+
+        const refreshToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
+        });
+
+        return {
+            accessToken,
+            refreshToken,
+            user: {
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                tenantId: user.tenantId,
+                tenantName: user.tenant?.name,
+                hasPassword: !!user.password,
+                emailVerified: user.emailVerified,
+                onboardingCompleted: user.onboardingCompleted,
+            },
+        };
+    }
+
+    // ── Password setup ────────────────────────────────────────────
+
+    async setupPassword(userId: string, password: string) {
+        // Validate password strength
+        const errors: string[] = [];
+        if (password.length < 8) errors.push('Minimum 8 characters');
+        if (!/[A-Z]/.test(password)) errors.push('At least 1 uppercase letter');
+        if (!/[a-z]/.test(password)) errors.push('At least 1 lowercase letter');
+        if (!/[0-9]/.test(password)) errors.push('At least 1 number');
+        if (!/[^A-Za-z0-9]/.test(password)) errors.push('At least 1 special character');
+
+        if (errors.length > 0) {
+            throw new BadRequestException({
+                message: 'Password does not meet requirements',
+                errors,
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        });
+
+        return { message: 'Password set successfully' };
+    }
+
+    // ── Email verification ────────────────────────────────────────
+
+    async sendVerificationEmail(userId: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        // Generate 6-digit code
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                emailVerifyCode: code,
+                emailVerifyExpires: expires,
+            },
+        });
+
+        // Send verification email
+        await this.emailService.send({
+            to: user.email,
+            subject: 'Tu codigo de verificacion — Parallly',
+            html: `
+                <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+                    <div style="background: linear-gradient(135deg, #6c5ce7, #9b59b6); padding: 24px; border-radius: 12px 12px 0 0; color: white;">
+                        <h2 style="margin: 0; font-size: 20px;">Parallly</h2>
+                        <p style="margin: 4px 0 0; opacity: 0.85; font-size: 14px;">Verificacion de email</p>
+                    </div>
+                    <div style="background: #1a1a2e; padding: 24px; border-radius: 0 0 12px 12px; color: #e0e0e0;">
+                        <p style="margin: 0 0 16px; font-size: 15px;">Hola ${user.firstName}, tu codigo de verificacion es:</p>
+                        <div style="background: #16213e; padding: 20px; border-radius: 8px; text-align: center; border-left: 3px solid #6c5ce7;">
+                            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: white;">${code}</span>
+                        </div>
+                        <p style="margin: 16px 0 0; font-size: 12px; color: #666;">
+                            Este codigo expira en 10 minutos.
+                        </p>
+                    </div>
+                </div>
+            `,
+        });
+
+        return { message: 'Verification code sent' };
+    }
+
+    async verifyEmailCode(userId: string, code: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        if (
+            !user.emailVerifyCode ||
+            !user.emailVerifyExpires ||
+            user.emailVerifyCode !== code ||
+            user.emailVerifyExpires < new Date()
+        ) {
+            throw new BadRequestException('Invalid or expired verification code');
+        }
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                emailVerified: true,
+                emailVerifyCode: null,
+                emailVerifyExpires: null,
+            },
+        });
+
+        return { message: 'Email verified successfully' };
+    }
+
+    // ── Onboarding completion ─────────────────────────────────────
+
+    async completeOnboarding(userId: string, data: any) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        const {
+            companyName,
+            website,
+            socialLinks,
+            industry,
+            companySize,
+            customerTypes,
+            chatReasons,
+            referralSource,
+        } = data;
+
+        // Generate slug from company name
+        const slug = companyName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+
+        // Check slug uniqueness
+        const existingTenant = await this.prisma.tenant.findUnique({
+            where: { slug },
+        });
+        if (existingTenant) {
+            throw new ConflictException('A company with a similar name already exists');
+        }
+
+        const schemaName = `tenant_${slug.replace(/-/g, '_')}`;
+
+        // Atomic transaction: create tenant + link user
+        const result = await this.prisma.$transaction(async (tx: any) => {
+            // 1. Create tenant with settings JSONB
+            const tenant = await tx.tenant.create({
+                data: {
+                    name: companyName,
+                    slug,
+                    industry: industry || 'other',
+                    schemaName,
+                    plan: 'starter',
+                    language: 'es-CO',
+                    settings: {
+                        website,
+                        socialLinks,
+                        companySize,
+                        customerTypes,
+                        chatReasons,
+                        referralSource,
+                    },
+                },
+            });
+
+            // 2. Link user to tenant and mark onboarding complete
+            const updatedUser = await tx.user.update({
+                where: { id: userId },
+                data: {
+                    tenantId: tenant.id,
+                    role: 'tenant_admin',
+                    onboardingCompleted: true,
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    role: true,
+                    tenantId: true,
+                    onboardingCompleted: true,
+                },
+            });
+
+            // 3. Audit log
+            await tx.auditLog.create({
+                data: {
+                    tenantId: tenant.id,
+                    userId: user.id,
+                    action: 'onboarding_completed',
+                    resource: 'tenant',
+                    details: { companyName, slug, email: user.email },
+                },
+            });
+
+            return { tenant, user: updatedUser };
+        });
+
+        // 4. Create isolated DB schema (outside transaction — DDL cannot be rolled back)
+        try {
+            await this.prisma.createTenantSchema(result.tenant.schemaName);
+        } catch (error) {
+            console.error(`[Onboarding] Failed to create schema "${result.tenant.schemaName}":`, error);
+        }
+
+        // 5. Generate new JWT tokens (now includes tenantId)
+        const payload: JwtPayload = {
+            sub: result.user.id,
+            email: result.user.email,
+            role: result.user.role as UserRole,
+            tenantId: result.user.tenantId || undefined,
+        };
+
+        const accessToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
+        });
+
+        const refreshToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
+        });
+
+        return {
+            accessToken,
+            refreshToken,
+            user: {
+                id: result.user.id,
+                email: result.user.email,
+                firstName: result.user.firstName,
+                lastName: result.user.lastName,
+                role: result.user.role,
+                tenantId: result.user.tenantId,
+                tenantName: result.tenant.name,
+                onboardingCompleted: result.user.onboardingCompleted,
+            },
         };
     }
 }

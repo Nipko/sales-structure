@@ -15,13 +15,29 @@ interface User {
     role: string;
     tenantId?: string;
     tenantName?: string;
+    hasPassword?: boolean;
+    emailVerified?: boolean;
+    onboardingCompleted?: boolean;
+}
+
+interface GoogleLoginResult {
+    success: boolean;
+    error?: string;
+    redirect?: string;
+}
+
+interface LoginResult {
+    success: boolean;
+    error?: string;
+    redirect?: string;
 }
 
 interface AuthContextType {
     user: User | null;
     isLoading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    login: (email: string, password: string) => Promise<LoginResult>;
+    googleLogin: (idToken: string) => Promise<GoogleLoginResult>;
     logout: () => void;
     hasRole: (...roles: string[]) => boolean;
 }
@@ -54,7 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
     }, []);
 
-    const login = useCallback(async (email: string, password: string) => {
+    const getRedirectPath = useCallback((userData: User): string => {
+        if (!userData.hasPassword) return "/setup-password";
+        if (!userData.emailVerified) return "/verify-email";
+        if (!userData.onboardingCompleted) return "/onboarding";
+        return "/admin";
+    }, []);
+
+    const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
         try {
             const res = await fetch(`${API_URL}/auth/login`, {
                 method: "POST",
@@ -74,11 +97,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
             setUser(data.data.user);
-            return { success: true };
+            return { success: true, redirect: getRedirectPath(data.data.user) };
         } catch (err) {
             return { success: false, error: "Error de conexión con el servidor" };
         }
-    }, []);
+    }, [getRedirectPath]);
+
+    const googleLogin = useCallback(async (idToken: string): Promise<GoogleLoginResult> => {
+        try {
+            const res = await fetch(`${API_URL}/auth/google`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ idToken }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                return { success: false, error: data.message || "Error al iniciar sesión con Google" };
+            }
+
+            localStorage.setItem("accessToken", data.data.accessToken);
+            localStorage.setItem("refreshToken", data.data.refreshToken);
+            localStorage.setItem("user", JSON.stringify(data.data.user));
+
+            setUser(data.data.user);
+            return { success: true, redirect: getRedirectPath(data.data.user) };
+        } catch (err) {
+            return { success: false, error: "Error de conexión con el servidor" };
+        }
+    }, [getRedirectPath]);
 
     const logout = useCallback(() => {
         localStorage.removeItem("accessToken");
@@ -100,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isLoading,
                 isAuthenticated: !!user,
                 login,
+                googleLogin,
                 logout,
                 hasRole,
             }}

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { IsEmail, IsString, IsOptional, MinLength } from 'class-validator';
@@ -153,5 +153,53 @@ export class AuthController {
     @ApiOperation({ summary: 'Get current user info' })
     async me(@CurrentUser() user: any) {
         return { success: true, data: user };
+    }
+
+    @Post('google')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Login or register with Google OAuth' })
+    async googleLogin(@Body() body: { idToken: string }) {
+        const result = await this.authService.googleLogin(body.idToken);
+        return { success: true, data: result };
+    }
+
+    @Post('setup-password')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Set password for Google-authenticated users' })
+    async setupPassword(@Request() req: any, @Body() body: { password: string }) {
+        await this.authService.setupPassword(req.user.id, body.password);
+        return { success: true };
+    }
+
+    @Post('send-verification')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Send email verification code' })
+    async sendVerification(@Request() req: any) {
+        await this.authService.sendVerificationEmail(req.user.id);
+        return { success: true };
+    }
+
+    @Post('verify-email')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verify email with 6-digit code' })
+    async verifyEmail(@Request() req: any, @Body() body: { code: string }) {
+        await this.authService.verifyEmailCode(req.user.id, body.code);
+        return { success: true };
+    }
+
+    @Post('complete-onboarding')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Complete onboarding: create company and tenant' })
+    async completeOnboarding(@Request() req: any, @Body() body: any) {
+        const result = await this.authService.completeOnboarding(req.user.id, body);
+        return { success: true, data: result };
     }
 }

@@ -261,6 +261,7 @@ jobs:
             echo "REDIS_PORT=6379" >> .env
             echo "REDIS_PASSWORD=${PROD_REDIS_PASSWORD}" >> .env
             echo "INTERNAL_JWT_SECRET=${PROD_INTERNAL_JWT_SECRET}" >> .env
+            echo "JWT_SECRET=${PROD_INTERNAL_JWT_SECRET}" >> .env
             echo "ENCRYPTION_KEY=${PROD_ENCRYPTION_KEY}" >> .env
             echo "META_APP_ID=${PROD_META_APP_ID}" >> .env
             echo "META_APP_SECRET=${PROD_META_APP_SECRET}" >> .env

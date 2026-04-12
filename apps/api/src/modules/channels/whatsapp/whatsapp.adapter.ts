@@ -12,7 +12,7 @@ import { v4 as uuid } from 'uuid';
 export class WhatsAppAdapter implements IChannelAdapter {
     readonly channelType: ChannelType = 'whatsapp';
     private readonly logger = new Logger(WhatsAppAdapter.name);
-    private readonly apiUrl = 'https://graph.facebook.com/v21.0';
+    private readonly apiUrl = 'https://graph.facebook.com/v25.0';
 
     constructor(private configService: ConfigService) {}
 

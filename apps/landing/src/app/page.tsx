@@ -1396,13 +1396,18 @@ export default function LandingPage() {
             </h4>
             <ul className="space-y-2 text-sm text-text-muted">
               <li>
-                <a href="#" className="hover:text-text-secondary transition-colors">
+                <a href="/privacy" className="hover:text-text-secondary transition-colors">
                   Privacidad
                 </a>
               </li>
               <li>
-                <a href="#" className="hover:text-text-secondary transition-colors">
+                <a href="/terms" className="hover:text-text-secondary transition-colors">
                   T&eacute;rminos
+                </a>
+              </li>
+              <li>
+                <a href="/data-policy" className="hover:text-text-secondary transition-colors">
+                  Datos personales
                 </a>
               </li>
             </ul>

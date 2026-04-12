@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Request } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { IsEmail, IsString, IsOptional, MinLength } from 'class-validator';
@@ -159,6 +159,9 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login or register with Google OAuth' })
     async googleLogin(@Body() body: { idToken: string }) {
+        if (!body.idToken) {
+            throw new BadRequestException('idToken is required');
+        }
         const result = await this.authService.googleLogin(body.idToken);
         return { success: true, data: result };
     }

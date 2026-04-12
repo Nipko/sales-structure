@@ -47,7 +47,8 @@ export class EmailService {
             return false;
         }
 
-        const defaultFrom = this.config.get<string>('SMTP_FROM', 'no-reply@parallext.com');
+        const defaultFrom = this.config.get<string>('SMTP_FROM')
+            || `Parallly <${this.config.get<string>('SMTP_USER', 'no-reply@parallext.com')}>`;
 
         try {
             const info = await this.transporter.sendMail({

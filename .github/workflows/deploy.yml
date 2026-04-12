@@ -201,7 +201,6 @@ jobs:
           PROD_SMTP_PORT: ${{ secrets.SMTP_PORT }}
           PROD_SMTP_USER: ${{ secrets.SMTP_USER }}
           PROD_SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          PROD_SMTP_FROM: ${{ secrets.SMTP_FROM }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -216,7 +215,7 @@ jobs:
             PROD_INTERNAL_API_KEY,
             PROD_OPENAI_API_KEY,PROD_ANTHROPIC_API_KEY,PROD_GOOGLE_AI_KEY,PROD_XAI_API_KEY,PROD_DEEPSEEK_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,
-            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,PROD_SMTP_FROM
+            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -294,7 +293,7 @@ jobs:
             echo "SMTP_PORT=${PROD_SMTP_PORT:-587}" >> .env
             echo "SMTP_USER=${PROD_SMTP_USER}" >> .env
             echo "SMTP_PASS=${PROD_SMTP_PASS}" >> .env
-            echo "SMTP_FROM=${PROD_SMTP_FROM}" >> .env
+            echo "SMTP_FROM=Parallly <${PROD_SMTP_USER}>" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             echo "CLOUDFLARE_TUNNEL_TOKEN=${PROD_TUNNEL_TOKEN}" >> .env
             chmod 600 .env

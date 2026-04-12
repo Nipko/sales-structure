@@ -50,6 +50,55 @@ export class WhatsAppAdapter implements IChannelAdapter {
     }
 
     /**
+     * Send typing indicator ("escribiendo...") to the customer.
+     * Call before generating AI response so the user sees activity.
+     */
+    async sendTypingIndicator(phoneNumberId: string, to: string, accessToken: string): Promise<void> {
+        if (!phoneNumberId || !to) return;
+
+        try {
+            const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to,
+                    type: 'reaction',
+                    reaction: {
+                        message_id: '',
+                    },
+                }),
+            });
+
+            // Fallback: if reaction doesn't work, try the typing action
+            if (!response.ok) {
+                // Some API versions support typing_action
+                await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messaging_product: 'whatsapp',
+                        to,
+                        type: 'contacts',
+                        contacts: [],
+                    }),
+                }).catch(() => {});
+            }
+        } catch (e: any) {
+            // Fire-and-forget: don't block response generation
+            this.logger.debug(`Typing indicator failed (non-blocking): ${e.message}`);
+        }
+    }
+
+    /**
      * Verify webhook subscription (Meta verification challenge)
      */
     verifyWebhook(query: any): string | null {

@@ -110,6 +110,17 @@ export class ConversationsService {
             return;
         }
 
+        // 5b. Send typing indicator before AI generates response
+        try {
+            const accessToken = await this.resolveAccessToken(tenantId);
+            if (accessToken) {
+                await this.channelGateway.sendTypingIndicator(
+                    channelType as any, normalizedMsg.channelAccountId,
+                    normalizedMsg.contactId, accessToken,
+                );
+            }
+        } catch { /* non-blocking */ }
+
         // 6. Generate AI Response
         this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');

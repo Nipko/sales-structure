@@ -90,6 +90,21 @@ export class ChannelGatewayService {
     }
 
     /**
+     * Send typing indicator to show the customer that the agent/AI is composing a response.
+     * Fire-and-forget — never blocks the response pipeline.
+     */
+    async sendTypingIndicator(channelType: ChannelType, channelAccountId: string, to: string, accessToken: string): Promise<void> {
+        try {
+            const adapter = this.adapters.get(channelType) as any;
+            if (adapter?.sendTypingIndicator) {
+                await adapter.sendTypingIndicator(channelAccountId, to, accessToken);
+            }
+        } catch (e: any) {
+            this.logger.debug(`Typing indicator failed (non-blocking): ${e.message}`);
+        }
+    }
+
+    /**
      * List registered adapters
      */
     getRegisteredChannels(): ChannelType[] {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, FormEvent } from "react";
+import { useState, useEffect, useCallback, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,6 +44,8 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+    const [googleReady, setGoogleReady] = useState(false);
+    const googleBtnRef = useRef<HTMLDivElement>(null);
     const { login, googleLogin } = useAuth();
     const router = useRouter();
 
@@ -62,46 +64,50 @@ export default function LoginPage() {
         [googleLogin, router]
     );
 
-    const handleGoogleClick = useCallback(() => {
-        setError("");
-        setIsGoogleLoading(true);
-
-        const loadAndInit = () => {
-            if (window.google) {
-                window.google.accounts.id.initialize({
-                    client_id: GOOGLE_CLIENT_ID,
-                    callback: handleGoogleCallback,
-                });
-                window.google.accounts.id.prompt();
-                setIsGoogleLoading(false);
-                return;
-            }
-
-            // Load script dynamically
-            if (!document.getElementById("google-gsi-script")) {
-                const script = document.createElement("script");
-                script.id = "google-gsi-script";
-                script.src = "https://accounts.google.com/gsi/client";
-                script.async = true;
-                script.defer = true;
-                script.onload = () => {
-                    window.google!.accounts.id.initialize({
-                        client_id: GOOGLE_CLIENT_ID,
-                        callback: handleGoogleCallback,
-                    });
-                    window.google!.accounts.id.prompt();
-                    setIsGoogleLoading(false);
-                };
-                script.onerror = () => {
-                    setError("No se pudo cargar el servicio de Google");
-                    setIsGoogleLoading(false);
-                };
-                document.head.appendChild(script);
-            }
+    // Load Google Identity Services script and render hidden button
+    useEffect(() => {
+        const initGoogle = () => {
+            if (!window.google || !googleBtnRef.current) return;
+            window.google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleGoogleCallback,
+                ux_mode: "popup",
+            });
+            window.google.accounts.id.renderButton(googleBtnRef.current, {
+                type: "standard",
+                size: "large",
+                width: 300,
+            });
+            setGoogleReady(true);
         };
 
-        loadAndInit();
+        if (window.google) {
+            initGoogle();
+            return;
+        }
+
+        if (!document.getElementById("google-gsi-script")) {
+            const script = document.createElement("script");
+            script.id = "google-gsi-script";
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            script.onload = () => initGoogle();
+            document.head.appendChild(script);
+        }
     }, [handleGoogleCallback]);
+
+    const handleGoogleClick = useCallback(() => {
+        // Click the hidden Google-rendered button
+        const btn = googleBtnRef.current?.querySelector<HTMLElement>(
+            'div[role="button"]'
+        );
+        if (btn) {
+            btn.click();
+        } else {
+            setError("Google no está listo. Intenta de nuevo en un momento.");
+        }
+    }, []);
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -148,6 +154,9 @@ export default function LoginPage() {
                             <AlertCircle size={16} /> {error}
                         </div>
                     )}
+
+                    {/* Hidden Google-rendered button */}
+                    <div ref={googleBtnRef} className="absolute overflow-hidden" style={{ width: 0, height: 0, opacity: 0, pointerEvents: "none" }} />
 
                     {/* Google Button */}
                     <button

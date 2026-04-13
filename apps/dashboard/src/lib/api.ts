@@ -393,7 +393,7 @@ export const api = {
     getMediaList: (tenantId: string, entityType?: string) =>
         apiGet(`/media/list/${tenantId}${entityType ? `?entityType=${entityType}` : ""}`),
     deleteMedia: (tenantId: string, fileId: string) =>
-        apiDelete(`/media/${tenantId}/${fileId}`),
+        apiDelete(`/media/delete/${tenantId}/${fileId}`),
 
     // --- Email Templates ---
     getEmailTemplates: (tenantId: string) =>

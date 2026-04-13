@@ -135,7 +135,7 @@ export default function MediaBankPage() {
     // For now, derive from media list.
     (async () => {
       try {
-        const res = await api.getMediaList(tenantId, "logo");
+        const res = await api.getMediaList(tenantId, "tenant_logo");
         if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           setLogoUrl(buildFullUrl(res.data[0].url));
         }
@@ -196,8 +196,8 @@ export default function MediaBankPage() {
     setLogoUploading(true);
     try {
       const res = await api.uploadLogo(tenantId, file);
-      if (res.success && res.data?.url) {
-        setLogoUrl(buildFullUrl(res.data.url));
+      if (res.success && res.data?.logoUrl) {
+        setLogoUrl(buildFullUrl(res.data.logoUrl));
         showToast("Logo actualizado");
       } else {
         showToast(`Error: ${res.error || "No se pudo subir el logo"}`);

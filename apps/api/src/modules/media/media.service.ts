@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import * as sharp from 'sharp';
+import sharp from 'sharp';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
@@ -88,8 +88,8 @@ export class MediaService {
         const mainSize = fs.statSync(mainPath).size;
 
         // Save to database
-        const url = `/media/${tenantId}/${fileName}`;
-        const thumbnailUrl = `/media/${tenantId}/${thumbName}`;
+        const url = `/media/file/${tenantId}/${fileName}`;
+        const thumbnailUrl = `/media/file/${tenantId}/${thumbName}`;
 
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, created_at)
@@ -146,7 +146,7 @@ export class MediaService {
     /**
      * List media files for a tenant
      */
-    async list(schemaName: string, entityType?: string): Promise<MediaFile[]> {
+    async list(schemaName: string, tenantId: string, entityType?: string): Promise<MediaFile[]> {
         let sql = `SELECT id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, created_at
                     FROM media_files`;
         const params: any[] = [];
@@ -170,8 +170,8 @@ export class MediaService {
             sizeBytes: row.size_bytes,
             width: row.width,
             height: row.height,
-            url: `/media/${row.file_name?.split('/')[0] || ''}/${row.file_name}`,
-            thumbnailUrl: row.thumbnail_name ? `/media/${row.file_name?.split('/')[0] || ''}/${row.thumbnail_name}` : null,
+            url: `/media/file/${tenantId}/${row.file_name}`,
+            thumbnailUrl: row.thumbnail_name ? `/media/file/${tenantId}/${row.thumbnail_name}` : null,
             createdAt: row.created_at,
         }));
     }

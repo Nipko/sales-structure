@@ -15,6 +15,7 @@ interface User {
     role: string;
     tenantId?: string;
     tenantName?: string;
+    picture?: string;
     hasPassword?: boolean;
     emailVerified?: boolean;
     onboardingCompleted?: boolean;

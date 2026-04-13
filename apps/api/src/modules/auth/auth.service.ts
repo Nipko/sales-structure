@@ -203,6 +203,7 @@ export class AuthService {
                 role: user.role,
                 tenantId: user.tenantId,
                 tenantName: user.tenant?.name,
+                picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,

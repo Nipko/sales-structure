@@ -422,9 +422,13 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           onClick={() => setShowUserMenu(!showUserMenu)}
           className="flex items-center gap-2 p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-            {user?.firstName?.charAt(0) || "U"}
-          </div>
+          {user?.picture ? (
+            <img src={user.picture} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+              {user?.firstName?.charAt(0) || "U"}
+            </div>
+          )}
           <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 hidden sm:inline">
             {user?.firstName}
           </span>
@@ -434,7 +438,15 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         {showUserMenu && (
           <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-lg z-50 py-2">
             {/* Profile info */}
-            <div className="px-4 py-2 border-b border-neutral-100 dark:border-neutral-800">
+            <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-3">
+              {user?.picture ? (
+                <img src={user.picture} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                  {user?.firstName?.charAt(0) || "U"}
+                </div>
+              )}
+              <div>
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 {user?.firstName} {user?.lastName}
               </p>
@@ -445,6 +457,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 {user?.role?.replace(/_/g, " ")}
                 {user?.tenantName ? ` · ${user.tenantName}` : ""}
               </p>
+              </div>
             </div>
             {/* Quick links */}
             <Link

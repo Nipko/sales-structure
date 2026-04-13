@@ -71,8 +71,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const getRedirectPath = useCallback((userData: User): string => {
+        // super_admin and users with a tenant skip onboarding entirely
+        if (userData.role === "super_admin" || userData.tenantId) {
+            return "/admin";
+        }
+        // New Google users without password
         if (!userData.hasPassword) return "/setup-password";
+        // Users who haven't verified email
         if (!userData.emailVerified) return "/verify-email";
+        // Users without a company/tenant
         if (!userData.onboardingCompleted) return "/onboarding";
         return "/admin";
     }, []);

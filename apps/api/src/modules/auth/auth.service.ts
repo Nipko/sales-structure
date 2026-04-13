@@ -396,6 +396,9 @@ export class AuthService {
             expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
         });
 
+        // super_admin and users with tenant are always "onboarded"
+        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+
         return {
             accessToken,
             refreshToken,
@@ -409,7 +412,7 @@ export class AuthService {
                 tenantName: user.tenant?.name,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
-                onboardingCompleted: user.onboardingCompleted,
+                onboardingCompleted: effectiveOnboarding,
             },
         };
     }

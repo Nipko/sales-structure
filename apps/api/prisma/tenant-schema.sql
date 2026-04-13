@@ -1095,7 +1095,48 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."email_templates" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "et_slug_idx" ON "{{SCHEMA_NAME}}"."email_templates" ("slug");
 
+-- ---- Bookable Services ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."services" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "duration_minutes" INTEGER NOT NULL DEFAULT 30,
+    "buffer_minutes" INTEGER NOT NULL DEFAULT 0,
+    "price" DECIMAL(15, 2) DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "color" VARCHAR(20) DEFAULT '#6c5ce7',
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" INTEGER DEFAULT 0,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- Calendar Integrations (per agent) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_integrations" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "user_id" UUID NOT NULL,
+    "provider" VARCHAR(50) NOT NULL DEFAULT 'google',
+    "encrypted_refresh_token" TEXT NOT NULL,
+    "calendar_id" VARCHAR(255) DEFAULT 'primary',
+    "account_email" VARCHAR(255),
+    "sync_token" TEXT,
+    "watch_channel_id" VARCHAR(255),
+    "watch_resource_id" VARCHAR(255),
+    "watch_expiration" TIMESTAMP,
+    "is_active" BOOLEAN DEFAULT true,
+    "connected_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "ci_user_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
+
 -- ---- Appointments ----
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "service_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "google_event_id" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "outlook_event_id" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_email" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_phone" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_name" VARCHAR(255);
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,

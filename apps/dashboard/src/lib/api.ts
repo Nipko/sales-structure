@@ -427,6 +427,28 @@ export const api = {
     rejectOptOut: (tenantId: string, recordId: string, notes?: string) =>
         apiPut(`/compliance/opt-outs/${tenantId}/${recordId}/reject`, { notes }),
 
+    // --- Bookable Services ---
+    getServices: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/services`),
+    createService: (tenantId: string, data: any) =>
+        apiPost(`/appointments/${tenantId}/services`, data),
+    updateService: (tenantId: string, serviceId: string, data: any) =>
+        apiPut(`/appointments/${tenantId}/services/${serviceId}`, data),
+    deleteService: (tenantId: string, serviceId: string) =>
+        apiDelete(`/appointments/${tenantId}/services/${serviceId}`),
+
+    // --- Calendar Integrations ---
+    getCalendarIntegrations: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/calendar/integrations`),
+    connectGoogleCalendar: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/calendar/google/connect`),
+    connectMicrosoftCalendar: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/calendar/microsoft/connect`),
+    disconnectCalendar: (tenantId: string, integrationId: string) =>
+        apiDelete(`/appointments/${tenantId}/calendar/${integrationId}`),
+    getBookableSlots: (tenantId: string, date: string, serviceId: string, userId?: string) =>
+        apiGet(`/appointments/${tenantId}/bookable-slots?date=${date}&serviceId=${serviceId}${userId ? `&userId=${userId}` : ''}`),
+
     // --- Appointments ---
     getAppointments: (tenantId: string, params?: string) =>
         apiGet(`/appointments/${tenantId}${params ? `?${params}` : ""}`),

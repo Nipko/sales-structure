@@ -342,4 +342,99 @@ export class AppointmentsService {
             createdAt: row.created_at,
         };
     }
+
+    /**
+     * Generate specific time slots for a date, service duration, and agent.
+     * Merges: availability - blocked - existing appointments - calendar busy times.
+     * Returns concrete bookable slots like ["09:00","09:30","10:00",...].
+     */
+    async getBookableSlots(
+        schemaName: string,
+        date: string,
+        durationMinutes: number,
+        bufferMinutes: number = 0,
+        userId?: string,
+        calendarBusySlots: { start: string; end: string }[] = [],
+    ): Promise<{ time: string; endTime: string; agentId: string; agentName: string }[]> {
+        const dayOfWeek = new Date(date).getDay();
+        const dateStr = date.split('T')[0]; // YYYY-MM-DD
+
+        // 1. Get availability windows for this day
+        let sql = `
+            SELECT a.user_id, a.start_time::text, a.end_time::text, u.first_name || ' ' || u.last_name as agent_name
+            FROM availability_slots a
+            LEFT JOIN public.users u ON u.id = a.user_id
+            WHERE a.day_of_week = $1 AND a.is_active = true
+        `;
+        const params: any[] = [dayOfWeek];
+        if (userId) { sql += ` AND a.user_id = $2::uuid`; params.push(userId); }
+
+        const windows = await this.prisma.executeInTenantSchema(schemaName, sql, params) as any[];
+
+        // 2. Get blocked dates
+        const blocked = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT user_id FROM blocked_dates WHERE blocked_date = $1::date`, [dateStr],
+        );
+        const blockedSet = new Set((blocked || []).map(b => b.user_id));
+
+        // 3. Get existing appointments
+        const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT assigned_to, start_at, end_at FROM appointments
+             WHERE start_at::date = $1::date AND status NOT IN ('cancelled')`, [dateStr],
+        );
+
+        // 4. Generate slots
+        const totalMinutes = durationMinutes + bufferMinutes;
+        const results: { time: string; endTime: string; agentId: string; agentName: string }[] = [];
+
+        for (const win of windows) {
+            if (blockedSet.has(win.user_id)) continue;
+
+            const [startH, startM] = win.start_time.split(':').map(Number);
+            const [endH, endM] = win.end_time.split(':').map(Number);
+            const windowStart = startH * 60 + startM;
+            const windowEnd = endH * 60 + endM;
+
+            // Generate slots every 30 min (or duration if shorter)
+            const step = Math.min(30, durationMinutes);
+            for (let m = windowStart; m + totalMinutes <= windowEnd; m += step) {
+                const slotStart = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+                const slotEndM = m + durationMinutes;
+                const slotEnd = `${String(Math.floor(slotEndM / 60)).padStart(2, '0')}:${String(slotEndM % 60).padStart(2, '0')}`;
+
+                const slotStartISO = `${dateStr}T${slotStart}:00`;
+                const slotEndISO = `${dateStr}T${slotEnd}:00`;
+
+                // Check conflict with existing appointments
+                const hasConflict = (existing || []).some(e => {
+                    if (e.assigned_to !== win.user_id) return false;
+                    const eStart = new Date(e.start_at).getTime();
+                    const eEnd = new Date(e.end_at).getTime();
+                    const sStart = new Date(slotStartISO).getTime();
+                    const sEnd = new Date(slotEndISO).getTime();
+                    return sStart < eEnd && sEnd > eStart;
+                });
+                if (hasConflict) continue;
+
+                // Check conflict with calendar busy times
+                const calBusy = calendarBusySlots.some(b => {
+                    const bStart = new Date(b.start).getTime();
+                    const bEnd = new Date(b.end).getTime();
+                    const sStart = new Date(slotStartISO).getTime();
+                    const sEnd = new Date(slotEndISO).getTime();
+                    return sStart < bEnd && sEnd > bStart;
+                });
+                if (calBusy) continue;
+
+                results.push({
+                    time: slotStart,
+                    endTime: slotEnd,
+                    agentId: win.user_id,
+                    agentName: win.agent_name || 'Agente',
+                });
+            }
+        }
+
+        return results;
+    }
 }

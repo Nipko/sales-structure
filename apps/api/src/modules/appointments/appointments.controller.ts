@@ -1,17 +1,109 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { AppointmentsService } from './appointments.service';
+import { ServicesService } from './services.service';
+import { CalendarIntegrationService } from './calendar-integration.service';
 
 @ApiTags('appointments')
 @Controller('appointments')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class AppointmentsController {
-    constructor(private service: AppointmentsService) {}
+    constructor(
+        private service: AppointmentsService,
+        private servicesService: ServicesService,
+        private calendarService: CalendarIntegrationService,
+    ) {}
+
+    // ── Services CRUD ────────────────────────────────────────────
+
+    @Get(':tenantId/services')
+    async listServices(@Param('tenantId') tenantId: string, @CurrentUser() user: any) {
+        const data = await this.servicesService.list(user.schemaName);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/services')
+    async createService(@Param('tenantId') tenantId: string, @Body() body: any, @CurrentUser() user: any) {
+        const data = await this.servicesService.create(user.schemaName, body);
+        return { success: true, data };
+    }
+
+    @Put(':tenantId/services/:serviceId')
+    async updateService(
+        @Param('tenantId') tenantId: string,
+        @Param('serviceId') serviceId: string,
+        @Body() body: any,
+        @CurrentUser() user: any,
+    ) {
+        const data = await this.servicesService.update(user.schemaName, serviceId, body);
+        return { success: true, data };
+    }
+
+    @Delete(':tenantId/services/:serviceId')
+    @HttpCode(HttpStatus.OK)
+    async deleteService(@Param('tenantId') tenantId: string, @Param('serviceId') serviceId: string, @CurrentUser() user: any) {
+        await this.servicesService.delete(user.schemaName, serviceId);
+        return { success: true };
+    }
+
+    // ── Calendar Integrations ────────────────────────────────────
+
+    @Get(':tenantId/calendar/integrations')
+    async listCalendarIntegrations(@Param('tenantId') tenantId: string, @CurrentUser() user: any) {
+        const data = await this.calendarService.listIntegrations(user.schemaName, user.id);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/calendar/google/connect')
+    async connectGoogle(@Param('tenantId') tenantId: string, @CurrentUser() user: any, @Res() res: Response) {
+        const url = this.calendarService.getGoogleAuthUrl(tenantId, user.id);
+        return res.json({ success: true, data: { url } });
+    }
+
+    @Get(':tenantId/calendar/microsoft/connect')
+    async connectMicrosoft(@Param('tenantId') tenantId: string, @CurrentUser() user: any, @Res() res: Response) {
+        const url = this.calendarService.getMicrosoftAuthUrl(tenantId, user.id);
+        return res.json({ success: true, data: { url } });
+    }
+
+    @Delete(':tenantId/calendar/:integrationId')
+    @HttpCode(HttpStatus.OK)
+    async disconnectCalendar(@Param('tenantId') tenantId: string, @Param('integrationId') integrationId: string, @CurrentUser() user: any) {
+        await this.calendarService.disconnect(user.schemaName, integrationId);
+        return { success: true };
+    }
+
+    // ── Enhanced slots with service duration + calendar ───────────
+
+    @Get(':tenantId/bookable-slots')
+    async getBookableSlots(
+        @Param('tenantId') tenantId: string,
+        @Query('date') date: string,
+        @Query('serviceId') serviceId: string,
+        @Query('userId') userId?: string,
+        @CurrentUser() user?: any,
+    ) {
+        const svc = await this.servicesService.getById(user.schemaName, serviceId);
+
+        // Get calendar busy times if agent has connected calendar
+        let calendarBusy: { start: string; end: string }[] = [];
+        if (userId) {
+            const timeMin = `${date}T00:00:00Z`;
+            const timeMax = `${date}T23:59:59Z`;
+            calendarBusy = await this.calendarService.getFreeBusy(user.schemaName, userId, timeMin, timeMax);
+        }
+
+        const slots = await this.service.getBookableSlots(
+            user.schemaName, date, svc.durationMinutes, svc.bufferMinutes, userId, calendarBusy,
+        );
+        return { success: true, data: { service: svc, slots } };
+    }
 
     // ── Static routes FIRST (before :appointmentId catch-all) ────
 

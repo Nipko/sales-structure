@@ -40,7 +40,12 @@ export class ContactsService {
         const { search, stage, assignedTo, courseId, isVip, page = 1, limit = 25 } = params;
         const offset = (page - 1) * limit;
 
-        let q = `SELECT l.*, c.name as company_name FROM leads l
+        let q = `SELECT l.*, c.name as company_name,
+                 (SELECT MAX(m.created_at) FROM messages m
+                  JOIN conversations cv ON cv.id = m.conversation_id
+                  WHERE cv.contact_id = l.contact_id AND m.direction = 'inbound') as last_message_at,
+                 (SELECT COUNT(*) FROM conversations cv WHERE cv.contact_id = l.contact_id) as conversations_count
+                 FROM leads l
                  LEFT JOIN companies c ON c.id = l.company_id
                  WHERE 1=1`;
         const p: any[] = [];

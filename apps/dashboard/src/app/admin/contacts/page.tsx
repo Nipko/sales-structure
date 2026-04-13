@@ -79,7 +79,7 @@ export default function ContactsPage() {
                            segment: segmentType,
                            conversations: Number(l.conversations_count ?? 0),
                            lifetimeValue: Number(l.lifetime_value ?? 0),
-                           lastInteraction: l.updated_at ? new Date(l.updated_at).toLocaleDateString("es-CO") : "Reciente",
+                           lastInteraction: l.last_message_at ? new Date(l.last_message_at).toLocaleDateString("es-CO") : (l.created_at ? new Date(l.created_at).toLocaleDateString("es-CO") : "Sin interacción"),
                            city: l.company_name || "",
                        }
                     });

@@ -2,10 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
-const OPT_OUT_KEYWORDS = [
-    'stop', 'baja', 'detener', 'cancelar', 'no quiero', 'no me contactes',
-    'eliminar', 'borrar', 'desuscribir', 'no contactar', 'quitar', 'salir',
-    'unsubscribe', 'remove me', 'do not contact',
+// Single words: matched with word boundaries (\b) to avoid false positives
+// e.g. "baja" should NOT match "trabajan", "salir" should NOT match "resalir"
+const OPT_OUT_WORDS = ['stop', 'baja', 'parar', 'salir', 'quitar', 'unsubscribe'];
+
+// Phrases: matched as substring (they're specific enough to avoid false positives)
+const OPT_OUT_PHRASES = [
+    'no quiero', 'no me contactes', 'no contactar', 'no me escribas', 'no me escriban',
+    'darme de baja', 'cancelar suscripcion', 'quiero salir',
+    'eliminar mis datos', 'borrar mis datos', 'desuscribir', 'desuscribirme',
+    'remove me', 'do not contact', 'opt out',
+];
+
+// Build regex patterns once (word-boundary for single words)
+const OPT_OUT_PATTERNS = [
+    ...OPT_OUT_WORDS.map(w => new RegExp(`\\b${w}\\b`, 'i')),
+    ...OPT_OUT_PHRASES.map(p => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')),
 ];
 
 @Injectable()
@@ -32,12 +44,14 @@ export class ComplianceService {
     }
 
     /**
-     * Detect if a message contains an opt-out intent
+     * Detect if a message contains an opt-out intent.
+     * Uses word-boundary regex for single words to avoid false positives
+     * like "trabajan" matching "baja" or "resaltar" matching "salir".
      */
     detectOptOut(messageText: string): boolean {
         if (!messageText) return false;
-        const lower = messageText.toLowerCase().trim();
-        return OPT_OUT_KEYWORDS.some(kw => lower.includes(kw));
+        const text = messageText.trim();
+        return OPT_OUT_PATTERNS.some(pattern => pattern.test(text));
     }
 
     /**

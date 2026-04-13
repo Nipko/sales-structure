@@ -11,8 +11,13 @@ interface IntakeResult {
     phone: string;
 }
 
-// Opt-out keywords detected in Spanish/English
-const OPT_OUT_KEYWORDS = ['stop', 'baja', 'no quiero', 'eliminar', 'borrar', 'cancelar suscripción'];
+// Opt-out: word-boundary regex to avoid false positives (e.g. "trabajan" ≠ "baja")
+const OPT_OUT_INTAKE_PATTERNS = [
+    ...['stop', 'baja'].map(w => new RegExp(`\\b${w}\\b`, 'i')),
+    ...['no quiero', 'eliminar mis datos', 'borrar mis datos', 'cancelar suscripcion', 'darme de baja'].map(
+        p => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+    ),
+];
 
 @Injectable()
 export class IntakeService {
@@ -344,8 +349,8 @@ export class IntakeService {
         phone: string,
         message: string
     ): Promise<boolean> {
-        const lower = message.toLowerCase().trim();
-        const isOptOut = OPT_OUT_KEYWORDS.some(kw => lower.includes(kw));
+        const text = message.trim();
+        const isOptOut = OPT_OUT_INTAKE_PATTERNS.some(p => p.test(text));
         if (!isOptOut) return false;
 
         // Find lead by phone

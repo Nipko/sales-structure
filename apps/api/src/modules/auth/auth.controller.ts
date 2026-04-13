@@ -227,6 +227,18 @@ export class AuthController {
         return { success: true, data: result };
     }
 
+    // ── Profile update ─────────────────────────────────────────
+
+    @Post('update-profile')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Update current user profile (name, phone, jobTitle)' })
+    async updateProfile(@Request() req: any, @Body() body: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string }) {
+        const result = await this.authService.updateProfile(req.user.id, body);
+        return { success: true, data: result };
+    }
+
     // ── 2FA (email-based) ────────────────────────────────────────
 
     @Post('send-2fa')

@@ -56,6 +56,8 @@ model User {
   emailVerifyCode     String?  @map("email_verify_code")
   emailVerifyExpires  DateTime? @map("email_verify_expires")
   onboardingCompleted Boolean  @default(false) @map("onboarding_completed")
+  phone               String?
+  jobTitle            String?  @map("job_title")
   availabilityStatus  String   @default("offline") @map("availability_status")
   maxCapacity         Int      @default(5) @map("max_capacity")
   lastActiveAt        DateTime? @map("last_active_at")

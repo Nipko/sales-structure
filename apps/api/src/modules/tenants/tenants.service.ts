@@ -161,6 +161,13 @@ export class TenantsService {
      * Update tenant settings
      */
     async update(id: string, data: Partial<{ name: string; industry: string; language: string; isActive: boolean; settings: any }>) {
+        // Merge settings with existing instead of replacing
+        if (data.settings) {
+            const existing = await this.prisma.tenant.findUnique({ where: { id }, select: { settings: true } });
+            const existingSettings = (existing?.settings as any) || {};
+            data.settings = { ...existingSettings, ...data.settings };
+        }
+
         const tenant = await this.prisma.tenant.update({
             where: { id },
             data,

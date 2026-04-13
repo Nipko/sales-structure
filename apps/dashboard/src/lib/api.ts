@@ -103,6 +103,9 @@ export const api = {
 
     me: () => apiPost("/auth/me", {}),
 
+    updateProfile: (data: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string }) =>
+        apiPost("/auth/update-profile", data),
+
     // --- Tenants ---
     getTenants: () => apiGet("/tenants"),
     getTenant: (id: string) => apiGet(`/tenants/${id}`),
@@ -343,7 +346,7 @@ export const api = {
         apiPost("/tenants", data),
 
     updateTenant: (id: string, data: any) =>
-        apiPut(`/tenants/${id}`, data),
+        apiPatch(`/tenants/${id}`, data),
 
     deactivateTenant: (id: string) =>
         apiPost(`/tenants/${id}/deactivate`, {}),
@@ -491,6 +494,20 @@ async function apiPut<T = any>(endpoint: string, body: any): Promise<{ success: 
     try {
         const res = await authFetch(endpoint, {
             method: "PUT",
+            body: JSON.stringify(body),
+        });
+        const json = await res.json();
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
+        return json;
+    } catch (err) {
+        return { success: false, error: "Error de conexión" };
+    }
+}
+
+async function apiPatch<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string }> {
+    try {
+        const res = await authFetch(endpoint, {
+            method: "PATCH",
             body: JSON.stringify(body),
         });
         const json = await res.json();

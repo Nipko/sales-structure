@@ -611,6 +611,29 @@ export class AuthService {
         return { message: 'Password changed successfully' };
     }
 
+    // ── Profile update ──────────────────────────────────────────
+
+    async updateProfile(userId: string, data: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string }) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        const updated = await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                ...(data.firstName && { firstName: data.firstName }),
+                ...(data.lastName && { lastName: data.lastName }),
+                ...(data.phone !== undefined && { phone: data.phone }),
+                ...(data.jobTitle !== undefined && { jobTitle: data.jobTitle }),
+            },
+            select: {
+                id: true, email: true, firstName: true, lastName: true,
+                role: true, tenantId: true, phone: true, jobTitle: true,
+            },
+        });
+
+        return updated;
+    }
+
     // ── Onboarding completion ─────────────────────────────────────
 
     async completeOnboarding(userId: string, data: any) {

@@ -8,7 +8,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import {
-  Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu,
+  Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu, User, Settings,
   Bell, MessageSquare, Calendar, Mail, Shield, UserX, AlertTriangle,
   Users, Zap, Package,
 } from "lucide-react";
@@ -446,17 +446,36 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 {user?.tenantName ? ` · ${user.tenantName}` : ""}
               </p>
             </div>
-            {/* Logout */}
-            <button
-              onClick={() => {
-                setShowUserMenu(false);
-                logout();
-              }}
-              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+            {/* Quick links */}
+            <Link
+              href="/admin/settings/profile"
+              onClick={() => setShowUserMenu(false)}
+              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
-              <LogOut size={15} />
-              Cerrar sesión
-            </button>
+              <User size={15} />
+              Mi perfil
+            </Link>
+            <Link
+              href="/admin/settings"
+              onClick={() => setShowUserMenu(false)}
+              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+            >
+              <Settings size={15} />
+              Configuración
+            </Link>
+            {/* Logout */}
+            <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
+              <button
+                onClick={() => {
+                  setShowUserMenu(false);
+                  logout();
+                }}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+              >
+                <LogOut size={15} />
+                Cerrar sesión
+              </button>
+            </div>
           </div>
         )}
       </div>

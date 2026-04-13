@@ -392,10 +392,13 @@ export const api = {
     },
     getMediaList: (tenantId: string, entityType?: string) =>
         apiGet(`/media/list/${tenantId}${entityType ? `?entityType=${entityType}` : ""}`),
-    updateMedia: (tenantId: string, fileId: string, data: { label?: string; description?: string }) =>
+    updateMedia: (tenantId: string, fileId: string, data: { label?: string; description?: string; tags?: string[] }) =>
         apiPut(`/media/update/${tenantId}/${fileId}`, data),
+    getMediaTags: (tenantId: string) =>
+        apiGet(`/media/tags/${tenantId}`),
     deleteMedia: (tenantId: string, fileId: string) =>
         apiDelete(`/media/delete/${tenantId}/${fileId}`),
+    mediaHealth: () => apiGet('/media/health'),
 
     // --- Email Templates ---
     getEmailTemplates: (tenantId: string) =>

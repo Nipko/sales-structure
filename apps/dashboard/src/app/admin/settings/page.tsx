@@ -29,6 +29,7 @@ import {
     ArrowRight,
     Mail,
     Image,
+    Lock,
 } from "lucide-react";
 
 const tabs = [
@@ -143,6 +144,14 @@ const toolCards = [
         href: "/admin/settings/media",
         iconColor: "text-pink-500",
         iconBg: "bg-pink-500/10",
+    },
+    {
+        title: "Cambiar Contrasena",
+        description: "Actualiza la contrasena de tu cuenta o establece una nueva",
+        icon: Lock,
+        href: "/admin/settings/change-password",
+        iconColor: "text-amber-500",
+        iconBg: "bg-amber-500/10",
     },
 ];
 

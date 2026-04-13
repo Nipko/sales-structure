@@ -369,8 +369,8 @@ export default function InboxPage() {
                             direction: isInbound ? 'inbound' : 'outbound',
                             senderLabel: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
                             senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? 'Agente' : 'IA'),
-                            timestamp: m.created_at ? formatTime(m.created_at) : '',
-                            rawDate: m.created_at || '',
+                            timestamp: (m.timestamp || m.created_at) ? formatTime(m.timestamp || m.created_at) : '',
+                            rawDate: m.timestamp || m.created_at || '',
                             type: m.content_type || 'text',
                         };
                     });
@@ -430,8 +430,8 @@ export default function InboxPage() {
                 direction: isInbound ? 'inbound' : 'outbound',
                 senderLabel: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
                 senderName: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
-                timestamp: message.created_at ? formatTime(message.created_at) : new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
-                rawDate: message.created_at || new Date().toISOString(),
+                timestamp: (message.timestamp || message.created_at) ? formatTime(message.timestamp || message.created_at) : new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+                rawDate: message.timestamp || message.created_at || new Date().toISOString(),
                 type: message.content_type || 'text',
             };
 

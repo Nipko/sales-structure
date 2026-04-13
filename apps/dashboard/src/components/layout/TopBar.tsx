@@ -7,7 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu } from "lucide-react";
+import { Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu, Bell, MessageSquare, Calendar, Mail } from "lucide-react";
+import { io, Socket } from "socket.io-client";
 
 const pathLabels: Record<string, string> = {
   admin: "",
@@ -28,6 +29,10 @@ const pathLabels: Record<string, string> = {
   inventory: "Inventario",
   orders: "Órdenes",
   tenants: "Tenants",
+  appointments: "Citas",
+  "email-templates": "Plantillas",
+  media: "Imagenes",
+  "change-password": "Contrasena",
   "custom-attributes": "Atributos",
   macros: "Macros",
   prechat: "Pre-Chat",
@@ -48,21 +53,78 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const { tenants, activeTenantId, setActiveTenant } = useTenant();
   const { theme, setTheme } = useTheme();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<{ id: string; type: string; title: string; body: string; time: string; read: boolean }[]>([]);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   const isSuperAdmin = user?.role === "super_admin";
   const showTenantSelector = isSuperAdmin && tenants.length > 1;
 
-  // Close user menu on outside click
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Close menus on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setShowUserMenu(false);
-      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false);
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // Connect to WebSocket for real-time notifications
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (!token || !activeTenantId) return;
+
+    const wsUrl = (process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1").replace("/api/v1", "");
+    const socket = io(`${wsUrl}/inbox`, {
+      auth: { token },
+      query: { tenantId: activeTenantId },
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("newMessage", (payload: any) => {
+      const { conversationId, message } = payload;
+      if (message.direction === "inbound") {
+        const notif = {
+          id: `msg-${message.id || Date.now()}`,
+          type: "chat",
+          title: "Nuevo mensaje",
+          body: (message.content_text || message.content || "").slice(0, 80),
+          time: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+          read: false,
+        };
+        setNotifications(prev => [notif, ...prev].slice(0, 50));
+      }
+    });
+
+    socket.on("handoff.escalated", (payload: any) => {
+      const notif = {
+        id: `handoff-${Date.now()}`,
+        type: "handoff",
+        title: "Transferencia a agente",
+        body: payload.reason || "Un cliente solicita hablar con un agente",
+        time: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+        read: false,
+      };
+      setNotifications(prev => [notif, ...prev].slice(0, 50));
+    });
+
+    socketRef.current = socket;
+    return () => { socket.disconnect(); };
+  }, [activeTenantId]);
+
+  function markAllRead() {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  }
+
+  function clearNotifications() {
+    setNotifications([]);
+    setShowNotifications(false);
+  }
 
   // Build breadcrumb segments from pathname
   const breadcrumbSegments = useMemo(() => {
@@ -157,6 +219,81 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
             </button>
           );
         })}
+      </div>
+
+      {/* Notification bell */}
+      <div ref={notifRef} className="relative">
+        <button
+          onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markAllRead(); }}
+          className="relative p-2 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          title="Notificaciones"
+        >
+          <Bell size={18} />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+
+        {showNotifications && (
+          <div className="absolute right-0 top-full mt-2 w-80 max-h-[420px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-xl z-50 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Notificaciones</span>
+              {notifications.length > 0 && (
+                <button onClick={clearNotifications}
+                  className="text-[11px] text-indigo-500 hover:text-indigo-400 cursor-pointer bg-transparent border-none font-medium">
+                  Limpiar todo
+                </button>
+              )}
+            </div>
+
+            {/* Notification list */}
+            <div className="overflow-y-auto max-h-[350px]">
+              {notifications.length === 0 ? (
+                <div className="py-10 text-center">
+                  <Bell size={24} className="text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
+                  <p className="text-sm text-neutral-400 dark:text-neutral-500">Sin notificaciones</p>
+                </div>
+              ) : (
+                notifications.map(n => (
+                  <div key={n.id}
+                    className={cn(
+                      "flex items-start gap-3 px-4 py-3 border-b border-neutral-50 dark:border-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors cursor-pointer",
+                      !n.read && "bg-indigo-50/50 dark:bg-indigo-500/5"
+                    )}
+                    onClick={() => {
+                      if (n.type === "chat" || n.type === "handoff") {
+                        window.location.href = "/admin/inbox";
+                      }
+                      setShowNotifications(false);
+                    }}
+                  >
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+                      n.type === "chat" ? "bg-emerald-100 dark:bg-emerald-500/15" :
+                      n.type === "handoff" ? "bg-orange-100 dark:bg-orange-500/15" :
+                      "bg-indigo-100 dark:bg-indigo-500/15"
+                    )}>
+                      {n.type === "chat" ? <MessageSquare size={14} className="text-emerald-600 dark:text-emerald-400" /> :
+                       n.type === "handoff" ? <Bell size={14} className="text-orange-600 dark:text-orange-400" /> :
+                       <Mail size={14} className="text-indigo-600 dark:text-indigo-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">{n.title}</span>
+                        <span className="text-[10px] text-neutral-400 shrink-0 ml-2">{n.time}</span>
+                      </div>
+                      <p className="text-[12px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5">{n.body}</p>
+                    </div>
+                    {!n.read && <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-2" />}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tenant selector */}

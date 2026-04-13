@@ -29,7 +29,7 @@ interface MediaFile {
 }
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-const MAX_SIZE = 10 * 1024 * 1024;
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
 function mediaUrl(relPath: string): string {
@@ -111,7 +111,10 @@ export default function MediaBankPage() {
   // --- Upload ---
   async function handleFileUpload(file: File) {
     if (!tenantId || !file.type.startsWith("image/")) { showToast("Error: Solo se permiten imagenes"); return; }
-    if (file.size > MAX_SIZE) { showToast("Error: El archivo excede 10 MB"); return; }
+    if (file.size > MAX_SIZE) {
+      showToast(`Error: La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 5 MB. Comprime la imagen antes de subirla.`);
+      return;
+    }
 
     setUploading(true); setUploadProgress(0);
     const iv = setInterval(() => setUploadProgress(p => p >= 90 ? 90 : p + 10), 200);
@@ -263,7 +266,7 @@ export default function MediaBankPage() {
             <>
               <Upload size={32} className="text-muted-foreground opacity-50 mb-2" />
               <p className="text-sm text-foreground font-medium mb-1">Arrastra una imagen aqui o haz clic para seleccionar</p>
-              <p className="text-xs text-muted-foreground">JPG, PNG, WebP o GIF — Maximo 10 MB</p>
+              <p className="text-xs text-muted-foreground">JPG, PNG, WebP o GIF — Maximo 5 MB</p>
             </>
           )}
         </div>

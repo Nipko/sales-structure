@@ -26,24 +26,23 @@ export interface MediaFile {
 const ALLOWED_MIME_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
 ];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const THUMB_WIDTH = 200;
-const MEDIUM_WIDTH = 600;
 const MAX_WIDTH = 1200;
 
 @Injectable()
 export class MediaService {
     private readonly logger = new Logger(MediaService.name);
-    private readonly storagePath: string;
-    private readonly baseUrl: string;
+    readonly storagePath: string;
 
     constructor(
         private prisma: PrismaService,
         private config: ConfigService,
     ) {
         this.storagePath = config.get<string>('MEDIA_STORAGE_PATH', '/data/media');
-        const apiUrl = config.get<string>('DASHBOARD_URL', 'https://api.parallly-chat.cloud');
-        this.baseUrl = config.get<string>('API_PUBLIC_URL', apiUrl.replace('admin.', 'api.').replace(':3001', ':3000'));
+        // Ensure base dir exists
+        try { fs.mkdirSync(this.storagePath, { recursive: true }); } catch {}
+        this.logger.log(`Media storage path: ${this.storagePath}`);
     }
 
     /**
@@ -58,71 +57,82 @@ export class MediaService {
         label?: string,
         description?: string,
     ): Promise<MediaFile> {
-        // Validate
-        if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-            throw new BadRequestException(`File type not allowed: ${file.mimetype}. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`);
+        // Validate type
+        if (!file || !file.buffer) {
+            throw new BadRequestException('No se recibio el archivo');
         }
+        if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+            throw new BadRequestException(
+                `Tipo de archivo no permitido: ${file.mimetype}. Solo se aceptan: JPG, PNG, WebP, GIF, SVG`,
+            );
+        }
+        // Validate size (5MB)
         if (file.size > MAX_FILE_SIZE) {
-            throw new BadRequestException(`File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Max: 10MB`);
+            throw new BadRequestException(
+                `La imagen es demasiado pesada (${(file.size / 1024 / 1024).toFixed(1)} MB). El maximo permitido es 5 MB. Comprime la imagen antes de subirla.`,
+            );
         }
 
         const id = randomUUID();
-        const ext = 'webp'; // Always convert to webp for optimization
-        const fileName = `${id}.${ext}`;
-        const thumbName = `${id}_thumb.${ext}`;
+        const fileName = `${id}.webp`;
+        const thumbName = `${id}_thumb.webp`;
         const tenantDir = path.join(this.storagePath, tenantId);
 
-        // Ensure directory exists
+        // Ensure tenant directory
         fs.mkdirSync(tenantDir, { recursive: true });
 
-        // Process and save main image (max 1200px wide)
-        const mainPath = path.join(tenantDir, fileName);
-        const mainMeta = await sharp(file.buffer)
-            .resize(MAX_WIDTH, null, { fit: 'inside', withoutEnlargement: true })
-            .webp({ quality: 85 })
-            .toFile(mainPath);
+        try {
+            // Process main image: resize + compress to webp (quality 80)
+            const mainPath = path.join(tenantDir, fileName);
+            const mainMeta = await (sharp as any)(file.buffer)
+                .resize(MAX_WIDTH, null, { fit: 'inside', withoutEnlargement: true })
+                .webp({ quality: 80 })
+                .toFile(mainPath);
 
-        // Generate thumbnail (200px wide)
-        const thumbPath = path.join(tenantDir, thumbName);
-        await sharp(file.buffer)
-            .resize(THUMB_WIDTH, null, { fit: 'inside' })
-            .webp({ quality: 70 })
-            .toFile(thumbPath);
+            // Thumbnail: 200px, quality 65
+            const thumbPath = path.join(tenantDir, thumbName);
+            await (sharp as any)(file.buffer)
+                .resize(THUMB_WIDTH, null, { fit: 'inside' })
+                .webp({ quality: 65 })
+                .toFile(thumbPath);
 
-        const mainSize = fs.statSync(mainPath).size;
+            const mainSize = fs.statSync(mainPath).size;
 
-        // Save to database
-        const url = `/media/file/${tenantId}/${fileName}`;
-        const thumbnailUrl = `/media/file/${tenantId}/${thumbName}`;
+            this.logger.log(
+                `Uploaded: ${file.originalname} → ${fileName} (${(mainSize / 1024).toFixed(0)}KB, ${mainMeta.width}x${mainMeta.height}) at ${mainPath}`,
+            );
 
-        await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, created_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
-            [id, entityType, entityId || null, file.originalname, fileName, 'image/webp', mainSize, mainMeta.width, mainMeta.height, thumbName, label || null, description || null],
-        );
+            // Save to database
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, created_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+                [id, entityType, entityId || null, file.originalname, fileName, 'image/webp', mainSize, mainMeta.width, mainMeta.height, thumbName, label || null, description || null],
+            );
 
-        this.logger.log(`Uploaded ${file.originalname} → ${fileName} (${(mainSize / 1024).toFixed(0)}KB, ${mainMeta.width}x${mainMeta.height})`);
-
-        return {
-            id,
-            entityType,
-            entityId: entityId || null,
-            originalName: file.originalname,
-            fileName,
-            mimeType: 'image/webp',
-            sizeBytes: mainSize,
-            width: mainMeta.width,
-            height: mainMeta.height,
-            url,
-            thumbnailUrl,
-            label: label || null,
-            description: description || null,
-            createdAt: new Date().toISOString(),
-        };
+            return {
+                id,
+                entityType,
+                entityId: entityId || null,
+                originalName: file.originalname,
+                fileName,
+                mimeType: 'image/webp',
+                sizeBytes: mainSize,
+                width: mainMeta.width,
+                height: mainMeta.height,
+                url: `/media/file/${tenantId}/${fileName}`,
+                thumbnailUrl: `/media/file/${tenantId}/${thumbName}`,
+                label: label || null,
+                description: description || null,
+                createdAt: new Date().toISOString(),
+            };
+        } catch (error: any) {
+            this.logger.error(`Sharp processing failed for ${file.originalname}: ${error.message}`, error.stack);
+            throw new BadRequestException(`No se pudo procesar la imagen: ${error.message}`);
+        }
     }
 
     /**
-     * Upload company logo (special case — stored in public.tenants.settings)
+     * Upload company logo
      */
     async uploadLogo(
         tenantId: string,
@@ -131,7 +141,6 @@ export class MediaService {
     ): Promise<{ logoUrl: string }> {
         const mediaFile = await this.upload(schemaName, tenantId, file, 'tenant_logo');
 
-        // Update tenant settings with logo URL
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },
@@ -150,7 +159,7 @@ export class MediaService {
     }
 
     /**
-     * List media files for a tenant
+     * List media files
      */
     async list(schemaName: string, tenantId: string, entityType?: string): Promise<MediaFile[]> {
         let sql = `SELECT id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, created_at
@@ -161,7 +170,6 @@ export class MediaService {
             sql += ` WHERE entity_type = $1`;
             params.push(entityType);
         }
-
         sql += ` ORDER BY created_at DESC`;
 
         const rows = await this.prisma.executeInTenantSchema(schemaName, sql, params);
@@ -185,7 +193,7 @@ export class MediaService {
     }
 
     /**
-     * Update label and description of a media file
+     * Update label/description
      */
     async updateMeta(schemaName: string, fileId: string, data: { label?: string; description?: string }): Promise<void> {
         const sets: string[] = [];
@@ -194,7 +202,6 @@ export class MediaService {
 
         if (data.label !== undefined) { sets.push(`label = $${idx++}`); params.push(data.label); }
         if (data.description !== undefined) { sets.push(`description = $${idx++}`); params.push(data.description); }
-
         if (sets.length === 0) return;
 
         params.push(fileId);
@@ -216,14 +223,12 @@ export class MediaService {
         const file = (rows as any[])[0];
         if (!file) throw new NotFoundException('File not found');
 
-        // Delete from disk
         const mainPath = path.join(this.storagePath, tenantId, file.file_name);
         const thumbPath = file.thumbnail_name ? path.join(this.storagePath, tenantId, file.thumbnail_name) : null;
 
         if (fs.existsSync(mainPath)) fs.unlinkSync(mainPath);
         if (thumbPath && fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
 
-        // Delete from DB
         await this.prisma.executeInTenantSchema(schemaName,
             `DELETE FROM media_files WHERE id = $1::uuid`,
             [fileId],
@@ -233,13 +238,16 @@ export class MediaService {
     }
 
     /**
-     * Resolve file path on disk for serving
+     * Read file from disk as Buffer for serving
      */
-    getFilePath(tenantId: string, fileName: string): string | null {
-        const filePath = path.join(this.storagePath, tenantId, fileName);
-        // Prevent directory traversal
-        if (!filePath.startsWith(this.storagePath)) return null;
-        if (!fs.existsSync(filePath)) return null;
-        return filePath;
+    readFile(tenantId: string, fileName: string): { buffer: Buffer; exists: boolean } {
+        // Sanitize to prevent traversal
+        const safeName = path.basename(fileName);
+        const filePath = path.join(this.storagePath, tenantId, safeName);
+
+        if (!fs.existsSync(filePath)) {
+            return { buffer: Buffer.alloc(0), exists: false };
+        }
+        return { buffer: fs.readFileSync(filePath), exists: true };
     }
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -38,6 +39,7 @@ const segmentStyles: Record<string, string> = {
 };
 
 export default function ContactsPage() {
+    const t = useTranslations('contacts');
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [contacts, setContacts] = useState<any[]>([]);
@@ -79,7 +81,7 @@ export default function ContactsPage() {
                            segment: segmentType,
                            conversations: Number(l.conversations_count ?? 0),
                            lifetimeValue: Number(l.lifetime_value ?? 0),
-                           lastInteraction: l.last_message_at ? new Date(l.last_message_at).toLocaleDateString("es-CO") : (l.created_at ? new Date(l.created_at).toLocaleDateString("es-CO") : "Sin interacción"),
+                           lastInteraction: l.last_message_at ? new Date(l.last_message_at).toLocaleDateString("es-CO") : (l.created_at ? new Date(l.created_at).toLocaleDateString("es-CO") : t('noInteraction')),
                            city: l.company_name || "",
                        }
                     });
@@ -96,10 +98,10 @@ export default function ContactsPage() {
     }, [activeTenantId]);
 
     const segments = [
-        { key: "all", label: "Todos", count: contacts.length },
-        { key: "lead", label: "Leads", count: contacts.filter(c => c.segment === "lead").length },
-        { key: "qualified", label: "Calificados", count: contacts.filter(c => c.segment === "qualified").length },
-        { key: "customer", label: "Clientes", count: contacts.filter(c => c.segment === "customer").length },
+        { key: "all", label: t('segments.all'), count: contacts.length },
+        { key: "lead", label: t('segments.lead'), count: contacts.filter(c => c.segment === "lead").length },
+        { key: "qualified", label: t('segments.qualified'), count: contacts.filter(c => c.segment === "qualified").length },
+        { key: "customer", label: t('segments.customer'), count: contacts.filter(c => c.segment === "customer").length },
     ];
 
     const filtered = contacts.filter(c => {
@@ -170,7 +172,7 @@ export default function ContactsPage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Contactos</h1>
+                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
@@ -192,7 +194,7 @@ export default function ContactsPage() {
                         onClick={() => setShowImportModal(true)}
                         className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
                     >
-                        <Upload size={16} /> Importar CSV
+                        <Upload size={16} /> {t('import')} CSV
                     </Button>
                     <Button
                         variant="outline"
@@ -201,7 +203,7 @@ export default function ContactsPage() {
                         disabled={exporting}
                         className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
                     >
-                        <Download size={16} /> {exporting ? "Exportando..." : "Exportar CSV"}
+                        <Download size={16} /> {exporting ? "Exportando..." : `${t('export')} CSV`}
                     </Button>
                     <Button
                         size="sm"
@@ -237,7 +239,7 @@ export default function ContactsPage() {
                 <Input
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Buscar por nombre, teléfono o email..."
+                    placeholder={t('search')}
                     className="h-10 rounded-lg border-neutral-200 bg-white pl-10 text-sm dark:border-neutral-800 dark:bg-neutral-900"
                 />
             </div>
@@ -247,7 +249,7 @@ export default function ContactsPage() {
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            {["Contacto", "Segmento", "Conversaciones", "Valor (COP)", "Última interacción", "Tags", ""].map(h => (
+                            {[t('title'), t('segment'), t('conversations'), t('lifetimeValue'), t('lastInteraction'), t('tags'), ""].map(h => (
                                 <th
                                     key={h}
                                     className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"

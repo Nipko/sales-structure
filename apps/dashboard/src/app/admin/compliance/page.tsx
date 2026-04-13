@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ import {
 type Tab = "legal" | "consents" | "optouts" | "deletions";
 
 export default function CompliancePage() {
+    const t = useTranslations('compliance');
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("legal");
     const [legalTexts, setLegalTexts] = useState<any[]>([]);
@@ -76,10 +78,10 @@ export default function CompliancePage() {
     };
 
     const tabs: { key: Tab; label: string; icon: any; count: number }[] = [
-        { key: "legal", label: "Textos Legales", icon: FileText, count: legalTexts.length },
-        { key: "consents", label: "Consentimientos", icon: UserCheck, count: consents.length },
-        { key: "optouts", label: "Opt-Outs", icon: UserX, count: optOuts.length },
-        { key: "deletions", label: "Solicitudes Borrado", icon: Trash2, count: deletions.length },
+        { key: "legal", label: t('legalTexts'), icon: FileText, count: legalTexts.length },
+        { key: "consents", label: t('consents'), icon: UserCheck, count: consents.length },
+        { key: "optouts", label: t('optOuts'), icon: UserX, count: optOuts.length },
+        { key: "deletions", label: t('deletionRequests'), icon: Trash2, count: deletions.length },
     ];
 
     return (
@@ -89,9 +91,9 @@ export default function CompliancePage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-                            <Shield size={28} className="text-primary" /> Compliance & Audit
+                            <Shield size={28} className="text-primary" /> {t('title')}
                         </h1>
-                        <p className="text-muted-foreground mt-1">Trazabilidad legal, consentimiento y privacidad</p>
+                        <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
                     </div>
                     {(tab === "legal" || tab === "optouts") && (
                         <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
@@ -161,9 +163,9 @@ export default function CompliancePage() {
                         {optOutStats?.optOuts && (
                             <div className="grid grid-cols-3 gap-3 mb-4">
                                 {[
-                                    { label: "Pendientes", value: optOutStats.optOuts.pending || 0, color: "text-amber-500", bg: "bg-amber-500/10" },
-                                    { label: "Confirmados", value: optOutStats.optOuts.confirmed || 0, color: "text-red-500", bg: "bg-red-500/10" },
-                                    { label: "Rechazados", value: optOutStats.optOuts.rejected || 0, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                                    { label: t('stats.pending'), value: optOutStats.optOuts.pending || 0, color: "text-amber-500", bg: "bg-amber-500/10" },
+                                    { label: t('stats.confirmed'), value: optOutStats.optOuts.confirmed || 0, color: "text-red-500", bg: "bg-red-500/10" },
+                                    { label: t('stats.rejected'), value: optOutStats.optOuts.rejected || 0, color: "text-emerald-500", bg: "bg-emerald-500/10" },
                                 ].map(s => (
                                     <div key={s.label} className={cn("rounded-xl border border-border p-4 text-center", s.bg)}>
                                         <div className={cn("text-2xl font-bold", s.color)}>{s.value}</div>
@@ -184,7 +186,7 @@ export default function CompliancePage() {
                                     "px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition-colors",
                                     optOutFilter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:border-primary/50"
                                 )}>
-                                    {f === "" ? "Todos" : f === "pending" ? "Pendientes" : f === "confirmed" ? "Confirmados" : "Rechazados"}
+                                    {f === "" ? "Todos" : f === "pending" ? t('stats.pending') : f === "confirmed" ? t('stats.confirmed') : t('stats.rejected')}
                                 </button>
                             ))}
                         </div>
@@ -219,7 +221,7 @@ export default function CompliancePage() {
 
                                     {/* Trigger message */}
                                     <div className="bg-neutral-100 dark:bg-neutral-800 rounded-lg px-3 py-2 text-sm text-foreground mb-3 border-l-3 border-amber-500">
-                                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground block mb-1">Mensaje detectado:</span>
+                                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground block mb-1">{t('detectedMessage')}:</span>
                                         &ldquo;{o.trigger_msg}&rdquo;
                                     </div>
 
@@ -243,7 +245,7 @@ export default function CompliancePage() {
                                                 setReviewNotes(""); setToast("Opt-out confirmado"); setTimeout(() => setToast(null), 2500);
                                                 const stats = await api.getOptOutStats(activeTenantId!); if (stats?.success) setOptOutStats(stats.data);
                                             }} className="px-3 py-1.5 rounded-lg border-none bg-red-500 text-white text-xs font-semibold cursor-pointer flex items-center gap-1">
-                                                <UserX size={12} /> Confirmar baja
+                                                <UserX size={12} /> {t('confirmOptOut')}
                                             </button>
                                             <button onClick={async () => {
                                                 await api.rejectOptOut(activeTenantId!, o.id, reviewNotes);
@@ -251,7 +253,7 @@ export default function CompliancePage() {
                                                 setReviewNotes(""); setToast("Marcado como falso positivo"); setTimeout(() => setToast(null), 2500);
                                                 const stats = await api.getOptOutStats(activeTenantId!); if (stats?.success) setOptOutStats(stats.data);
                                             }} className="px-3 py-1.5 rounded-lg border border-emerald-500 bg-transparent text-emerald-500 text-xs font-semibold cursor-pointer flex items-center gap-1">
-                                                <Check size={12} /> Falso positivo
+                                                <Check size={12} /> {t('rejectOptOut')}
                                             </button>
                                         </div>
                                     )}

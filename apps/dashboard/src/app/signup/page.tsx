@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +31,7 @@ declare global {
 const inputClasses = "w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
 
 export default function SignupPage() {
+    const t = useTranslations('auth');
     const [form, setForm] = useState({
         email: "", password: "", firstName: "", lastName: "",
     });
@@ -139,14 +141,14 @@ export default function SignupPage() {
                 <div className="text-center mb-6">
                     <AnimatedLogo height={44} animate showPoweredBy={false} />
                     <p className="text-muted-foreground text-sm mt-2.5">
-                        Plataforma de IA Conversacional
+                        {t('platform')}
                     </p>
                 </div>
 
                 {/* Card */}
                 <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     <h1 className="text-2xl font-bold text-foreground mb-1">
-                        Crea tu cuenta
+                        {t('signup')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
                         Regístrate y comienza en minutos
@@ -179,7 +181,7 @@ export default function SignupPage() {
                     {/* Separator */}
                     <div className="flex items-center gap-3 my-6">
                         <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
-                        <span className="text-xs text-muted-foreground">o</span>
+                        <span className="text-xs text-muted-foreground">{t('or')}</span>
                         <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
                     </div>
 
@@ -281,7 +283,7 @@ export default function SignupPage() {
                             href="/login"
                             className="text-muted-foreground text-[13px] no-underline inline-flex items-center gap-1.5 hover:text-indigo-500 transition-colors"
                         >
-                            <ArrowLeft size={14} /> ¿Ya tienes cuenta? Inicia sesión
+                            <ArrowLeft size={14} /> {t('hasAccount')}
                         </Link>
                     </div>
                 </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
@@ -106,7 +107,7 @@ const settingsSchema: Record<string, FieldConfig[]> = {
 
 const toolCards = [
     {
-        title: "Atributos Personalizados",
+        titleKey: "tools.customAttributes" as const,
         description: "Define campos dinámicos para contactos y conversaciones",
         icon: Database,
         href: "/admin/settings/custom-attributes",
@@ -114,7 +115,7 @@ const toolCards = [
         iconBg: "bg-blue-500/10",
     },
     {
-        title: "Macros",
+        titleKey: "tools.macros" as const,
         description: "Secuencias de acciones guardadas para ejecutar rápidamente",
         icon: Zap,
         href: "/admin/settings/macros",
@@ -122,7 +123,7 @@ const toolCards = [
         iconBg: "bg-orange-500/10",
     },
     {
-        title: "Formulario Pre-Chat",
+        titleKey: "tools.prechat" as const,
         description: "Configura los campos que se solicitan antes de iniciar un chat",
         icon: MessageSquare,
         href: "/admin/settings/prechat",
@@ -130,7 +131,7 @@ const toolCards = [
         iconBg: "bg-emerald-500/10",
     },
     {
-        title: "Plantillas de Correo",
+        titleKey: "tools.emailTemplates" as const,
         description: "Personaliza emails de confirmacion, recordatorios y bienvenida",
         icon: Mail,
         href: "/admin/settings/email-templates",
@@ -138,7 +139,7 @@ const toolCards = [
         iconBg: "bg-purple-500/10",
     },
     {
-        title: "Banco de Imagenes",
+        titleKey: "tools.mediaBank" as const,
         description: "Sube y gestiona imagenes de productos, logo de empresa y media",
         icon: Image,
         href: "/admin/settings/media",
@@ -146,7 +147,7 @@ const toolCards = [
         iconBg: "bg-pink-500/10",
     },
     {
-        title: "Cambiar Contrasena",
+        titleKey: "tools.changePassword" as const,
         description: "Actualiza la contrasena de tu cuenta o establece una nueva",
         icon: Lock,
         href: "/admin/settings/change-password",
@@ -156,6 +157,7 @@ const toolCards = [
 ];
 
 export default function SettingsPage() {
+    const t = useTranslations('settings');
     const router = useRouter();
     const [activeTab, setActiveTab] = useState("llm");
     const [isLive, setIsLive] = useState(false);
@@ -301,7 +303,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Configuración</h1>
+                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
@@ -320,14 +322,14 @@ export default function SettingsPage() {
                     )}
                 >
                     {saved ? <CheckCircle size={18} /> : <Save size={18} />}
-                    {saving ? "Guardando..." : saved ? "¡Guardado!" : "Guardar cambios"}
+                    {saving ? t('saving') : saved ? t('saved') : t('save')}
                 </Button>
             </div>
 
             {/* Security Badge */}
             <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
                 <Shield size={16} className="shrink-0 text-indigo-600" />
-                Las API keys se almacenan encriptadas y se muestran enmascaradas. Solo super_admin puede modificarlas.
+                {t('security')}
             </div>
 
             {/* Herramientas */}
@@ -347,7 +349,7 @@ export default function SettingsPage() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                        {card.title}
+                                        {t(card.titleKey)}
                                     </div>
                                     <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
                                         {card.description}

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
     Mail,
     Lock,
@@ -20,6 +21,7 @@ const API_URL =
     "https://api.parallly-chat.cloud/api/v1";
 
 export default function ForgotPasswordPage() {
+    const t = useTranslations('auth');
     const router = useRouter();
 
     // Step: 1 = request code, 2 = reset password
@@ -40,12 +42,12 @@ export default function ForgotPasswordPage() {
 
     // Password requirements
     const requirements = [
-        { label: "Al menos 8 caracteres", test: (p: string) => p.length >= 8 },
-        { label: "Una letra mayuscula", test: (p: string) => /[A-Z]/.test(p) },
-        { label: "Una letra minuscula", test: (p: string) => /[a-z]/.test(p) },
-        { label: "Un numero", test: (p: string) => /\d/.test(p) },
+        { label: t('passwordRequirements.minLength'), test: (p: string) => p.length >= 8 },
+        { label: t('passwordRequirements.uppercase'), test: (p: string) => /[A-Z]/.test(p) },
+        { label: t('passwordRequirements.lowercase'), test: (p: string) => /[a-z]/.test(p) },
+        { label: t('passwordRequirements.number'), test: (p: string) => /\d/.test(p) },
         {
-            label: "Un caracter especial",
+            label: t('passwordRequirements.special'),
             test: (p: string) => /[^A-Za-z0-9]/.test(p),
         },
     ];
@@ -189,7 +191,7 @@ export default function ForgotPasswordPage() {
                 <div className="text-center mb-8">
                     <AnimatedLogo height={44} animate showPoweredBy={false} />
                     <p className="text-muted-foreground text-sm mt-3">
-                        Recuperar contrasena
+                        {t('resetPassword')}
                     </p>
                 </div>
 
@@ -226,7 +228,7 @@ export default function ForgotPasswordPage() {
                             </div>
 
                             <h1 className="text-2xl font-bold text-foreground mb-1 text-center">
-                                Recuperar contrasena
+                                {t('resetPassword')}
                             </h1>
                             <p className="text-muted-foreground text-sm mb-6 text-center">
                                 Ingresa tu correo electronico y te enviaremos un
@@ -244,7 +246,7 @@ export default function ForgotPasswordPage() {
                             <form onSubmit={handleRequestCode}>
                                 <div className="mb-6">
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                        Email
+                                        {t('email')}
                                     </label>
                                     <div className="relative">
                                         <Mail
@@ -277,7 +279,7 @@ export default function ForgotPasswordPage() {
                                 >
                                     {isSubmitting
                                         ? "Enviando..."
-                                        : "Enviar codigo"}
+                                        : t('sendCode')}
                                 </button>
                             </form>
                         </>
@@ -300,7 +302,7 @@ export default function ForgotPasswordPage() {
                             </button>
 
                             <h1 className="text-2xl font-bold text-foreground mb-1">
-                                Restablecer contrasena
+                                {t('resetPassword')}
                             </h1>
                             <p className="text-muted-foreground text-sm mb-6">
                                 Enviamos un codigo a{" "}
@@ -363,7 +365,7 @@ export default function ForgotPasswordPage() {
                                 {/* New Password */}
                                 <div className="mb-4">
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                        Nueva contrasena
+                                        {t('newPassword')}
                                     </label>
                                     <div className="relative">
                                         <Lock
@@ -403,7 +405,7 @@ export default function ForgotPasswordPage() {
                                 {/* Confirm Password */}
                                 <div className="mb-4">
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                        Confirmar contrasena
+                                        {t('confirmPassword')}
                                     </label>
                                     <div className="relative">
                                         <Lock
@@ -519,7 +521,7 @@ export default function ForgotPasswordPage() {
                                 >
                                     {isSubmitting
                                         ? "Restableciendo..."
-                                        : "Restablecer contrasena"}
+                                        : t('resetPassword')}
                                 </button>
                             </form>
                         </>

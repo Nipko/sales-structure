@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { Lock, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ declare global {
 }
 
 export default function LoginPage() {
+    const t = useTranslations('auth');
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -113,17 +115,17 @@ export default function LoginPage() {
                 <div className="text-center mb-8">
                     <AnimatedLogo height={44} animate showPoweredBy={false} />
                     <p className="text-muted-foreground text-sm mt-3">
-                        Plataforma de IA Conversacional
+                        {t('platform')}
                     </p>
                 </div>
 
                 {/* Login Card */}
                 <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     <h1 className="text-2xl font-bold text-foreground mb-1">
-                        Iniciar sesión
+                        {t('login')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
-                        Ingresa tus credenciales para continuar
+                        {t('enterCredentials')}
                     </p>
 
                     {/* Error */}
@@ -153,7 +155,7 @@ export default function LoginPage() {
                     {/* Separator */}
                     <div className="flex items-center gap-3 my-6">
                         <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
-                        <span className="text-xs text-muted-foreground">o</span>
+                        <span className="text-xs text-muted-foreground">{t('or')}</span>
                         <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
                     </div>
 
@@ -161,7 +163,7 @@ export default function LoginPage() {
                         {/* Email */}
                         <div className="mb-4">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Email
+                                {t('email')}
                             </label>
                             <div className="relative">
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -180,10 +182,10 @@ export default function LoginPage() {
                         <div className="mb-6">
                             <div className="flex items-center justify-between mb-1.5">
                                 <label className="text-[13px] text-muted-foreground font-medium">
-                                    Contraseña
+                                    {t('password')}
                                 </label>
                                 <Link href="/forgot-password" className="text-[12px] text-indigo-500 hover:text-indigo-400 no-underline">
-                                    ¿Olvidaste tu contraseña?
+                                    {t('forgotPassword')}
                                 </Link>
                             </div>
                             <div className="relative">
@@ -217,7 +219,7 @@ export default function LoginPage() {
                                     : "bg-gradient-to-r from-indigo-600 to-indigo-400 cursor-pointer hover:shadow-[0_6px_20px_rgba(108,92,231,0.4)] hover:brightness-110"
                             )}
                         >
-                            {isSubmitting ? "Iniciando sesión..." : "Iniciar sesión"}
+                            {isSubmitting ? t('submitting') : t('login')}
                         </button>
                     </form>
                 </div>
@@ -228,7 +230,7 @@ export default function LoginPage() {
                         href="/signup"
                         className="text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors"
                     >
-                        ¿Primera vez? <span className="font-semibold">Crea tu cuenta gratuita →</span>
+                        {t('noAccount')} <span className="font-semibold">{t('createFreeAccount')} →</span>
                     </Link>
                 </div>
 

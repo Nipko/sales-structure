@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -53,20 +54,24 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-const ENTITY_OPTIONS = [
-  { value: "general", label: "General" },
-  { value: "product", label: "Producto" },
-  { value: "course", label: "Curso" },
-];
+// Entity options labels are resolved via t() inside the component
+const ENTITY_KEYS = [
+  { value: "general", key: "types.general" },
+  { value: "product", key: "types.product" },
+  { value: "course", key: "types.course" },
+] as const;
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function MediaBankPage() {
+  const t = useTranslations('media');
   const { user } = useAuth();
   const { activeTenantId } = useTenant();
   const tenantId = activeTenantId || user?.tenantId || "";
+
+  const ENTITY_OPTIONS = ENTITY_KEYS.map(e => ({ value: e.value, label: t(e.key) }));
 
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,9 +143,9 @@ export default function MediaBankPage() {
   // --- Upload ---
   async function handleFileUpload(file: File) {
     if (!tenantId) return;
-    if (!file.type.startsWith("image/")) { showToast("Error: Solo se permiten imagenes (JPG, PNG, WebP, GIF)"); return; }
+    if (!file.type.startsWith("image/")) { showToast(`Error: ${t('onlyImages')}`); return; }
     if (file.size > MAX_SIZE) {
-      showToast(`Error: La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo es 5 MB. Comprime la imagen antes de subirla.`);
+      showToast(`Error: ${t('tooLarge', { size: (file.size / 1024 / 1024).toFixed(1) })}`);
       return;
     }
     setUploading(true); setUploadProgress(0);
@@ -149,7 +154,7 @@ export default function MediaBankPage() {
       const res = await api.uploadMedia(tenantId, file, entityType);
       clearInterval(iv); setUploadProgress(100);
       if (res.success) {
-        showToast("Imagen subida correctamente");
+        showToast(t('imageUploaded'));
         // Add immediately to gallery for instant feedback
         if (res.data) setFiles(prev => [res.data, ...prev]);
         loadTags();
@@ -159,8 +164,8 @@ export default function MediaBankPage() {
   }
 
   async function handleLogoUpload(file: File) {
-    if (!tenantId || !file.type.startsWith("image/")) { showToast("Error: Solo imagenes"); return; }
-    if (file.size > MAX_SIZE) { showToast(`Error: La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. Maximo 5 MB.`); return; }
+    if (!tenantId || !file.type.startsWith("image/")) { showToast(`Error: ${t('onlyImages')}`); return; }
+    if (file.size > MAX_SIZE) { showToast(`Error: ${t('tooLarge', { size: (file.size / 1024 / 1024).toFixed(1) })}`); return; }
     setLogoUploading(true);
     try {
       const res = await api.uploadLogo(tenantId, file);
@@ -202,14 +207,14 @@ export default function MediaBankPage() {
     if (!tenantId || !confirm("¿Eliminar esta imagen?")) return;
     try {
       const res = await api.deleteMedia(tenantId, fileId);
-      if (res.success) { showToast("Eliminada"); setFiles(prev => prev.filter(f => f.id !== fileId)); }
+      if (res.success) { showToast(t('imageDeleted')); setFiles(prev => prev.filter(f => f.id !== fileId)); }
       else showToast(`Error: ${res.error}`);
     } catch { showToast("Error al eliminar"); }
   }
 
   function copyUrl(f: MediaFile) {
     navigator.clipboard.writeText(mediaUrl(f.url));
-    setCopiedId(f.id); showToast("URL copiada");
+    setCopiedId(f.id); showToast(t('urlCopied'));
     setTimeout(() => setCopiedId(null), 2000);
   }
 
@@ -238,8 +243,8 @@ export default function MediaBankPage() {
             <ImageIcon size={22} className="text-indigo-500" />
           </div>
           <div>
-            <h1 className="text-[22px] font-bold text-foreground m-0">Banco de Imagenes</h1>
-            <p className="text-[13px] text-muted-foreground m-0">Gestiona el logo, imagenes y organiza con etiquetas</p>
+            <h1 className="text-[22px] font-bold text-foreground m-0">{t('title')}</h1>
+            <p className="text-[13px] text-muted-foreground m-0">{t('subtitle')}</p>
           </div>
         </div>
       </div>
@@ -248,20 +253,20 @@ export default function MediaBankPage() {
       <div className="bg-card rounded-[14px] border border-border p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <Building2 size={18} className="text-indigo-500" />
-          <h2 className="text-base font-bold text-foreground m-0">Logo de la Empresa</h2>
+          <h2 className="text-base font-bold text-foreground m-0">{t('companyLogo')}</h2>
         </div>
         <div className="flex items-center gap-6">
           <div className="w-24 h-24 rounded-xl border-2 border-dashed border-border bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
             {logoUrl ? <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" /> : <Building2 size={32} className="text-muted-foreground opacity-40" />}
           </div>
           <div className="flex-1">
-            <p className="text-sm text-muted-foreground mb-3">Este logo se usara en plantillas de correo y documentos.</p>
+            <p className="text-sm text-muted-foreground mb-3">{t('logoDescription')}</p>
             <input ref={logoInputRef} type="file" accept={ACCEPT} className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
             <button onClick={() => logoInputRef.current?.click()} disabled={logoUploading}
               className="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-indigo-600 text-white border-none cursor-pointer text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors">
               {logoUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              {logoUploading ? "Subiendo..." : "Subir Logo"}
+              {logoUploading ? "Subiendo..." : t('uploadLogo')}
             </button>
           </div>
         </div>
@@ -272,7 +277,7 @@ export default function MediaBankPage() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <Upload size={18} className="text-indigo-500" />
-            <h2 className="text-base font-bold text-foreground m-0">Subir Imagen</h2>
+            <h2 className="text-base font-bold text-foreground m-0">{t('uploadImage')}</h2>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-muted-foreground">Tipo:</span>
@@ -299,8 +304,8 @@ export default function MediaBankPage() {
           ) : (
             <>
               <Upload size={32} className="text-muted-foreground opacity-50 mb-2" />
-              <p className="text-sm text-foreground font-medium mb-1">Arrastra una imagen o haz clic para seleccionar</p>
-              <p className="text-xs text-muted-foreground">JPG, PNG, WebP o GIF — Maximo 5 MB</p>
+              <p className="text-sm text-foreground font-medium mb-1">{t('dragOrClick')}</p>
+              <p className="text-xs text-muted-foreground">{t('maxSize')}</p>
             </>
           )}
         </div>
@@ -311,19 +316,19 @@ export default function MediaBankPage() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <ImageIcon size={18} className="text-indigo-500" />
-            <h2 className="text-base font-bold text-foreground m-0">Galeria</h2>
+            <h2 className="text-base font-bold text-foreground m-0">{t('gallery')}</h2>
             <span className="text-xs text-muted-foreground">({files.length})</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <select value={filterType} onChange={e => setFilterType(e.target.value)}
               className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none w-[140px]">
-              <option value="">Todos los tipos</option>
+              <option value="">{t('allTypes')}</option>
               {ENTITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             {allTags.length > 0 && (
               <select value={filterTag} onChange={e => setFilterTag(e.target.value)}
                 className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none w-[160px]">
-                <option value="">Todas las etiquetas</option>
+                <option value="">{t('allTags')}</option>
                 {allTags.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             )}
@@ -398,9 +403,9 @@ export default function MediaBankPage() {
                   <div className="p-3">
                     {isEditing ? (
                       <div className="space-y-2 mb-2">
-                        <input value={editLabel} onChange={e => setEditLabel(e.target.value)} placeholder="Etiqueta..."
+                        <input value={editLabel} onChange={e => setEditLabel(e.target.value)} placeholder={`${t('label')}...`}
                           className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground text-xs outline-none" />
-                        <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Descripcion..."
+                        <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder={`${t('description')}...`}
                           rows={2} className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground text-xs outline-none resize-none" />
 
                         {/* Tags editor */}
@@ -499,7 +504,7 @@ export default function MediaBankPage() {
                 </div>
                 <button onClick={() => copyUrl(previewFile)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white border-none cursor-pointer text-sm font-medium shrink-0 hover:bg-indigo-700 transition-colors">
-                  {copiedId === previewFile.id ? <Check size={14} /> : <Copy size={14} />} Copiar URL
+                  {copiedId === previewFile.id ? <Check size={14} /> : <Copy size={14} />} {t('copyUrl')}
                 </button>
               </div>
               {previewFile.tags?.length > 0 && (

@@ -159,7 +159,7 @@ export class AgentAnalyticsService {
         (SELECT COUNT(*) FROM messages m
          JOIN conversations c ON m.conversation_id = c.id
          JOIN conversation_assignments ca2 ON ca2.conversation_id = c.id AND ca2.agent_id = ca.agent_id
-         WHERE m.sender = 'agent') as messages_handled
+         WHERE m.direction = 'outbound') as messages_handled
        FROM conversation_assignments ca
        LEFT JOIN public.users u ON ca.agent_id = u.id
        GROUP BY ca.agent_id, u.first_name, u.last_name
@@ -466,7 +466,7 @@ export class AgentAnalyticsService {
                 (SELECT COUNT(*) FROM messages m
                  JOIN conversations c ON m.conversation_id = c.id
                  JOIN conversation_assignments ca2 ON ca2.conversation_id = c.id AND ca2.agent_id = ca.agent_id
-                 WHERE m.sender = 'agent'
+                 WHERE m.direction = 'outbound'
                    AND m.created_at >= $1::date AND m.created_at <= ($2::date + INTERVAL '1 day')) as messages_handled
              FROM conversation_assignments ca
              LEFT JOIN public.users u ON ca.agent_id = u.id

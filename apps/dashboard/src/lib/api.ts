@@ -80,6 +80,14 @@ export const api = {
 
     googleLogin: (idToken: string) =>
         apiPost("/auth/google", { idToken }),
+    forgotPassword: (email: string) =>
+        apiPost("/auth/forgot-password", { email }),
+    resetPassword: (email: string, code: string, newPassword: string) =>
+        apiPost("/auth/reset-password", { email, code, newPassword }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+        apiPost("/auth/change-password", { currentPassword, newPassword }),
+    send2FA: () => apiPost("/auth/send-2fa", {}),
+    verify2FA: (code: string) => apiPost("/auth/verify-2fa", { code }),
 
     setupPassword: (password: string) =>
         apiPost("/auth/setup-password", { password }),

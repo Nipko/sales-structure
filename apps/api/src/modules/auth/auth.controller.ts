@@ -205,4 +205,56 @@ export class AuthController {
         const result = await this.authService.completeOnboarding(req.user.id, body);
         return { success: true, data: result };
     }
+
+    // ── Password reset (public) ──────────────────────────────────
+
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Request password reset code (public)' })
+    async forgotPassword(@Body() body: { email: string }) {
+        const result = await this.authService.requestPasswordReset(body.email);
+        return { success: true, data: result };
+    }
+
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Confirm password reset with code (public)' })
+    async resetPassword(@Body() body: { email: string; code: string; newPassword: string }) {
+        const result = await this.authService.confirmPasswordReset(body.email, body.code, body.newPassword);
+        return { success: true, data: result };
+    }
+
+    // ── Change password (authenticated) ──────────────────────────
+
+    @Post('change-password')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Change password (requires current password)' })
+    async changePassword(@Request() req: any, @Body() body: { currentPassword: string; newPassword: string }) {
+        const result = await this.authService.changePassword(req.user.id, body.currentPassword, body.newPassword);
+        return { success: true, data: result };
+    }
+
+    // ── 2FA (email-based) ────────────────────────────────────────
+
+    @Post('send-2fa')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Send 2FA code via email' })
+    async send2FA(@Request() req: any) {
+        await this.authService.send2FACode(req.user.id);
+        return { success: true };
+    }
+
+    @Post('verify-2fa')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verify 2FA code and get full tokens' })
+    async verify2FA(@Request() req: any, @Body() body: { code: string }) {
+        const result = await this.authService.verify2FACode(req.user.id, body.code);
+        return { success: true, data: result };
+    }
 }

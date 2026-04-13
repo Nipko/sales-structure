@@ -6,6 +6,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
+import {
+    verificationEmail, passwordResetEmail, twoFactorEmail,
+    welcomeEmail, passwordChangedEmail,
+} from '../email/email-layouts';
 
 @Injectable()
 export class AuthService {
@@ -413,7 +417,6 @@ export class AuthService {
     // ── Password setup ────────────────────────────────────────────
 
     async setupPassword(userId: string, password: string) {
-        // Validate password strength
         const errors: string[] = [];
         if (password.length < 8) errors.push('Minimum 8 characters');
         if (!/[A-Z]/.test(password)) errors.push('At least 1 uppercase letter');
@@ -422,17 +425,20 @@ export class AuthService {
         if (!/[^A-Za-z0-9]/.test(password)) errors.push('At least 1 special character');
 
         if (errors.length > 0) {
-            throw new BadRequestException({
-                message: 'Password does not meet requirements',
-                errors,
-            });
+            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
-
-        await this.prisma.user.update({
+        const user = await this.prisma.user.update({
             where: { id: userId },
             data: { password: hashedPassword },
+        });
+
+        // Notify password change
+        this.emailService.send({
+            to: user.email,
+            subject: 'Tu contrasena ha sido cambiada — Parallly',
+            html: passwordChangedEmail(user.firstName),
         });
 
         return { message: 'Password set successfully' };
@@ -444,39 +450,18 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
-        // Generate 6-digit code
         const code = String(Math.floor(100000 + Math.random() * 900000));
         const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
         await this.prisma.user.update({
             where: { id: userId },
-            data: {
-                emailVerifyCode: code,
-                emailVerifyExpires: expires,
-            },
+            data: { emailVerifyCode: code, emailVerifyExpires: expires },
         });
 
-        // Send verification email
         await this.emailService.send({
             to: user.email,
             subject: 'Tu codigo de verificacion — Parallly',
-            html: `
-                <div style="font-family: 'Inter', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-                    <div style="background: linear-gradient(135deg, #6c5ce7, #9b59b6); padding: 24px; border-radius: 12px 12px 0 0; color: white;">
-                        <h2 style="margin: 0; font-size: 20px;">Parallly</h2>
-                        <p style="margin: 4px 0 0; opacity: 0.85; font-size: 14px;">Verificacion de email</p>
-                    </div>
-                    <div style="background: #1a1a2e; padding: 24px; border-radius: 0 0 12px 12px; color: #e0e0e0;">
-                        <p style="margin: 0 0 16px; font-size: 15px;">Hola ${user.firstName}, tu codigo de verificacion es:</p>
-                        <div style="background: #16213e; padding: 20px; border-radius: 8px; text-align: center; border-left: 3px solid #6c5ce7;">
-                            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: white;">${code}</span>
-                        </div>
-                        <p style="margin: 16px 0 0; font-size: 12px; color: #666;">
-                            Este codigo expira en 10 minutos.
-                        </p>
-                    </div>
-                </div>
-            `,
+            html: verificationEmail(user.firstName, code),
         });
 
         return { message: 'Verification code sent' };
@@ -486,25 +471,180 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
-        if (
-            !user.emailVerifyCode ||
-            !user.emailVerifyExpires ||
-            user.emailVerifyCode !== code ||
-            user.emailVerifyExpires < new Date()
-        ) {
+        if (!user.emailVerifyCode || !user.emailVerifyExpires ||
+            user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
             throw new BadRequestException('Invalid or expired verification code');
         }
 
         await this.prisma.user.update({
             where: { id: userId },
+            data: { emailVerified: true, emailVerifyCode: null, emailVerifyExpires: null },
+        });
+
+        return { message: 'Email verified successfully' };
+    }
+
+    // ── Password reset (public, no JWT) ──────────────────────────
+
+    async requestPasswordReset(email: string) {
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        // Always return success to avoid email enumeration
+        if (!user || !user.isActive) return { message: 'If the email exists, a code was sent' };
+
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expires = new Date(Date.now() + 10 * 60 * 1000);
+
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { emailVerifyCode: code, emailVerifyExpires: expires },
+        });
+
+        await this.emailService.send({
+            to: user.email,
+            subject: 'Restablece tu contrasena — Parallly',
+            html: passwordResetEmail(user.firstName, code),
+        });
+
+        return { message: 'If the email exists, a code was sent' };
+    }
+
+    async confirmPasswordReset(email: string, code: string, newPassword: string) {
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        if (!user) throw new BadRequestException('Invalid or expired code');
+
+        if (!user.emailVerifyCode || !user.emailVerifyExpires ||
+            user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
+            throw new BadRequestException('Invalid or expired code');
+        }
+
+        // Validate password strength
+        const errors: string[] = [];
+        if (newPassword.length < 8) errors.push('Minimum 8 characters');
+        if (!/[A-Z]/.test(newPassword)) errors.push('At least 1 uppercase letter');
+        if (!/[a-z]/.test(newPassword)) errors.push('At least 1 lowercase letter');
+        if (!/[0-9]/.test(newPassword)) errors.push('At least 1 number');
+        if (!/[^A-Za-z0-9]/.test(newPassword)) errors.push('At least 1 special character');
+
+        if (errors.length > 0) {
+            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        await this.prisma.user.update({
+            where: { id: user.id },
             data: {
-                emailVerified: true,
+                password: hashedPassword,
                 emailVerifyCode: null,
                 emailVerifyExpires: null,
             },
         });
 
-        return { message: 'Email verified successfully' };
+        // Notify
+        this.emailService.send({
+            to: user.email,
+            subject: 'Tu contrasena ha sido cambiada — Parallly',
+            html: passwordChangedEmail(user.firstName),
+        });
+
+        return { message: 'Password reset successfully' };
+    }
+
+    // ── 2FA (email-based) ─────────────────────────────────────────
+
+    async send2FACode(userId: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { emailVerifyCode: code, emailVerifyExpires: expires },
+        });
+
+        await this.emailService.send({
+            to: user.email,
+            subject: 'Tu codigo de autenticacion — Parallly',
+            html: twoFactorEmail(user.firstName, code),
+        });
+
+        return { message: '2FA code sent' };
+    }
+
+    async verify2FACode(userId: string, code: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        if (!user.emailVerifyCode || !user.emailVerifyExpires ||
+            user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
+            throw new BadRequestException('Invalid or expired 2FA code');
+        }
+
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { emailVerifyCode: null, emailVerifyExpires: null },
+        });
+
+        // Generate full tokens now that 2FA is passed
+        const payload: JwtPayload = {
+            sub: user.id,
+            email: user.email,
+            role: user.role as UserRole,
+            tenantId: user.tenantId || undefined,
+        };
+
+        const accessToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
+        });
+        const refreshToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
+        });
+
+        return { accessToken, refreshToken };
+    }
+
+    // ── Change password (authenticated) ──────────────────────────
+
+    async changePassword(userId: string, currentPassword: string, newPassword: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+
+        if (!user.password) {
+            throw new BadRequestException('This account uses Google sign-in. Set a password first.');
+        }
+
+        const isValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isValid) {
+            throw new UnauthorizedException('Current password is incorrect');
+        }
+
+        const errors: string[] = [];
+        if (newPassword.length < 8) errors.push('Minimum 8 characters');
+        if (!/[A-Z]/.test(newPassword)) errors.push('At least 1 uppercase letter');
+        if (!/[a-z]/.test(newPassword)) errors.push('At least 1 lowercase letter');
+        if (!/[0-9]/.test(newPassword)) errors.push('At least 1 number');
+        if (!/[^A-Za-z0-9]/.test(newPassword)) errors.push('At least 1 special character');
+
+        if (errors.length > 0) {
+            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        });
+
+        this.emailService.send({
+            to: user.email,
+            subject: 'Tu contrasena ha sido cambiada — Parallly',
+            html: passwordChangedEmail(user.firstName),
+        });
+
+        return { message: 'Password changed successfully' };
     }
 
     // ── Onboarding completion ─────────────────────────────────────

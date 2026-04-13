@@ -18,6 +18,8 @@ export interface MediaFile {
     height: number | null;
     url: string;
     thumbnailUrl: string | null;
+    label: string | null;
+    description: string | null;
     createdAt: string;
 }
 
@@ -53,6 +55,8 @@ export class MediaService {
         file: Express.Multer.File,
         entityType: string = 'general',
         entityId?: string,
+        label?: string,
+        description?: string,
     ): Promise<MediaFile> {
         // Validate
         if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -92,9 +96,9 @@ export class MediaService {
         const thumbnailUrl = `/media/file/${tenantId}/${thumbName}`;
 
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, created_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-            [id, entityType, entityId || null, file.originalname, fileName, 'image/webp', mainSize, mainMeta.width, mainMeta.height, thumbName],
+            `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, created_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+            [id, entityType, entityId || null, file.originalname, fileName, 'image/webp', mainSize, mainMeta.width, mainMeta.height, thumbName, label || null, description || null],
         );
 
         this.logger.log(`Uploaded ${file.originalname} → ${fileName} (${(mainSize / 1024).toFixed(0)}KB, ${mainMeta.width}x${mainMeta.height})`);
@@ -111,6 +115,8 @@ export class MediaService {
             height: mainMeta.height,
             url,
             thumbnailUrl,
+            label: label || null,
+            description: description || null,
             createdAt: new Date().toISOString(),
         };
     }
@@ -147,7 +153,7 @@ export class MediaService {
      * List media files for a tenant
      */
     async list(schemaName: string, tenantId: string, entityType?: string): Promise<MediaFile[]> {
-        let sql = `SELECT id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, created_at
+        let sql = `SELECT id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, created_at
                     FROM media_files`;
         const params: any[] = [];
 
@@ -172,8 +178,30 @@ export class MediaService {
             height: row.height,
             url: `/media/file/${tenantId}/${row.file_name}`,
             thumbnailUrl: row.thumbnail_name ? `/media/file/${tenantId}/${row.thumbnail_name}` : null,
+            label: row.label,
+            description: row.description,
             createdAt: row.created_at,
         }));
+    }
+
+    /**
+     * Update label and description of a media file
+     */
+    async updateMeta(schemaName: string, fileId: string, data: { label?: string; description?: string }): Promise<void> {
+        const sets: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+
+        if (data.label !== undefined) { sets.push(`label = $${idx++}`); params.push(data.label); }
+        if (data.description !== undefined) { sets.push(`description = $${idx++}`); params.push(data.description); }
+
+        if (sets.length === 0) return;
+
+        params.push(fileId);
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE media_files SET ${sets.join(', ')} WHERE id = $${idx}::uuid`,
+            params,
+        );
     }
 
     /**

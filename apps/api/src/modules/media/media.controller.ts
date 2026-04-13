@@ -1,5 +1,5 @@
 import {
-    Controller, Post, Get, Delete, Param, Query,
+    Controller, Post, Get, Put, Delete, Param, Query, Body,
     UseGuards, UseInterceptors, UploadedFile, Res,
     HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
@@ -39,6 +39,7 @@ export class MediaController {
         const result = await this.mediaService.upload(
             user.schemaName, tenantId, file,
             entityType || 'general', entityId,
+            undefined, undefined,
         );
         return { success: true, data: result };
     }
@@ -70,6 +71,21 @@ export class MediaController {
     ) {
         const files = await this.mediaService.list(user.schemaName, tenantId, entityType);
         return { success: true, data: files };
+    }
+
+    @Put('update/:tenantId/:fileId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Update media file label and description' })
+    async updateMeta(
+        @Param('tenantId') tenantId: string,
+        @Param('fileId') fileId: string,
+        @Body() body: { label?: string; description?: string },
+        @CurrentUser() user: any,
+    ) {
+        await this.mediaService.updateMeta(user.schemaName, fileId, body);
+        return { success: true };
     }
 
     @Delete('delete/:tenantId/:fileId')

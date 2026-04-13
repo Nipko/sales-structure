@@ -392,6 +392,8 @@ export const api = {
     },
     getMediaList: (tenantId: string, entityType?: string) =>
         apiGet(`/media/list/${tenantId}${entityType ? `?entityType=${entityType}` : ""}`),
+    updateMedia: (tenantId: string, fileId: string, data: { label?: string; description?: string }) =>
+        apiPut(`/media/update/${tenantId}/${fileId}`, data),
     deleteMedia: (tenantId: string, fileId: string) =>
         apiDelete(`/media/delete/${tenantId}/${fileId}`),
 

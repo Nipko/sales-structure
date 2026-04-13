@@ -1059,9 +1059,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."media_files" (
     "width" INTEGER,
     "height" INTEGER,
     "thumbnail_name" VARCHAR(255),
+    "label" VARCHAR(255),
+    "description" TEXT,
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "mf_entity_idx" ON "{{SCHEMA_NAME}}"."media_files" ("entity_type", "entity_id");
+ALTER TABLE "{{SCHEMA_NAME}}"."media_files" ADD COLUMN IF NOT EXISTS "label" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."media_files" ADD COLUMN IF NOT EXISTS "description" TEXT;
 
 -- ---- Email Templates ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."email_templates" (

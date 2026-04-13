@@ -7,59 +7,45 @@ import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
-  ArrowLeft,
-  Upload,
-  ImageIcon,
-  Trash2,
-  Copy,
-  Check,
-  X,
-  Loader2,
-  Building2,
-  ZoomIn,
+  ArrowLeft, Upload, ImageIcon, Trash2, Copy, Check, X,
+  Loader2, Building2, ZoomIn, Pencil, Save,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types & helpers
 // ---------------------------------------------------------------------------
 
 interface MediaFile {
   id: string;
   url: string;
+  thumbnailUrl: string | null;
   originalName: string;
   mimeType: string;
-  size: number;
-  entityType?: string;
+  sizeBytes: number;
+  entityType: string;
+  label: string | null;
+  description: string | null;
   createdAt: string;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_SIZE = 10 * 1024 * 1024;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+function mediaUrl(relPath: string): string {
+  return `${API_BASE}${relPath}`;
+}
+
+function fmtBytes(b: number): string {
+  if (!b) return "0 B";
   const k = 1024;
-  const sizes = ["B", "KB", "MB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const s = ["B", "KB", "MB"];
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return `${(b / Math.pow(k, i)).toFixed(1)} ${s[i]}`;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-MX", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function buildFullUrl(relativeUrl: string): string {
-  const base =
-    process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ?? "";
-  return `${base}${relativeUrl}`;
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 const ENTITY_OPTIONS = [
@@ -67,11 +53,6 @@ const ENTITY_OPTIONS = [
   { value: "product", label: "Producto" },
   { value: "course", label: "Curso" },
 ];
-
-const inputCls =
-  "w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border";
-const labelCls =
-  "block text-xs font-semibold text-muted-foreground mb-1";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -82,7 +63,6 @@ export default function MediaBankPage() {
   const { activeTenantId } = useTenant();
   const tenantId = activeTenantId || user?.tenantId || "";
 
-  // --- State ---
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -93,120 +73,85 @@ export default function MediaBankPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Logo
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Toast ---
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  }
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 2500); }
 
-  // --- Load media list ---
+  // --- Load ---
   const loadMedia = useCallback(async () => {
     if (!tenantId) return;
     setLoading(true);
     try {
       const res = await api.getMediaList(tenantId, filterType || undefined);
-      if (res.success && Array.isArray(res.data)) {
-        setFiles(res.data);
-      }
-    } catch (err) {
-      console.error("Error loading media:", err);
-    } finally {
-      setLoading(false);
-    }
+      if (res.success && Array.isArray(res.data)) setFiles(res.data);
+    } catch { /* ignore */ } finally { setLoading(false); }
   }, [tenantId, filterType]);
 
-  useEffect(() => {
-    loadMedia();
-  }, [loadMedia]);
+  useEffect(() => { loadMedia(); }, [loadMedia]);
 
-  // --- Load logo on mount ---
   useEffect(() => {
     if (!tenantId) return;
-    // The logo is fetched alongside the media list; we also check if there's
-    // an existing logo by looking for the entity type or a dedicated endpoint.
-    // For now, derive from media list.
     (async () => {
       try {
         const res = await api.getMediaList(tenantId, "tenant_logo");
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-          setLogoUrl(buildFullUrl(res.data[0].url));
-        }
-      } catch {
-        /* ignore */
-      }
+        if (res.success && res.data?.length > 0) setLogoUrl(mediaUrl(res.data[0].url));
+      } catch { /* ignore */ }
     })();
   }, [tenantId]);
 
-  // --- Upload file ---
+  // --- Upload ---
   async function handleFileUpload(file: File) {
-    if (!tenantId) return;
-    if (!file.type.startsWith("image/")) {
-      showToast("Error: Solo se permiten imagenes");
-      return;
-    }
-    if (file.size > MAX_SIZE) {
-      showToast("Error: El archivo excede 10 MB");
-      return;
-    }
+    if (!tenantId || !file.type.startsWith("image/")) { showToast("Error: Solo se permiten imagenes"); return; }
+    if (file.size > MAX_SIZE) { showToast("Error: El archivo excede 10 MB"); return; }
 
-    setUploading(true);
-    setUploadProgress(0);
-
-    // Simulate progress since fetch doesn't provide it
-    const progressInterval = setInterval(() => {
-      setUploadProgress((prev) => (prev >= 90 ? 90 : prev + 10));
-    }, 200);
+    setUploading(true); setUploadProgress(0);
+    const iv = setInterval(() => setUploadProgress(p => p >= 90 ? 90 : p + 10), 200);
 
     try {
       const res = await api.uploadMedia(tenantId, file, entityType);
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      if (res.success) {
-        showToast("Imagen subida correctamente");
-        loadMedia();
-      } else {
-        showToast(`Error: ${res.error || "No se pudo subir la imagen"}`);
-      }
-    } catch {
-      clearInterval(progressInterval);
-      showToast("Error: Fallo la conexion");
-    } finally {
-      setTimeout(() => {
-        setUploading(false);
-        setUploadProgress(0);
-      }, 600);
-    }
+      clearInterval(iv); setUploadProgress(100);
+      if (res.success) { showToast("Imagen subida"); loadMedia(); }
+      else showToast(`Error: ${res.error || "No se pudo subir"}`);
+    } catch { clearInterval(iv); showToast("Error: Fallo la conexion"); }
+    finally { setTimeout(() => { setUploading(false); setUploadProgress(0); }, 600); }
   }
 
-  // --- Upload logo ---
   async function handleLogoUpload(file: File) {
-    if (!tenantId) return;
-    if (!file.type.startsWith("image/")) {
-      showToast("Error: Solo se permiten imagenes");
-      return;
-    }
+    if (!tenantId || !file.type.startsWith("image/")) { showToast("Error: Solo imagenes"); return; }
     setLogoUploading(true);
     try {
       const res = await api.uploadLogo(tenantId, file);
-      if (res.success && res.data?.logoUrl) {
-        setLogoUrl(buildFullUrl(res.data.logoUrl));
-        showToast("Logo actualizado");
-      } else {
-        showToast(`Error: ${res.error || "No se pudo subir el logo"}`);
-      }
-    } catch {
-      showToast("Error: Fallo la conexion");
-    } finally {
-      setLogoUploading(false);
-    }
+      if (res.success && res.data?.logoUrl) { setLogoUrl(mediaUrl(res.data.logoUrl)); showToast("Logo actualizado"); }
+      else showToast(`Error: ${res.error || "No se pudo subir"}`);
+    } catch { showToast("Error: Fallo la conexion"); }
+    finally { setLogoUploading(false); }
+  }
+
+  // --- Edit label/description ---
+  function startEdit(f: MediaFile) {
+    setEditingId(f.id); setEditLabel(f.label || ""); setEditDesc(f.description || "");
+  }
+
+  async function saveEdit() {
+    if (!tenantId || !editingId) return;
+    setSaving(true);
+    try {
+      const res = await api.updateMedia(tenantId, editingId, { label: editLabel, description: editDesc });
+      if (res.success) {
+        setFiles(prev => prev.map(f => f.id === editingId ? { ...f, label: editLabel, description: editDesc } : f));
+        showToast("Guardado"); setEditingId(null);
+      } else showToast(`Error: ${res.error}`);
+    } catch { showToast("Error al guardar"); }
+    finally { setSaving(false); }
   }
 
   // --- Delete ---
@@ -214,352 +159,223 @@ export default function MediaBankPage() {
     if (!tenantId || !confirm("¿Eliminar esta imagen?")) return;
     try {
       const res = await api.deleteMedia(tenantId, fileId);
-      if (res.success) {
-        showToast("Imagen eliminada");
-        setFiles((prev) => prev.filter((f) => f.id !== fileId));
-      } else {
-        showToast(`Error: ${res.error || "No se pudo eliminar"}`);
-      }
-    } catch {
-      showToast("Error: Fallo la conexion");
-    }
+      if (res.success) { showToast("Eliminada"); setFiles(prev => prev.filter(f => f.id !== fileId)); }
+      else showToast(`Error: ${res.error}`);
+    } catch { showToast("Error al eliminar"); }
   }
 
-  // --- Copy URL ---
-  function copyUrl(file: MediaFile) {
-    const url = buildFullUrl(file.url);
-    navigator.clipboard.writeText(url);
-    setCopiedId(file.id);
-    showToast("URL copiada al portapapeles");
+  function copyUrl(f: MediaFile) {
+    navigator.clipboard.writeText(mediaUrl(f.url));
+    setCopiedId(f.id); showToast("URL copiada");
     setTimeout(() => setCopiedId(null), 2000);
   }
 
   // --- Drag & drop ---
-  function onDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(true);
-  }
-  function onDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-  }
-  function onDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) handleFileUpload(droppedFile);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  function onDragOver(e: React.DragEvent) { e.preventDefault(); setDragging(true); }
+  function onDragLeave(e: React.DragEvent) { e.preventDefault(); setDragging(false); }
+  function onDrop(e: React.DragEvent) { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f); }
 
   return (
     <div className="p-8 max-w-[1200px] mx-auto">
       {/* Toast */}
       {toast && (
-        <div
-          className={cn(
-            "fixed top-6 right-6 z-[9999] text-white px-6 py-3 rounded-[10px] text-sm font-semibold shadow-lg transition-all",
-            toast.includes("Error") ? "bg-destructive" : "bg-[var(--success)]"
-          )}
-        >
+        <div className={cn("fixed top-6 right-6 z-[9999] text-white px-6 py-3 rounded-[10px] text-sm font-semibold shadow-lg",
+          toast.includes("Error") ? "bg-red-500" : "bg-emerald-500")}>
           {toast}
         </div>
       )}
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-7">
-        <Link
-          href="/admin/settings"
-          className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href="/admin/settings" className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={18} />
         </Link>
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center">
-            <ImageIcon size={22} className="text-primary" />
+          <div className="w-11 h-11 rounded-xl bg-indigo-500/15 flex items-center justify-center">
+            <ImageIcon size={22} className="text-indigo-500" />
           </div>
           <div>
-            <h1 className="text-[22px] font-bold text-foreground m-0">
-              Banco de Imagenes
-            </h1>
-            <p className="text-[13px] text-muted-foreground m-0">
-              Gestiona el logo de tu empresa y las imagenes de tu cuenta
-            </p>
+            <h1 className="text-[22px] font-bold text-foreground m-0">Banco de Imagenes</h1>
+            <p className="text-[13px] text-muted-foreground m-0">Gestiona el logo de tu empresa y las imagenes de tu cuenta</p>
           </div>
         </div>
       </div>
 
-      {/* ================================================================= */}
-      {/* Logo section                                                       */}
-      {/* ================================================================= */}
+      {/* Logo Section */}
       <div className="bg-card rounded-[14px] border border-border p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
-          <Building2 size={18} className="text-primary" />
-          <h2 className="text-base font-bold text-foreground m-0">
-            Logo de la Empresa
-          </h2>
+          <Building2 size={18} className="text-indigo-500" />
+          <h2 className="text-base font-bold text-foreground m-0">Logo de la Empresa</h2>
         </div>
-
         <div className="flex items-center gap-6">
-          {/* Preview */}
-          <div className="w-24 h-24 rounded-xl border-2 border-dashed border-border bg-background flex items-center justify-center overflow-hidden shrink-0">
+          <div className="w-24 h-24 rounded-xl border-2 border-dashed border-border bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
             {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt="Logo"
-                className="w-full h-full object-contain"
-              />
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
             ) : (
-              <Building2
-                size={32}
-                className="text-muted-foreground opacity-40"
-              />
+              <Building2 size={32} className="text-muted-foreground opacity-40" />
             )}
           </div>
-
           <div className="flex-1">
-            <p className="text-sm text-muted-foreground mb-3">
-              Este logo se usara en plantillas de correo y documentos.
-            </p>
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept={ACCEPT}
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleLogoUpload(f);
-                e.target.value = "";
-              }}
-            />
-            <button
-              onClick={() => logoInputRef.current?.click()}
-              disabled={logoUploading}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold transition-opacity",
-                logoUploading && "opacity-60 cursor-not-allowed"
-              )}
-            >
-              {logoUploading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Upload size={16} />
-              )}
+            <p className="text-sm text-muted-foreground mb-3">Este logo se usara en plantillas de correo y documentos.</p>
+            <input ref={logoInputRef} type="file" accept={ACCEPT} className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
+            <button onClick={() => logoInputRef.current?.click()} disabled={logoUploading}
+              className="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-indigo-600 text-white border-none cursor-pointer text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+              {logoUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               {logoUploading ? "Subiendo..." : "Subir Logo"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* ================================================================= */}
-      {/* Upload section                                                     */}
-      {/* ================================================================= */}
+      {/* Upload Section */}
       <div className="bg-card rounded-[14px] border border-border p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Upload size={18} className="text-primary" />
-            <h2 className="text-base font-bold text-foreground m-0">
-              Subir Imagen
-            </h2>
+            <Upload size={18} className="text-indigo-500" />
+            <h2 className="text-base font-bold text-foreground m-0">Subir Imagen</h2>
           </div>
           <div className="flex items-center gap-2">
-            <label className={labelCls}>Tipo:</label>
-            <select
-              value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
-              className={cn(inputCls, "w-[140px]")}
-            >
-              {ENTITY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
+            <span className="text-xs font-semibold text-muted-foreground">Tipo:</span>
+            <select value={entityType} onChange={e => setEntityType(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none w-[140px]">
+              {ENTITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
 
-        {/* Drop zone */}
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
+        <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
           onClick={() => !uploading && fileInputRef.current?.click()}
-          className={cn(
-            "relative border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer transition-colors",
-            dragging
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-primary/50 bg-background"
-          )}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPT}
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFileUpload(f);
-              e.target.value = "";
-            }}
-          />
+          className={cn("border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer transition-colors",
+            dragging ? "border-indigo-500 bg-indigo-500/5" : "border-border hover:border-indigo-500/50 bg-background")}>
+          <input ref={fileInputRef} type="file" accept={ACCEPT} className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }} />
 
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
-              <Loader2 size={32} className="text-primary animate-spin" />
-              <p className="text-sm text-muted-foreground">
-                Subiendo... {uploadProgress}%
-              </p>
-              <div className="w-48 h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                />
+              <Loader2 size={32} className="text-indigo-500 animate-spin" />
+              <p className="text-sm text-muted-foreground">Subiendo... {uploadProgress}%</p>
+              <div className="w-48 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
               </div>
             </div>
           ) : (
             <>
-              <Upload
-                size={32}
-                className="text-muted-foreground opacity-50 mb-2"
-              />
-              <p className="text-sm text-foreground font-medium mb-1">
-                Arrastra una imagen aqui o haz clic para seleccionar
-              </p>
-              <p className="text-xs text-muted-foreground">
-                JPG, PNG, WebP o GIF — Maximo 10 MB
-              </p>
+              <Upload size={32} className="text-muted-foreground opacity-50 mb-2" />
+              <p className="text-sm text-foreground font-medium mb-1">Arrastra una imagen aqui o haz clic para seleccionar</p>
+              <p className="text-xs text-muted-foreground">JPG, PNG, WebP o GIF — Maximo 10 MB</p>
             </>
           )}
         </div>
       </div>
 
-      {/* ================================================================= */}
-      {/* Gallery                                                            */}
-      {/* ================================================================= */}
+      {/* Gallery */}
       <div className="bg-card rounded-[14px] border border-border p-6">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <ImageIcon size={18} className="text-primary" />
-            <h2 className="text-base font-bold text-foreground m-0">
-              Galeria
-            </h2>
-            <span className="text-xs text-muted-foreground">
-              ({files.length} {files.length === 1 ? "imagen" : "imagenes"})
-            </span>
+            <ImageIcon size={18} className="text-indigo-500" />
+            <h2 className="text-base font-bold text-foreground m-0">Galeria</h2>
+            <span className="text-xs text-muted-foreground">({files.length})</span>
           </div>
-
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className={cn(inputCls, "w-[160px]")}
-          >
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none w-[160px]">
             <option value="">Todos los tipos</option>
-            {ENTITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
+            {ENTITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
 
         {loading ? (
           <div className="p-12 text-center text-muted-foreground">
-            <Loader2
-              size={28}
-              className="animate-spin mx-auto mb-2 opacity-60"
-            />
+            <Loader2 size={28} className="animate-spin mx-auto mb-2 opacity-60" />
             <p className="text-sm">Cargando imagenes...</p>
           </div>
         ) : files.length === 0 ? (
           <div className="p-12 text-center">
-            <ImageIcon
-              size={40}
-              className="text-muted-foreground opacity-30 mx-auto mb-3"
-            />
-            <p className="text-sm text-muted-foreground">
-              No hay imagenes en tu banco. Sube tu primera imagen arriba.
-            </p>
+            <ImageIcon size={40} className="text-muted-foreground opacity-30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No hay imagenes. Sube tu primera imagen arriba.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {files.map((file) => {
-              const fullUrl = buildFullUrl(file.url);
+            {files.map(file => {
+              const fullUrl = mediaUrl(file.url);
+              const thumbUrl = file.thumbnailUrl ? mediaUrl(file.thumbnailUrl) : fullUrl;
+              const isEditing = editingId === file.id;
+
               return (
-                <div
-                  key={file.id}
-                  className="bg-background rounded-xl border border-border overflow-hidden group"
-                >
+                <div key={file.id} className="bg-background rounded-xl border border-border overflow-hidden group">
                   {/* Thumbnail */}
-                  <div
-                    className="relative aspect-square bg-muted cursor-pointer overflow-hidden"
-                    onClick={() => setPreviewFile(file)}
-                  >
-                    <img
-                      src={fullUrl}
-                      alt={file.originalName}
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                      loading="lazy"
-                    />
+                  <div className="relative aspect-square bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden"
+                    onClick={() => setPreviewFile(file)}>
+                    <img src={thumbUrl} alt={file.label || file.originalName}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                      <ZoomIn
-                        size={24}
-                        className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                      />
+                      <ZoomIn size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
+                    {file.entityType && file.entityType !== 'general' && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/60 text-white text-[10px] font-semibold">
+                        {ENTITY_OPTIONS.find(o => o.value === file.entityType)?.label ?? file.entityType}
+                      </span>
+                    )}
                   </div>
 
                   {/* Info */}
                   <div className="p-3">
-                    <p
-                      className="text-xs font-medium text-foreground truncate mb-1"
-                      title={file.originalName}
-                    >
-                      {file.originalName}
-                    </p>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatBytes(file.size)}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDate(file.createdAt)}
-                      </span>
-                    </div>
-
-                    {file.entityType && (
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-semibold mb-2">
-                        {
-                          ENTITY_OPTIONS.find(
-                            (o) => o.value === file.entityType
-                          )?.label ?? file.entityType
-                        }
-                      </span>
+                    {isEditing ? (
+                      <div className="space-y-2 mb-2">
+                        <input value={editLabel} onChange={e => setEditLabel(e.target.value)} placeholder="Etiqueta..."
+                          className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground text-xs outline-none" />
+                        <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Descripcion..."
+                          rows={2} className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground text-xs outline-none resize-none" />
+                        <div className="flex gap-1.5">
+                          <button onClick={saveEdit} disabled={saving}
+                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-medium cursor-pointer border-none disabled:opacity-60">
+                            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                          </button>
+                          <button onClick={() => setEditingId(null)}
+                            className="px-2 py-1.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-foreground text-xs cursor-pointer border-none">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs font-medium text-foreground truncate mb-0.5" title={file.label || file.originalName}>
+                          {file.label || file.originalName}
+                        </p>
+                        {file.description && (
+                          <p className="text-[11px] text-muted-foreground truncate mb-1" title={file.description}>
+                            {file.description}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] text-muted-foreground">{fmtBytes(file.sizeBytes)}</span>
+                          <span className="text-[11px] text-muted-foreground">{fmtDate(file.createdAt)}</span>
+                        </div>
+                      </>
                     )}
 
-                    {/* URL copy */}
-                    <div
-                      onClick={() => copyUrl(file)}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-muted cursor-pointer hover:bg-muted/80 transition-colors mb-2"
-                    >
-                      {copiedId === file.id ? (
-                        <Check size={12} className="text-[var(--success)] shrink-0" />
-                      ) : (
-                        <Copy size={12} className="text-muted-foreground shrink-0" />
-                      )}
-                      <span className="text-[10px] text-muted-foreground truncate select-all">
-                        {fullUrl}
-                      </span>
-                    </div>
+                    {!isEditing && (
+                      <>
+                        {/* URL copy */}
+                        <div onClick={() => copyUrl(file)}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-neutral-100 dark:bg-neutral-800 cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors mb-2">
+                          {copiedId === file.id ? <Check size={12} className="text-emerald-500 shrink-0" /> : <Copy size={12} className="text-muted-foreground shrink-0" />}
+                          <span className="text-[10px] text-muted-foreground truncate select-all">{fullUrl}</span>
+                        </div>
 
-                    {/* Delete */}
-                    <button
-                      onClick={() => handleDelete(file.id)}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium cursor-pointer hover:bg-destructive/20 transition-colors"
-                    >
-                      <Trash2 size={12} />
-                      Eliminar
-                    </button>
+                        {/* Actions */}
+                        <div className="flex gap-1.5">
+                          <button onClick={() => startEdit(file)}
+                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-xs font-medium cursor-pointer hover:bg-indigo-500/20 transition-colors">
+                            <Pencil size={12} /> Editar
+                          </button>
+                          <button onClick={() => handleDelete(file.id)}
+                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium cursor-pointer hover:bg-red-500/20 transition-colors">
+                            <Trash2 size={12} /> Eliminar
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -568,51 +384,27 @@ export default function MediaBankPage() {
         )}
       </div>
 
-      {/* ================================================================= */}
-      {/* Full-size preview modal                                            */}
-      {/* ================================================================= */}
+      {/* Preview Modal */}
       {previewFile && (
-        <div
-          className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
-          onClick={() => setPreviewFile(null)}
-        >
-          <div
-            className="relative max-w-[90vw] max-h-[90vh] bg-card rounded-2xl border border-border overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setPreviewFile(null)}
-              className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 border-none text-white cursor-pointer flex items-center justify-center hover:bg-black/70 transition-colors"
-            >
+        <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setPreviewFile(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh] bg-card rounded-2xl border border-border overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <button onClick={() => setPreviewFile(null)}
+              className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 border-none text-white cursor-pointer flex items-center justify-center hover:bg-black/70 transition-colors">
               <X size={16} />
             </button>
-
-            <img
-              src={buildFullUrl(previewFile.url)}
-              alt={previewFile.originalName}
-              className="max-w-[85vw] max-h-[80vh] object-contain"
-            />
-
-            <div className="p-4 border-t border-border flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {previewFile.originalName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatBytes(previewFile.size)} —{" "}
-                  {formatDate(previewFile.createdAt)}
-                </p>
+            <img src={mediaUrl(previewFile.url)} alt={previewFile.label || previewFile.originalName}
+              className="max-w-[85vw] max-h-[75vh] object-contain block" />
+            <div className="p-4 border-t border-border flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{previewFile.label || previewFile.originalName}</p>
+                {previewFile.description && <p className="text-xs text-muted-foreground truncate">{previewFile.description}</p>}
+                <p className="text-xs text-muted-foreground">{fmtBytes(previewFile.sizeBytes)} — {fmtDate(previewFile.createdAt)}</p>
               </div>
-              <button
-                onClick={() => copyUrl(previewFile)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white border-none cursor-pointer text-sm font-medium"
-              >
-                {copiedId === previewFile.id ? (
-                  <Check size={14} />
-                ) : (
-                  <Copy size={14} />
-                )}
-                Copiar URL
+              <button onClick={() => copyUrl(previewFile)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white border-none cursor-pointer text-sm font-medium shrink-0 hover:bg-indigo-700 transition-colors">
+                {copiedId === previewFile.id ? <Check size={14} /> : <Copy size={14} />} Copiar URL
               </button>
             </div>
           </div>

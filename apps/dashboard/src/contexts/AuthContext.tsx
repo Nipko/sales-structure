@@ -75,11 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userData.role === "super_admin" || userData.tenantId) {
             return "/admin";
         }
-        // New Google users without password
-        if (!userData.hasPassword) return "/setup-password";
-        // Users who haven't verified email
+        // Email users who haven't verified — Google users skip (already verified)
         if (!userData.emailVerified) return "/verify-email";
-        // Users without a company/tenant
+        // Users without a company/tenant → onboarding wizard
         if (!userData.onboardingCompleted) return "/onboarding";
         return "/admin";
     }, []);

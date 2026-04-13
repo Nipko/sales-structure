@@ -65,12 +65,12 @@ export class AuthService {
     }
 
     /**
-     * Self-service signup: creates a tenant AND its admin user atomically.
+     * Self-service signup: creates user only (no tenant).
+     * Tenant is created later via completeOnboarding().
+     * Sends email verification code automatically.
      * This is a PUBLIC endpoint — no JWT required.
      */
     async signupWithTenant(data: {
-        companyName: string;
-        industry: string;
         email: string;
         password: string;
         firstName: string;
@@ -84,86 +84,33 @@ export class AuthService {
             throw new ConflictException('Email already registered');
         }
 
-        // Generate slug from company name
-        const slug = data.companyName
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
-
-        // Check slug uniqueness
-        const existingTenant = await this.prisma.tenant.findUnique({
-            where: { slug },
-        });
-        if (existingTenant) {
-            throw new ConflictException('A company with a similar name already exists');
-        }
-
-        const schemaName = `tenant_${slug.replace(/-/g, '_')}`;
         const hashedPassword = await bcrypt.hash(data.password, 12);
 
-        // Atomic transaction: create tenant + admin user
-        const result = await this.prisma.$transaction(async (tx: any) => {
-            // 1. Create tenant
-            const tenant = await tx.tenant.create({
-                data: {
-                    name: data.companyName,
-                    slug,
-                    industry: data.industry,
-                    schemaName,
-                    plan: 'starter',
-                    language: 'es-CO',
-                },
-            });
-
-            // 2. Create owner/admin user
-            const user = await tx.user.create({
-                data: {
-                    email: data.email,
-                    password: hashedPassword,
-                    firstName: data.firstName,
-                    lastName: data.lastName,
-                    role: 'tenant_admin',
-                    tenantId: tenant.id,
-                },
-                select: {
-                    id: true,
-                    email: true,
-                    firstName: true,
-                    lastName: true,
-                    role: true,
-                    tenantId: true,
-                },
-            });
-
-            // 3. Audit log
-            await tx.auditLog.create({
-                data: {
-                    tenantId: tenant.id,
-                    userId: user.id,
-                    action: 'tenant_self_signup',
-                    resource: 'tenant',
-                    details: { companyName: data.companyName, slug, email: data.email },
-                },
-            });
-
-            return { tenant, user };
+        // Create user without tenant — tenant will be created during onboarding
+        const user = await this.prisma.user.create({
+            data: {
+                email: data.email,
+                password: hashedPassword,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                role: 'tenant_admin',
+                authProvider: 'email',
+            },
+            select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+                tenantId: true,
+            },
         });
 
-        // 4. Create isolated DB schema (outside transaction — DDL cannot be rolled back)
-        try {
-            await this.prisma.createTenantSchema(result.tenant.schemaName);
-        } catch (error) {
-            // Best-effort: schema creation failed but tenant/user exist.
-            // Logged for manual follow-up; the tenant can still function.
-            console.error(`[Signup] Failed to create schema "${result.tenant.schemaName}":`, error);
-        }
-
-        // 5. Generate JWT tokens — user is immediately authenticated
+        // Generate JWT tokens — user is authenticated but not onboarded
         const payload: JwtPayload = {
-            sub: result.user.id,
-            email: result.user.email,
-            role: result.user.role as UserRole,
-            tenantId: result.user.tenantId || undefined,
+            sub: user.id,
+            email: user.email,
+            role: user.role as UserRole,
         };
 
         const accessToken = this.jwtService.sign(payload, {
@@ -176,17 +123,26 @@ export class AuthService {
             expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
         });
 
+        // Auto-send verification email
+        try {
+            await this.sendVerificationEmail(user.id);
+        } catch (error) {
+            console.error(`[Signup] Failed to send verification email:`, error);
+        }
+
         return {
             accessToken,
             refreshToken,
             user: {
-                id: result.user.id,
-                email: result.user.email,
-                firstName: result.user.firstName,
-                lastName: result.user.lastName,
-                role: result.user.role,
-                tenantId: result.user.tenantId,
-                tenantName: result.tenant.name,
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                tenantId: user.tenantId,
+                hasPassword: true,
+                emailVerified: false,
+                onboardingCompleted: false,
             },
         };
     }
@@ -234,6 +190,8 @@ export class AuthService {
             expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
         });
 
+        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+
         return {
             accessToken,
             refreshToken,
@@ -245,6 +203,9 @@ export class AuthService {
                 role: user.role,
                 tenantId: user.tenantId,
                 tenantName: user.tenant?.name,
+                hasPassword: !!user.password,
+                emailVerified: user.emailVerified,
+                onboardingCompleted: effectiveOnboarding,
             },
         };
     }
@@ -656,16 +617,16 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
-        const {
-            companyName,
-            website,
-            socialLinks,
-            industry,
-            companySize,
-            customerTypes,
-            chatReasons,
-            referralSource,
-        } = data;
+        // Accept nested format from onboarding wizard
+        const company = data.company || {};
+        const companyName = company.name || data.companyName;
+        const website = company.website || data.website;
+        const socialLinks = company.socialMedia || data.socialLinks;
+        const industry = company.industry || data.industry;
+        const companySize = company.orgSize || data.companySize;
+        const customerTypes = data.audiences || data.customerTypes;
+        const chatReasons = data.goals || data.chatReasons;
+        const referralSource = data.referral || data.referralSource;
 
         // Generate slug from company name
         const slug = companyName

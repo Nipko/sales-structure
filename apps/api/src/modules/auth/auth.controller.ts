@@ -54,13 +54,6 @@ class AdminResetPasswordDto {
 }
 
 class SignupDto {
-    @IsString()
-    @MinLength(2)
-    companyName: string;
-
-    @IsString()
-    industry: string;
-
     @IsEmail()
     email: string;
 
@@ -93,8 +86,6 @@ export class AuthController {
     @ApiOperation({ summary: 'Self-service signup: create a new company and admin account' })
     async signup(@Body() dto: SignupDto) {
         const result = await this.authService.signupWithTenant({
-            companyName: dto.companyName,
-            industry: dto.industry,
             email: dto.email,
             password: dto.password,
             firstName: dto.firstName,

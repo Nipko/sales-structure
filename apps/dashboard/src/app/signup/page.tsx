@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -27,26 +27,11 @@ declare global {
     }
 }
 
-const INDUSTRIES = [
-    { value: "retail", label: "Retail / Comercio" },
-    { value: "education", label: "Educación" },
-    { value: "healthcare", label: "Salud" },
-    { value: "real_estate", label: "Bienes Raíces" },
-    { value: "food_beverage", label: "Alimentos y Bebidas" },
-    { value: "hospitality", label: "Hospitalidad / Turismo" },
-    { value: "professional_services", label: "Servicios Profesionales" },
-    { value: "technology", label: "Tecnología" },
-    { value: "automotive", label: "Automotriz" },
-    { value: "finance", label: "Finanzas / Seguros" },
-    { value: "other", label: "Otra" },
-];
-
 const inputClasses = "w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
 
 export default function SignupPage() {
     const [form, setForm] = useState({
-        companyName: "", industry: "", email: "",
-        password: "", firstName: "", lastName: "",
+        email: "", password: "", firstName: "", lastName: "",
     });
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
@@ -135,17 +120,8 @@ export default function SignupPage() {
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
-            // Redirect based on onboarding state
-            const user = data.data.user;
-            if (!user.hasPassword) {
-                router.push("/setup-password");
-            } else if (!user.emailVerified) {
-                router.push("/verify-email");
-            } else if (!user.onboardingCompleted) {
-                router.push("/onboarding");
-            } else {
-                router.push("/admin");
-            }
+            // Email signup → verify email → onboarding wizard → admin
+            router.push("/verify-email");
         } catch {
             setError("Error de conexión con el servidor");
         }
@@ -173,7 +149,7 @@ export default function SignupPage() {
                         Crea tu cuenta
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
-                        Registra tu empresa y comienza en minutos
+                        Regístrate y comienza en minutos
                     </p>
 
                     {/* Error */}
@@ -208,57 +184,6 @@ export default function SignupPage() {
                     </div>
 
                     <form onSubmit={handleSubmit}>
-                        {/* Company Section */}
-                        <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600/80 mb-3">
-                            Datos de la empresa
-                        </p>
-
-                        {/* Company Name */}
-                        <div className="mb-3.5">
-                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Nombre de la empresa
-                            </label>
-                            <div className="relative">
-                                <Building2 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-                                <input
-                                    type="text"
-                                    value={form.companyName}
-                                    onChange={(e) => updateField("companyName", e.target.value)}
-                                    placeholder="Mi Empresa SAS"
-                                    required
-                                    className={inputClasses}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Industry */}
-                        <div className="mb-5">
-                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Industria
-                            </label>
-                            <div className="relative">
-                                <Building2 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
-                                <select
-                                    value={form.industry}
-                                    onChange={(e) => updateField("industry", e.target.value)}
-                                    required
-                                    className={cn(inputClasses, "appearance-none cursor-pointer")}
-                                >
-                                    <option value="" disabled>Selecciona tu industria</option>
-                                    {INDUSTRIES.map((i) => (
-                                        <option key={i.value} value={i.value} className="bg-white dark:bg-[#1a1a2e] text-foreground">
-                                            {i.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Admin Section */}
-                        <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600/80 mb-3">
-                            Tu cuenta de administrador
-                        </p>
-
                         {/* Name row */}
                         <div className="grid grid-cols-2 gap-3 mb-3.5">
                             <div>

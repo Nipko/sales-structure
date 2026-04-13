@@ -1,6 +1,10 @@
+// Sentry must be imported before anything else
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import * as Sentry from '@sentry/nestjs';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -14,9 +18,16 @@ async function bootstrap() {
     });
 
     // Security
-    app.use(helmet());
+    app.use(helmet({
+        crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow media embedding from dashboard
+    }));
     app.enableCors({
-        origin: process.env.DASHBOARD_URL || 'http://localhost:3001',
+        origin: [
+            process.env.DASHBOARD_URL || 'http://localhost:3001',
+            'https://admin.parallly-chat.cloud',
+            'https://parallly-chat.cloud',
+            'http://localhost:3001',
+        ].filter(Boolean),
         credentials: true,
     });
 

@@ -38,6 +38,8 @@
         "@nestjs/websockets": "^10.4.22",
         "@parallext/shared": "*",
         "@prisma/client": "^5.20.0",
+        "@sentry/nestjs": "^10.48.0",
+        "@sentry/profiling-node": "^10.48.0",
         "axios": "^1.13.6",
         "bcrypt": "^5.1.1",
         "bullmq": "^5.25.0",

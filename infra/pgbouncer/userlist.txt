@@ -1,0 +1,4 @@
+; PgBouncer user list
+; Format: "username" "password"
+; The password is set via environment variable substitution in entrypoint
+"parallext" "PGBOUNCER_PASSWORD_PLACEHOLDER"

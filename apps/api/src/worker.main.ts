@@ -8,6 +8,9 @@
  * Same codebase as main.ts, different bootstrap: no HTTP listener, no Swagger,
  * no CORS. Only NestJS modules with @Processor and @Cron decorators are active.
  */
+// Sentry must be imported before anything else
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 

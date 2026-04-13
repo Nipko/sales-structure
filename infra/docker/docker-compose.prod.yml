@@ -31,6 +31,29 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
+  # ---- PgBouncer (Connection Pooler) ----
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1-p2
+    container_name: parallext-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:-parallext_secret}
+    volumes:
+      - ../pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ../pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt
+      - ../pgbouncer/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    expose:
+      - "6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "parallext"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ---- API Server ----
   api:
     image: ghcr.io/nipko/parallext-api:latest
@@ -38,7 +61,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:6432/parallext_engine?pgbouncer=true
+      DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MEDIA_STORAGE_PATH: /data/media
@@ -49,7 +73,7 @@ services:
     expose:
       - "3000"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -78,13 +102,14 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:6432/parallext_engine?pgbouncer=true
+      DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
     env_file:
       - ../../.env
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -99,7 +124,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3002"
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:6432/parallext_engine?pgbouncer=true
+      DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: "6379"
     env_file:
@@ -107,7 +133,7 @@ services:
     expose:
       - "3002"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy

@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 
 // Core modules
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -48,7 +50,14 @@ import authConfig from './config/auth.config';
 import llmConfig from './config/llm.config';
 
 @Module({
+    providers: [
+        // Sentry captures all unhandled exceptions globally
+        { provide: APP_FILTER, useClass: SentryGlobalFilter },
+    ],
     imports: [
+        // Sentry module (must be first)
+        SentryModule.forRoot(),
+
         // Global config
         ConfigModule.forRoot({
             isGlobal: true,

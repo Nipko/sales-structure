@@ -378,10 +378,21 @@ CREATE TABLE "{{SCHEMA_NAME}}"."opt_out_records" (
     "phone"       VARCHAR(50),
     "channel"     VARCHAR(50) NOT NULL DEFAULT 'whatsapp',
     "trigger_msg" TEXT,                                  -- original message that triggered opt-out
+    "detected_from" VARCHAR(20) DEFAULT 'keyword',       -- keyword, ai, manual
+    "status"      VARCHAR(20) DEFAULT 'pending',          -- pending, confirmed, rejected (false positive)
+    "reviewed_by" UUID,                                   -- user who reviewed
+    "reviewed_at" TIMESTAMP,
+    "review_notes" TEXT,
     "created_at"  TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("phone");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("lead_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."opt_out_records" ("status");
+ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "detected_from" VARCHAR(20) DEFAULT 'keyword';
+ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "status" VARCHAR(20) DEFAULT 'pending';
+ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "reviewed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "reviewed_at" TIMESTAMP;
+ALTER TABLE "{{SCHEMA_NAME}}"."opt_out_records" ADD COLUMN IF NOT EXISTS "review_notes" TEXT;
 
 -- ---- Tags (controlled catalog per tenant) ----
 CREATE TABLE "{{SCHEMA_NAME}}"."tags" (

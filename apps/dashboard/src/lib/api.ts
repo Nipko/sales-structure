@@ -414,6 +414,16 @@ export const api = {
     testEmailTemplate: (tenantId: string, templateId: string, to: string) =>
         apiPost(`/email-templates/${tenantId}/${templateId}/test`, { to }),
 
+    // --- Compliance / Opt-Outs ---
+    getOptOuts: (tenantId: string, status?: string, page?: number) =>
+        apiGet(`/compliance/opt-outs/${tenantId}${status ? `?status=${status}` : ''}${page ? `&page=${page}` : ''}`),
+    getOptOutStats: (tenantId: string) =>
+        apiGet(`/compliance/opt-outs/${tenantId}/stats`),
+    confirmOptOut: (tenantId: string, recordId: string, notes?: string) =>
+        apiPut(`/compliance/opt-outs/${tenantId}/${recordId}/confirm`, { notes }),
+    rejectOptOut: (tenantId: string, recordId: string, notes?: string) =>
+        apiPut(`/compliance/opt-outs/${tenantId}/${recordId}/reject`, { notes }),
+
     // --- Appointments ---
     getAppointments: (tenantId: string, params?: string) =>
         apiGet(`/appointments/${tenantId}${params ? `?${params}` : ""}`),

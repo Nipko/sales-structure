@@ -135,16 +135,16 @@ export class WhatsappWebhookService {
      const fromPhone = msg?.from;
      const messageText = msg?.text?.body || '';
 
-     // === Compliance: Opt-out detection ===
+     // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
      if (messageText && this.complianceService.detectOptOut(messageText)) {
-         this.logger.warn(`OptOut detected from ${fromPhone}: "${messageText}"`);
-         await this.complianceService.processOptOut(tenantId, {
+         this.logger.warn(`OptOut candidate from ${fromPhone}: "${messageText}" — pending admin review`);
+         this.complianceService.processOptOut(tenantId, {
              phone: fromPhone,
              channel: 'whatsapp',
              triggerMessage: messageText,
              detectedFrom: 'keyword',
-         });
-         return;
+         }).catch(e => this.logger.error(`OptOut registration failed: ${e.message}`));
+         // Message continues to AI pipeline — admin reviews opt-out later
      }
 
      const normalizedMsg = {

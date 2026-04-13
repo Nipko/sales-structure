@@ -23,6 +23,9 @@ export default function CompliancePage() {
     const [legalForm, setLegalForm] = useState({ channel: "web", version: 1, text: "" });
     const [optOutForm, setOptOutForm] = useState({ lead_id: "", channel: "whatsapp", reason: "" });
     const [saving, setSaving] = useState(false);
+    const [optOutFilter, setOptOutFilter] = useState("");
+    const [optOutStats, setOptOutStats] = useState<any>(null);
+    const [reviewNotes, setReviewNotes] = useState("");
 
     useEffect(() => {
         if (!activeTenantId) return;
@@ -31,16 +34,18 @@ export default function CompliancePage() {
 
     async function loadAll() {
         try {
-            const [lt, co, oo, dr] = await Promise.all([
+            const [lt, co, oo, dr, stats] = await Promise.all([
                 api.fetch(`/compliance/legal-texts/${activeTenantId}`),
                 api.fetch(`/compliance/consents/${activeTenantId}`),
-                api.fetch(`/compliance/opt-outs/${activeTenantId}`),
+                api.getOptOuts(activeTenantId!),
                 api.fetch(`/compliance/deletion-requests/${activeTenantId}`),
+                api.getOptOutStats(activeTenantId!),
             ]);
             if (Array.isArray(lt)) setLegalTexts(lt);
             if (Array.isArray(co)) setConsents(co);
-            if (Array.isArray(oo)) setOptOuts(oo);
+            if (oo?.success && Array.isArray(oo.data)) setOptOuts(oo.data);
             if (Array.isArray(dr)) setDeletions(dr);
+            if (stats?.success) setOptOutStats(stats.data);
         } catch (err) { console.error(err); }
     }
 
@@ -151,18 +156,109 @@ export default function CompliancePage() {
                 )}
 
                 {tab === "optouts" && (
-                    <div className="flex flex-col gap-2">
-                        {optOuts.map(o => (
-                            <div key={o.id} className="px-5 py-3 rounded-xl border border-border bg-card flex justify-between items-center">
-                                <div>
-                                    <span className="font-semibold text-[13px]">Lead: {o.lead_id?.substring(0, 8) || "N/A"}...</span>
-                                    <span className="ml-3 text-xs px-2 py-0.5 rounded-md" style={{ background: "#e74c3c22", color: "#e74c3c" }}>{o.channel}</span>
-                                    <span className="ml-2 text-xs text-muted-foreground">{o.scope} — {o.reason || "Sin razon"}</span>
-                                </div>
-                                <span className="text-xs text-muted-foreground">{new Date(o.created_at).toLocaleString()}</span>
+                    <div>
+                        {/* Stats */}
+                        {optOutStats?.optOuts && (
+                            <div className="grid grid-cols-3 gap-3 mb-4">
+                                {[
+                                    { label: "Pendientes", value: optOutStats.optOuts.pending || 0, color: "text-amber-500", bg: "bg-amber-500/10" },
+                                    { label: "Confirmados", value: optOutStats.optOuts.confirmed || 0, color: "text-red-500", bg: "bg-red-500/10" },
+                                    { label: "Rechazados", value: optOutStats.optOuts.rejected || 0, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                                ].map(s => (
+                                    <div key={s.label} className={cn("rounded-xl border border-border p-4 text-center", s.bg)}>
+                                        <div className={cn("text-2xl font-bold", s.color)}>{s.value}</div>
+                                        <div className="text-xs text-muted-foreground mt-1">{s.label}</div>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                        {optOuts.length === 0 && <div className="text-center py-10 text-muted-foreground">No hay opt-outs registrados.</div>}
+                        )}
+
+                        {/* Filter */}
+                        <div className="flex gap-1.5 mb-4">
+                            {["", "pending", "confirmed", "rejected"].map(f => (
+                                <button key={f} onClick={async () => {
+                                    setOptOutFilter(f);
+                                    const res = await api.getOptOuts(activeTenantId!, f || undefined);
+                                    if (res?.success) setOptOuts(res.data);
+                                }} className={cn(
+                                    "px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition-colors",
+                                    optOutFilter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:border-primary/50"
+                                )}>
+                                    {f === "" ? "Todos" : f === "pending" ? "Pendientes" : f === "confirmed" ? "Confirmados" : "Rechazados"}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* List */}
+                        <div className="flex flex-col gap-2.5">
+                            {optOuts.map(o => (
+                                <div key={o.id} className={cn(
+                                    "px-5 py-4 rounded-xl border bg-card",
+                                    o.status === "pending" ? "border-amber-500/30" : "border-border"
+                                )}>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className={cn("text-[11px] px-2 py-0.5 rounded-md font-semibold",
+                                                o.status === "pending" ? "bg-amber-500/15 text-amber-500" :
+                                                o.status === "confirmed" ? "bg-red-500/15 text-red-500" :
+                                                "bg-emerald-500/15 text-emerald-500"
+                                            )}>
+                                                {o.status === "pending" ? "Pendiente" : o.status === "confirmed" ? "Confirmado" : "Rechazado (falso positivo)"}
+                                            </span>
+                                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">{o.channel}</span>
+                                            <span className="text-[11px] px-2 py-0.5 rounded-md bg-neutral-500/10 text-muted-foreground">{o.detected_from || "keyword"}</span>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground shrink-0">{new Date(o.created_at).toLocaleString("es-CO")}</span>
+                                    </div>
+
+                                    {/* Contact info */}
+                                    <div className="text-sm mb-2">
+                                        <span className="font-semibold text-foreground">{o.first_name || ""} {o.last_name || ""}</span>
+                                        <span className="text-muted-foreground ml-2">{o.phone || o.lead_phone || "Sin telefono"}</span>
+                                    </div>
+
+                                    {/* Trigger message */}
+                                    <div className="bg-neutral-100 dark:bg-neutral-800 rounded-lg px-3 py-2 text-sm text-foreground mb-3 border-l-3 border-amber-500">
+                                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground block mb-1">Mensaje detectado:</span>
+                                        &ldquo;{o.trigger_msg}&rdquo;
+                                    </div>
+
+                                    {/* Review info if reviewed */}
+                                    {o.reviewed_at && (
+                                        <div className="text-xs text-muted-foreground mb-2">
+                                            Revisado por <span className="font-semibold">{o.reviewer_first} {o.reviewer_last}</span> el {new Date(o.reviewed_at).toLocaleString("es-CO")}
+                                            {o.review_notes && <span className="ml-2">— &ldquo;{o.review_notes}&rdquo;</span>}
+                                        </div>
+                                    )}
+
+                                    {/* Actions for pending */}
+                                    {o.status === "pending" && (
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <input value={reviewNotes} onChange={e => setReviewNotes(e.target.value)}
+                                                placeholder="Nota (opcional)..."
+                                                className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none" />
+                                            <button onClick={async () => {
+                                                await api.confirmOptOut(activeTenantId!, o.id, reviewNotes);
+                                                setOptOuts(prev => prev.map(x => x.id === o.id ? { ...x, status: "confirmed", reviewed_at: new Date().toISOString() } : x));
+                                                setReviewNotes(""); setToast("Opt-out confirmado"); setTimeout(() => setToast(null), 2500);
+                                                const stats = await api.getOptOutStats(activeTenantId!); if (stats?.success) setOptOutStats(stats.data);
+                                            }} className="px-3 py-1.5 rounded-lg border-none bg-red-500 text-white text-xs font-semibold cursor-pointer flex items-center gap-1">
+                                                <UserX size={12} /> Confirmar baja
+                                            </button>
+                                            <button onClick={async () => {
+                                                await api.rejectOptOut(activeTenantId!, o.id, reviewNotes);
+                                                setOptOuts(prev => prev.map(x => x.id === o.id ? { ...x, status: "rejected", reviewed_at: new Date().toISOString() } : x));
+                                                setReviewNotes(""); setToast("Marcado como falso positivo"); setTimeout(() => setToast(null), 2500);
+                                                const stats = await api.getOptOutStats(activeTenantId!); if (stats?.success) setOptOutStats(stats.data);
+                                            }} className="px-3 py-1.5 rounded-lg border border-emerald-500 bg-transparent text-emerald-500 text-xs font-semibold cursor-pointer flex items-center gap-1">
+                                                <Check size={12} /> Falso positivo
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            {optOuts.length === 0 && <div className="text-center py-10 text-muted-foreground">No hay opt-outs {optOutFilter ? `con estado "${optOutFilter}"` : "registrados"}.</div>}
+                        </div>
                     </div>
                 )}
 

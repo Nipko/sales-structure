@@ -86,11 +86,12 @@ export class AnalyticsController {
     @Get('compliance/:tenantId/opt-outs')
     async getOptOuts(
         @Param('tenantId') tenantId: string,
+        @Query('status') status?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
     ) {
-        const data = await this.complianceService.getOptOuts(tenantId, parseInt(page || '1'), parseInt(limit || '50'));
-        return { success: true, data };
+        const result = await this.complianceService.getOptOuts(tenantId, status, parseInt(page || '1'), parseInt(limit || '50'));
+        return { success: true, data: result.data, total: result.total };
     }
 
     @Post('compliance/:tenantId/opt-out')

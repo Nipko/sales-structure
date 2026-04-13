@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -44,6 +45,7 @@ function formatDuration(seconds: number): string {
 type SortDir = "asc" | "desc";
 
 export default function AgentAnalyticsPage() {
+    const t = useTranslations('analytics');
     const { activeTenantId } = useTenant();
     const [activeTab, setActiveTab] = useState("overview");
     const [loading, setLoading] = useState(false);
@@ -347,7 +349,7 @@ export default function AgentAnalyticsPage() {
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="m-0 text-[26px] font-bold">Agent Analytics</h1>
+                    <h1 className="m-0 text-[26px] font-bold">{t('title')}</h1>
                     <p className="mt-1 mb-0 text-[var(--text-secondary)] text-[13px]">
                         Rendimiento de agentes y canales
                     </p>

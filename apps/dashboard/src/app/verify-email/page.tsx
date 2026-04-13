@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Mail } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
 export default function VerifyEmailPage() {
+    const t = useTranslations('auth');
     const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -146,7 +148,7 @@ export default function VerifyEmailPage() {
                     </div>
 
                     <h1 className="text-2xl font-bold text-foreground mb-1 text-center">
-                        Verifica tu correo electrónico
+                        {t('verifyCode')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-8 text-center">
                         Enviamos un código de 6 dígitos a{" "}

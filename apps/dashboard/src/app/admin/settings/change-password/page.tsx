@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslations } from "next-intl";
 import {
     ArrowLeft,
     Eye,
@@ -34,6 +35,7 @@ const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
 ];
 
 export default function ChangePasswordPage() {
+    const t = useTranslations('changePassword');
     const router = useRouter();
     const { user } = useAuth();
 
@@ -117,7 +119,7 @@ export default function ChangePasswordPage() {
                 </button>
                 <div>
                     <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-                        Cambiar Contrasena
+                        {t('title')}
                     </h1>
                     <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
                         Actualiza la contrasena de tu cuenta

@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import {
     Package, Search, Plus, AlertTriangle, TrendingUp, TrendingDown, ArrowUpDown, Tag, Box, BarChart3, X, Check, Minus,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const movementTypeLabel = (t: string) => t === "in" ? "Entrada" : t === "out" ? 
 const movementTypeColor = (t: string) => t === "in" ? "#2ecc71" : t === "out" ? "#ff4757" : "#ffa502";
 
 export default function InventoryPage() {
+    const t = useTranslations('inventory');
     const { activeTenantId } = useTenant();
     const [data, setData] = useState<InventoryOverview | null>(null);
     const [isLive, setIsLive] = useState(false);
@@ -62,7 +64,7 @@ export default function InventoryPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-[28px] font-bold m-0">Inventario</h1>
+                        <h1 className="text-[28px] font-bold m-0">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="text-muted-foreground mt-1">Gestion de productos, stock y movimientos</p>

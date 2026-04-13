@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ function ChannelBadge({ channel }: { channel: string }) {
 }
 
 export default function IdentityPage() {
+    const t = useTranslations('identity');
     const { activeTenantId } = useTenant();
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -72,7 +74,7 @@ export default function IdentityPage() {
                     <div className="bg-primary w-10 h-10 rounded-[10px] flex items-center justify-center">
                         <Users size={20} color="white" />
                     </div>
-                    <h1 className="text-[28px] font-bold m-0 text-foreground">Identidad Unificada</h1>
+                    <h1 className="text-[28px] font-bold m-0 text-foreground">{t('title')}</h1>
                 </div>
                 <p className="text-muted-foreground mt-1 pl-[50px]">Gestiona la identidad de tus clientes entre canales</p>
             </div>

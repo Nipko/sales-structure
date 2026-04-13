@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import {
   Mail,
   Plus,
@@ -94,6 +95,7 @@ const emptyTemplate = (): Omit<EmailTemplate, "id" | "createdAt" | "updatedAt"> 
 // ---------------------------------------------------------------------------
 
 export default function EmailTemplatesPage() {
+  const t = useTranslations('emailTemplates');
   const { activeTenantId } = useTenant();
 
   // State
@@ -338,7 +340,7 @@ export default function EmailTemplatesPage() {
             <Mail size={22} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-[22px] font-bold text-foreground m-0">Plantillas de Correo</h1>
+            <h1 className="text-[22px] font-bold text-foreground m-0">{t('title')}</h1>
             <p className="text-[13px] text-muted-foreground m-0">
               Disena y gestiona los correos transaccionales de tu plataforma
             </p>

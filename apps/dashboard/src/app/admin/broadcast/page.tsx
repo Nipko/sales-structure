@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -21,6 +22,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
 };
 
 export default function BroadcastPage() {
+    const t = useTranslations('broadcast');
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -87,7 +89,7 @@ export default function BroadcastPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-                            <Megaphone size={28} className="text-primary" /> Broadcast & Campanas
+                            <Megaphone size={28} className="text-primary" /> {t('title')}
                             <DataSourceBadge isLive={false} />
                         </h1>
                         <p className="text-muted-foreground mt-1">

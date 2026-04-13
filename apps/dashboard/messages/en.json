@@ -232,5 +232,142 @@
       "confirmed": "Confirmed",
       "rejected": "Rejected"
     }
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "stages": "Stages",
+    "deals": "Deals",
+    "newDeal": "New deal",
+    "value": "Value",
+    "stage": "Stage",
+    "dragToMove": "Drag to move"
+  },
+  "automation": {
+    "title": "Automation",
+    "rules": "Rules",
+    "newRule": "New rule",
+    "trigger": "Trigger",
+    "conditions": "Conditions",
+    "actions": "Actions",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "broadcast": {
+    "title": "Campaigns",
+    "newCampaign": "New campaign",
+    "template": "Template",
+    "recipients": "Recipients",
+    "scheduled": "Scheduled",
+    "sent": "Sent",
+    "draft": "Draft"
+  },
+  "channels": {
+    "title": "Channels",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "connect": "Connect",
+    "configure": "Configure",
+    "whatsapp": "WhatsApp",
+    "instagram": "Instagram",
+    "messenger": "Messenger"
+  },
+  "agent": {
+    "title": "AI Agent",
+    "persona": "Personality",
+    "behavior": "Behavior",
+    "llm": "LLM Model",
+    "hours": "Schedule",
+    "preview": "Preview",
+    "saveConfig": "Save configuration"
+  },
+  "knowledge": {
+    "title": "Knowledge Base",
+    "documents": "Documents",
+    "upload": "Upload document",
+    "processing": "Processing",
+    "ready": "Ready",
+    "chunks": "Chunks"
+  },
+  "identity": {
+    "title": "Identity",
+    "mergeSuggestions": "Merge suggestions",
+    "approve": "Approve",
+    "reject": "Reject",
+    "confidence": "Confidence",
+    "matchType": "Match type"
+  },
+  "users": {
+    "title": "Users",
+    "newUser": "New user",
+    "role": "Role",
+    "status": "Status",
+    "lastLogin": "Last login",
+    "resetPassword": "Reset password"
+  },
+  "orders": {
+    "title": "Orders",
+    "newOrder": "New order",
+    "total": "Total",
+    "status": "Status",
+    "paymentMethod": "Payment method",
+    "items": "Items",
+    "invoice": "Invoice"
+  },
+  "inventory": {
+    "title": "Inventory",
+    "products": "Products",
+    "newProduct": "New product",
+    "stock": "Stock",
+    "price": "Price",
+    "category": "Category",
+    "available": "Available"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "newTenant": "New tenant",
+    "plan": "Plan",
+    "schema": "Schema",
+    "industry": "Industry",
+    "activeUsers": "Active users"
+  },
+  "onboarding": {
+    "title": "Set up your company",
+    "step1": "Company details",
+    "step2": "Customer types",
+    "step3": "Goals",
+    "step4": "How did you find us",
+    "companyName": "Company name",
+    "website": "Website",
+    "industry": "Industry",
+    "companySize": "Company size",
+    "finish": "Finish"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "overview": "Overview",
+    "agents": "Agents",
+    "channels": "Channels",
+    "csat": "CSAT",
+    "performance": "Performance",
+    "responseTime": "Response time",
+    "totalConversations": "Total conversations"
+  },
+  "emailTemplates": {
+    "title": "Email Templates",
+    "newTemplate": "Create template",
+    "subject": "Subject",
+    "body": "Body",
+    "variables": "Variables",
+    "preview": "Preview",
+    "testSend": "Send test",
+    "active": "Active"
+  },
+  "changePassword": {
+    "title": "Change Password",
+    "current": "Current password",
+    "new": "New password",
+    "confirm": "Confirm password",
+    "changed": "Password changed successfully",
+    "googleNote": "Your account uses Google Sign-In. You can set an additional password."
   }
 }

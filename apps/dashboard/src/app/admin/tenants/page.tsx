@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
     Building2, Plus, Search, Eye, Edit, Globe, MessageSquare, Users, X, ArrowLeft, KeyRound, CheckCircle, Activity, Link2,
@@ -12,6 +13,7 @@ interface Tenant { id: string; name: string; slug: string; industry: string; lan
 interface TenantUser { id: string; email: string; firstName: string; lastName: string; role: string; isActive: boolean; createdAt: string; lastLoginAt: string | null; }
 
 export default function TenantsPage() {
+    const t = useTranslations('tenants');
     const [tenants, setTenants] = useState<Tenant[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -164,7 +166,7 @@ export default function TenantsPage() {
         <div className="animate-in">
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-[28px] font-extrabold m-0">Tenants</h1>
+                    <h1 className="text-[28px] font-extrabold m-0">{t('title')}</h1>
                     <p className="text-muted-foreground mt-1">Gestiona las empresas cliente conectadas a la plataforma</p>
                 </div>
                 <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreateModal(true)}><Plus size={18} /> Nuevo Tenant</button>

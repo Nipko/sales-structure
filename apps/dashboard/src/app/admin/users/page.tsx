@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -17,6 +18,7 @@ const roleConfig: Record<string, { label: string; color: string; icon: string }>
 };
 
 export default function UsersPage() {
+    const t = useTranslations('users');
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [users, setUsers] = useState<any[]>([]);
@@ -69,7 +71,7 @@ export default function UsersPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-                            <Users size={28} className="text-primary" /> Usuarios
+                            <Users size={28} className="text-primary" /> {t('title')}
                             <DataSourceBadge isLive={isLive} />
                         </h1>
                         <p className="text-muted-foreground mt-1">{stats.total} usuarios · {stats.active} activos · {stats.agents} agentes</p>

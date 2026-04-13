@@ -232,5 +232,142 @@
       "confirmed": "Confirmados",
       "rejected": "Rejeitados"
     }
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "stages": "Etapas",
+    "deals": "Negocios",
+    "newDeal": "Novo negocio",
+    "value": "Valor",
+    "stage": "Etapa",
+    "dragToMove": "Arraste para mover"
+  },
+  "automation": {
+    "title": "Automacao",
+    "rules": "Regras",
+    "newRule": "Nova regra",
+    "trigger": "Gatilho",
+    "conditions": "Condicoes",
+    "actions": "Acoes",
+    "active": "Ativa",
+    "inactive": "Inativa"
+  },
+  "broadcast": {
+    "title": "Campanhas",
+    "newCampaign": "Nova campanha",
+    "template": "Modelo",
+    "recipients": "Destinatarios",
+    "scheduled": "Agendada",
+    "sent": "Enviada",
+    "draft": "Rascunho"
+  },
+  "channels": {
+    "title": "Canais",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "connect": "Conectar",
+    "configure": "Configurar",
+    "whatsapp": "WhatsApp",
+    "instagram": "Instagram",
+    "messenger": "Messenger"
+  },
+  "agent": {
+    "title": "Agente IA",
+    "persona": "Personalidade",
+    "behavior": "Comportamento",
+    "llm": "Modelo LLM",
+    "hours": "Horario",
+    "preview": "Pre-visualizacao",
+    "saveConfig": "Salvar configuracao"
+  },
+  "knowledge": {
+    "title": "Base de Conhecimento",
+    "documents": "Documentos",
+    "upload": "Enviar documento",
+    "processing": "Processando",
+    "ready": "Pronto",
+    "chunks": "Fragmentos"
+  },
+  "identity": {
+    "title": "Identidade",
+    "mergeSuggestions": "Sugestoes de fusao",
+    "approve": "Aprovar",
+    "reject": "Rejeitar",
+    "confidence": "Confianca",
+    "matchType": "Tipo de correspondencia"
+  },
+  "users": {
+    "title": "Usuarios",
+    "newUser": "Novo usuario",
+    "role": "Funcao",
+    "status": "Status",
+    "lastLogin": "Ultimo acesso",
+    "resetPassword": "Redefinir senha"
+  },
+  "orders": {
+    "title": "Pedidos",
+    "newOrder": "Novo pedido",
+    "total": "Total",
+    "status": "Status",
+    "paymentMethod": "Metodo de pagamento",
+    "items": "Itens",
+    "invoice": "Fatura"
+  },
+  "inventory": {
+    "title": "Estoque",
+    "products": "Produtos",
+    "newProduct": "Novo produto",
+    "stock": "Estoque",
+    "price": "Preco",
+    "category": "Categoria",
+    "available": "Disponivel"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "newTenant": "Novo tenant",
+    "plan": "Plano",
+    "schema": "Schema",
+    "industry": "Industria",
+    "activeUsers": "Usuarios ativos"
+  },
+  "onboarding": {
+    "title": "Configure sua empresa",
+    "step1": "Dados da empresa",
+    "step2": "Tipo de clientes",
+    "step3": "Objetivos",
+    "step4": "Como nos conheceu",
+    "companyName": "Nome da empresa",
+    "website": "Site",
+    "industry": "Industria",
+    "companySize": "Tamanho da empresa",
+    "finish": "Finalizar"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "overview": "Visao geral",
+    "agents": "Agentes",
+    "channels": "Canais",
+    "csat": "CSAT",
+    "performance": "Desempenho",
+    "responseTime": "Tempo de resposta",
+    "totalConversations": "Total de conversas"
+  },
+  "emailTemplates": {
+    "title": "Modelos de Email",
+    "newTemplate": "Criar modelo",
+    "subject": "Assunto",
+    "body": "Corpo",
+    "variables": "Variaveis",
+    "preview": "Pre-visualizacao",
+    "testSend": "Enviar teste",
+    "active": "Ativo"
+  },
+  "changePassword": {
+    "title": "Alterar Senha",
+    "current": "Senha atual",
+    "new": "Nova senha",
+    "confirm": "Confirmar senha",
+    "changed": "Senha alterada com sucesso",
+    "googleNote": "Sua conta usa Google Sign-In. Voce pode definir uma senha adicional."
   }
 }

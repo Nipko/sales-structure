@@ -6,6 +6,7 @@ import {
     Building2, Globe, ChevronLeft, ChevronRight,
     AlertCircle, Instagram, Facebook, Linkedin,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import AnimatedLogo from "@/components/AnimatedLogo";
@@ -84,6 +85,7 @@ const inputWithIconClasses = cn(inputClasses, "pl-11");
 const selectClasses = cn(inputClasses, "appearance-none cursor-pointer");
 
 export default function OnboardingPage() {
+    const t = useTranslations('onboarding');
     const [step, setStep] = useState(0);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);

@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import {
     ShoppingCart, Search, Plus, CreditCard, DollarSign, Package, CheckCircle, Clock, XCircle, X, User, Check, FileText,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const statusConfig = {
 };
 
 export default function OrdersPage() {
+    const t = useTranslations('orders');
     const { activeTenantId } = useTenant();
     const [data, setData] = useState<OrdersOverview | null>(null);
     const [isLive, setIsLive] = useState(false);
@@ -86,7 +88,7 @@ export default function OrdersPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-[28px] font-bold m-0">Ordenes y Reservas</h1>
+                        <h1 className="text-[28px] font-bold m-0">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="text-muted-foreground mt-1">Gestiona las ventas, pagos y reservas de tus clientes</p>

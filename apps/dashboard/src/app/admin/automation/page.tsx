@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
@@ -85,6 +86,7 @@ const emptyRuleForm = () => ({
 });
 
 export default function AutomationPage() {
+    const t = useTranslations('automation');
     const { activeTenantId } = useTenant();
 
     // -- State --
@@ -289,7 +291,7 @@ export default function AutomationPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-                            <Workflow size={28} className="text-indigo-600" /> Automatización
+                            <Workflow size={28} className="text-indigo-600" /> {t('title')}
                         </h1>
                         <p className="text-muted-foreground mt-1 mb-0 text-sm">
                             Reglas automáticas para optimizar tu operación

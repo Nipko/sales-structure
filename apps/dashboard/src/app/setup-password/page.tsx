@@ -3,11 +3,13 @@
 import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Eye, EyeOff, AlertCircle, Check, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
 export default function SetupPasswordPage() {
+    const t = useTranslations('auth');
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -74,7 +76,7 @@ export default function SetupPasswordPage() {
                 {/* Card */}
                 <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     <h1 className="text-2xl font-bold text-foreground mb-1">
-                        Establece tu contraseña
+                        {t('password')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
                         Crea una contraseña segura para acceder a tu cuenta

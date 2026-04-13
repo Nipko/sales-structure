@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -43,6 +44,7 @@ const channels = [
 ];
 
 export default function ChannelsOverviewPage() {
+    const t = useTranslations('channels');
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [connectedChannels, setConnectedChannels] = useState<string[]>([]);
@@ -82,7 +84,7 @@ export default function ChannelsOverviewPage() {
                         <Globe size={20} className="text-white" />
                     </div>
                     <h1 className="text-[28px] font-bold m-0 text-foreground">
-                        Canales
+                        {t('title')}
                     </h1>
                 </div>
                 <p className="text-[var(--text-secondary)] mt-1 ml-[50px]">

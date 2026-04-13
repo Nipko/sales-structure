@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -16,6 +17,7 @@ const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ec
 const statusLabels: Record<string, string> = { draft: "Borrador", approved: "Aprobado", archived: "Archivado" };
 
 export default function KnowledgePage() {
+    const t = useTranslations('knowledge');
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("library");
@@ -62,7 +64,7 @@ export default function KnowledgePage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-                        <BookOpen size={28} className="text-primary" /> Knowledge Base / RAG
+                        <BookOpen size={28} className="text-primary" /> {t('title')}
                     </h1>
                     <p className="text-muted-foreground mt-1">Bases de conocimiento, FAQs y documentos comerciales para Carla AI</p>
                 </div>

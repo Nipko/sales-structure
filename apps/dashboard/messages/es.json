@@ -232,5 +232,142 @@
       "confirmed": "Confirmados",
       "rejected": "Rechazados"
     }
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "stages": "Etapas",
+    "deals": "Negocios",
+    "newDeal": "Nuevo negocio",
+    "value": "Valor",
+    "stage": "Etapa",
+    "dragToMove": "Arrastra para mover"
+  },
+  "automation": {
+    "title": "Automatizacion",
+    "rules": "Reglas",
+    "newRule": "Nueva regla",
+    "trigger": "Disparador",
+    "conditions": "Condiciones",
+    "actions": "Acciones",
+    "active": "Activa",
+    "inactive": "Inactiva"
+  },
+  "broadcast": {
+    "title": "Campanas",
+    "newCampaign": "Nueva campana",
+    "template": "Plantilla",
+    "recipients": "Destinatarios",
+    "scheduled": "Programada",
+    "sent": "Enviada",
+    "draft": "Borrador"
+  },
+  "channels": {
+    "title": "Canales",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "connect": "Conectar",
+    "configure": "Configurar",
+    "whatsapp": "WhatsApp",
+    "instagram": "Instagram",
+    "messenger": "Messenger"
+  },
+  "agent": {
+    "title": "Agente IA",
+    "persona": "Personalidad",
+    "behavior": "Comportamiento",
+    "llm": "Modelo LLM",
+    "hours": "Horario",
+    "preview": "Vista previa",
+    "saveConfig": "Guardar configuracion"
+  },
+  "knowledge": {
+    "title": "Knowledge Base",
+    "documents": "Documentos",
+    "upload": "Subir documento",
+    "processing": "Procesando",
+    "ready": "Listo",
+    "chunks": "Fragmentos"
+  },
+  "identity": {
+    "title": "Identidad",
+    "mergeSuggestions": "Sugerencias de fusion",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "confidence": "Confianza",
+    "matchType": "Tipo de coincidencia"
+  },
+  "users": {
+    "title": "Usuarios",
+    "newUser": "Nuevo usuario",
+    "role": "Rol",
+    "status": "Estado",
+    "lastLogin": "Ultimo acceso",
+    "resetPassword": "Restablecer contrasena"
+  },
+  "orders": {
+    "title": "Ordenes",
+    "newOrder": "Nueva orden",
+    "total": "Total",
+    "status": "Estado",
+    "paymentMethod": "Metodo de pago",
+    "items": "Articulos",
+    "invoice": "Factura"
+  },
+  "inventory": {
+    "title": "Inventario",
+    "products": "Productos",
+    "newProduct": "Nuevo producto",
+    "stock": "Stock",
+    "price": "Precio",
+    "category": "Categoria",
+    "available": "Disponible"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "newTenant": "Nuevo tenant",
+    "plan": "Plan",
+    "schema": "Schema",
+    "industry": "Industria",
+    "activeUsers": "Usuarios activos"
+  },
+  "onboarding": {
+    "title": "Configurar tu empresa",
+    "step1": "Datos de la empresa",
+    "step2": "Tipo de clientes",
+    "step3": "Objetivos",
+    "step4": "Como nos conociste",
+    "companyName": "Nombre de la empresa",
+    "website": "Sitio web",
+    "industry": "Industria",
+    "companySize": "Tamano de la empresa",
+    "finish": "Finalizar"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "overview": "Vista general",
+    "agents": "Agentes",
+    "channels": "Canales",
+    "csat": "CSAT",
+    "performance": "Rendimiento",
+    "responseTime": "Tiempo de respuesta",
+    "totalConversations": "Total conversaciones"
+  },
+  "emailTemplates": {
+    "title": "Plantillas de Correo",
+    "newTemplate": "Crear plantilla",
+    "subject": "Asunto",
+    "body": "Cuerpo",
+    "variables": "Variables",
+    "preview": "Vista previa",
+    "testSend": "Enviar prueba",
+    "active": "Activa"
+  },
+  "changePassword": {
+    "title": "Cambiar Contrasena",
+    "current": "Contrasena actual",
+    "new": "Nueva contrasena",
+    "confirm": "Confirmar contrasena",
+    "changed": "Contrasena cambiada exitosamente",
+    "googleNote": "Tu cuenta usa Google Sign-In. Puedes establecer una contrasena adicional."
   }
 }

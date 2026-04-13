@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -136,6 +137,7 @@ const cardCls = "p-6 rounded-[14px] bg-[var(--bg-secondary)] border border-borde
 // ── Component ──────────────────────────────────────────────────
 
 export default function AgentConfigPage() {
+    const t = useTranslations('agent');
     const { activeTenantId } = useTenant();
     const [mode, setMode] = useState<"wizard" | "prompt">("wizard");
     const [step, setStep] = useState(0);
@@ -680,7 +682,7 @@ export default function AgentConfigPage() {
             {/* Header */}
             <div className="mb-6">
                 <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-                    <Bot size={28} className="text-primary" /> Agente IA
+                    <Bot size={28} className="text-primary" /> {t('title')}
                 </h1>
                 <p className="text-[var(--text-secondary)] mt-1 text-sm">
                     Configura el comportamiento de tu agente conversacional

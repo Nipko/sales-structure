@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
   CalendarDays,
@@ -134,6 +135,7 @@ function formatDateTime(iso: string) {
 /* ------------------------------------------------------------------ */
 
 export default function AppointmentsPage() {
+  const t = useTranslations('appointments');
   const { activeTenantId } = useTenant();
 
   // Data
@@ -477,8 +479,7 @@ export default function AppointmentsPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
-              <CalendarDays size={28} className="text-primary" /> Citas y
-              Agendamiento
+              <CalendarDays size={28} className="text-primary" /> {t('title')}
             </h1>
             <p className="text-muted-foreground mt-1">
               Gestiona las citas de tu equipo

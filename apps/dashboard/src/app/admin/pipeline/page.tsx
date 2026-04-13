@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -20,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 
 export default function PipelinePage() {
+    const t = useTranslations('pipeline');
     const { activeTenantId } = useTenant();
     const [kanban, setKanban] = useState<any>(null);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export default function PipelinePage() {
                 <div className="flex justify-between items-center mb-4">
                     <div>
                         <div className="flex items-center gap-2.5">
-                            <h1 className="text-[28px] font-bold m-0">Pipeline de Ventas</h1>
+                            <h1 className="text-[28px] font-bold m-0">{t('title')}</h1>
                             <DataSourceBadge isLive={isLive} />
                         </div>
                         <p className="text-muted-foreground mt-1 mb-0">

@@ -7,13 +7,13 @@
     "features": "Funcionalidades",
     "howItWorks": "Como funciona",
     "pricing": "Preços",
-    "contact": "Contato",
+    "contact": "Perguntas",
     "login": "Entrar",
     "startFree": "Comece grátis"
   },
   "hero": {
     "badge": "IA Conversacional para Vendas",
-    "title": "Automatize suas vendas no WhatsApp com IA",
+    "title": "Sua IA que responde WhatsApp e vende por você, 24/7",
     "subtitle": "Seu agente IA responde em segundos. Sua equipe fecha em minutos. Tudo em uma só plataforma.",
     "cta": "Teste 7 dias grátis",
     "ctaSecondary": "Ver demo",
@@ -40,7 +40,7 @@
     "step3Desc": "Seu agente responde 24/7, qualifica leads e transfere para sua equipe quando necessário."
   },
   "pricing": {
-    "title": "Preços simples, sem surpresas",
+    "title": "Planos que crescem com você",
     "subtitle": "Comece grátis. Escale quando precisar.",
     "monthly": "Mensal",
     "annual": "Anual",
@@ -51,7 +51,7 @@
     "features": "Inclui:"
   },
   "cta": {
-    "title": "Pronto para automatizar suas vendas?",
+    "title": "Pronto para parar de perder vendas?",
     "subtitle": "Junte-se a centenas de empresas que já usam Parallly para vender mais.",
     "button": "Comece seu teste gratuito"
   },

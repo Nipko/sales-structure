@@ -9,6 +9,8 @@ import {
   useTransform,
   animate,
 } from "motion/react";
+import { useTranslations } from "next-intl";
+import { useLang } from "@/components/LangProvider";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -493,6 +495,8 @@ function FAQItem({
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [annual, setAnnual] = useState(true);
+  const t = useTranslations();
+  const { locale, setLocale, localeNames } = useLang();
 
   /* -------------------------------------------------------------- */
   /*  Section 1 — Header                                             */
@@ -521,35 +525,44 @@ export default function LandingPage() {
             href="#caracteristicas"
             className="hover:text-text-primary transition-colors"
           >
-            Caracter&iacute;sticas
+            {t('nav.features')}
           </a>
           <a
             href="#precios"
             className="hover:text-text-primary transition-colors"
           >
-            Precios
+            {t('nav.pricing')}
           </a>
           <a
             href="#preguntas"
             className="hover:text-text-primary transition-colors"
           >
-            Preguntas
+            {t('nav.contact')}
           </a>
         </nav>
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center gap-4">
+          <select
+            value={locale}
+            onChange={(e) => setLocale(e.target.value)}
+            className="bg-transparent text-sm text-white/70 border border-white/20 rounded-lg px-2 py-1 outline-none cursor-pointer"
+          >
+            {Object.entries(localeNames).map(([code, name]) => (
+              <option key={code} value={code} className="text-black">{name}</option>
+            ))}
+          </select>
           <a
             href={LOGIN}
             className="text-sm text-text-secondary hover:text-text-primary transition-colors"
           >
-            Ingresar
+            {t('nav.login')}
           </a>
           <a
             href={SIGNUP}
             className="text-sm bg-[#3897f0] hover:bg-[#2b7fd4] text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
-            Empezar gratis
+            {t('nav.startFree')}
           </a>
         </div>
 
@@ -599,34 +612,43 @@ export default function LandingPage() {
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
-                Caracter&iacute;sticas
+                {t('nav.features')}
               </a>
               <a
                 href="#precios"
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
-                Precios
+                {t('nav.pricing')}
               </a>
               <a
                 href="#preguntas"
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
-                Preguntas
+                {t('nav.contact')}
               </a>
               <hr className="border-border" />
+              <select
+                value={locale}
+                onChange={(e) => setLocale(e.target.value)}
+                className="bg-transparent text-sm text-text-secondary border border-border rounded-lg px-2 py-1 outline-none cursor-pointer"
+              >
+                {Object.entries(localeNames).map(([code, name]) => (
+                  <option key={code} value={code} className="text-black">{name}</option>
+                ))}
+              </select>
               <a
                 href={LOGIN}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
-                Ingresar
+                {t('nav.login')}
               </a>
               <a
                 href={SIGNUP}
                 className="bg-[#3897f0] hover:bg-[#2b7fd4] text-white px-4 py-2 rounded-lg font-medium text-center transition-colors"
               >
-                Empezar gratis
+                {t('nav.startFree')}
               </a>
             </div>
           </motion.div>
@@ -650,19 +672,17 @@ export default function LandingPage() {
           transition={{ duration: 0.7, delay: 0.2 }}
         >
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
-            Tu IA que responde{" "}
-            <span className="text-[#3897f0]">WhatsApp</span> y vende por ti, 24/7
+            {t('hero.title')}
           </h1>
           <p className="mt-6 text-lg sm:text-xl text-text-secondary max-w-xl mx-auto lg:mx-0 leading-relaxed">
-            Tu agente IA atiende todos tus canales en segundos. Sin c&oacute;digo, sin
-            complicaciones. Configura en una hora y empieza a vender m&aacute;s.
+            {t('hero.subtitle')}
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
             <a
               href={SIGNUP}
               className="inline-flex items-center justify-center px-8 py-4 bg-[#3897f0] hover:bg-[#2b7fd4] text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_40px_rgba(56,151,240,0.3)]"
             >
-              Empezar gratis — 7 d&iacute;as
+              {t('hero.cta')}
             </a>
             <a
               href="#como-funciona"
@@ -672,7 +692,7 @@ export default function LandingPage() {
             </a>
           </div>
           <p className="mt-6 text-sm text-text-muted">
-            &check; Sin tarjeta de cr&eacute;dito &middot; &check; Listo en 1 hora &middot; &check; Soporte en espa&ntilde;ol 24/7
+            {t('hero.noCard')}
           </p>
         </motion.div>
 
@@ -1133,7 +1153,7 @@ export default function LandingPage() {
   const pricing = (
     <Section id="precios">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Planes que crecen contigo
+        {t('pricing.title')}
       </h2>
       <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
         7 d&iacute;as gratis. Sin tarjeta. Sin letra peque&ntilde;a.
@@ -1292,7 +1312,7 @@ export default function LandingPage() {
         </div>
         <div className="relative">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
-            &iquest;Listo para dejar de perder ventas?
+            {t('cta.title')}
           </h2>
           <p className="text-text-secondary text-lg mb-10 max-w-xl mx-auto">
             Empieza tu prueba gratis hoy. 7 d&iacute;as, sin tarjeta, sin compromiso.
@@ -1335,7 +1355,7 @@ export default function LandingPage() {
           {/* Producto */}
           <div>
             <h4 className="text-sm font-semibold text-text-primary mb-4">
-              Producto
+              {t('footer.product')}
             </h4>
             <ul className="space-y-2 text-sm text-text-muted">
               <li>
@@ -1368,7 +1388,7 @@ export default function LandingPage() {
           {/* Empresa */}
           <div>
             <h4 className="text-sm font-semibold text-text-primary mb-4">
-              Empresa
+              {t('footer.company')}
             </h4>
             <ul className="space-y-2 text-sm text-text-muted">
               <li>
@@ -1392,22 +1412,22 @@ export default function LandingPage() {
           {/* Legal */}
           <div>
             <h4 className="text-sm font-semibold text-text-primary mb-4">
-              Legal
+              {t('footer.legal')}
             </h4>
             <ul className="space-y-2 text-sm text-text-muted">
               <li>
                 <a href="/privacy" className="hover:text-text-secondary transition-colors">
-                  Privacidad
+                  {t('footer.privacy')}
                 </a>
               </li>
               <li>
                 <a href="/terms" className="hover:text-text-secondary transition-colors">
-                  T&eacute;rminos
+                  {t('footer.terms')}
                 </a>
               </li>
               <li>
                 <a href="/data-policy" className="hover:text-text-secondary transition-colors">
-                  Datos personales
+                  {t('footer.dataPolicy')}
                 </a>
               </li>
             </ul>

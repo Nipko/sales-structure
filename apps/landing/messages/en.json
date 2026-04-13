@@ -7,13 +7,13 @@
     "features": "Features",
     "howItWorks": "How it works",
     "pricing": "Pricing",
-    "contact": "Contact",
+    "contact": "FAQ",
     "login": "Log in",
     "startFree": "Start free"
   },
   "hero": {
     "badge": "Conversational AI for Sales",
-    "title": "Automate your WhatsApp sales with AI",
+    "title": "Your AI that answers WhatsApp and sells for you, 24/7",
     "subtitle": "Your AI agent responds in seconds. Your team closes in minutes. All in one platform.",
     "cta": "Try 7 days free",
     "ctaSecondary": "See demo",
@@ -40,7 +40,7 @@
     "step3Desc": "Your agent responds 24/7, qualifies leads and transfers to your team when needed."
   },
   "pricing": {
-    "title": "Simple pricing, no surprises",
+    "title": "Plans that grow with you",
     "subtitle": "Start free. Scale when you need to.",
     "monthly": "Monthly",
     "annual": "Annual",
@@ -51,7 +51,7 @@
     "features": "Includes:"
   },
   "cta": {
-    "title": "Ready to automate your sales?",
+    "title": "Ready to stop losing sales?",
     "subtitle": "Join hundreds of companies already using Parallly to sell more.",
     "button": "Start your free trial"
   },
@@ -59,8 +59,8 @@
     "product": "Product",
     "company": "Company",
     "legal": "Legal",
-    "privacy": "Privacy Policy",
-    "terms": "Terms of Service",
+    "privacy": "Privacy",
+    "terms": "Terms",
     "dataPolicy": "Data Policy",
     "about": "About",
     "blog": "Blog",

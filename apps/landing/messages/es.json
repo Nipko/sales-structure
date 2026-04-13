@@ -4,18 +4,18 @@
     "description": "Plataforma de IA conversacional para ventas. Automatiza WhatsApp, Instagram y Messenger. Agente IA 24/7, CRM integrado, sin código."
   },
   "nav": {
-    "features": "Funcionalidades",
+    "features": "Características",
     "howItWorks": "Cómo funciona",
     "pricing": "Precios",
-    "contact": "Contacto",
-    "login": "Iniciar sesión",
-    "startFree": "Empieza gratis"
+    "contact": "Preguntas",
+    "login": "Ingresar",
+    "startFree": "Empezar gratis"
   },
   "hero": {
     "badge": "IA Conversacional para Ventas",
-    "title": "Automatiza tus ventas en WhatsApp con IA",
+    "title": "Tu IA que responde WhatsApp y vende por ti, 24/7",
     "subtitle": "Tu agente IA responde en segundos. Tu equipo cierra en minutos. Todo en una sola plataforma.",
-    "cta": "Prueba 7 días gratis",
+    "cta": "Empezar gratis",
     "ctaSecondary": "Ver demo",
     "noCard": "Sin tarjeta de crédito"
   },
@@ -40,7 +40,7 @@
     "step3Desc": "Tu agente responde 24/7, califica leads y transfiere a tu equipo cuando es necesario."
   },
   "pricing": {
-    "title": "Precios simples, sin sorpresas",
+    "title": "Planes que crecen contigo",
     "subtitle": "Empieza gratis. Escala cuando lo necesites.",
     "monthly": "Mensual",
     "annual": "Anual",
@@ -51,7 +51,7 @@
     "features": "Incluye:"
   },
   "cta": {
-    "title": "¿Listo para automatizar tus ventas?",
+    "title": "¿Listo para dejar de perder ventas?",
     "subtitle": "Únete a cientos de empresas que ya usan Parallly para vender más.",
     "button": "Empieza tu prueba gratuita"
   },
@@ -59,9 +59,9 @@
     "product": "Producto",
     "company": "Empresa",
     "legal": "Legal",
-    "privacy": "Política de privacidad",
-    "terms": "Términos de servicio",
-    "dataPolicy": "Política de datos",
+    "privacy": "Privacidad",
+    "terms": "Términos",
+    "dataPolicy": "Datos personales",
     "about": "Acerca de",
     "blog": "Blog",
     "careers": "Carreras",

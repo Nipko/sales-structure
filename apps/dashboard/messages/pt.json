@@ -26,16 +26,16 @@
   "nav": {
     "sections": {
       "main": "Principal",
-      "operations": "Operacoes",
-      "analytics": "Analises",
-      "config": "Configuracoes"
+      "operations": "Operações",
+      "analytics": "Análises",
+      "config": "Configurações"
     },
     "items": {
       "dashboard": "Dashboard",
       "inbox": "Caixa de entrada",
       "crm": "CRM",
       "pipeline": "Pipeline",
-      "automation": "Automacao",
+      "automation": "Automação",
       "campaigns": "Campanhas",
       "appointments": "Agendamentos",
       "channels": "Canais",
@@ -44,13 +44,13 @@
       "aiAgent": "Agente IA",
       "knowledgeBase": "Base de Conhecimento",
       "identity": "Identidade",
-      "users": "Usuarios",
-      "settings": "Configuracoes",
+      "users": "Usuários",
+      "settings": "Configurações",
       "tenants": "Tenants"
     }
   },
   "topbar": {
-    "notifications": "Notificacoes",
+    "notifications": "Notificações",
     "clearAll": "Limpar tudo",
     "markRead": "Marcar como lidas",
     "noNotifications": "Sem notificacoes",
@@ -67,7 +67,7 @@
       "handoff": "Transferencias",
       "compliance": "Compliance",
       "appointment": "Agendamentos",
-      "automation": "Automacao",
+      "automation": "Automação",
       "order": "Pedidos",
       "system": "Sistema"
     }
@@ -88,28 +88,28 @@
     "or": "ou",
     "noAccount": "Primeira vez?",
     "createFreeAccount": "Crie sua conta gratuita",
-    "hasAccount": "Ja tem uma conta? Entre",
+    "hasAccount": "Já tem uma conta? Entre",
     "submitting": "Entrando...",
     "platform": "Plataforma de IA Conversacional",
-    "sendCode": "Enviar codigo",
-    "verifyCode": "Verificar codigo",
-    "codeExpires": "O codigo expira em 10 minutos",
-    "resendCode": "Reenviar codigo",
+    "sendCode": "Enviar código",
+    "verifyCode": "Verificar código",
+    "codeExpires": "O código expira em 10 minutos",
+    "resendCode": "Reenviar código",
     "passwordRequirements": {
       "title": "Requisitos da senha",
       "minLength": "Minimo 8 caracteres",
       "uppercase": "Pelo menos 1 maiuscula",
       "lowercase": "Pelo menos 1 minuscula",
-      "number": "Pelo menos 1 numero",
+      "number": "Pelo menos 1 número",
       "special": "Pelo menos 1 caractere especial"
     }
   },
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Bem-vindo",
-    "overview": "Visao geral",
+    "overview": "Visão geral",
     "recentActivity": "Atividade recente",
-    "quickActions": "Acoes rapidas"
+    "quickActions": "Ações rapidas"
   },
   "contacts": {
     "title": "Contatos",
@@ -120,9 +120,9 @@
     "segment": "Segmento",
     "conversations": "Conversas",
     "lifetimeValue": "Valor (BRL)",
-    "lastInteraction": "Ultima interacao",
+    "lastInteraction": "Ultima interação",
     "tags": "Tags",
-    "noInteraction": "Sem interacao",
+    "noInteraction": "Sem interação",
     "segments": {
       "all": "Todos",
       "new": "Novos",
@@ -153,7 +153,7 @@
     }
   },
   "settings": {
-    "title": "Configuracoes",
+    "title": "Configurações",
     "save": "Salvar alteracoes",
     "saved": "Salvo!",
     "saving": "Salvando...",
@@ -195,11 +195,11 @@
   },
   "appointments": {
     "title": "Agendamentos",
-    "calendar": "Calendario",
+    "calendar": "Calendário",
     "list": "Lista",
     "availability": "Disponibilidade",
     "newAppointment": "Novo agendamento",
-    "service": "Servico",
+    "service": "Serviço",
     "date": "Data",
     "time": "Hora",
     "location": "Local",
@@ -222,7 +222,7 @@
     "legalTexts": "Textos Legais",
     "consents": "Consentimentos",
     "optOuts": "Opt-Outs",
-    "deletionRequests": "Solicitacoes de Exclusao",
+    "deletionRequests": "Solicitações de Exclusão",
     "confirmOptOut": "Confirmar opt-out",
     "rejectOptOut": "Falso positivo",
     "detectedMessage": "Mensagem detectada",
@@ -243,12 +243,12 @@
     "dragToMove": "Arraste para mover"
   },
   "automation": {
-    "title": "Automacao",
+    "title": "Automação",
     "rules": "Regras",
     "newRule": "Nova regra",
     "trigger": "Gatilho",
-    "conditions": "Condicoes",
-    "actions": "Acoes",
+    "conditions": "Condições",
+    "actions": "Ações",
     "active": "Ativa",
     "inactive": "Inativa"
   },
@@ -277,8 +277,8 @@
     "behavior": "Comportamento",
     "llm": "Modelo LLM",
     "hours": "Horario",
-    "preview": "Pre-visualizacao",
-    "saveConfig": "Salvar configuracao"
+    "preview": "Pré-visualização",
+    "saveConfig": "Salvar configuração"
   },
   "knowledge": {
     "title": "Base de Conhecimento",
@@ -290,16 +290,16 @@
   },
   "identity": {
     "title": "Identidade",
-    "mergeSuggestions": "Sugestoes de fusao",
+    "mergeSuggestions": "Sugestoes de fusão",
     "approve": "Aprovar",
     "reject": "Rejeitar",
-    "confidence": "Confianca",
-    "matchType": "Tipo de correspondencia"
+    "confidence": "Confiança",
+    "matchType": "Tipo de correspondência"
   },
   "users": {
-    "title": "Usuarios",
+    "title": "Usuários",
     "newUser": "Novo usuario",
-    "role": "Funcao",
+    "role": "Função",
     "status": "Status",
     "lastLogin": "Ultimo acesso",
     "resetPassword": "Redefinir senha"
@@ -318,17 +318,17 @@
     "products": "Produtos",
     "newProduct": "Novo produto",
     "stock": "Estoque",
-    "price": "Preco",
+    "price": "Preço",
     "category": "Categoria",
-    "available": "Disponivel"
+    "available": "Disponível"
   },
   "tenants": {
     "title": "Tenants",
     "newTenant": "Novo tenant",
     "plan": "Plano",
     "schema": "Schema",
-    "industry": "Industria",
-    "activeUsers": "Usuarios ativos"
+    "industry": "Indústria",
+    "activeUsers": "Usuários ativos"
   },
   "onboarding": {
     "title": "Configure sua empresa",
@@ -338,13 +338,13 @@
     "step4": "Como nos conheceu",
     "companyName": "Nome da empresa",
     "website": "Site",
-    "industry": "Industria",
+    "industry": "Indústria",
     "companySize": "Tamanho da empresa",
     "finish": "Finalizar"
   },
   "analytics": {
     "title": "Analytics",
-    "overview": "Visao geral",
+    "overview": "Visão geral",
     "agents": "Agentes",
     "channels": "Canais",
     "csat": "CSAT",
@@ -357,8 +357,8 @@
     "newTemplate": "Criar modelo",
     "subject": "Assunto",
     "body": "Corpo",
-    "variables": "Variaveis",
-    "preview": "Pre-visualizacao",
+    "variables": "Variáveis",
+    "preview": "Pré-visualização",
     "testSend": "Enviar teste",
     "active": "Ativo"
   },
@@ -368,6 +368,6 @@
     "new": "Nova senha",
     "confirm": "Confirmar senha",
     "changed": "Senha alterada com sucesso",
-    "googleNote": "Sua conta usa Google Sign-In. Voce pode definir uma senha adicional."
+    "googleNote": "Sua conta usa Google Sign-In. Você pode definir uma senha adicional."
   }
 }

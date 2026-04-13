@@ -20,23 +20,23 @@
     "inactive": "Inactivo",
     "pending": "Pendiente",
     "error": "Error",
-    "success": "Exito",
+    "success": "Éxito",
     "poweredBy": "Powered by"
   },
   "nav": {
     "sections": {
       "main": "Principal",
-      "operations": "Operacion",
-      "analytics": "Analisis",
-      "config": "Configuracion"
+      "operations": "Operación",
+      "analytics": "Análisis",
+      "config": "Configuración"
     },
     "items": {
       "dashboard": "Dashboard",
       "inbox": "Inbox",
       "crm": "CRM",
       "pipeline": "Pipeline",
-      "automation": "Automatizacion",
-      "campaigns": "Campanas",
+      "automation": "Automatización",
+      "campaigns": "Campañas",
       "appointments": "Citas",
       "channels": "Canales",
       "analytics": "Analytics",
@@ -45,7 +45,7 @@
       "knowledgeBase": "Knowledge Base",
       "identity": "Identidad",
       "users": "Usuarios",
-      "settings": "Configuracion",
+      "settings": "Configuración",
       "tenants": "Tenants"
     }
   },
@@ -54,7 +54,7 @@
     "clearAll": "Limpiar todo",
     "markRead": "Marcar leidas",
     "noNotifications": "Sin notificaciones",
-    "logout": "Cerrar sesion",
+    "logout": "Cerrar sesión",
     "theme": {
       "light": "Claro",
       "dark": "Oscuro",
@@ -67,40 +67,40 @@
       "handoff": "Transferencias",
       "compliance": "Compliance",
       "appointment": "Citas",
-      "automation": "Automatizacion",
-      "order": "Ordenes",
+      "automation": "Automatización",
+      "order": "Órdenes",
       "system": "Sistema"
     }
   },
   "auth": {
-    "login": "Iniciar sesion",
+    "login": "Iniciar sesión",
     "signup": "Crear cuenta",
-    "logout": "Cerrar sesion",
+    "logout": "Cerrar sesión",
     "email": "Email",
-    "password": "Contrasena",
-    "forgotPassword": "Olvidaste tu contrasena?",
-    "resetPassword": "Restablecer contrasena",
-    "newPassword": "Nueva contrasena",
-    "confirmPassword": "Confirmar contrasena",
-    "currentPassword": "Contrasena actual",
+    "password": "Contraseña",
+    "forgotPassword": "Olvidaste tu contraseña?",
+    "resetPassword": "Restablecer contraseña",
+    "newPassword": "Nueva contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "currentPassword": "Contraseña actual",
     "enterCredentials": "Ingresa tus credenciales para continuar",
     "continueWithGoogle": "Continuar con Google",
     "or": "o",
     "noAccount": "Primera vez?",
     "createFreeAccount": "Crea tu cuenta gratuita",
-    "hasAccount": "Ya tienes cuenta? Inicia sesion",
-    "submitting": "Iniciando sesion...",
+    "hasAccount": "Ya tienes cuenta? Inicia sesión",
+    "submitting": "Iniciando sesión...",
     "platform": "Plataforma de IA Conversacional",
-    "sendCode": "Enviar codigo",
-    "verifyCode": "Verificar codigo",
-    "codeExpires": "El codigo expira en 10 minutos",
-    "resendCode": "Reenviar codigo",
+    "sendCode": "Enviar código",
+    "verifyCode": "Verificar código",
+    "codeExpires": "El código expira en 10 minutos",
+    "resendCode": "Reenviar código",
     "passwordRequirements": {
-      "title": "Requisitos de contrasena",
-      "minLength": "Minimo 8 caracteres",
-      "uppercase": "Al menos 1 mayuscula",
-      "lowercase": "Al menos 1 minuscula",
-      "number": "Al menos 1 numero",
+      "title": "Requisitos de contraseña",
+      "minLength": "Mínimo 8 caracteres",
+      "uppercase": "Al menos 1 mayúscula",
+      "lowercase": "Al menos 1 minúscula",
+      "number": "Al menos 1 número",
       "special": "Al menos 1 caracter especial"
     }
   },
@@ -109,7 +109,7 @@
     "welcome": "Bienvenido",
     "overview": "Vista general",
     "recentActivity": "Actividad reciente",
-    "quickActions": "Acciones rapidas"
+    "quickActions": "Acciones rápidas"
   },
   "contacts": {
     "title": "Contactos",
@@ -120,9 +120,9 @@
     "segment": "Segmento",
     "conversations": "Conversaciones",
     "lifetimeValue": "Valor (COP)",
-    "lastInteraction": "Ultima interaccion",
+    "lastInteraction": "Última interacción",
     "tags": "Tags",
-    "noInteraction": "Sin interaccion",
+    "noInteraction": "Sin interacción",
     "segments": {
       "all": "Todos",
       "new": "Nuevos",
@@ -134,7 +134,7 @@
   },
   "inbox": {
     "title": "Inbox",
-    "noConversation": "Selecciona una conversacion",
+    "noConversation": "Selecciona una conversación",
     "typeMessage": "Escribe un mensaje...",
     "send": "Enviar",
     "assignTo": "Asignar a",
@@ -153,27 +153,177 @@
     }
   },
   "settings": {
-    "title": "Configuracion",
+    "title": "Configuración",
+    "subtitle": "Gestiona tu cuenta, empresa, canales y herramientas",
     "save": "Guardar cambios",
     "saved": "Guardado!",
     "saving": "Guardando...",
+    "backToSettings": "Configuración",
+    "connectionError": "Error de conexión",
+    "saveError": "Error al guardar",
+    "sections": {
+      "account": "Mi Cuenta",
+      "accountDesc": "Tu perfil, seguridad y preferencias personales",
+      "company": "Empresa",
+      "companyDesc": "Configuración del workspace y tu organización",
+      "tools": "Herramientas",
+      "toolsDesc": "Atributos, macros, formularios y plantillas",
+      "channels": "Canales",
+      "channelsDesc": "Configuración de WhatsApp, Instagram, Messenger y Telegram",
+      "ai": "IA y Modelos",
+      "aiDesc": "Proveedores de lenguaje y configuración del router IA",
+      "platform": "Plataforma",
+      "platformDesc": "Configuración avanzada de la plataforma"
+    },
+    "pages": {
+      "profile": "Perfil",
+      "profileDesc": "Nombre, email, avatar y datos personales",
+      "security": "Seguridad",
+      "securityDesc": "Contraseña, autenticación de dos factores",
+      "notifications": "Notificaciones",
+      "notificationsDesc": "Configura alertas por categoría y canal",
+      "appearance": "Apariencia",
+      "appearanceDesc": "Tema claro, oscuro o automático",
+      "companyGeneral": "General",
+      "companyGeneralDesc": "Nombre, industria, logo y datos de la empresa",
+      "localization": "Localización",
+      "localizationDesc": "Zona horaria, moneda, formato de fecha e idioma",
+      "businessHours": "Horarios de negocio",
+      "businessHoursDesc": "Horarios por día, festivos y mensaje fuera de horario",
+      "customAttributes": "Atributos personalizados",
+      "customAttributesDesc": "Campos dinámicos para contactos y leads",
+      "macros": "Macros",
+      "macrosDesc": "Secuencias de acciones rápidas para agentes",
+      "prechat": "Formulario pre-chat",
+      "prechatDesc": "Campos solicitados antes de iniciar un chat",
+      "emailTemplates": "Plantillas de email",
+      "emailTemplatesDesc": "Emails de confirmación, recordatorios y más",
+      "mediaBank": "Banco de medios",
+      "mediaBankDesc": "Imágenes, logo de empresa y galería",
+      "channelsConfig": "Configuración de canales",
+      "channelsConfigDesc": "API keys y credenciales de cada canal",
+      "aiProviders": "Proveedores LLM",
+      "aiProvidersDesc": "API keys de OpenAI, Anthropic, Google AI y más",
+      "aiConfig": "Configuración IA",
+      "aiConfigDesc": "Modelo por defecto, temperatura y tokens",
+      "advanced": "Avanzado",
+      "advancedDesc": "Nombre de plataforma, límites y features"
+    },
+    "profile": {
+      "title": "Perfil",
+      "subtitle": "Tu información personal y datos de contacto",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "email": "Email",
+      "emailReadonly": "El email no se puede cambiar",
+      "phone": "Teléfono",
+      "jobTitle": "Cargo"
+    },
+    "securityPage": {
+      "title": "Seguridad",
+      "subtitle": "Contraseña y opciones de seguridad de tu cuenta",
+      "changePassword": "Cambiar contraseña",
+      "setupPassword": "Establecer contraseña",
+      "changePasswordDesc": "Ingresa tu contraseña actual y elige una nueva",
+      "setupPasswordDesc": "Tu cuenta usa Google Sign-in. Establece una contraseña adicional para acceso directo.",
+      "currentPassword": "Contraseña actual",
+      "newPassword": "Nueva contraseña",
+      "confirmPassword": "Confirmar nueva contraseña",
+      "updatePassword": "Actualizar contraseña",
+      "passwordUpdated": "Contraseña actualizada",
+      "twoFactor": "Autenticación de dos factores (2FA)",
+      "twoFactorDesc": "Protege tu cuenta con un código adicional al iniciar sesión",
+      "comingSoon": "Próximamente",
+      "passwordsMatch": "Las contraseñas coinciden"
+    },
+    "notificationsPage": {
+      "title": "Notificaciones",
+      "subtitle": "Configura qué notificaciones recibes y cómo",
+      "generalPrefs": "Preferencias generales",
+      "emailDigest": "Resumen por email",
+      "realtime": "Tiempo real",
+      "hourly": "Cada hora",
+      "dailyDigest": "Resumen diario (9:00 AM)",
+      "off": "Desactivado",
+      "soundEnabled": "Sonido de notificación",
+      "soundDesc": "Reproducir sonido al recibir notificaciones",
+      "categories": "Categorías",
+      "categoriesDesc": "Activa o desactiva notificaciones por categoría",
+      "localNote": "Las preferencias se guardan localmente por ahora. La persistencia en servidor se habilitará próximamente.",
+      "cat": {
+        "chat": "Nuevos mensajes",
+        "chatDesc": "Cuando un cliente envía un mensaje nuevo",
+        "handoff": "Transferencias",
+        "handoffDesc": "Cuando una conversación se escala a un agente",
+        "compliance": "Compliance",
+        "complianceDesc": "Solicitudes de opt-out y consentimiento",
+        "appointments": "Citas",
+        "appointmentsDesc": "Nuevas citas, cancelaciones y recordatorios",
+        "automation": "Automatización",
+        "automationDesc": "Reglas ejecutadas, errores en flujos",
+        "orders": "Pedidos",
+        "ordersDesc": "Nuevos pedidos y cambios de estado",
+        "system": "Sistema",
+        "systemDesc": "Actualizaciones, mantenimiento y alertas"
+      }
+    },
+    "companyPage": {
+      "title": "Empresa",
+      "subtitle": "Información general de tu organización",
+      "companyName": "Nombre de la empresa",
+      "website": "Sitio web",
+      "industry": "Industria",
+      "companySize": "Tamaño",
+      "supportEmail": "Email de soporte",
+      "phone": "Teléfono de contacto",
+      "logoNote": "Para cambiar el logo de la empresa, ve a",
+      "mediaBank": "Banco de medios"
+    },
+    "localizationPage": {
+      "title": "Localización",
+      "subtitle": "Zona horaria, moneda, formato de fecha e idioma del workspace",
+      "timezone": "Zona horaria",
+      "language": "Idioma",
+      "currency": "Moneda",
+      "dateFormat": "Formato de fecha",
+      "timeFormat": "Formato de hora",
+      "weekStart": "Primer día de la semana"
+    },
+    "businessHoursPage": {
+      "title": "Horarios de negocio",
+      "subtitle": "Define los horarios de atención y el mensaje fuera de horario",
+      "scheduleTitle": "Horarios por día",
+      "scheduleDesc": "Activa los días laborables y define el horario de apertura y cierre",
+      "closed": "Cerrado",
+      "outOfHoursTitle": "Mensaje fuera de horario",
+      "outOfHoursDesc": "Respuesta automática cuando un cliente escribe fuera del horario",
+      "days": {
+        "monday": "Lunes",
+        "tuesday": "Martes",
+        "wednesday": "Miércoles",
+        "thursday": "Jueves",
+        "friday": "Viernes",
+        "saturday": "Sábado",
+        "sunday": "Domingo"
+      }
+    },
     "tools": {
       "customAttributes": "Atributos Personalizados",
       "macros": "Macros",
       "prechat": "Formulario Pre-Chat",
       "emailTemplates": "Plantillas de Correo",
-      "mediaBank": "Banco de Imagenes",
-      "changePassword": "Cambiar Contrasena"
+      "mediaBank": "Banco de Imágenes",
+      "changePassword": "Cambiar Contraseña"
     },
     "security": "Las API keys se almacenan encriptadas y se muestran enmascaradas."
   },
   "media": {
-    "title": "Banco de Imagenes",
-    "subtitle": "Gestiona el logo, imagenes y organiza con etiquetas",
+    "title": "Banco de Imágenes",
+    "subtitle": "Gestiona el logo, imágenes y organiza con etiquetas",
     "uploadImage": "Subir Imagen",
     "dragOrClick": "Arrastra una imagen o haz clic para seleccionar",
-    "maxSize": "JPG, PNG, WebP o GIF — Maximo 5 MB",
-    "gallery": "Galeria",
+    "maxSize": "JPG, PNG, WebP o GIF — Máximo 5 MB",
+    "gallery": "Galería",
     "companyLogo": "Logo de la Empresa",
     "logoDescription": "Este logo se usara en plantillas de correo y documentos.",
     "uploadLogo": "Subir Logo",
@@ -181,12 +331,12 @@
     "urlCopied": "URL copiada",
     "imageUploaded": "Imagen subida correctamente",
     "imageDeleted": "Eliminada",
-    "tooLarge": "La imagen pesa {size} MB. El maximo es 5 MB.",
-    "onlyImages": "Solo se permiten imagenes",
+    "tooLarge": "La imagen pesa {size} MB. El máximo es 5 MB.",
+    "onlyImages": "Solo se permiten imágenes",
     "allTypes": "Todos los tipos",
     "allTags": "Todas las etiquetas",
     "label": "Etiqueta",
-    "description": "Descripcion",
+    "description": "Descripción",
     "types": {
       "general": "General",
       "product": "Producto",
@@ -243,7 +393,7 @@
     "dragToMove": "Arrastra para mover"
   },
   "automation": {
-    "title": "Automatizacion",
+    "title": "Automatización",
     "rules": "Reglas",
     "newRule": "Nueva regla",
     "trigger": "Disparador",
@@ -253,8 +403,8 @@
     "inactive": "Inactiva"
   },
   "broadcast": {
-    "title": "Campanas",
-    "newCampaign": "Nueva campana",
+    "title": "Campañas",
+    "newCampaign": "Nueva campaña",
     "template": "Plantilla",
     "recipients": "Destinatarios",
     "scheduled": "Programada",
@@ -278,7 +428,7 @@
     "llm": "Modelo LLM",
     "hours": "Horario",
     "preview": "Vista previa",
-    "saveConfig": "Guardar configuracion"
+    "saveConfig": "Guardar configuración"
   },
   "knowledge": {
     "title": "Knowledge Base",
@@ -290,7 +440,7 @@
   },
   "identity": {
     "title": "Identidad",
-    "mergeSuggestions": "Sugerencias de fusion",
+    "mergeSuggestions": "Sugerencias de fusión",
     "approve": "Aprobar",
     "reject": "Rechazar",
     "confidence": "Confianza",
@@ -301,16 +451,16 @@
     "newUser": "Nuevo usuario",
     "role": "Rol",
     "status": "Estado",
-    "lastLogin": "Ultimo acceso",
-    "resetPassword": "Restablecer contrasena"
+    "lastLogin": "Último acceso",
+    "resetPassword": "Restablecer contraseña"
   },
   "orders": {
-    "title": "Ordenes",
+    "title": "Órdenes",
     "newOrder": "Nueva orden",
     "total": "Total",
     "status": "Estado",
-    "paymentMethod": "Metodo de pago",
-    "items": "Articulos",
+    "paymentMethod": "Método de pago",
+    "items": "Artículos",
     "invoice": "Factura"
   },
   "inventory": {
@@ -319,7 +469,7 @@
     "newProduct": "Nuevo producto",
     "stock": "Stock",
     "price": "Precio",
-    "category": "Categoria",
+    "category": "Categoría",
     "available": "Disponible"
   },
   "tenants": {
@@ -339,7 +489,7 @@
     "companyName": "Nombre de la empresa",
     "website": "Sitio web",
     "industry": "Industria",
-    "companySize": "Tamano de la empresa",
+    "companySize": "Tamaño de la empresa",
     "finish": "Finalizar"
   },
   "analytics": {
@@ -363,11 +513,11 @@
     "active": "Activa"
   },
   "changePassword": {
-    "title": "Cambiar Contrasena",
-    "current": "Contrasena actual",
-    "new": "Nueva contrasena",
-    "confirm": "Confirmar contrasena",
-    "changed": "Contrasena cambiada exitosamente",
-    "googleNote": "Tu cuenta usa Google Sign-In. Puedes establecer una contrasena adicional."
+    "title": "Cambiar Contraseña",
+    "current": "Contraseña actual",
+    "new": "Nueva contraseña",
+    "confirm": "Confirmar contraseña",
+    "changed": "Contraseña cambiada exitosamente",
+    "googleNote": "Tu cuenta usa Google Sign-In. Puedes establecer una contraseña adicional."
   }
 }

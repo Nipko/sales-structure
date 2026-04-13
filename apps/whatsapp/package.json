@@ -1,6 +1,6 @@
 {
   "name": "@parallext/whatsapp",
-  "version": "0.1.0",
+  "version": "4.0.0",
   "private": true,
   "description": "Parallext WhatsApp Onboarding Service — Embedded Signup v4 + Webhook Router",
   "scripts": {

@@ -50,9 +50,9 @@ export class MediaService {
         this.logger.log(`Media storage: ${this.storagePath} | Public URL: ${this.publicBaseUrl}`);
     }
 
-    /** Build the public URL for a media file */
+    /** Build the public URL for a media file (includes /api/v1 prefix) */
     private fileUrl(tenantId: string, fileName: string): string {
-        return `/media/file/${tenantId}/${fileName}`;
+        return `/api/v1/media/file/${tenantId}/${fileName}`;
     }
 
     /**

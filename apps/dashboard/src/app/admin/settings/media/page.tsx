@@ -32,7 +32,9 @@ interface MediaFile {
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 const MAX_SIZE = 5 * 1024 * 1024;
 
-// Media files are served WITHOUT /api/v1 prefix (excluded from global prefix)
+// Media files are served under /api/v1/media/file/...
+// The API returns URLs like /api/v1/media/file/{tenantId}/{file}
+// We prepend the API base domain (without /api/v1 since the path already has it)
 function mediaUrl(relPath: string): string {
   const base = (process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1")
     .replace(/\/api\/v1\/?$/, "");
@@ -146,8 +148,12 @@ export default function MediaBankPage() {
     try {
       const res = await api.uploadMedia(tenantId, file, entityType);
       clearInterval(iv); setUploadProgress(100);
-      if (res.success) { showToast("Imagen subida correctamente"); loadMedia(); loadTags(); }
-      else showToast(`Error: ${res.error || "No se pudo subir"}`);
+      if (res.success) {
+        showToast("Imagen subida correctamente");
+        // Add immediately to gallery for instant feedback
+        if (res.data) setFiles(prev => [res.data, ...prev]);
+        loadTags();
+      } else showToast(`Error: ${res.error || "No se pudo subir"}`);
     } catch { clearInterval(iv); showToast("Error: Fallo la conexion"); }
     finally { setTimeout(() => { setUploading(false); setUploadProgress(0); }, 600); }
   }
@@ -158,7 +164,11 @@ export default function MediaBankPage() {
     setLogoUploading(true);
     try {
       const res = await api.uploadLogo(tenantId, file);
-      if (res.success && res.data?.logoUrl) { setLogoUrl(mediaUrl(res.data.logoUrl)); showToast("Logo actualizado"); }
+      if (res.success && res.data?.logoUrl) {
+        setLogoUrl(mediaUrl(res.data.logoUrl));
+        showToast("Logo actualizado");
+        loadMedia(); // Refresh gallery to show logo in list too
+      }
       else showToast(`Error: ${res.error || "No se pudo subir"}`);
     } catch { showToast("Error: Fallo la conexion"); }
     finally { setLogoUploading(false); }
@@ -362,7 +372,16 @@ export default function MediaBankPage() {
                     onClick={() => !isEditing && setPreviewFile(file)}>
                     <img src={thumbUrl} alt={file.label || file.originalName}
                       className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy"
-                      onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f0f0f0'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='%23999' font-size='12'%3EError%3C/text%3E%3C/svg%3E"; }} />
+                      onError={e => {
+                        const img = e.target as HTMLImageElement;
+                        // Retry once after 1s (file might not be ready yet)
+                        if (!img.dataset.retried) {
+                          img.dataset.retried = "1";
+                          setTimeout(() => { img.src = thumbUrl + "?t=" + Date.now(); }, 1000);
+                        } else {
+                          img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f0f0f0'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='%23999' font-size='11'%3ECargando...%3C/text%3E%3C/svg%3E";
+                        }
+                      }} />
                     {!isEditing && (
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                         <ZoomIn size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />

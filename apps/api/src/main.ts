@@ -29,10 +29,8 @@ async function bootstrap() {
         }),
     );
 
-    // API prefix (exclude media file serving for clean public URLs)
-    app.setGlobalPrefix('api/v1', {
-        exclude: ['media/file/:tenantId/:fileName'],
-    });
+    // API prefix
+    app.setGlobalPrefix('api/v1');
 
     // Swagger documentation
     const config = new DocumentBuilder()

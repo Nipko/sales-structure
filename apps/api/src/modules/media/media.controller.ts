@@ -130,8 +130,9 @@ export class MediaController {
             return res.status(404).json({ message: 'Archivo no encontrado' });
         }
 
-        // Allow cross-origin loading from dashboard
+        // Allow cross-origin embedding (dashboard is on a different subdomain)
         res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Content-Type', 'image/webp');
         res.setHeader('Content-Length', buffer.length);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');

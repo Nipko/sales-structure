@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -44,40 +45,46 @@ interface NavSection {
   items: NavItem[];
 }
 
-const sections: NavSection[] = [
+// Keys map to nav.sections.* and nav.items.* in translation files
+interface NavSectionDef {
+  titleKey: string;
+  items: { labelKey: string; href: string; icon: LucideIcon }[];
+}
+
+const sectionDefs: NavSectionDef[] = [
   {
-    title: "Principal",
+    titleKey: "main",
     items: [
-      { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-      { label: "Inbox", href: "/admin/inbox", icon: Inbox },
-      { label: "CRM", href: "/admin/contacts", icon: Contact },
-      { label: "Pipeline", href: "/admin/pipeline", icon: UserPlus },
+      { labelKey: "dashboard", href: "/admin", icon: LayoutDashboard },
+      { labelKey: "inbox", href: "/admin/inbox", icon: Inbox },
+      { labelKey: "crm", href: "/admin/contacts", icon: Contact },
+      { labelKey: "pipeline", href: "/admin/pipeline", icon: UserPlus },
     ],
   },
   {
-    title: "Operación",
+    titleKey: "operations",
     items: [
-      { label: "Automatización", href: "/admin/automation", icon: Workflow },
-      { label: "Campañas", href: "/admin/broadcast", icon: Megaphone },
-      { label: "Citas", href: "/admin/appointments", icon: CalendarDays },
-      { label: "Canales", href: "/admin/channels", icon: Phone },
+      { labelKey: "automation", href: "/admin/automation", icon: Workflow },
+      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
+      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
+      { labelKey: "channels", href: "/admin/channels", icon: Phone },
     ],
   },
   {
-    title: "Análisis",
+    titleKey: "analytics",
     items: [
-      { label: "Analytics", href: "/admin/agent-analytics", icon: BarChart3 },
-      { label: "Compliance", href: "/admin/compliance", icon: Shield },
+      { labelKey: "analytics", href: "/admin/agent-analytics", icon: BarChart3 },
+      { labelKey: "compliance", href: "/admin/compliance", icon: Shield },
     ],
   },
   {
-    title: "Configuración",
+    titleKey: "config",
     items: [
-      { label: "Agente IA", href: "/admin/agent", icon: Bot },
-      { label: "Knowledge Base", href: "/admin/knowledge", icon: BookOpen },
-      { label: "Identidad", href: "/admin/identity", icon: Fingerprint },
-      { label: "Usuarios", href: "/admin/users", icon: Users },
-      { label: "Configuración", href: "/admin/settings", icon: Settings },
+      { labelKey: "aiAgent", href: "/admin/agent", icon: Bot },
+      { labelKey: "knowledgeBase", href: "/admin/knowledge", icon: BookOpen },
+      { labelKey: "identity", href: "/admin/identity", icon: Fingerprint },
+      { labelKey: "users", href: "/admin/users", icon: Users },
+      { labelKey: "settings", href: "/admin/settings", icon: Settings },
     ],
   },
 ];
@@ -92,6 +99,13 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const [hovered, setHovered] = useState(false);
   const pathname = usePathname();
   const { user } = useAuth();
+  const tNav = useTranslations('nav');
+
+  // Resolve translated sections
+  const sections: NavSection[] = sectionDefs.map(s => ({
+    title: tNav(`sections.${s.titleKey}`),
+    items: s.items.map(i => ({ label: tNav(`items.${i.labelKey}`), href: i.href, icon: i.icon })),
+  }));
 
   // Whether sidebar visually shows full width (labels visible)
   const showExpanded = !collapsed || hovered;

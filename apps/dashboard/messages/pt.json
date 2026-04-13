@@ -1,0 +1,236 @@
+{
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "create": "Criar",
+    "search": "Buscar",
+    "loading": "Carregando...",
+    "noResults": "Sem resultados",
+    "confirm": "Confirmar",
+    "back": "Voltar",
+    "next": "Proximo",
+    "previous": "Anterior",
+    "close": "Fechar",
+    "yes": "Sim",
+    "no": "Nao",
+    "all": "Todos",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "pending": "Pendente",
+    "error": "Erro",
+    "success": "Sucesso",
+    "poweredBy": "Powered by"
+  },
+  "nav": {
+    "sections": {
+      "main": "Principal",
+      "operations": "Operacoes",
+      "analytics": "Analises",
+      "config": "Configuracoes"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "inbox": "Caixa de entrada",
+      "crm": "CRM",
+      "pipeline": "Pipeline",
+      "automation": "Automacao",
+      "campaigns": "Campanhas",
+      "appointments": "Agendamentos",
+      "channels": "Canais",
+      "analytics": "Analytics",
+      "compliance": "Compliance",
+      "aiAgent": "Agente IA",
+      "knowledgeBase": "Base de Conhecimento",
+      "identity": "Identidade",
+      "users": "Usuarios",
+      "settings": "Configuracoes",
+      "tenants": "Tenants"
+    }
+  },
+  "topbar": {
+    "notifications": "Notificacoes",
+    "clearAll": "Limpar tudo",
+    "markRead": "Marcar como lidas",
+    "noNotifications": "Sem notificacoes",
+    "logout": "Sair",
+    "theme": {
+      "light": "Claro",
+      "dark": "Escuro",
+      "system": "Sistema"
+    },
+    "tenant": "Tenant",
+    "categories": {
+      "all": "Todas",
+      "chat": "Mensagens",
+      "handoff": "Transferencias",
+      "compliance": "Compliance",
+      "appointment": "Agendamentos",
+      "automation": "Automacao",
+      "order": "Pedidos",
+      "system": "Sistema"
+    }
+  },
+  "auth": {
+    "login": "Entrar",
+    "signup": "Criar conta",
+    "logout": "Sair",
+    "email": "Email",
+    "password": "Senha",
+    "forgotPassword": "Esqueceu sua senha?",
+    "resetPassword": "Redefinir senha",
+    "newPassword": "Nova senha",
+    "confirmPassword": "Confirmar senha",
+    "currentPassword": "Senha atual",
+    "enterCredentials": "Insira suas credenciais para continuar",
+    "continueWithGoogle": "Continuar com Google",
+    "or": "ou",
+    "noAccount": "Primeira vez?",
+    "createFreeAccount": "Crie sua conta gratuita",
+    "hasAccount": "Ja tem uma conta? Entre",
+    "submitting": "Entrando...",
+    "platform": "Plataforma de IA Conversacional",
+    "sendCode": "Enviar codigo",
+    "verifyCode": "Verificar codigo",
+    "codeExpires": "O codigo expira em 10 minutos",
+    "resendCode": "Reenviar codigo",
+    "passwordRequirements": {
+      "title": "Requisitos da senha",
+      "minLength": "Minimo 8 caracteres",
+      "uppercase": "Pelo menos 1 maiuscula",
+      "lowercase": "Pelo menos 1 minuscula",
+      "number": "Pelo menos 1 numero",
+      "special": "Pelo menos 1 caractere especial"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Bem-vindo",
+    "overview": "Visao geral",
+    "recentActivity": "Atividade recente",
+    "quickActions": "Acoes rapidas"
+  },
+  "contacts": {
+    "title": "Contatos",
+    "search": "Buscar contatos...",
+    "addContact": "Adicionar contato",
+    "import": "Importar",
+    "export": "Exportar",
+    "segment": "Segmento",
+    "conversations": "Conversas",
+    "lifetimeValue": "Valor (BRL)",
+    "lastInteraction": "Ultima interacao",
+    "tags": "Tags",
+    "noInteraction": "Sem interacao",
+    "segments": {
+      "all": "Todos",
+      "new": "Novos",
+      "lead": "Leads",
+      "qualified": "Qualificados",
+      "customer": "Clientes",
+      "churned": "Perdidos"
+    }
+  },
+  "inbox": {
+    "title": "Caixa de entrada",
+    "noConversation": "Selecione uma conversa",
+    "typeMessage": "Digite uma mensagem...",
+    "send": "Enviar",
+    "assignTo": "Atribuir a",
+    "resolve": "Resolver",
+    "status": {
+      "active": "Ativo",
+      "waitingHuman": "Aguardando agente",
+      "withHuman": "Com agente",
+      "resolved": "Resolvido",
+      "archived": "Arquivado"
+    },
+    "sender": {
+      "client": "Cliente",
+      "ai": "IA",
+      "agent": "Agente"
+    }
+  },
+  "settings": {
+    "title": "Configuracoes",
+    "save": "Salvar alteracoes",
+    "saved": "Salvo!",
+    "saving": "Salvando...",
+    "tools": {
+      "customAttributes": "Atributos Personalizados",
+      "macros": "Macros",
+      "prechat": "Formulario Pre-Chat",
+      "emailTemplates": "Modelos de Email",
+      "mediaBank": "Banco de Imagens",
+      "changePassword": "Alterar Senha"
+    },
+    "security": "As chaves de API sao armazenadas criptografadas e exibidas mascaradas."
+  },
+  "media": {
+    "title": "Banco de Imagens",
+    "subtitle": "Gerencie seu logo, imagens e organize com tags",
+    "uploadImage": "Enviar Imagem",
+    "dragOrClick": "Arraste uma imagem ou clique para selecionar",
+    "maxSize": "JPG, PNG, WebP ou GIF — Maximo 5 MB",
+    "gallery": "Galeria",
+    "companyLogo": "Logo da Empresa",
+    "logoDescription": "Este logo sera usado em modelos de email e documentos.",
+    "uploadLogo": "Enviar Logo",
+    "copyUrl": "Copiar URL",
+    "urlCopied": "URL copiada",
+    "imageUploaded": "Imagem enviada com sucesso",
+    "imageDeleted": "Excluida",
+    "tooLarge": "A imagem pesa {size} MB. O maximo e 5 MB.",
+    "onlyImages": "Somente imagens sao permitidas",
+    "allTypes": "Todos os tipos",
+    "allTags": "Todas as tags",
+    "label": "Rotulo",
+    "description": "Descricao",
+    "types": {
+      "general": "Geral",
+      "product": "Produto",
+      "course": "Curso"
+    }
+  },
+  "appointments": {
+    "title": "Agendamentos",
+    "calendar": "Calendario",
+    "list": "Lista",
+    "availability": "Disponibilidade",
+    "newAppointment": "Novo agendamento",
+    "service": "Servico",
+    "date": "Data",
+    "time": "Hora",
+    "location": "Local",
+    "notes": "Notas",
+    "agent": "Agente",
+    "status": {
+      "pending": "Pendente",
+      "confirmed": "Confirmado",
+      "cancelled": "Cancelado",
+      "completed": "Concluido",
+      "noShow": "Nao compareceu"
+    },
+    "thisWeek": "Esta semana",
+    "blockedDates": "Datas bloqueadas",
+    "addBlockedDate": "Bloquear data"
+  },
+  "compliance": {
+    "title": "Compliance & Auditoria",
+    "subtitle": "Rastreabilidade legal, consentimento e privacidade",
+    "legalTexts": "Textos Legais",
+    "consents": "Consentimentos",
+    "optOuts": "Opt-Outs",
+    "deletionRequests": "Solicitacoes de Exclusao",
+    "confirmOptOut": "Confirmar opt-out",
+    "rejectOptOut": "Falso positivo",
+    "detectedMessage": "Mensagem detectada",
+    "reviewedBy": "Revisado por",
+    "stats": {
+      "pending": "Pendentes",
+      "confirmed": "Confirmados",
+      "rejected": "Rejeitados"
+    }
+  }
+}

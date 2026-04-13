@@ -1,0 +1,236 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "search": "Buscar",
+    "loading": "Cargando...",
+    "noResults": "Sin resultados",
+    "confirm": "Confirmar",
+    "back": "Volver",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "close": "Cerrar",
+    "yes": "Si",
+    "no": "No",
+    "all": "Todos",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "pending": "Pendiente",
+    "error": "Error",
+    "success": "Exito",
+    "poweredBy": "Powered by"
+  },
+  "nav": {
+    "sections": {
+      "main": "Principal",
+      "operations": "Operacion",
+      "analytics": "Analisis",
+      "config": "Configuracion"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "inbox": "Inbox",
+      "crm": "CRM",
+      "pipeline": "Pipeline",
+      "automation": "Automatizacion",
+      "campaigns": "Campanas",
+      "appointments": "Citas",
+      "channels": "Canales",
+      "analytics": "Analytics",
+      "compliance": "Compliance",
+      "aiAgent": "Agente IA",
+      "knowledgeBase": "Knowledge Base",
+      "identity": "Identidad",
+      "users": "Usuarios",
+      "settings": "Configuracion",
+      "tenants": "Tenants"
+    }
+  },
+  "topbar": {
+    "notifications": "Notificaciones",
+    "clearAll": "Limpiar todo",
+    "markRead": "Marcar leidas",
+    "noNotifications": "Sin notificaciones",
+    "logout": "Cerrar sesion",
+    "theme": {
+      "light": "Claro",
+      "dark": "Oscuro",
+      "system": "Sistema"
+    },
+    "tenant": "Tenant",
+    "categories": {
+      "all": "Todas",
+      "chat": "Mensajes",
+      "handoff": "Transferencias",
+      "compliance": "Compliance",
+      "appointment": "Citas",
+      "automation": "Automatizacion",
+      "order": "Ordenes",
+      "system": "Sistema"
+    }
+  },
+  "auth": {
+    "login": "Iniciar sesion",
+    "signup": "Crear cuenta",
+    "logout": "Cerrar sesion",
+    "email": "Email",
+    "password": "Contrasena",
+    "forgotPassword": "Olvidaste tu contrasena?",
+    "resetPassword": "Restablecer contrasena",
+    "newPassword": "Nueva contrasena",
+    "confirmPassword": "Confirmar contrasena",
+    "currentPassword": "Contrasena actual",
+    "enterCredentials": "Ingresa tus credenciales para continuar",
+    "continueWithGoogle": "Continuar con Google",
+    "or": "o",
+    "noAccount": "Primera vez?",
+    "createFreeAccount": "Crea tu cuenta gratuita",
+    "hasAccount": "Ya tienes cuenta? Inicia sesion",
+    "submitting": "Iniciando sesion...",
+    "platform": "Plataforma de IA Conversacional",
+    "sendCode": "Enviar codigo",
+    "verifyCode": "Verificar codigo",
+    "codeExpires": "El codigo expira en 10 minutos",
+    "resendCode": "Reenviar codigo",
+    "passwordRequirements": {
+      "title": "Requisitos de contrasena",
+      "minLength": "Minimo 8 caracteres",
+      "uppercase": "Al menos 1 mayuscula",
+      "lowercase": "Al menos 1 minuscula",
+      "number": "Al menos 1 numero",
+      "special": "Al menos 1 caracter especial"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Bienvenido",
+    "overview": "Vista general",
+    "recentActivity": "Actividad reciente",
+    "quickActions": "Acciones rapidas"
+  },
+  "contacts": {
+    "title": "Contactos",
+    "search": "Buscar contactos...",
+    "addContact": "Agregar contacto",
+    "import": "Importar",
+    "export": "Exportar",
+    "segment": "Segmento",
+    "conversations": "Conversaciones",
+    "lifetimeValue": "Valor (COP)",
+    "lastInteraction": "Ultima interaccion",
+    "tags": "Tags",
+    "noInteraction": "Sin interaccion",
+    "segments": {
+      "all": "Todos",
+      "new": "Nuevos",
+      "lead": "Leads",
+      "qualified": "Calificados",
+      "customer": "Clientes",
+      "churned": "Perdidos"
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "noConversation": "Selecciona una conversacion",
+    "typeMessage": "Escribe un mensaje...",
+    "send": "Enviar",
+    "assignTo": "Asignar a",
+    "resolve": "Resolver",
+    "status": {
+      "active": "Activo",
+      "waitingHuman": "Esperando agente",
+      "withHuman": "Con agente",
+      "resolved": "Resuelto",
+      "archived": "Archivado"
+    },
+    "sender": {
+      "client": "Cliente",
+      "ai": "IA",
+      "agent": "Agente"
+    }
+  },
+  "settings": {
+    "title": "Configuracion",
+    "save": "Guardar cambios",
+    "saved": "Guardado!",
+    "saving": "Guardando...",
+    "tools": {
+      "customAttributes": "Atributos Personalizados",
+      "macros": "Macros",
+      "prechat": "Formulario Pre-Chat",
+      "emailTemplates": "Plantillas de Correo",
+      "mediaBank": "Banco de Imagenes",
+      "changePassword": "Cambiar Contrasena"
+    },
+    "security": "Las API keys se almacenan encriptadas y se muestran enmascaradas."
+  },
+  "media": {
+    "title": "Banco de Imagenes",
+    "subtitle": "Gestiona el logo, imagenes y organiza con etiquetas",
+    "uploadImage": "Subir Imagen",
+    "dragOrClick": "Arrastra una imagen o haz clic para seleccionar",
+    "maxSize": "JPG, PNG, WebP o GIF — Maximo 5 MB",
+    "gallery": "Galeria",
+    "companyLogo": "Logo de la Empresa",
+    "logoDescription": "Este logo se usara en plantillas de correo y documentos.",
+    "uploadLogo": "Subir Logo",
+    "copyUrl": "Copiar URL",
+    "urlCopied": "URL copiada",
+    "imageUploaded": "Imagen subida correctamente",
+    "imageDeleted": "Eliminada",
+    "tooLarge": "La imagen pesa {size} MB. El maximo es 5 MB.",
+    "onlyImages": "Solo se permiten imagenes",
+    "allTypes": "Todos los tipos",
+    "allTags": "Todas las etiquetas",
+    "label": "Etiqueta",
+    "description": "Descripcion",
+    "types": {
+      "general": "General",
+      "product": "Producto",
+      "course": "Curso"
+    }
+  },
+  "appointments": {
+    "title": "Citas y Agendamiento",
+    "calendar": "Calendario",
+    "list": "Lista",
+    "availability": "Disponibilidad",
+    "newAppointment": "Nueva cita",
+    "service": "Servicio",
+    "date": "Fecha",
+    "time": "Hora",
+    "location": "Lugar",
+    "notes": "Notas",
+    "agent": "Agente",
+    "status": {
+      "pending": "Pendiente",
+      "confirmed": "Confirmada",
+      "cancelled": "Cancelada",
+      "completed": "Completada",
+      "noShow": "No asistio"
+    },
+    "thisWeek": "Esta semana",
+    "blockedDates": "Fechas bloqueadas",
+    "addBlockedDate": "Bloquear fecha"
+  },
+  "compliance": {
+    "title": "Compliance & Audit",
+    "subtitle": "Trazabilidad legal, consentimiento y privacidad",
+    "legalTexts": "Textos Legales",
+    "consents": "Consentimientos",
+    "optOuts": "Opt-Outs",
+    "deletionRequests": "Solicitudes Borrado",
+    "confirmOptOut": "Confirmar baja",
+    "rejectOptOut": "Falso positivo",
+    "detectedMessage": "Mensaje detectado",
+    "reviewedBy": "Revisado por",
+    "stats": {
+      "pending": "Pendientes",
+      "confirmed": "Confirmados",
+      "rejected": "Rechazados"
+    }
+  }
+}

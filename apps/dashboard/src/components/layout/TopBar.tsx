@@ -13,6 +13,8 @@ import {
   Users, Zap, Package,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
+import { useLocale, useTranslations } from "next-intl";
+import { locales, localeNames, type Locale } from "@/i18n/config";
 
 // Notification categories with colors and icons
 const NOTIF_CATEGORIES = {
@@ -85,6 +87,8 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
+
+  const currentLocale = useLocale();
 
   const isSuperAdmin = user?.role === "super_admin";
   const showTenantSelector = isSuperAdmin && tenants.length > 1;
@@ -277,6 +281,21 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           );
         })}
       </div>
+
+      {/* Language switcher */}
+      <select
+        value={currentLocale}
+        onChange={(e) => {
+          document.cookie = `locale=${e.target.value};path=/;max-age=31536000`;
+          window.location.reload();
+        }}
+        className="h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        title="Language"
+      >
+        {locales.map((l) => (
+          <option key={l} value={l}>{localeNames[l]}</option>
+        ))}
+      </select>
 
       {/* Notification bell */}
       <div ref={notifRef} className="relative">

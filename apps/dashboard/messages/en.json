@@ -1,0 +1,236 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "loading": "Loading...",
+    "noResults": "No results",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "active": "Active",
+    "inactive": "Inactive",
+    "pending": "Pending",
+    "error": "Error",
+    "success": "Success",
+    "poweredBy": "Powered by"
+  },
+  "nav": {
+    "sections": {
+      "main": "Main",
+      "operations": "Operations",
+      "analytics": "Analytics",
+      "config": "Settings"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "inbox": "Inbox",
+      "crm": "CRM",
+      "pipeline": "Pipeline",
+      "automation": "Automation",
+      "campaigns": "Campaigns",
+      "appointments": "Appointments",
+      "channels": "Channels",
+      "analytics": "Analytics",
+      "compliance": "Compliance",
+      "aiAgent": "AI Agent",
+      "knowledgeBase": "Knowledge Base",
+      "identity": "Identity",
+      "users": "Users",
+      "settings": "Settings",
+      "tenants": "Tenants"
+    }
+  },
+  "topbar": {
+    "notifications": "Notifications",
+    "clearAll": "Clear all",
+    "markRead": "Mark as read",
+    "noNotifications": "No notifications",
+    "logout": "Log out",
+    "theme": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "tenant": "Tenant",
+    "categories": {
+      "all": "All",
+      "chat": "Messages",
+      "handoff": "Transfers",
+      "compliance": "Compliance",
+      "appointment": "Appointments",
+      "automation": "Automation",
+      "order": "Orders",
+      "system": "System"
+    }
+  },
+  "auth": {
+    "login": "Log in",
+    "signup": "Create account",
+    "logout": "Log out",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot your password?",
+    "resetPassword": "Reset password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "currentPassword": "Current password",
+    "enterCredentials": "Enter your credentials to continue",
+    "continueWithGoogle": "Continue with Google",
+    "or": "or",
+    "noAccount": "First time?",
+    "createFreeAccount": "Create your free account",
+    "hasAccount": "Already have an account? Log in",
+    "submitting": "Logging in...",
+    "platform": "Conversational AI Platform",
+    "sendCode": "Send code",
+    "verifyCode": "Verify code",
+    "codeExpires": "The code expires in 10 minutes",
+    "resendCode": "Resend code",
+    "passwordRequirements": {
+      "title": "Password requirements",
+      "minLength": "Minimum 8 characters",
+      "uppercase": "At least 1 uppercase letter",
+      "lowercase": "At least 1 lowercase letter",
+      "number": "At least 1 number",
+      "special": "At least 1 special character"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "overview": "Overview",
+    "recentActivity": "Recent activity",
+    "quickActions": "Quick actions"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "search": "Search contacts...",
+    "addContact": "Add contact",
+    "import": "Import",
+    "export": "Export",
+    "segment": "Segment",
+    "conversations": "Conversations",
+    "lifetimeValue": "Value (USD)",
+    "lastInteraction": "Last interaction",
+    "tags": "Tags",
+    "noInteraction": "No interaction",
+    "segments": {
+      "all": "All",
+      "new": "New",
+      "lead": "Leads",
+      "qualified": "Qualified",
+      "customer": "Customers",
+      "churned": "Churned"
+    }
+  },
+  "inbox": {
+    "title": "Inbox",
+    "noConversation": "Select a conversation",
+    "typeMessage": "Type a message...",
+    "send": "Send",
+    "assignTo": "Assign to",
+    "resolve": "Resolve",
+    "status": {
+      "active": "Active",
+      "waitingHuman": "Waiting for agent",
+      "withHuman": "With agent",
+      "resolved": "Resolved",
+      "archived": "Archived"
+    },
+    "sender": {
+      "client": "Client",
+      "ai": "AI",
+      "agent": "Agent"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "save": "Save changes",
+    "saved": "Saved!",
+    "saving": "Saving...",
+    "tools": {
+      "customAttributes": "Custom Attributes",
+      "macros": "Macros",
+      "prechat": "Pre-Chat Form",
+      "emailTemplates": "Email Templates",
+      "mediaBank": "Media Bank",
+      "changePassword": "Change Password"
+    },
+    "security": "API keys are stored encrypted and shown masked."
+  },
+  "media": {
+    "title": "Media Bank",
+    "subtitle": "Manage your logo, images and organize with tags",
+    "uploadImage": "Upload Image",
+    "dragOrClick": "Drag an image here or click to select",
+    "maxSize": "JPG, PNG, WebP or GIF — Max 5 MB",
+    "gallery": "Gallery",
+    "companyLogo": "Company Logo",
+    "logoDescription": "This logo will be used in email templates and documents.",
+    "uploadLogo": "Upload Logo",
+    "copyUrl": "Copy URL",
+    "urlCopied": "URL copied",
+    "imageUploaded": "Image uploaded successfully",
+    "imageDeleted": "Deleted",
+    "tooLarge": "The image weighs {size} MB. Maximum is 5 MB.",
+    "onlyImages": "Only images are allowed",
+    "allTypes": "All types",
+    "allTags": "All tags",
+    "label": "Label",
+    "description": "Description",
+    "types": {
+      "general": "General",
+      "product": "Product",
+      "course": "Course"
+    }
+  },
+  "appointments": {
+    "title": "Appointments & Scheduling",
+    "calendar": "Calendar",
+    "list": "List",
+    "availability": "Availability",
+    "newAppointment": "New appointment",
+    "service": "Service",
+    "date": "Date",
+    "time": "Time",
+    "location": "Location",
+    "notes": "Notes",
+    "agent": "Agent",
+    "status": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled",
+      "completed": "Completed",
+      "noShow": "No show"
+    },
+    "thisWeek": "This week",
+    "blockedDates": "Blocked dates",
+    "addBlockedDate": "Block date"
+  },
+  "compliance": {
+    "title": "Compliance & Audit",
+    "subtitle": "Legal traceability, consent and privacy",
+    "legalTexts": "Legal Texts",
+    "consents": "Consents",
+    "optOuts": "Opt-Outs",
+    "deletionRequests": "Deletion Requests",
+    "confirmOptOut": "Confirm opt-out",
+    "rejectOptOut": "False positive",
+    "detectedMessage": "Detected message",
+    "reviewedBy": "Reviewed by",
+    "stats": {
+      "pending": "Pending",
+      "confirmed": "Confirmed",
+      "rejected": "Rejected"
+    }
+  }
+}

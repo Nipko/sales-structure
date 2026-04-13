@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "title": "Parallly — Automate your WhatsApp sales with AI",
+    "description": "Conversational AI platform for sales. Automate WhatsApp, Instagram and Messenger. 24/7 AI agent, built-in CRM, no code."
+  },
+  "nav": {
+    "features": "Features",
+    "howItWorks": "How it works",
+    "pricing": "Pricing",
+    "contact": "Contact",
+    "login": "Log in",
+    "startFree": "Start free"
+  },
+  "hero": {
+    "badge": "Conversational AI for Sales",
+    "title": "Automate your WhatsApp sales with AI",
+    "subtitle": "Your AI agent responds in seconds. Your team closes in minutes. All in one platform.",
+    "cta": "Try 7 days free",
+    "ctaSecondary": "See demo",
+    "noCard": "No credit card required"
+  },
+  "stats": {
+    "conversations": "Automated conversations",
+    "responseTime": "Response time",
+    "satisfaction": "Customer satisfaction",
+    "sales": "Sales increase"
+  },
+  "features": {
+    "title": "Everything you need to sell more",
+    "subtitle": "A complete platform to automate, manage and scale your messaging sales"
+  },
+  "howItWorks": {
+    "title": "How does it work?",
+    "subtitle": "In 3 simple steps you're ready to sell more",
+    "step1": "Connect your channels",
+    "step1Desc": "WhatsApp, Instagram, Messenger. No code, in minutes.",
+    "step2": "Set up your AI agent",
+    "step2Desc": "Upload your catalog, prices and FAQs. Give your virtual assistant a personality.",
+    "step3": "Sell on autopilot",
+    "step3Desc": "Your agent responds 24/7, qualifies leads and transfers to your team when needed."
+  },
+  "pricing": {
+    "title": "Simple pricing, no surprises",
+    "subtitle": "Start free. Scale when you need to.",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "popular": "Most popular",
+    "startFree": "Start free",
+    "contactSales": "Contact sales",
+    "perMonth": "/month",
+    "features": "Includes:"
+  },
+  "cta": {
+    "title": "Ready to automate your sales?",
+    "subtitle": "Join hundreds of companies already using Parallly to sell more.",
+    "button": "Start your free trial"
+  },
+  "footer": {
+    "product": "Product",
+    "company": "Company",
+    "legal": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "dataPolicy": "Data Policy",
+    "about": "About",
+    "blog": "Blog",
+    "careers": "Careers",
+    "copyright": "© {year} Parallly. All rights reserved.",
+    "madeWith": "Made with ❤️ in Colombia"
+  }
+}

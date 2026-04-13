@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "title": "Parallly — Automatisez vos ventes WhatsApp avec l'IA",
+    "description": "Plateforme d'IA conversationnelle pour les ventes. Automatisez WhatsApp, Instagram et Messenger. Agent IA 24/7, CRM intégré, sans code."
+  },
+  "nav": {
+    "features": "Fonctionnalités",
+    "howItWorks": "Comment ça marche",
+    "pricing": "Tarifs",
+    "contact": "Contact",
+    "login": "Connexion",
+    "startFree": "Essai gratuit"
+  },
+  "hero": {
+    "badge": "IA Conversationnelle pour les Ventes",
+    "title": "Automatisez vos ventes WhatsApp avec l'IA",
+    "subtitle": "Votre agent IA répond en secondes. Votre équipe conclut en minutes. Tout sur une seule plateforme.",
+    "cta": "Essai gratuit 7 jours",
+    "ctaSecondary": "Voir la démo",
+    "noCard": "Sans carte de crédit"
+  },
+  "stats": {
+    "conversations": "Conversations automatisées",
+    "responseTime": "Temps de réponse",
+    "satisfaction": "Satisfaction client",
+    "sales": "Augmentation des ventes"
+  },
+  "features": {
+    "title": "Tout ce dont vous avez besoin pour vendre plus",
+    "subtitle": "Une plateforme complète pour automatiser, gérer et développer vos ventes par messagerie"
+  },
+  "howItWorks": {
+    "title": "Comment ça marche ?",
+    "subtitle": "En 3 étapes simples, vous êtes prêt à vendre plus",
+    "step1": "Connectez vos canaux",
+    "step1Desc": "WhatsApp, Instagram, Messenger. Sans code, en quelques minutes.",
+    "step2": "Configurez votre agent IA",
+    "step2Desc": "Téléchargez votre catalogue, vos prix et votre FAQ. Donnez une personnalité à votre assistant virtuel.",
+    "step3": "Vendez en automatique",
+    "step3Desc": "Votre agent répond 24h/24, qualifie les prospects et transfère à votre équipe si nécessaire."
+  },
+  "pricing": {
+    "title": "Tarification simple, sans surprises",
+    "subtitle": "Commencez gratuitement. Évoluez quand vous en avez besoin.",
+    "monthly": "Mensuel",
+    "annual": "Annuel",
+    "popular": "Le plus populaire",
+    "startFree": "Commencer gratuitement",
+    "contactSales": "Contacter les ventes",
+    "perMonth": "/mois",
+    "features": "Inclus :"
+  },
+  "cta": {
+    "title": "Prêt à automatiser vos ventes ?",
+    "subtitle": "Rejoignez des centaines d'entreprises qui utilisent déjà Parallly pour vendre plus.",
+    "button": "Commencez votre essai gratuit"
+  },
+  "footer": {
+    "product": "Produit",
+    "company": "Entreprise",
+    "legal": "Légal",
+    "privacy": "Politique de confidentialité",
+    "terms": "Conditions d'utilisation",
+    "dataPolicy": "Politique des données",
+    "about": "À propos",
+    "blog": "Blog",
+    "careers": "Carrières",
+    "copyright": "© {year} Parallly. Tous droits réservés.",
+    "madeWith": "Fait avec ❤️ en Colombie"
+  }
+}

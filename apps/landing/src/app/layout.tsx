@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import LangProvider from "@/components/LangProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -51,7 +52,11 @@ export default function RootLayout({
       <head>
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body className={`${inter.className} antialiased`}>{children}</body>
+      <body className={`${inter.className} antialiased`}>
+        <LangProvider>
+          {children}
+        </LangProvider>
+      </body>
     </html>
   );
 }

@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "title": "Parallly — Automatiza tus ventas en WhatsApp con IA",
+    "description": "Plataforma de IA conversacional para ventas. Automatiza WhatsApp, Instagram y Messenger. Agente IA 24/7, CRM integrado, sin código."
+  },
+  "nav": {
+    "features": "Funcionalidades",
+    "howItWorks": "Cómo funciona",
+    "pricing": "Precios",
+    "contact": "Contacto",
+    "login": "Iniciar sesión",
+    "startFree": "Empieza gratis"
+  },
+  "hero": {
+    "badge": "IA Conversacional para Ventas",
+    "title": "Automatiza tus ventas en WhatsApp con IA",
+    "subtitle": "Tu agente IA responde en segundos. Tu equipo cierra en minutos. Todo en una sola plataforma.",
+    "cta": "Prueba 7 días gratis",
+    "ctaSecondary": "Ver demo",
+    "noCard": "Sin tarjeta de crédito"
+  },
+  "stats": {
+    "conversations": "Conversaciones automatizadas",
+    "responseTime": "Tiempo de respuesta",
+    "satisfaction": "Satisfacción del cliente",
+    "sales": "Incremento en ventas"
+  },
+  "features": {
+    "title": "Todo lo que necesitas para vender más",
+    "subtitle": "Una plataforma completa para automatizar, gestionar y escalar tus ventas por mensajería"
+  },
+  "howItWorks": {
+    "title": "¿Cómo funciona?",
+    "subtitle": "En 3 simples pasos estás listo para vender más",
+    "step1": "Conecta tus canales",
+    "step1Desc": "WhatsApp, Instagram, Messenger. Sin código, en minutos.",
+    "step2": "Configura tu agente IA",
+    "step2Desc": "Sube tu catálogo, precios y preguntas frecuentes. Dale personalidad a tu asistente virtual.",
+    "step3": "Vende en automático",
+    "step3Desc": "Tu agente responde 24/7, califica leads y transfiere a tu equipo cuando es necesario."
+  },
+  "pricing": {
+    "title": "Precios simples, sin sorpresas",
+    "subtitle": "Empieza gratis. Escala cuando lo necesites.",
+    "monthly": "Mensual",
+    "annual": "Anual",
+    "popular": "Más popular",
+    "startFree": "Empieza gratis",
+    "contactSales": "Contactar ventas",
+    "perMonth": "/mes",
+    "features": "Incluye:"
+  },
+  "cta": {
+    "title": "¿Listo para automatizar tus ventas?",
+    "subtitle": "Únete a cientos de empresas que ya usan Parallly para vender más.",
+    "button": "Empieza tu prueba gratuita"
+  },
+  "footer": {
+    "product": "Producto",
+    "company": "Empresa",
+    "legal": "Legal",
+    "privacy": "Política de privacidad",
+    "terms": "Términos de servicio",
+    "dataPolicy": "Política de datos",
+    "about": "Acerca de",
+    "blog": "Blog",
+    "careers": "Carreras",
+    "copyright": "© {year} Parallly. Todos los derechos reservados.",
+    "madeWith": "Hecho con ❤️ en Colombia"
+  }
+}

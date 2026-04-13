@@ -25,8 +25,8 @@ Customer (WhatsApp/IG/Messenger) → Meta Cloud API → WhatsApp Service (port 3
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. Core business logic, 31 modules
-  dashboard/    — Next.js 16, port 3001. Admin panel (35+ pages), React 19, Tailwind + shadcn/ui
+  api/          — NestJS 10, port 3000. Core business logic, 34 modules
+  dashboard/    — Next.js 16, port 3001. Admin panel (40+ pages), React 19, Tailwind + shadcn/ui
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud)
 packages/
@@ -45,7 +45,9 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Database queries**: `prisma.executeInTenantSchema(schemaName, sql, params)` — ALWAYS use `::uuid` casts
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: Use snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client
-- **Auth**: JWT with 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent
+- **Auth**: JWT with 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent. Google OAuth, email 2FA, password reset supported
+- **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations
+- **Error tracking**: Sentry (@sentry/nestjs + profiling). `instrument.ts` must load before all modules
 - **Guards**: `@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)` on protected endpoints
 - **CRM is built-in**: No external CRM. Handoff → internal agent console via WebSocket
 - **Event-driven**: HandoffService emits events, AgentConsoleGateway listens via @OnEvent
@@ -56,17 +58,19 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
 
-## API modules (31 total)
+## API modules (34 total)
 
 | Category | Modules |
 |----------|---------|
 | **Infrastructure** | prisma, redis, health, throttle, internal |
-| **Auth & Tenants** | auth, tenants, settings |
+| **Auth & Tenants** | auth (JWT + Google OAuth + 2FA + password reset), tenants, settings |
 | **Message Pipeline** | channels, conversations, whatsapp, handoff, agent-console |
 | **AI & Config** | ai (router + 5 providers), persona, knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
-| **Operations** | broadcast, inventory, orders, compliance, email |
+| **Operations** | broadcast, inventory, orders, compliance, email, email-templates |
+| **Media & Files** | media (upload, resize, logo, tags, serve) |
+| **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection) |
 | **Identity** | identity (unified profiles, merge suggestions) |
 | **Other** | carla (legacy, being replaced), intake (landing pages) |
 
@@ -112,11 +116,19 @@ ThrottleModule: @Global — TenantThrottleService available everywhere
 | Shared types | `packages/shared/src/index.ts` |
 | Dashboard API client | `apps/dashboard/src/lib/api.ts` (89+ methods) |
 | Dashboard auth | `apps/dashboard/src/contexts/AuthContext.tsx` |
+| Media management | `media/media.service.ts`, `media/media.controller.ts` |
+| Email templates | `email-templates/email-templates.service.ts` |
+| Appointments | `appointments/appointments.service.ts`, `.controller.ts` |
+| Email layouts | `email/email-layouts.ts` (verification, reset, 2FA, welcome) |
+| Google OAuth | `auth/google-auth.service.ts` |
+| Sentry | `instrument.ts` (loaded before all modules) |
 
-## Dashboard pages (35+)
+## Dashboard pages (40+)
 
 | Section | Pages |
 |---------|-------|
+| **Auth** | Login, Forgot Password (OTP), Setup Password (Google OAuth), Verify Email (6-digit OTP) |
+| **Onboarding** | 4-step company wizard |
 | **Core** | Dashboard, Inbox (WhatsApp-style chat + notifications) |
 | **CRM** | Contacts, Lead Detail, Pipeline (Kanban), Segments |
 | **AI** | Agent Config (6-step wizard + custom prompt mode), AI Settings |
@@ -124,7 +136,8 @@ ThrottleModule: @Global — TenantThrottleService available everywhere
 | **Analytics** | Overview (4 tabs: Overview/Agents/Channels/CSAT), Agent Performance |
 | **Channels** | Overview, WhatsApp Setup, Instagram Setup, Messenger Setup |
 | **Identity** | Merge Suggestions (approve/reject) |
-| **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms |
+| **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password |
+| **Scheduling** | Appointments (calendar, list, availability config) |
 | **Operations** | Broadcast, Inventory, Orders, Compliance, Knowledge Base |
 | **Public** | `/kb/[tenantSlug]` (public help center, light theme, no auth) |
 
@@ -144,6 +157,8 @@ ThrottleModule: @Global — TenantThrottleService available everywhere
 cd apps/api && npx tsc --noEmit        # Type errors
 cd apps/api && npm run test:bootstrap  # NestJS DI errors (CRITICAL — tsc doesn't catch these)
 cd apps/dashboard && npx tsc --noEmit  # Dashboard type errors
+# Check PgBouncer health
+docker exec parallext-pgbouncer pg_isready -h localhost -p 6432
 ```
 
 ## Build & run
@@ -167,14 +182,21 @@ See `.env.example`. Key ones:
 - `META_APP_ID/SECRET/CONFIG_ID/VERIFY_TOKEN` — Facebook app credentials
 - `SYSTEM_USER_ID` — Meta Business System User (for permanent tokens)
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY` — At least one required
+- `SENTRY_DSN` — Sentry error tracking DSN
+- `DIRECT_DATABASE_URL` — Direct PostgreSQL connection (bypasses PgBouncer for migrations)
+- `GOOGLE_OAUTH_CLIENT_ID` — Google Sign-In client ID
+- `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` — Email service
+- `MEDIA_STORAGE_PATH` — /data/media (Docker volume)
 
 ## Production
 
 - Landing: https://parallly-chat.cloud (static, nginx container)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui)
-- API: https://api.parallly-chat.cloud (NestJS, 31 modules)
+- API: https://api.parallly-chat.cloud (NestJS, 34 modules)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - GitHub: https://github.com/Nipko/sales-structure
-- VPS: Hostinger Ubuntu, Docker (8 containers), Cloudflare Tunnel
-- Deploy: Push to main → GitHub Actions → build 5 images → SSH deploy → migrate → restart
+- VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
+- PgBouncer: Transaction pooling mode, 500→25 connections (parallext-pgbouncer container)
+- Sentry: Error tracking + profiling (@sentry/nestjs, instrument.ts loaded first)
+- Deploy: Push to main → GitHub Actions → build 5 images → SSH deploy → migrate (via DIRECT_DATABASE_URL) → restart

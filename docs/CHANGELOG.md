@@ -4,6 +4,36 @@
 
 ---
 
+## v4.0.0 — April 13, 2026
+
+### New Features
+- **Google OAuth**: Sign in with Google, auto-link to existing accounts, complete onboarding flow (setup-password → verify-email → onboarding wizard)
+- **Media Module**: Image upload with sharp resize (webp), company logo, tags system, public serving with CORP headers
+- **Email Templates**: 4 default templates (appointment confirmation, reminder, order confirmation, welcome) with {{variable}} rendering and test send
+- **Appointments**: Full scheduling system — CRUD, weekly availability per agent, blocked dates, conflict detection, AI-ready checkAvailableSlots
+- **Professional Auth Emails**: Redesigned verification, password reset, 2FA, welcome, and password changed emails (respond.io style)
+- **Password Reset**: Public forgot-password flow with 6-digit OTP
+- **Email-based 2FA**: send-2fa + verify-2fa endpoints
+- **Change Password**: Authenticated password change with current password verification
+- **Notification Bell**: 7 categories (messages, handoffs, compliance, appointments, automation, orders, system) with real-time WebSocket events
+- **Compliance Review Workflow**: Opt-outs now pending admin review (confirm/reject) instead of auto-blocking. Word-boundary regex prevents false positives
+
+### Infrastructure
+- **PgBouncer**: Connection pooler in transaction mode (500 client → 25 PG connections)
+- **Sentry**: Error tracking + performance monitoring (@sentry/nestjs)
+- **Docker**: 10 containers (added pgbouncer), media_data volume for file storage
+- **Prisma directUrl**: Migrations bypass PgBouncer via DIRECT_DATABASE_URL
+
+### Fixes
+- Inbox timestamps: fixed field mapping (message.timestamp vs message.created_at)
+- Contact "last interaction": now shows actual last inbound message date, not leads.updated_at
+- Opt-out false positives: "trabajan" no longer matches keyword "baja" (word-boundary regex)
+- Media CORP header: Cross-Origin-Resource-Policy for cross-subdomain image loading
+- Deploy ALTER TABLE: split into separate -c flags to prevent cascade failure
+- Agent analytics: m.sender → m.direction column fix
+
+---
+
 ## [3.1.0] — 2026-03-30
 
 ### Pipeline de mensajes

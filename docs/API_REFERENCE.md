@@ -113,6 +113,67 @@
 
 ---
 
+## Auth (new endpoints)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /auth/google | Public | Login/register with Google OAuth |
+| POST | /auth/setup-password | JWT | Set password for Google users |
+| POST | /auth/send-verification | JWT | Send email verification OTP |
+| POST | /auth/verify-email | JWT | Verify OTP code |
+| POST | /auth/complete-onboarding | JWT | Create company + tenant |
+| POST | /auth/forgot-password | Public | Request password reset code |
+| POST | /auth/reset-password | Public | Reset password with code |
+| POST | /auth/change-password | JWT | Change password (current required) |
+| POST | /auth/send-2fa | JWT | Send 2FA code via email |
+| POST | /auth/verify-2fa | JWT | Verify 2FA and get tokens |
+
+## Media
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /media/upload/:tenantId | JWT | Upload image (multipart) |
+| POST | /media/logo/:tenantId | JWT | Upload company logo |
+| GET | /media/list/:tenantId | JWT | List media files |
+| GET | /media/tags/:tenantId | JWT | Get all unique tags |
+| PUT | /media/update/:tenantId/:fileId | JWT | Update label/description/tags |
+| DELETE | /media/delete/:tenantId/:fileId | JWT | Delete media file |
+| GET | /media/file/:tenantId/:fileName | Public | Serve image (webp) |
+| GET | /media/health | Public | Storage diagnostic |
+
+## Email Templates
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /email-templates/:tenantId | JWT | List templates |
+| GET | /email-templates/:tenantId/:id | JWT | Get template by ID |
+| POST | /email-templates/:tenantId | JWT | Create template |
+| PUT | /email-templates/:tenantId/:id | JWT | Update template |
+| DELETE | /email-templates/:tenantId/:id | JWT | Delete template |
+| POST | /email-templates/:tenantId/:id/test | JWT | Send test email |
+
+## Appointments
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /appointments/:tenantId | JWT | List appointments |
+| POST | /appointments/:tenantId | JWT | Create appointment |
+| PUT | /appointments/:tenantId/:id | JWT | Update appointment |
+| PUT | /appointments/:tenantId/:id/cancel | JWT | Cancel appointment |
+| GET | /appointments/:tenantId/:id | JWT | Get appointment by ID |
+| GET | /appointments/:tenantId/availability | JWT | Get availability slots |
+| POST | /appointments/:tenantId/availability | JWT | Save availability |
+| GET | /appointments/:tenantId/blocked-dates | JWT | Get blocked dates |
+| POST | /appointments/:tenantId/blocked-dates | JWT | Block a date |
+| DELETE | /appointments/:tenantId/blocked-dates/:id | JWT | Unblock date |
+| GET | /appointments/:tenantId/check-slots | JWT | Check available slots |
+
+## Compliance (updated)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /compliance/opt-outs/:tenantId | JWT | List opt-outs (filter by status) |
+| GET | /compliance/opt-outs/:tenantId/stats | JWT | Opt-out statistics |
+| PUT | /compliance/opt-outs/:tenantId/:id/confirm | JWT | Confirm opt-out |
+| PUT | /compliance/opt-outs/:tenantId/:id/reject | JWT | Reject (false positive) |
+
+---
+
 ## Colas BullMQ
 
 | Cola | Descripción | Reintentos | Rate limit |

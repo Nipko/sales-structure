@@ -375,3 +375,37 @@ curl -X POST https://api.parallly-chat.cloud/auth/register \
 6. **HTTPS**: Todo el tráfico es encriptado via Cloudflare
 7. **Variables de entorno**: Nunca commitear `.env` al repositorio
 8. **Tenant isolation**: Verificar siempre que el `tenantId` del JWT coincida con los datos solicitados
+
+---
+
+## Google OAuth
+- ID token verification via google-auth-library (OAuth2Client)
+- Client ID: env GOOGLE_OAUTH_CLIENT_ID (fallback hardcoded)
+- Creates user with authProvider='google', no password, emailVerified=true
+- Links to existing email accounts if same email
+
+## Email-based 2FA
+- 6-digit OTP code, 5-minute expiry
+- Sent via SMTP (nodemailer)
+- Stored in users.email_verify_code (same field as email verification)
+
+## Password Reset
+- POST /auth/forgot-password: always returns success (prevents email enumeration)
+- 6-digit code, 10-minute expiry
+- POST /auth/reset-password: validates code + password strength
+
+## Opt-Out Compliance
+- Word-boundary regex detection (prevents false positives like "trabajan" ≠ "baja")
+- Pending review workflow: admin confirms or rejects
+- Messages continue to AI pipeline (not dropped)
+
+## PgBouncer
+- Transaction mode: SET LOCAL search_path scoped to transaction
+- 500 max client connections → 25 real PostgreSQL connections
+- Prisma directUrl for migrations (DDL bypasses PgBouncer)
+
+## Sentry
+- instrument.ts loaded before all modules
+- SentryGlobalFilter catches unhandled exceptions
+- 20% transaction sampling, 10% profiling
+- Ignores: ECONNRESET, EPIPE, socket hang up

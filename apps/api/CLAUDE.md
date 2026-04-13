@@ -1,7 +1,7 @@
 # API Service — Claude Code Context
 
 ## Overview
-NestJS 10 backend with 31 modules. Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 34 modules. Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 
@@ -54,6 +54,11 @@ NestJS 10 backend with 31 modules. Port 3000. Global prefix: `/api/v1`.
 - `email/` — Email service via nodemailer
 - `intake/` — Landing page forms
 
+**Media & Templates**:
+- `media/` — Image upload (multer+sharp→webp), resize, serve, tags, company logo
+- `email-templates/` — CRUD email templates, {{variable}} rendering, test send, auto-seed defaults
+- `appointments/` — CRUD appointments, availability slots, blocked dates, conflict detection
+
 ## Raw SQL conventions
 ```typescript
 // ALWAYS use ::uuid casts for UUID columns
@@ -77,3 +82,26 @@ await this.prisma.executeInTenantSchema(schemaName,
 6. If it needs to communicate with another module without circular deps, use `EventEmitter2`
 7. If it has background jobs, register a BullMQ queue and processor
 8. If it has public endpoints (no auth), skip the guards on those specific routes
+
+## New modules (April 2026)
+
+### Media Module
+- `media/media.service.ts` — Upload (multer+sharp→webp), resize, serve, tags, company logo
+- `media/media.controller.ts` — POST upload, POST logo, GET list, GET serve (public), PUT update meta, DELETE
+- Storage: Docker volume /data/media/{tenantId}/{uuid}.webp
+- Serve endpoint excluded from auth: GET /media/file/:tenantId/:fileName (with CORP header)
+
+### Email Templates Module  
+- `email-templates/email-templates.service.ts` — CRUD, 4 default templates, {{variable}} rendering, test send
+- Templates: appointment_confirmation, appointment_reminder, order_confirmation, welcome
+- Auto-seeds defaults on first access per tenant
+
+### Appointments Module
+- `appointments/appointments.service.ts` — CRUD, availability slots, blocked dates, conflict detection
+- `appointments/appointments.controller.ts` — Static routes (availability, blocked-dates, check-slots) BEFORE dynamic :appointmentId routes
+- AI-ready: checkAvailableSlots for agent tool calls
+
+## Infrastructure (April 2026)
+- PgBouncer: transaction mode pooler between services and PostgreSQL
+- Sentry: @sentry/nestjs with instrument.ts loaded before all modules
+- Email layouts: email/email-layouts.ts (professional templates for auth flows)

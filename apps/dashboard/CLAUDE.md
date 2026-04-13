@@ -12,6 +12,10 @@ src/
     login/page.tsx      — Login form
     signup/page.tsx      — Tenant self-signup
     kb/[tenantSlug]/    — Public KB portal (light theme, no auth)
+    forgot-password/page.tsx — Password reset (OTP + new password)
+    setup-password/page.tsx  — Google OAuth password setup
+    verify-email/page.tsx    — 6-digit OTP verification  
+    onboarding/page.tsx      — 4-step company wizard
     admin/
       layout.tsx        — Authenticated layout with Sidebar
       page.tsx          — Dashboard overview
@@ -42,10 +46,15 @@ src/
       settings/custom-attributes/ — Dynamic field definitions
       settings/macros/  — Saved action sequences
       settings/prechat/ — Pre-chat form builder
+      settings/media/               — Image bank, logo upload, tags, gallery
+      settings/email-templates/     — Template editor with preview
+      settings/change-password/     — Change password form
+      appointments/          — Calendar, list, availability config
       users/            — User management
       tenants/          — Tenant management (super_admin only)
-      ... (35+ pages total)
+      ... (40+ pages total)
   components/
+    layout/TopBar.tsx       — Breadcrumbs, theme toggle, notification bell (7 categories), tenant selector, user menu
     Sidebar.tsx         — Navigation (role-based, 16 items)
     Providers.tsx       — Client providers wrapper
   contexts/
@@ -68,6 +77,8 @@ src/
 - Icons: lucide-react throughout
 - Forms: useState objects + onChange handlers + toast notifications
 - Modals: fixed overlay, backdrop blur, click-outside dismiss
+- Notification bell in TopBar: WebSocket-driven, 7 categories (chat, handoff, compliance, appointments, automation, orders, system)
+- Media URLs: API_URL.replace('/api/v1', '') + file.url (CORP header for cross-origin)
 
 ## CSS Variables
 ```
@@ -84,3 +95,4 @@ src/
 - `NEXT_PUBLIC_WA_SERVICE_URL` — WhatsApp service URL
 - `NEXT_PUBLIC_META_APP_ID` — For Embedded Signup widget
 - `NEXT_PUBLIC_META_CONFIG_ID` — For Embedded Signup config
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — Google Sign-In (fallback hardcoded)

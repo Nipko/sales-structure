@@ -1,0 +1,373 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "search": "Rechercher",
+    "loading": "Chargement...",
+    "noResults": "Aucun résultat",
+    "confirm": "Confirmer",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "close": "Fermer",
+    "yes": "Oui",
+    "no": "Non",
+    "all": "Tous",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "pending": "En attente",
+    "error": "Erreur",
+    "success": "Succès",
+    "poweredBy": "Powered by"
+  },
+  "nav": {
+    "sections": {
+      "main": "Principal",
+      "operations": "Opérations",
+      "analytics": "Analyses",
+      "config": "Configuration"
+    },
+    "items": {
+      "dashboard": "Tableau de bord",
+      "inbox": "Boîte de réception",
+      "crm": "CRM",
+      "pipeline": "Pipeline",
+      "automation": "Automatisation",
+      "campaigns": "Campagnes",
+      "appointments": "Rendez-vous",
+      "channels": "Canaux",
+      "analytics": "Analyses",
+      "compliance": "Conformité",
+      "aiAgent": "Agent IA",
+      "knowledgeBase": "Base de connaissances",
+      "identity": "Identité",
+      "users": "Utilisateurs",
+      "settings": "Paramètres",
+      "tenants": "Tenants"
+    }
+  },
+  "topbar": {
+    "notifications": "Notifications",
+    "clearAll": "Tout effacer",
+    "markRead": "Marquer comme lues",
+    "noNotifications": "Aucune notification",
+    "logout": "Déconnexion",
+    "theme": {
+      "light": "Clair",
+      "dark": "Sombre",
+      "system": "Système"
+    },
+    "tenant": "Tenant",
+    "categories": {
+      "all": "Toutes",
+      "chat": "Messages",
+      "handoff": "Transferts",
+      "compliance": "Conformité",
+      "appointment": "Rendez-vous",
+      "automation": "Automatisation",
+      "order": "Commandes",
+      "system": "Système"
+    }
+  },
+  "auth": {
+    "login": "Se connecter",
+    "signup": "Créer un compte",
+    "logout": "Déconnexion",
+    "email": "Email",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "newPassword": "Nouveau mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "currentPassword": "Mot de passe actuel",
+    "enterCredentials": "Entrez vos identifiants pour continuer",
+    "continueWithGoogle": "Continuer avec Google",
+    "or": "ou",
+    "noAccount": "Première fois ?",
+    "createFreeAccount": "Créez votre compte gratuit",
+    "hasAccount": "Déjà un compte ? Connectez-vous",
+    "submitting": "Connexion en cours...",
+    "platform": "Plateforme d'IA Conversationnelle",
+    "sendCode": "Envoyer le code",
+    "verifyCode": "Vérifier le code",
+    "codeExpires": "Le code expire dans 10 minutes",
+    "resendCode": "Renvoyer le code",
+    "passwordRequirements": {
+      "title": "Exigences du mot de passe",
+      "minLength": "Minimum 8 caractères",
+      "uppercase": "Au moins 1 majuscule",
+      "lowercase": "Au moins 1 minuscule",
+      "number": "Au moins 1 chiffre",
+      "special": "Au moins 1 caractère spécial"
+    }
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "welcome": "Bienvenue",
+    "overview": "Vue d'ensemble",
+    "recentActivity": "Activité récente",
+    "quickActions": "Actions rapides"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "search": "Rechercher des contacts...",
+    "addContact": "Ajouter un contact",
+    "import": "Importer",
+    "export": "Exporter",
+    "segment": "Segment",
+    "conversations": "Conversations",
+    "lifetimeValue": "Valeur (EUR)",
+    "lastInteraction": "Dernière interaction",
+    "tags": "Tags",
+    "noInteraction": "Aucune interaction",
+    "segments": {
+      "all": "Tous",
+      "new": "Nouveaux",
+      "lead": "Prospects",
+      "qualified": "Qualifiés",
+      "customer": "Clients",
+      "churned": "Perdus"
+    }
+  },
+  "inbox": {
+    "title": "Boîte de réception",
+    "noConversation": "Sélectionnez une conversation",
+    "typeMessage": "Écrivez un message...",
+    "send": "Envoyer",
+    "assignTo": "Assigner à",
+    "resolve": "Résoudre",
+    "status": {
+      "active": "Actif",
+      "waitingHuman": "En attente d'agent",
+      "withHuman": "Avec agent",
+      "resolved": "Résolu",
+      "archived": "Archivé"
+    },
+    "sender": {
+      "client": "Client",
+      "ai": "IA",
+      "agent": "Agent"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "save": "Enregistrer les modifications",
+    "saved": "Enregistré !",
+    "saving": "Enregistrement...",
+    "tools": {
+      "customAttributes": "Attributs personnalisés",
+      "macros": "Macros",
+      "prechat": "Formulaire pré-chat",
+      "emailTemplates": "Modèles d'email",
+      "mediaBank": "Banque d'images",
+      "changePassword": "Changer le mot de passe"
+    },
+    "security": "Les clés API sont stockées chiffrées et affichées masquées."
+  },
+  "media": {
+    "title": "Banque d'images",
+    "subtitle": "Gérez votre logo, images et organisez avec des tags",
+    "uploadImage": "Télécharger une image",
+    "dragOrClick": "Glissez une image ou cliquez pour sélectionner",
+    "maxSize": "JPG, PNG, WebP ou GIF — Maximum 5 Mo",
+    "gallery": "Galerie",
+    "companyLogo": "Logo de l'entreprise",
+    "logoDescription": "Ce logo sera utilisé dans les modèles d'email et les documents.",
+    "uploadLogo": "Télécharger le logo",
+    "copyUrl": "Copier l'URL",
+    "urlCopied": "URL copiée",
+    "imageUploaded": "Image téléchargée avec succès",
+    "imageDeleted": "Supprimée",
+    "tooLarge": "L'image pèse {size} Mo. Le maximum est 5 Mo.",
+    "onlyImages": "Seules les images sont autorisées",
+    "allTypes": "Tous les types",
+    "allTags": "Tous les tags",
+    "label": "Libellé",
+    "description": "Description",
+    "types": {
+      "general": "Général",
+      "product": "Produit",
+      "course": "Cours"
+    }
+  },
+  "appointments": {
+    "title": "Rendez-vous et planification",
+    "calendar": "Calendrier",
+    "list": "Liste",
+    "availability": "Disponibilité",
+    "newAppointment": "Nouveau rendez-vous",
+    "service": "Service",
+    "date": "Date",
+    "time": "Heure",
+    "location": "Lieu",
+    "notes": "Notes",
+    "agent": "Agent",
+    "status": {
+      "pending": "En attente",
+      "confirmed": "Confirmé",
+      "cancelled": "Annulé",
+      "completed": "Terminé",
+      "noShow": "Absent"
+    },
+    "thisWeek": "Cette semaine",
+    "blockedDates": "Dates bloquées",
+    "addBlockedDate": "Bloquer une date"
+  },
+  "compliance": {
+    "title": "Conformité et audit",
+    "subtitle": "Traçabilité légale, consentement et confidentialité",
+    "legalTexts": "Textes juridiques",
+    "consents": "Consentements",
+    "optOuts": "Désinscriptions",
+    "deletionRequests": "Demandes de suppression",
+    "confirmOptOut": "Confirmer la désinscription",
+    "rejectOptOut": "Faux positif",
+    "detectedMessage": "Message détecté",
+    "reviewedBy": "Examiné par",
+    "stats": {
+      "pending": "En attente",
+      "confirmed": "Confirmés",
+      "rejected": "Rejetés"
+    }
+  },
+  "pipeline": {
+    "title": "Pipeline",
+    "stages": "Étapes",
+    "deals": "Affaires",
+    "newDeal": "Nouvelle affaire",
+    "value": "Valeur",
+    "stage": "Étape",
+    "dragToMove": "Glissez pour déplacer"
+  },
+  "automation": {
+    "title": "Automatisation",
+    "rules": "Règles",
+    "newRule": "Nouvelle règle",
+    "trigger": "Déclencheur",
+    "conditions": "Conditions",
+    "actions": "Actions",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "broadcast": {
+    "title": "Campagnes",
+    "newCampaign": "Nouvelle campagne",
+    "template": "Modèle",
+    "recipients": "Destinataires",
+    "scheduled": "Programmée",
+    "sent": "Envoyée",
+    "draft": "Brouillon"
+  },
+  "channels": {
+    "title": "Canaux",
+    "connected": "Connecté",
+    "disconnected": "Déconnecté",
+    "connect": "Connecter",
+    "configure": "Configurer",
+    "whatsapp": "WhatsApp",
+    "instagram": "Instagram",
+    "messenger": "Messenger"
+  },
+  "agent": {
+    "title": "Agent IA",
+    "persona": "Personnalité",
+    "behavior": "Comportement",
+    "llm": "Modèle LLM",
+    "hours": "Horaires",
+    "preview": "Aperçu",
+    "saveConfig": "Enregistrer la configuration"
+  },
+  "knowledge": {
+    "title": "Base de connaissances",
+    "documents": "Documents",
+    "upload": "Télécharger un document",
+    "processing": "En traitement",
+    "ready": "Prêt",
+    "chunks": "Fragments"
+  },
+  "identity": {
+    "title": "Identité",
+    "mergeSuggestions": "Suggestions de fusion",
+    "approve": "Approuver",
+    "reject": "Rejeter",
+    "confidence": "Confiance",
+    "matchType": "Type de correspondance"
+  },
+  "users": {
+    "title": "Utilisateurs",
+    "newUser": "Nouvel utilisateur",
+    "role": "Rôle",
+    "status": "Statut",
+    "lastLogin": "Dernière connexion",
+    "resetPassword": "Réinitialiser le mot de passe"
+  },
+  "orders": {
+    "title": "Commandes",
+    "newOrder": "Nouvelle commande",
+    "total": "Total",
+    "status": "Statut",
+    "paymentMethod": "Mode de paiement",
+    "items": "Articles",
+    "invoice": "Facture"
+  },
+  "inventory": {
+    "title": "Inventaire",
+    "products": "Produits",
+    "newProduct": "Nouveau produit",
+    "stock": "Stock",
+    "price": "Prix",
+    "category": "Catégorie",
+    "available": "Disponible"
+  },
+  "tenants": {
+    "title": "Tenants",
+    "newTenant": "Nouveau tenant",
+    "plan": "Plan",
+    "schema": "Schéma",
+    "industry": "Industrie",
+    "activeUsers": "Utilisateurs actifs"
+  },
+  "onboarding": {
+    "title": "Configurez votre entreprise",
+    "step1": "Informations de l'entreprise",
+    "step2": "Types de clients",
+    "step3": "Objectifs",
+    "step4": "Comment nous avez-vous connu",
+    "companyName": "Nom de l'entreprise",
+    "website": "Site web",
+    "industry": "Industrie",
+    "companySize": "Taille de l'entreprise",
+    "finish": "Terminer"
+  },
+  "analytics": {
+    "title": "Analyses",
+    "overview": "Vue d'ensemble",
+    "agents": "Agents",
+    "channels": "Canaux",
+    "csat": "CSAT",
+    "performance": "Performance",
+    "responseTime": "Temps de réponse",
+    "totalConversations": "Total des conversations"
+  },
+  "emailTemplates": {
+    "title": "Modèles d'email",
+    "newTemplate": "Créer un modèle",
+    "subject": "Objet",
+    "body": "Corps",
+    "variables": "Variables",
+    "preview": "Aperçu",
+    "testSend": "Envoyer un test",
+    "active": "Actif"
+  },
+  "changePassword": {
+    "title": "Changer le mot de passe",
+    "current": "Mot de passe actuel",
+    "new": "Nouveau mot de passe",
+    "confirm": "Confirmer le mot de passe",
+    "changed": "Mot de passe changé avec succès",
+    "googleNote": "Votre compte utilise Google Sign-In. Vous pouvez définir un mot de passe supplémentaire."
+  }
+}

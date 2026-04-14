@@ -197,6 +197,7 @@ jobs:
           PROD_DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PROD_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           PROD_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          PROD_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           PROD_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           PROD_SMTP_HOST: ${{ secrets.SMTP_HOST }}
           PROD_SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -215,7 +216,7 @@ jobs:
             PROD_META_APP_ID,PROD_META_APP_SECRET,PROD_META_VERIFY_TOKEN,PROD_META_CONFIG_ID,PROD_SYSTEM_USER_ID,
             PROD_INTERNAL_API_KEY,
             PROD_OPENAI_API_KEY,PROD_ANTHROPIC_API_KEY,PROD_GOOGLE_AI_KEY,PROD_XAI_API_KEY,PROD_DEEPSEEK_API_KEY,
-            PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,
+            PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,
             PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS
           script_stop: true
@@ -291,6 +292,8 @@ jobs:
             echo "NEXT_PUBLIC_META_APP_ID=${PROD_META_APP_ID}" >> .env
             echo "NEXT_PUBLIC_META_CONFIG_ID=${PROD_META_CONFIG_ID}" >> .env
             echo "GOOGLE_OAUTH_CLIENT_ID=${PROD_GOOGLE_OAUTH_CLIENT_ID}" >> .env
+            echo "GOOGLE_OAUTH_CLIENT_SECRET=${PROD_GOOGLE_OAUTH_CLIENT_SECRET}" >> .env
+            echo "GOOGLE_CALENDAR_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/calendar/google/callback" >> .env
             echo "SENTRY_DSN=${PROD_SENTRY_DSN}" >> .env
             echo "# SMTP" >> .env
             echo "SMTP_HOST=${PROD_SMTP_HOST}" >> .env

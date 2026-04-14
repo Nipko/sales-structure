@@ -38,38 +38,35 @@ export class ServicesService {
         return this.mapRow(rows[0]);
     }
 
-    async create(schemaName: string, data: {
-        name: string; description?: string; durationMinutes: number;
-        bufferMinutes?: number; price?: number; currency?: string;
-        color?: string;
-    }): Promise<BookableService> {
+    async create(schemaName: string, data: any): Promise<BookableService> {
         const id = randomUUID();
+        const duration = data.durationMinutes || data.duration || 30;
+        const buffer = data.bufferMinutes || data.buffer || 0;
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, created_at, updated_at)
              VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-            [id, data.name, data.description || null, data.durationMinutes,
-             data.bufferMinutes || 0, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7'],
+            [id, data.name, data.description || null, duration,
+             buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7'],
         );
         return this.getById(schemaName, id);
     }
 
-    async update(schemaName: string, serviceId: string, data: Partial<{
-        name: string; description: string; durationMinutes: number;
-        bufferMinutes: number; price: number; currency: string;
-        color: string; isActive: boolean; sortOrder: number;
-    }>): Promise<BookableService> {
+    async update(schemaName: string, serviceId: string, data: any): Promise<BookableService> {
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
 
         if (data.name !== undefined) { sets.push(`name = $${idx++}`); params.push(data.name); }
         if (data.description !== undefined) { sets.push(`description = $${idx++}`); params.push(data.description); }
-        if (data.durationMinutes !== undefined) { sets.push(`duration_minutes = $${idx++}`); params.push(data.durationMinutes); }
-        if (data.bufferMinutes !== undefined) { sets.push(`buffer_minutes = $${idx++}`); params.push(data.bufferMinutes); }
+        const dur = data.durationMinutes ?? data.duration;
+        if (dur !== undefined) { sets.push(`duration_minutes = $${idx++}`); params.push(dur); }
+        const buf = data.bufferMinutes ?? data.buffer;
+        if (buf !== undefined) { sets.push(`buffer_minutes = $${idx++}`); params.push(buf); }
         if (data.price !== undefined) { sets.push(`price = $${idx++}`); params.push(data.price); }
         if (data.currency !== undefined) { sets.push(`currency = $${idx++}`); params.push(data.currency); }
         if (data.color !== undefined) { sets.push(`color = $${idx++}`); params.push(data.color); }
-        if (data.isActive !== undefined) { sets.push(`is_active = $${idx++}`); params.push(data.isActive); }
+        const active = data.isActive ?? data.active;
+        if (active !== undefined) { sets.push(`is_active = $${idx++}`); params.push(active); }
         if (data.sortOrder !== undefined) { sets.push(`sort_order = $${idx++}`); params.push(data.sortOrder); }
         sets.push(`updated_at = NOW()`);
 

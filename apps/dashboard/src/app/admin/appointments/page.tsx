@@ -800,6 +800,31 @@ export default function AppointmentsPage() {
         </div>
 
         {/* ============================================================ */}
+        {/*  CALENDAR SYNC BANNER (shows when no calendar connected)     */}
+        {/* ============================================================ */}
+        {calendarIntegrations.length === 0 && (
+          <div className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-500/10 dark:to-indigo-500/10 border border-blue-200 dark:border-blue-500/20">
+            <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
+              <Link2 size={22} className="text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Sincroniza tu calendario</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Conecta Google Calendar u Outlook para evitar conflictos de horario</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => handleConnectCalendar("google")} disabled={connectingCalendar}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 cursor-pointer hover:shadow-md transition-shadow disabled:opacity-50">
+                <GoogleIcon size={16} /> Google
+              </button>
+              <button onClick={() => handleConnectCalendar("microsoft")} disabled={connectingCalendar}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 cursor-pointer hover:shadow-md transition-shadow disabled:opacity-50">
+                <MicrosoftIcon size={16} /> Outlook
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
         {/*  TAB BAR (pill style)                                         */}
         {/* ============================================================ */}
         <div className="flex gap-1 p-1.5 bg-gray-100 dark:bg-gray-800/60 rounded-xl w-fit">
@@ -1886,8 +1911,8 @@ export default function AppointmentsPage() {
                 <input
                   type="number"
                   min={5}
-                  value={serviceForm.duration}
-                  onChange={(e) => setServiceForm({ ...serviceForm, duration: Number(e.target.value) })}
+                  value={serviceForm.duration || ""}
+                  onChange={(e) => setServiceForm({ ...serviceForm, duration: e.target.value === "" ? 0 : Number(e.target.value) })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   placeholder="Duracion personalizada en minutos"
                 />
@@ -1902,8 +1927,8 @@ export default function AppointmentsPage() {
                   <input
                     type="number"
                     min={0}
-                    value={serviceForm.buffer}
-                    onChange={(e) => setServiceForm({ ...serviceForm, buffer: Number(e.target.value) })}
+                    value={serviceForm.buffer || ""}
+                    onChange={(e) => setServiceForm({ ...serviceForm, buffer: e.target.value === "" ? 0 : Number(e.target.value) })}
                     className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
@@ -1914,8 +1939,9 @@ export default function AppointmentsPage() {
                   <input
                     type="number"
                     min={0}
-                    value={serviceForm.price}
-                    onChange={(e) => setServiceForm({ ...serviceForm, price: Number(e.target.value) })}
+                    value={serviceForm.price || ""}
+                    onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value === "" ? 0 : Number(e.target.value) })}
+                    placeholder="0"
                     className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>

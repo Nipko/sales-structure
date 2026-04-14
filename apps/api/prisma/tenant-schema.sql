@@ -1131,17 +1131,12 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_integrations" (
 CREATE INDEX IF NOT EXISTS "ci_user_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
 
 -- ---- Appointments ----
-ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "service_id" UUID;
-ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "google_event_id" VARCHAR(255);
-ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "outlook_event_id" VARCHAR(255);
-ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_email" VARCHAR(255);
-ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_phone" VARCHAR(50);
-ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_name" VARCHAR(255);
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
     "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
     "assigned_to" UUID,
+    "service_id" UUID,
     "service_name" VARCHAR(500),
     "start_at" TIMESTAMP NOT NULL,
     "end_at" TIMESTAMP NOT NULL,
@@ -1149,6 +1144,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (
     "location" VARCHAR(500),
     "notes" TEXT,
     "reminder_sent" BOOLEAN DEFAULT false,
+    "google_event_id" VARCHAR(255),
+    "outlook_event_id" VARCHAR(255),
+    "customer_name" VARCHAR(255),
+    "customer_email" VARCHAR(255),
+    "customer_phone" VARCHAR(50),
     "metadata" JSONB DEFAULT '{}',
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
@@ -1157,6 +1157,13 @@ CREATE INDEX IF NOT EXISTS "appt_contact_idx" ON "{{SCHEMA_NAME}}"."appointments
 CREATE INDEX IF NOT EXISTS "appt_assigned_idx" ON "{{SCHEMA_NAME}}"."appointments" ("assigned_to");
 CREATE INDEX IF NOT EXISTS "appt_start_idx" ON "{{SCHEMA_NAME}}"."appointments" ("start_at");
 CREATE INDEX IF NOT EXISTS "appt_status_idx" ON "{{SCHEMA_NAME}}"."appointments" ("status");
+-- Add columns for existing tenants (safe for new tenants too — columns already exist from CREATE TABLE)
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "service_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "google_event_id" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "outlook_event_id" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_email" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_phone" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_name" VARCHAR(255);
 
 -- ---- Availability Slots (weekly schedule per agent) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."availability_slots" (

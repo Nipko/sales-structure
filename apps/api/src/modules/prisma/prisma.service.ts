@@ -32,7 +32,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         return this.$transaction(async (tx: any) => {
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}"`);
             return tx.$queryRawUnsafe(query, ...params) as Promise<T>;
-        });
+        }, { timeout: 15000 });
     }
 
     /**

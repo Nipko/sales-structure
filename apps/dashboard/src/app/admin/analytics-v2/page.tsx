@@ -8,7 +8,7 @@ import {
     MessageSquare, MessagesSquare, Bot, Clock, Star, DollarSign,
     Shield, Brain, ArrowUpDown, Download, Loader2,
     Activity, Users, Zap, Radio, Send, CheckCircle, XCircle,
-    Eye, MailX,
+    Eye, MailX, AlertTriangle,
 } from "lucide-react";
 import {
     BarChart, Bar, AreaChart, Area, LineChart, Line, PieChart, Pie, Cell,
@@ -41,7 +41,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 const MODEL_COLORS = ["#6c5ce7", "#00cec9", "#fdcb6e", "#e17055", "#0984e3", "#d63031", "#00b894"];
 
-const TABS = ["overview", "aiBotTab", "automationTab", "broadcastTab", "channelsTab", "csatTab"] as const;
+const TABS = ["overview", "aiBotTab", "automationTab", "broadcastTab", "channelsTab", "csatTab", "anomaliesTab", "cohortsTab"] as const;
 
 // ── Main Page ──
 
@@ -64,6 +64,8 @@ export default function AnalyticsV2Page() {
     const [realtime, setRealtime] = useState<any>(null);
     const [automation, setAutomation] = useState<any>(null);
     const [broadcast, setBroadcast] = useState<any>(null);
+    const [anomalies, setAnomalies] = useState<any>(null);
+    const [cohorts, setCohorts] = useState<any>(null);
 
     const fetchData = useCallback(async () => {
         if (!tenantId) return;
@@ -86,6 +88,14 @@ export default function AnalyticsV2Page() {
             if (hmRes.success) setHeatmap(hmRes.data.data || []);
             if (autoRes.success) setAutomation(autoRes.data);
             if (bcRes.success) setBroadcast(bcRes.data);
+
+            // Phase 3 data
+            const [anomRes, cohortRes] = await Promise.all([
+                api.getDashboardAnomalies(tenantId),
+                api.getDashboardCohorts(tenantId),
+            ]);
+            if (anomRes.success) setAnomalies(anomRes.data);
+            if (cohortRes.success) setCohorts(cohortRes.data);
         } catch (err) {
             console.error("Failed to fetch analytics:", err);
         }
@@ -183,6 +193,8 @@ export default function AnalyticsV2Page() {
                     {activeTab === "broadcastTab" && <BroadcastTab data={broadcast} />}
                     {activeTab === "channelsTab" && <ChannelsTab volume={volume} />}
                     {activeTab === "csatTab" && <CSATTab kpis={kpis} />}
+                    {activeTab === "anomaliesTab" && <AnomaliesTab data={anomalies} />}
+                    {activeTab === "cohortsTab" && <CohortsTab data={cohorts} />}
                 </>
             )}
         </div>
@@ -611,6 +623,128 @@ function BroadcastTab({ data }: { data: any }) {
                                     <td className="py-2.5 px-3 text-right text-red-400">{c.failed}</td>
                                     <td className="py-2.5 px-3 text-right text-foreground">{c.deliveryRate}%</td>
                                     <td className="py-2.5 px-3 text-right text-foreground">{c.readRate}%</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Tab: Anomalies ──
+
+function AnomaliesTab({ data }: { data: any }) {
+    const t = useTranslations("analyticsV2");
+
+    if (!data) return <p className="text-muted-foreground py-10 text-center">{t("noData")}</p>;
+
+    const anomalies = data.anomalies || [];
+
+    if (anomalies.length === 0) {
+        return (
+            <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-center">
+                <CheckCircle size={40} className="mx-auto text-emerald-400 mb-3" />
+                <p className="text-foreground font-medium">{t("noAnomalies")}</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-amber-400" />
+                    {t("anomaliesDetected")} ({anomalies.length})
+                </h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-200 dark:border-white/10">
+                                <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("metric")}</th>
+                                <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("date")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("value")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("average")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("deviation")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {anomalies.map((a: any, i: number) => (
+                                <tr key={i} className="border-b border-gray-100 dark:border-white/5">
+                                    <td className="py-2.5 px-3 text-foreground font-medium capitalize">{a.metric}</td>
+                                    <td className="py-2.5 px-3 text-muted-foreground">{a.date}</td>
+                                    <td className="py-2.5 px-3 text-right">
+                                        <span className={`font-bold ${a.value > a.avg ? "text-red-400" : "text-blue-400"}`}>{a.value}</span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right text-muted-foreground">{a.avg}</td>
+                                    <td className="py-2.5 px-3 text-right">
+                                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-medium">
+                                            {a.zScore}σ
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Tab: Cohorts ──
+
+function CohortsTab({ data }: { data: any }) {
+    const t = useTranslations("analyticsV2");
+
+    if (!data || !data.cohorts?.length) return <p className="text-muted-foreground py-10 text-center">{t("noData")}</p>;
+
+    const cohorts = data.cohorts;
+    const maxMonths = Math.max(...cohorts.map((c: any) => c.retention.length));
+
+    const getColor = (pct: number) => {
+        if (pct >= 80) return "bg-emerald-500/70 text-white";
+        if (pct >= 60) return "bg-emerald-500/50 text-white";
+        if (pct >= 40) return "bg-emerald-500/30 text-emerald-100";
+        if (pct >= 20) return "bg-emerald-500/15 text-emerald-300";
+        if (pct > 0) return "bg-emerald-500/5 text-emerald-400";
+        return "bg-transparent text-muted-foreground";
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold text-foreground mb-4">{t("cohortRetention")}</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-200 dark:border-white/10">
+                                <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("cohortMonth")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("cohortSize")}</th>
+                                {Array.from({ length: maxMonths }, (_, i) => (
+                                    <th key={i} className="text-center py-2.5 px-2 text-muted-foreground font-medium text-[11px]">
+                                        {t("month")} {i}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {cohorts.map((cohort: any) => (
+                                <tr key={cohort.month} className="border-b border-gray-100 dark:border-white/5">
+                                    <td className="py-2.5 px-3 text-foreground font-medium">{cohort.month}</td>
+                                    <td className="py-2.5 px-3 text-right text-muted-foreground">{cohort.size}</td>
+                                    {Array.from({ length: maxMonths }, (_, i) => (
+                                        <td key={i} className="py-1.5 px-1 text-center">
+                                            {i < cohort.retention.length ? (
+                                                <span className={`inline-block w-full py-1.5 rounded text-[11px] font-medium ${getColor(cohort.retention[i])}`}>
+                                                    {cohort.retention[i]}%
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted-foreground/30">—</span>
+                                            )}
+                                        </td>
+                                    ))}
                                 </tr>
                             ))}
                         </tbody>

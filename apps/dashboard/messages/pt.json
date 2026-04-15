@@ -715,6 +715,19 @@
     "deliveryRate": "Taxa Entrega",
     "readRate": "Taxa Leitura",
     "total": "Total",
-    "channel": "Canal"
+    "channel": "Canal",
+    "anomaliesTab": "Anomalias",
+    "cohortsTab": "Coortes",
+    "anomaliesDetected": "Anomalias Detectadas",
+    "noAnomalies": "Sem anomalias nos últimos 3 dias",
+    "metric": "Métrica",
+    "date": "Data",
+    "value": "Valor",
+    "average": "Média",
+    "deviation": "Desvio",
+    "cohortRetention": "Retenção por Coorte",
+    "cohortMonth": "Mês Coorte",
+    "cohortSize": "Tamanho",
+    "month": "Mês"
   }
 }

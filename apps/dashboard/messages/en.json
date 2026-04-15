@@ -715,6 +715,19 @@
     "deliveryRate": "Delivery Rate",
     "readRate": "Read Rate",
     "total": "Total",
-    "channel": "Channel"
+    "channel": "Channel",
+    "anomaliesTab": "Anomalies",
+    "cohortsTab": "Cohorts",
+    "anomaliesDetected": "Anomalies Detected",
+    "noAnomalies": "No anomalies in the last 3 days",
+    "metric": "Metric",
+    "date": "Date",
+    "value": "Value",
+    "average": "Average",
+    "deviation": "Deviation",
+    "cohortRetention": "Cohort Retention",
+    "cohortMonth": "Cohort Month",
+    "cohortSize": "Size",
+    "month": "Month"
   }
 }

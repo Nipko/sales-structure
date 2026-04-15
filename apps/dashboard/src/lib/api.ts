@@ -520,6 +520,13 @@ export const api = {
     upsertReportConfig: (tenantId: string, data: any) =>
         apiPost(`/analytics-config/reports/${tenantId}`, data),
 
+    // --- Phase 3: Anomalies, Cohorts ---
+    getDashboardAnomalies: (tenantId: string) =>
+        apiGet(`/dashboard-analytics/anomalies/${tenantId}`),
+
+    getDashboardCohorts: (tenantId: string, months?: number) =>
+        apiGet(`/dashboard-analytics/cohorts/${tenantId}?months=${months || 6}`),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {

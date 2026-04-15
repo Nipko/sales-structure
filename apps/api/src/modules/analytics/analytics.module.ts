@@ -6,6 +6,7 @@ import { DashboardAnalyticsController } from './dashboard-analytics.controller';
 import { MetricsAggregationService } from './metrics-aggregation.service';
 import { AlertsService } from './alerts.service';
 import { AlertsController } from './alerts.controller';
+import { BIApiController } from './bi-api.controller';
 import { ScheduledReportsService } from './scheduled-reports.service';
 import { ComplianceService } from './compliance.service';
 import { AuditService } from './audit.service';
@@ -20,7 +21,7 @@ import { RedisModule } from '../redis/redis.module';
         AlertsService, ScheduledReportsService,
         ComplianceService, AuditService, CsatTriggerService,
     ],
-    controllers: [AnalyticsController, DashboardAnalyticsController, AlertsController],
+    controllers: [AnalyticsController, DashboardAnalyticsController, AlertsController, BIApiController],
     exports: [AnalyticsService, DashboardAnalyticsService, ComplianceService, AuditService, CsatTriggerService],
 })
 export class AnalyticsModule { }

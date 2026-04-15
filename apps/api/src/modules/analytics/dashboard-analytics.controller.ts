@@ -110,4 +110,21 @@ export class DashboardAnalyticsController {
         const result = await this.dashboardAnalytics.getBroadcastFunnel(tenantId, start, end);
         return { success: true, data: result };
     }
+
+    @Get('anomalies/:tenantId')
+    @ApiOperation({ summary: 'Anomaly detection (z-score > 2σ on 30-day window)' })
+    async getAnomalies(@Param('tenantId') tenantId: string) {
+        const result = await this.dashboardAnalytics.getAnomalies(tenantId);
+        return { success: true, data: result };
+    }
+
+    @Get('cohorts/:tenantId')
+    @ApiOperation({ summary: 'Cohort retention analysis' })
+    async getCohorts(
+        @Param('tenantId') tenantId: string,
+        @Query('months') months?: string,
+    ) {
+        const result = await this.dashboardAnalytics.getCohortAnalysis(tenantId, Number(months) || 6);
+        return { success: true, data: result };
+    }
 }

@@ -608,4 +608,177 @@ export class DashboardAnalyticsService {
             totals,
         };
     }
+
+    // ── 10. Anomaly Detection ─────────────────────────────────────
+
+    async getAnomalies(tenantId: string): Promise<{
+        anomalies: Array<{ metric: string; date: string; value: number; avg: number; stdDev: number; zScore: number }>;
+    }> {
+        const schema = await this.getSchemaName(tenantId);
+        const today = new Date().toISOString().split('T')[0];
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const startDate = thirtyDaysAgo.toISOString().split('T')[0];
+
+        // Get daily conversation counts for last 30 days
+        const dailyRows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT DATE(created_at)::text as date, COUNT(*)::int as conversations,
+                    (SELECT COUNT(*)::int FROM "${schema}".messages WHERE DATE(created_at) = DATE(c.created_at)) as messages,
+                    (SELECT COUNT(*)::int FROM "${schema}".conversation_assignments WHERE DATE(assigned_at) = DATE(c.created_at)) as handoffs
+             FROM "${schema}".conversations c
+             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+             GROUP BY DATE(created_at)
+             ORDER BY date`,
+            startDate, today,
+        );
+
+        if (dailyRows.length < 7) return { anomalies: [] }; // Need at least 7 days
+
+        const anomalies: Array<{ metric: string; date: string; value: number; avg: number; stdDev: number; zScore: number }> = [];
+
+        // Check each metric for anomalies (z-score > 2)
+        for (const metric of ['conversations', 'messages', 'handoffs'] as const) {
+            const values = dailyRows.map((r: any) => Number(r[metric] || 0));
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            const variance = values.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / values.length;
+            const stdDev = Math.sqrt(variance);
+
+            if (stdDev === 0) continue;
+
+            // Check last 3 days for anomalies
+            const recentDays = dailyRows.slice(-3);
+            for (const day of recentDays) {
+                const value = Number(day[metric] || 0);
+                const zScore = Math.abs((value - avg) / stdDev);
+                if (zScore > 2) {
+                    anomalies.push({
+                        metric,
+                        date: day.date,
+                        value,
+                        avg: Math.round(avg * 10) / 10,
+                        stdDev: Math.round(stdDev * 10) / 10,
+                        zScore: Math.round(zScore * 100) / 100,
+                    });
+                }
+            }
+        }
+
+        return { anomalies: anomalies.sort((a, b) => b.zScore - a.zScore) };
+    }
+
+    // ── 11. Cohort Analysis ───────────────────────────────────────
+
+    async getCohortAnalysis(tenantId: string, months: number = 6): Promise<{
+        cohorts: Array<{
+            month: string;
+            size: number;
+            retention: number[]; // % returned in month 0, 1, 2, ...
+        }>;
+    }> {
+        const schema = await this.getSchemaName(tenantId);
+        const startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - months);
+        const start = startDate.toISOString().split('T')[0];
+
+        // Get first contact month for each contact
+        const cohortRows: any[] = await this.prisma.$queryRawUnsafe(
+            `WITH contact_cohorts AS (
+                SELECT id, TO_CHAR(first_contact_at, 'YYYY-MM') as cohort_month
+                FROM "${schema}".contacts
+                WHERE first_contact_at >= $1::date
+            ),
+            contact_activity AS (
+                SELECT DISTINCT c.contact_id, TO_CHAR(c.created_at, 'YYYY-MM') as activity_month
+                FROM "${schema}".conversations c
+                WHERE c.created_at >= $1::date
+            )
+            SELECT cc.cohort_month,
+                   COUNT(DISTINCT cc.id)::int as cohort_size,
+                   ca.activity_month,
+                   COUNT(DISTINCT cc.id) FILTER (WHERE ca.activity_month IS NOT NULL)::int as active_count
+            FROM contact_cohorts cc
+            LEFT JOIN contact_activity ca ON ca.contact_id = cc.id
+            GROUP BY cc.cohort_month, ca.activity_month
+            ORDER BY cc.cohort_month, ca.activity_month`,
+            start,
+        );
+
+        // Build cohort matrix
+        const cohortMap: Record<string, { size: number; monthlyActive: Record<string, number> }> = {};
+
+        for (const row of cohortRows) {
+            const cm = row.cohort_month;
+            if (!cohortMap[cm]) cohortMap[cm] = { size: row.cohort_size, monthlyActive: {} };
+            if (row.activity_month) {
+                cohortMap[cm].monthlyActive[row.activity_month] = row.active_count;
+            }
+        }
+
+        // Convert to retention percentages
+        const sortedMonths = Object.keys(cohortMap).sort();
+        const cohorts = sortedMonths.map(cohortMonth => {
+            const cohort = cohortMap[cohortMonth];
+            const retention: number[] = [];
+            const cohortDate = new Date(cohortMonth + '-01');
+
+            for (let i = 0; i < months; i++) {
+                const checkDate = new Date(cohortDate);
+                checkDate.setMonth(checkDate.getMonth() + i);
+                const checkMonth = checkDate.toISOString().slice(0, 7);
+
+                if (checkMonth > new Date().toISOString().slice(0, 7)) break;
+
+                const active = cohort.monthlyActive[checkMonth] || 0;
+                retention.push(cohort.size > 0 ? Math.round((active / cohort.size) * 1000) / 10 : 0);
+            }
+
+            return { month: cohortMonth, size: cohort.size, retention };
+        });
+
+        return { cohorts };
+    }
+
+    // ── 12. BI API Data Export ─────────────────────────────────────
+
+    async getBIData(tenantId: string, start: string, end: string): Promise<{
+        kpis: any;
+        timeSeries: any[];
+        channelBreakdown: any[];
+        aiMetrics: any;
+    }> {
+        const [kpiData, volume, ai] = await Promise.all([
+            this.getOverviewKPIs(tenantId, start, end),
+            this.getConversationsVolume(tenantId, start, end),
+            this.getAIMetrics(tenantId, start, end),
+        ]);
+
+        // Flatten KPIs for BI consumption
+        const kpis: Record<string, any> = {};
+        for (const k of kpiData.kpis) {
+            kpis[k.key] = { value: k.value, previousValue: k.previousValue, changePercent: k.changePercent };
+        }
+
+        // Channel aggregation
+        const channels: Record<string, number> = { whatsapp: 0, instagram: 0, messenger: 0, telegram: 0 };
+        for (const row of volume.series) {
+            channels.whatsapp += row.whatsapp || 0;
+            channels.instagram += row.instagram || 0;
+            channels.messenger += row.messenger || 0;
+            channels.telegram += row.telegram || 0;
+        }
+
+        return {
+            kpis,
+            timeSeries: volume.series,
+            channelBreakdown: Object.entries(channels).map(([channel, count]) => ({ channel, count })),
+            aiMetrics: {
+                resolutionRate: ai.resolutionRate,
+                containmentRate: ai.containmentRate,
+                handoffs: ai.handoffs,
+                totalCost: ai.totalCost,
+                avgCostPerConversation: ai.avgCostPerConversation,
+                modelUsage: ai.modelUsage,
+            },
+        };
+    }
 }

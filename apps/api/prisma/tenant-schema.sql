@@ -1232,3 +1232,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."scheduled_reports" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "sr_tenant_idx" ON "{{SCHEMA_NAME}}"."scheduled_reports" ("tenant_id");
+
+-- ---- Dashboard Widget Preferences ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."dashboard_preferences" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "user_id" UUID NOT NULL,
+    "layout_json" JSONB DEFAULT '[]',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "dp_user_idx" ON "{{SCHEMA_NAME}}"."dashboard_preferences" ("user_id");

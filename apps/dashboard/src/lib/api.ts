@@ -501,6 +501,25 @@ export const api = {
     getDashboardBroadcast: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/broadcast/${tenantId}?start=${start}&end=${end}`),
 
+    // --- Alerts & Reports Config ---
+    getAlertRules: (tenantId: string) =>
+        apiGet(`/analytics-config/alerts/${tenantId}`),
+
+    createAlertRule: (tenantId: string, data: any) =>
+        apiPost(`/analytics-config/alerts/${tenantId}`, data),
+
+    updateAlertRule: (tenantId: string, ruleId: string, data: any) =>
+        apiPut(`/analytics-config/alerts/${tenantId}/${ruleId}`, data),
+
+    deleteAlertRule: (tenantId: string, ruleId: string) =>
+        apiDelete(`/analytics-config/alerts/${tenantId}/${ruleId}`),
+
+    getReportConfig: (tenantId: string) =>
+        apiGet(`/analytics-config/reports/${tenantId}`),
+
+    upsertReportConfig: (tenantId: string, data: any) =>
+        apiPost(`/analytics-config/reports/${tenantId}`, data),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {

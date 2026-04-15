@@ -1186,3 +1186,49 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."blocked_dates" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "bd_user_date_idx" ON "{{SCHEMA_NAME}}"."blocked_dates" ("user_id", "blocked_date");
+
+-- ============================================
+-- Analytics — Alert Rules & Scheduled Reports
+-- ============================================
+
+-- ---- Alert Rules (threshold-based notifications) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."alert_rules" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(255) NOT NULL,
+    "metric" VARCHAR(100) NOT NULL,
+    "operator" VARCHAR(20) NOT NULL,
+    "threshold" DECIMAL(15, 2) NOT NULL,
+    "channel" VARCHAR(50) DEFAULT 'in_app',
+    "notify_emails" TEXT[] DEFAULT '{}',
+    "is_active" BOOLEAN DEFAULT true,
+    "last_triggered_at" TIMESTAMP,
+    "cooldown_minutes" INTEGER DEFAULT 60,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "ar_tenant_active_idx" ON "{{SCHEMA_NAME}}"."alert_rules" ("tenant_id", "is_active");
+
+-- ---- Alert History ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."alert_history" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "rule_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."alert_rules"("id") ON DELETE CASCADE,
+    "metric_value" DECIMAL(15, 2) NOT NULL,
+    "threshold" DECIMAL(15, 2) NOT NULL,
+    "notified_via" VARCHAR(50) DEFAULT 'in_app',
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "ah_rule_idx" ON "{{SCHEMA_NAME}}"."alert_history" ("rule_id", "created_at");
+
+-- ---- Scheduled Reports config ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."scheduled_reports" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" VARCHAR(255) NOT NULL,
+    "frequency" VARCHAR(20) NOT NULL DEFAULT 'weekly',
+    "recipients" TEXT[] NOT NULL,
+    "is_active" BOOLEAN DEFAULT true,
+    "last_sent_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "sr_tenant_idx" ON "{{SCHEMA_NAME}}"."scheduled_reports" ("tenant_id");

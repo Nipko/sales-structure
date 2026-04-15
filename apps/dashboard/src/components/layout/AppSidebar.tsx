@@ -31,6 +31,7 @@ import {
   PanelLeft,
   Building2,
   CalendarDays,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 
@@ -75,6 +76,7 @@ const sectionDefs: NavSectionDef[] = [
     items: [
       { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
       { labelKey: "reports", href: "/admin/agent-analytics", icon: BarChart3 },
+      { labelKey: "alerts", href: "/admin/settings/alerts", icon: Bell },
       { labelKey: "compliance", href: "/admin/compliance", icon: Shield },
     ],
   },

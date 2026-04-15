@@ -112,7 +112,7 @@ export class ConversationsService {
 
         // 5b. Send typing indicator before AI generates response
         try {
-            const accessToken = await this.resolveAccessToken(tenantId);
+            const accessToken = await this.resolveAccessToken(tenantId, channelType);
             if (accessToken) {
                 await this.channelGateway.sendTypingIndicator(
                     channelType as any, normalizedMsg.channelAccountId,
@@ -306,7 +306,7 @@ export class ConversationsService {
             content: { type: 'text', text: config.hours.afterHoursMessage },
         };
 
-        const accessToken = await this.resolveAccessToken(tenantId);
+        const accessToken = await this.resolveAccessToken(tenantId, msg.channelType);
         await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
@@ -342,19 +342,19 @@ export class ConversationsService {
             content: { type: 'text', text },
         };
 
-        const accessToken = await this.resolveAccessToken(tenantId);
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
         // Use BullMQ queue for retry resilience (3 attempts, exponential backoff)
         await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
     /**
-     * Resolve real Meta access token for a given tenantId.
+     * Resolve real Meta access token for a given tenantId and channel type.
      */
-    private async resolveAccessToken(tenantId: string): Promise<string> {
+    private async resolveAccessToken(tenantId: string, channelType: string = 'whatsapp'): Promise<string> {
         try {
-            const creds = await this.channelToken.getWhatsAppToken(tenantId);
+            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
             if (!creds.accessToken) {
-                this.logger.error(`[Pipeline] Access token is EMPTY for tenant ${tenantId}`);
+                this.logger.error(`[Pipeline] Access token is EMPTY for tenant ${tenantId} channel ${channelType}`);
             }
             return creds.accessToken;
         } catch (e: any) {

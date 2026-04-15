@@ -10,6 +10,12 @@ export interface ChannelCredentials {
     channelId: string;
 }
 
+export interface GenericChannelCredentials {
+    accessToken: string;
+    accountId: string;
+    channelType: string;
+}
+
 /**
  * Resolves access tokens for any channel, per tenant.
  * Lives in ChannelsModule to break the circular dependency
@@ -69,6 +75,53 @@ export class ChannelTokenService {
             channelId: channel.id,
         };
 
+        await this.redis.setJson(cacheKey, result, this.CACHE_TTL);
+        return result;
+    }
+
+    /**
+     * Get access token for any channel type (Instagram, Messenger, Telegram).
+     * Looks up the ChannelAccount + WhatsappCredential by channelType.
+     */
+    async getChannelToken(tenantId: string, channelType: string): Promise<GenericChannelCredentials> {
+        // WhatsApp has its own dedicated resolution path
+        if (channelType === 'whatsapp') {
+            const wa = await this.getWhatsAppToken(tenantId);
+            return { accessToken: wa.accessToken, accountId: wa.phoneNumberId, channelType };
+        }
+
+        const cacheKey = `${channelType}_token:${tenantId}`;
+        const cached = await this.redis.getJson<GenericChannelCredentials>(cacheKey);
+        if (cached) return cached;
+
+        // 1. Find the channel account for this tenant + channel type
+        const account = await this.prisma.channelAccount.findFirst({
+            where: { tenantId, channelType, isActive: true },
+            select: { accountId: true, accessToken: true },
+        });
+
+        if (!account) {
+            throw new Error(`No ${channelType} channel connected for tenant ${tenantId}`);
+        }
+
+        // 2. Try encrypted credential from whatsapp_credentials table
+        const credType = `${channelType}_token`; // instagram_token, messenger_token
+        const cred = await this.prisma.whatsappCredential.findFirst({
+            where: { tenantId, credentialType: credType },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        let accessToken: string;
+        if (cred?.encryptedValue) {
+            accessToken = this.decryptToken(cred.encryptedValue);
+        } else if (account.accessToken) {
+            // Fallback: encrypted token stored directly in channel_accounts
+            accessToken = this.decryptToken(account.accessToken);
+        } else {
+            throw new Error(`No ${channelType} credentials for tenant ${tenantId}`);
+        }
+
+        const result: GenericChannelCredentials = { accessToken, accountId: account.accountId, channelType };
         await this.redis.setJson(cacheKey, result, this.CACHE_TTL);
         return result;
     }

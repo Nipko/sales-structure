@@ -81,4 +81,33 @@ export class DashboardAnalyticsController {
         res.setHeader('Content-Disposition', `attachment; filename=parallly-analytics-${start}-${end}.csv`);
         res.send(csv);
     }
+
+    @Get('realtime/:tenantId')
+    @ApiOperation({ summary: 'Real-time analytics: active convos, agents, queue' })
+    async getRealtime(@Param('tenantId') tenantId: string) {
+        const result = await this.dashboardAnalytics.getRealtime(tenantId);
+        return { success: true, data: result };
+    }
+
+    @Get('automation/:tenantId')
+    @ApiOperation({ summary: 'Automation rules metrics and execution stats' })
+    async getAutomation(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const result = await this.dashboardAnalytics.getAutomationMetrics(tenantId, start, end);
+        return { success: true, data: result };
+    }
+
+    @Get('broadcast/:tenantId')
+    @ApiOperation({ summary: 'Broadcast campaign funnel analytics' })
+    async getBroadcast(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const result = await this.dashboardAnalytics.getBroadcastFunnel(tenantId, start, end);
+        return { success: true, data: result };
+    }
 }

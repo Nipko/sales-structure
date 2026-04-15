@@ -411,4 +411,201 @@ export class DashboardAnalyticsService {
 
         return lines.join('\n');
     }
+
+    // ── 7. Real-time Panel ────────────────────────────────────────
+
+    async getRealtime(tenantId: string): Promise<{
+        activeConversations: number;
+        agentsOnline: number;
+        agentsBusy: number;
+        agentsOffline: number;
+        queueDepth: number;
+        messagesToday: number;
+    }> {
+        const schema = await this.getSchemaName(tenantId);
+        const today = new Date().toISOString().split('T')[0];
+
+        const [activeRow, queueRow, agentRows] = await Promise.all([
+            this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int as count FROM "${schema}".conversations
+                 WHERE status IN ('active', 'waiting_human', 'with_human')`,
+            ),
+            this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int as count FROM "${schema}".conversations
+                 WHERE status = 'waiting_human'`,
+            ),
+            this.prisma.user.groupBy({
+                by: ['availabilityStatus'],
+                where: { tenantId, isActive: true },
+                _count: true,
+            }),
+        ]) as any;
+
+        // Messages today from Redis
+        const msgKey = `analytics:${tenantId}:${today}:total`;
+        const messagesToday = Number(await this.redis.get(msgKey) || 0);
+
+        const agentMap: Record<string, number> = {};
+        for (const row of agentRows) {
+            agentMap[row.availabilityStatus] = row._count;
+        }
+
+        return {
+            activeConversations: Number(activeRow[0]?.count || 0),
+            agentsOnline: agentMap['online'] || 0,
+            agentsBusy: agentMap['busy'] || 0,
+            agentsOffline: agentMap['offline'] || 0,
+            queueDepth: Number(queueRow[0]?.count || 0),
+            messagesToday,
+        };
+    }
+
+    // ── 8. Automation Metrics ─────────────────────────────────────
+
+    async getAutomationMetrics(tenantId: string, start: string, end: string): Promise<{
+        totalRules: number;
+        activeRules: number;
+        totalExecutions: number;
+        successCount: number;
+        failedCount: number;
+        successRate: number;
+        rulePerformance: any[];
+        executionsByDay: any[];
+    }> {
+        const schema = await this.getSchemaName(tenantId);
+
+        const [rulesRow, execRows, rulePerf, dailyExec]: any = await Promise.all([
+            // Total / active rules
+            this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int as total,
+                        COUNT(*) FILTER (WHERE active = true)::int as active
+                 FROM "${schema}".automation_rules`,
+            ),
+            // Execution stats
+            this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int as total,
+                        COUNT(*) FILTER (WHERE status = 'success')::int as success,
+                        COUNT(*) FILTER (WHERE status = 'failed')::int as failed
+                 FROM "${schema}".automation_executions
+                 WHERE started_at >= $1::date AND started_at < ($2::date + interval '1 day')`,
+                start, end,
+            ),
+            // Per-rule performance
+            this.prisma.$queryRawUnsafe(
+                `SELECT r.name, r.trigger_type, r.active,
+                        COUNT(e.id)::int as executions,
+                        COUNT(e.id) FILTER (WHERE e.status = 'success')::int as success,
+                        COUNT(e.id) FILTER (WHERE e.status = 'failed')::int as failed
+                 FROM "${schema}".automation_rules r
+                 LEFT JOIN "${schema}".automation_executions e ON e.rule_id = r.id
+                   AND e.started_at >= $1::date AND e.started_at < ($2::date + interval '1 day')
+                 GROUP BY r.id, r.name, r.trigger_type, r.active
+                 ORDER BY executions DESC`,
+                start, end,
+            ),
+            // Daily execution volume
+            this.prisma.$queryRawUnsafe(
+                `SELECT DATE(started_at)::text as date,
+                        COUNT(*)::int as total,
+                        COUNT(*) FILTER (WHERE status = 'success')::int as success,
+                        COUNT(*) FILTER (WHERE status = 'failed')::int as failed
+                 FROM "${schema}".automation_executions
+                 WHERE started_at >= $1::date AND started_at < ($2::date + interval '1 day')
+                 GROUP BY DATE(started_at)
+                 ORDER BY date`,
+                start, end,
+            ),
+        ]);
+
+        const totalExec = Number(execRows[0]?.total || 0);
+        const successCount = Number(execRows[0]?.success || 0);
+        const failedCount = Number(execRows[0]?.failed || 0);
+
+        return {
+            totalRules: Number(rulesRow[0]?.total || 0),
+            activeRules: Number(rulesRow[0]?.active || 0),
+            totalExecutions: totalExec,
+            successCount,
+            failedCount,
+            successRate: totalExec > 0 ? Math.round((successCount / totalExec) * 1000) / 10 : 0,
+            rulePerformance: rulePerf.map((r: any) => ({
+                name: r.name,
+                triggerType: r.trigger_type,
+                active: r.active,
+                executions: r.executions,
+                success: r.success,
+                failed: r.failed,
+            })),
+            executionsByDay: dailyExec.map((r: any) => ({
+                date: r.date,
+                total: r.total,
+                success: r.success,
+                failed: r.failed,
+            })),
+        };
+    }
+
+    // ── 9. Broadcast Funnel ───────────────────────────────────────
+
+    async getBroadcastFunnel(tenantId: string, start: string, end: string): Promise<{
+        campaigns: any[];
+        totals: { sent: number; delivered: number; read: number; failed: number; total: number };
+    }> {
+        const schema = await this.getSchemaName(tenantId);
+
+        // Check if tables exist
+        const tableCheck: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = $1 AND table_name = 'campaigns'
+            ) as exists`,
+            schema,
+        );
+
+        if (!tableCheck[0]?.exists) {
+            return { campaigns: [], totals: { sent: 0, delivered: 0, read: 0, failed: 0, total: 0 } };
+        }
+
+        const campaigns: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT c.id, c.name, c.status, c.channel, c.starts_at, c.ends_at,
+                    COUNT(cr.id)::int as total,
+                    COUNT(cr.id) FILTER (WHERE cr.status IN ('sent','delivered','read'))::int as sent,
+                    COUNT(cr.id) FILTER (WHERE cr.status IN ('delivered','read'))::int as delivered,
+                    COUNT(cr.id) FILTER (WHERE cr.status = 'read')::int as read,
+                    COUNT(cr.id) FILTER (WHERE cr.status = 'failed')::int as failed
+             FROM "${schema}".campaigns c
+             LEFT JOIN "${schema}".campaign_recipients cr ON cr.campaign_id = c.id
+             WHERE c.created_at >= $1::date AND c.created_at < ($2::date + interval '1 day')
+             GROUP BY c.id, c.name, c.status, c.channel, c.starts_at, c.ends_at
+             ORDER BY c.created_at DESC`,
+            start, end,
+        );
+
+        const totals = { sent: 0, delivered: 0, read: 0, failed: 0, total: 0 };
+        for (const c of campaigns) {
+            totals.total += c.total;
+            totals.sent += c.sent;
+            totals.delivered += c.delivered;
+            totals.read += c.read;
+            totals.failed += c.failed;
+        }
+
+        return {
+            campaigns: campaigns.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                status: c.status,
+                channel: c.channel,
+                startsAt: c.starts_at,
+                total: c.total,
+                sent: c.sent,
+                delivered: c.delivered,
+                read: c.read,
+                failed: c.failed,
+                deliveryRate: c.sent > 0 ? Math.round((c.delivered / c.sent) * 1000) / 10 : 0,
+                readRate: c.delivered > 0 ? Math.round((c.read / c.delivered) * 1000) / 10 : 0,
+            })),
+            totals,
+        };
+    }
 }

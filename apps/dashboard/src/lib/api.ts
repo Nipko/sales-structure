@@ -492,6 +492,15 @@ export const api = {
     exportDashboardCSV: (tenantId: string, start: string, end: string) =>
         apiGetBlob(`/dashboard-analytics/export/${tenantId}?start=${start}&end=${end}`),
 
+    getDashboardRealtime: (tenantId: string) =>
+        apiGet(`/dashboard-analytics/realtime/${tenantId}`),
+
+    getDashboardAutomation: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/automation/${tenantId}?start=${start}&end=${end}`),
+
+    getDashboardBroadcast: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/broadcast/${tenantId}?start=${start}&end=${end}`),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {

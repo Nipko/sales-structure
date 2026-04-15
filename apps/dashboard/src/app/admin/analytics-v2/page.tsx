@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import {
     MessageSquare, MessagesSquare, Bot, Clock, Star, DollarSign,
     Shield, Brain, ArrowUpDown, Download, Loader2,
+    Activity, Users, Zap, Radio, Send, CheckCircle, XCircle,
+    Eye, MailX,
 } from "lucide-react";
 import {
     BarChart, Bar, AreaChart, Area, LineChart, Line, PieChart, Pie, Cell,
@@ -39,7 +41,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 const MODEL_COLORS = ["#6c5ce7", "#00cec9", "#fdcb6e", "#e17055", "#0984e3", "#d63031", "#00b894"];
 
-const TABS = ["overview", "aiBotTab", "agentsTab", "channelsTab", "csatTab", "crmTab"] as const;
+const TABS = ["overview", "aiBotTab", "automationTab", "broadcastTab", "channelsTab", "csatTab"] as const;
 
 // ── Main Page ──
 
@@ -59,17 +61,22 @@ export default function AnalyticsV2Page() {
     const [responseTimes, setResponseTimes] = useState<any[]>([]);
     const [aiMetrics, setAIMetrics] = useState<any>(null);
     const [heatmap, setHeatmap] = useState<any[]>([]);
+    const [realtime, setRealtime] = useState<any>(null);
+    const [automation, setAutomation] = useState<any>(null);
+    const [broadcast, setBroadcast] = useState<any>(null);
 
     const fetchData = useCallback(async () => {
         if (!tenantId) return;
         setLoading(true);
         try {
-            const [kpiRes, volRes, rtRes, aiRes, hmRes] = await Promise.all([
+            const [kpiRes, volRes, rtRes, aiRes, hmRes, autoRes, bcRes] = await Promise.all([
                 api.getDashboardKPIs(tenantId, start, end),
                 api.getDashboardVolume(tenantId, start, end),
                 api.getDashboardResponseTimes(tenantId, start, end),
                 api.getDashboardAIMetrics(tenantId, start, end),
                 api.getDashboardHeatmap(tenantId, start, end),
+                api.getDashboardAutomation(tenantId, start, end),
+                api.getDashboardBroadcast(tenantId, start, end),
             ]);
 
             if (kpiRes.success) setKPIs(kpiRes.data.kpis || []);
@@ -77,11 +84,25 @@ export default function AnalyticsV2Page() {
             if (rtRes.success) setResponseTimes(rtRes.data.series || []);
             if (aiRes.success) setAIMetrics(aiRes.data);
             if (hmRes.success) setHeatmap(hmRes.data.data || []);
+            if (autoRes.success) setAutomation(autoRes.data);
+            if (bcRes.success) setBroadcast(bcRes.data);
         } catch (err) {
             console.error("Failed to fetch analytics:", err);
         }
         setLoading(false);
     }, [tenantId, start, end]);
+
+    // Real-time polling (every 30s)
+    useEffect(() => {
+        if (!tenantId) return;
+        const fetchRealtime = async () => {
+            const res = await api.getDashboardRealtime(tenantId);
+            if (res.success) setRealtime(res.data);
+        };
+        fetchRealtime();
+        const interval = setInterval(fetchRealtime, 30000);
+        return () => clearInterval(interval);
+    }, [tenantId]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -138,6 +159,18 @@ export default function AnalyticsV2Page() {
                 ))}
             </div>
 
+            {/* Real-time bar */}
+            {realtime && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+                    <RealtimeCard label={t("activeConversations")} value={realtime.activeConversations} icon={MessageSquare} color="text-indigo-400" />
+                    <RealtimeCard label={t("agentsOnline")} value={realtime.agentsOnline} icon={Users} color="text-emerald-400" pulse />
+                    <RealtimeCard label={t("agentsBusy")} value={realtime.agentsBusy} icon={Activity} color="text-amber-400" />
+                    <RealtimeCard label={t("queueDepth")} value={realtime.queueDepth} icon={Clock} color={realtime.queueDepth > 0 ? "text-red-400" : "text-muted-foreground"} />
+                    <RealtimeCard label={t("agentsOffline")} value={realtime.agentsOffline} icon={Users} color="text-muted-foreground" />
+                    <RealtimeCard label={t("messagesToday")} value={realtime.messagesToday} icon={MessagesSquare} color="text-blue-400" />
+                </div>
+            )}
+
             {loading ? (
                 <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
                     <Loader2 size={20} className="animate-spin" /> {t("loading")}
@@ -146,6 +179,8 @@ export default function AnalyticsV2Page() {
                 <>
                     {activeTab === "overview" && <OverviewTab kpis={kpis} volume={volume} heatmap={heatmap} responseTimes={responseTimes} />}
                     {activeTab === "aiBotTab" && <AIBotTab data={aiMetrics} />}
+                    {activeTab === "automationTab" && <AutomationTab data={automation} />}
+                    {activeTab === "broadcastTab" && <BroadcastTab data={broadcast} />}
                     {activeTab === "channelsTab" && <ChannelsTab volume={volume} />}
                     {activeTab === "csatTab" && <CSATTab kpis={kpis} />}
                 </>
@@ -383,6 +418,203 @@ function CSATTab({ kpis }: { kpis: any[] }) {
                             className={star <= Math.round(csatKPI.value) ? "text-yellow-400 fill-yellow-400" : "text-gray-300 dark:text-white/20"}
                         />
                     ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Real-time Card ──
+
+function RealtimeCard({ label, value, icon: Icon, color, pulse }: {
+    label: string; value: number; icon: any; color: string; pulse?: boolean;
+}) {
+    return (
+        <div className="px-4 py-3 rounded-lg bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] flex items-center gap-3">
+            <div className={`${color} relative`}>
+                <Icon size={18} />
+                {pulse && value > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                )}
+            </div>
+            <div>
+                <p className="text-lg font-bold text-foreground leading-tight">{value}</p>
+                <p className="text-[11px] text-muted-foreground">{label}</p>
+            </div>
+        </div>
+    );
+}
+
+// ── Tab: Automation ──
+
+function AutomationTab({ data }: { data: any }) {
+    const t = useTranslations("analyticsV2");
+
+    if (!data) return <p className="text-muted-foreground py-10 text-center">{t("noData")}</p>;
+
+    return (
+        <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <KPICard label={t("totalRules")} value={data.totalRules} changePercent={0} icon={Zap} iconColor="text-indigo-400" />
+                <KPICard label={t("activeRules")} value={data.activeRules} changePercent={0} icon={Radio} iconColor="text-emerald-400" />
+                <KPICard label={t("totalExecutions")} value={data.totalExecutions} changePercent={0} icon={Activity} iconColor="text-blue-400" />
+                <KPICard label={t("successRate")} value={`${data.successRate}%`} changePercent={0} icon={CheckCircle} iconColor="text-emerald-400" />
+            </div>
+
+            {/* Executions by day chart */}
+            {data.executionsByDay?.length > 0 && (
+                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                    <h3 className="text-sm font-semibold text-foreground mb-4">{t("executionsByDay")}</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={data.executionsByDay}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9898b0" }} tickFormatter={(d: string) => d.slice(5)} />
+                            <YAxis tick={{ fontSize: 11, fill: "#9898b0" }} />
+                            <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
+                            <Legend />
+                            <Bar dataKey="success" fill="#00b894" name={t("success")} stackId="a" />
+                            <Bar dataKey="failed" fill="#d63031" name={t("failed")} stackId="a" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
+
+            {/* Rule performance table */}
+            {data.rulePerformance?.length > 0 && (
+                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                    <h3 className="text-sm font-semibold text-foreground mb-4">{t("rulePerformance")}</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-gray-200 dark:border-white/10">
+                                    <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("rule")}</th>
+                                    <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("trigger")}</th>
+                                    <th className="text-center py-2.5 px-3 text-muted-foreground font-medium">{t("status")}</th>
+                                    <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("totalExecutions")}</th>
+                                    <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("success")}</th>
+                                    <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("failed")}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.rulePerformance.map((r: any, i: number) => (
+                                    <tr key={i} className="border-b border-gray-100 dark:border-white/5">
+                                        <td className="py-2.5 px-3 text-foreground font-medium">{r.name}</td>
+                                        <td className="py-2.5 px-3 text-muted-foreground">{r.triggerType}</td>
+                                        <td className="py-2.5 px-3 text-center">
+                                            <span className={`text-xs px-2 py-0.5 rounded-full ${r.active ? "bg-emerald-500/10 text-emerald-500" : "bg-gray-200 dark:bg-white/10 text-muted-foreground"}`}>
+                                                {r.active ? t("active") : t("inactive")}
+                                            </span>
+                                        </td>
+                                        <td className="py-2.5 px-3 text-right text-foreground">{r.executions}</td>
+                                        <td className="py-2.5 px-3 text-right text-emerald-500">{r.success}</td>
+                                        <td className="py-2.5 px-3 text-right text-red-400">{r.failed}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Tab: Broadcast Funnel ──
+
+function BroadcastTab({ data }: { data: any }) {
+    const t = useTranslations("analyticsV2");
+
+    if (!data || !data.campaigns?.length) return <p className="text-muted-foreground py-10 text-center">{t("noData")}</p>;
+
+    const { totals } = data;
+
+    // Funnel data for chart
+    const funnelData = [
+        { stage: t("total"), value: totals.total, color: "#6c5ce7" },
+        { stage: t("sent"), value: totals.sent, color: "#0984e3" },
+        { stage: t("delivered"), value: totals.delivered, color: "#00cec9" },
+        { stage: t("read"), value: totals.read, color: "#00b894" },
+    ];
+
+    return (
+        <div className="space-y-6">
+            {/* Funnel summary */}
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold text-foreground mb-4">{t("broadcastFunnel")}</h3>
+                <div className="space-y-3">
+                    {funnelData.map((item, i) => {
+                        const pct = totals.total > 0 ? (item.value / totals.total) * 100 : 0;
+                        return (
+                            <div key={i} className="flex items-center gap-4">
+                                <span className="w-24 text-[13px] text-muted-foreground shrink-0">{item.stage}</span>
+                                <div className="flex-1 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.04] overflow-hidden">
+                                    <div
+                                        className="h-full rounded-lg flex items-center px-3 text-white text-[12px] font-medium transition-all"
+                                        style={{ width: `${Math.max(pct, 2)}%`, background: item.color }}
+                                    >
+                                        {item.value}
+                                    </div>
+                                </div>
+                                <span className="text-[13px] text-muted-foreground w-14 text-right">{Math.round(pct)}%</span>
+                            </div>
+                        );
+                    })}
+                    {totals.failed > 0 && (
+                        <div className="flex items-center gap-4">
+                            <span className="w-24 text-[13px] text-red-400 shrink-0">{t("failed")}</span>
+                            <div className="flex-1 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.04] overflow-hidden">
+                                <div
+                                    className="h-full rounded-lg flex items-center px-3 text-white text-[12px] font-medium"
+                                    style={{ width: `${Math.max((totals.failed / totals.total) * 100, 2)}%`, background: "#d63031" }}
+                                >
+                                    {totals.failed}
+                                </div>
+                            </div>
+                            <span className="text-[13px] text-muted-foreground w-14 text-right">{Math.round((totals.failed / totals.total) * 100)}%</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Per-campaign table */}
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold text-foreground mb-4">{t("campaign")}</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-200 dark:border-white/10">
+                                <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("campaign")}</th>
+                                <th className="text-center py-2.5 px-3 text-muted-foreground font-medium">{t("channel")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("total")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("sent")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("delivered")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("read")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("failed")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("deliveryRate")}</th>
+                                <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("readRate")}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.campaigns.map((c: any) => (
+                                <tr key={c.id} className="border-b border-gray-100 dark:border-white/5">
+                                    <td className="py-2.5 px-3 text-foreground font-medium">{c.name}</td>
+                                    <td className="py-2.5 px-3 text-center">
+                                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${CHANNEL_COLORS[c.channel] || "#6c5ce7"}20`, color: CHANNEL_COLORS[c.channel] || "#6c5ce7" }}>
+                                            {c.channel}
+                                        </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right text-foreground">{c.total}</td>
+                                    <td className="py-2.5 px-3 text-right text-blue-400">{c.sent}</td>
+                                    <td className="py-2.5 px-3 text-right text-cyan-400">{c.delivered}</td>
+                                    <td className="py-2.5 px-3 text-right text-emerald-400">{c.read}</td>
+                                    <td className="py-2.5 px-3 text-right text-red-400">{c.failed}</td>
+                                    <td className="py-2.5 px-3 text-right text-foreground">{c.deliveryRate}%</td>
+                                    <td className="py-2.5 px-3 text-right text-foreground">{c.readRate}%</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

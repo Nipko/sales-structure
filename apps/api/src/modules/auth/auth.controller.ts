@@ -14,6 +14,9 @@ class LoginDto {
     @IsString()
     @MinLength(1)
     password: string;
+
+    @IsOptional()
+    rememberMe?: boolean;
 }
 
 class RegisterDto {
@@ -77,7 +80,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login with email and password' })
     async login(@Body() dto: LoginDto) {
-        const result = await this.authService.login(dto.email, dto.password);
+        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe);
         return { success: true, data: result };
     }
 
@@ -120,10 +123,20 @@ export class AuthController {
 
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Refresh access token' })
+    @ApiOperation({ summary: 'Refresh access token (rotates refresh token)' })
     async refresh(@Body() dto: RefreshTokenDto) {
         const result = await this.authService.refreshToken(dto.refreshToken);
         return { success: true, data: result };
+    }
+
+    @Post('logout')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Logout and revoke refresh token' })
+    async logout(@Body() body: { refreshToken?: string }) {
+        if (body.refreshToken) {
+            await this.authService.logout(body.refreshToken);
+        }
+        return { success: true };
     }
 
     @Post('admin/reset-password')
@@ -149,11 +162,11 @@ export class AuthController {
     @Post('google')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login or register with Google OAuth' })
-    async googleLogin(@Body() body: { idToken: string }) {
+    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean }) {
         if (!body.idToken) {
             throw new BadRequestException('idToken is required');
         }
-        const result = await this.authService.googleLogin(body.idToken);
+        const result = await this.authService.googleLogin(body.idToken, body.rememberMe);
         return { success: true, data: result };
     }
 

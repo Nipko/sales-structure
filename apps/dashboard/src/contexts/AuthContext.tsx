@@ -1,7 +1,18 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useIdleTimer } from "@/hooks/useIdleTimer";
+import SessionTimeoutModal from "@/components/SessionTimeoutModal";
+
+// ============================================
+// Constants
+// ============================================
+
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000;  // 60 minutes
+const WARNING_BEFORE_MS = 2 * 60 * 1000; // 2 minutes before timeout
+const WARNING_SECONDS = 120;              // 2 min countdown
+const PROACTIVE_REFRESH_MS = 12 * 60 * 1000; // Refresh at ~12 min (access token is 15 min)
 
 // ============================================
 // Types
@@ -37,8 +48,8 @@ interface AuthContextType {
     user: User | null;
     isLoading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<LoginResult>;
-    googleLogin: (idToken: string) => Promise<GoogleLoginResult>;
+    login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
+    googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
     logout: () => void;
     hasRole: (...roles: string[]) => boolean;
 }
@@ -47,6 +58,9 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
+// Pages that don't need session management
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/verify-email", "/setup-password", "/onboarding"];
+
 // ============================================
 // Provider
 // ============================================
@@ -54,9 +68,36 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cl
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [showWarning, setShowWarning] = useState(false);
     const router = useRouter();
+    const pathname = usePathname();
+    const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const bcRef = useRef<BroadcastChannel | null>(null);
 
-    // Check for existing session on mount
+    const isPublicPage = PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
+    const isAuthenticated = !!user;
+
+    // ── BroadcastChannel for logout sync ──
+    useEffect(() => {
+        try {
+            const bc = new BroadcastChannel("parallly-session");
+            bc.onmessage = (evt) => {
+                if (evt.data?.type === "logout") {
+                    setUser(null);
+                    localStorage.removeItem("accessToken");
+                    localStorage.removeItem("refreshToken");
+                    localStorage.removeItem("user");
+                    router.push("/login?expired=1");
+                }
+            };
+            bcRef.current = bc;
+            return () => { try { bc.close(); } catch { /* noop */ } };
+        } catch {
+            return;
+        }
+    }, [router]);
+
+    // ── Check for existing session on mount ──
     useEffect(() => {
         const token = localStorage.getItem("accessToken");
         const savedUser = localStorage.getItem("user");
@@ -71,24 +112,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
     }, []);
 
+    // ── Proactive token refresh ──
+    useEffect(() => {
+        if (!isAuthenticated || isPublicPage) return;
+
+        const scheduleRefresh = () => {
+            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+            refreshTimerRef.current = setTimeout(async () => {
+                const refreshToken = localStorage.getItem("refreshToken");
+                if (!refreshToken) return;
+
+                try {
+                    const res = await fetch(`${API_URL}/auth/refresh`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ refreshToken }),
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.success) {
+                            localStorage.setItem("accessToken", data.data.accessToken);
+                            if (data.data.refreshToken) {
+                                localStorage.setItem("refreshToken", data.data.refreshToken);
+                            }
+                            scheduleRefresh(); // Schedule next refresh
+                        }
+                    }
+                } catch {
+                    // Silently fail — the 401 interceptor in api.ts will handle it
+                }
+            }, PROACTIVE_REFRESH_MS);
+        };
+
+        scheduleRefresh();
+
+        return () => {
+            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        };
+    }, [isAuthenticated, isPublicPage]);
+
+    // ── Idle timer ──
+    const handleWarning = useCallback(() => {
+        setShowWarning(true);
+    }, []);
+
+    const handleTimeout = useCallback(() => {
+        setShowWarning(false);
+        performLogout(true);
+    }, []);
+
+    const { resetActivity } = useIdleTimer({
+        timeout: IDLE_TIMEOUT_MS,
+        warningBefore: WARNING_BEFORE_MS,
+        onWarning: handleWarning,
+        onTimeout: handleTimeout,
+        enabled: isAuthenticated && !isPublicPage,
+    });
+
+    const handleStayLoggedIn = useCallback(async () => {
+        setShowWarning(false);
+        resetActivity();
+
+        // Also refresh the token proactively
+        const refreshToken = localStorage.getItem("refreshToken");
+        if (!refreshToken) return;
+
+        try {
+            const res = await fetch(`${API_URL}/auth/refresh`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refreshToken }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem("accessToken", data.data.accessToken);
+                    if (data.data.refreshToken) {
+                        localStorage.setItem("refreshToken", data.data.refreshToken);
+                    }
+                }
+            }
+        } catch { /* noop */ }
+    }, [resetActivity]);
+
+    // ── Auth methods ──
+
     const getRedirectPath = useCallback((userData: User): string => {
-        // super_admin and users with a tenant skip onboarding entirely
-        if (userData.role === "super_admin" || userData.tenantId) {
-            return "/admin";
-        }
-        // Email users who haven't verified — Google users skip (already verified)
+        if (userData.role === "super_admin" || userData.tenantId) return "/admin";
         if (!userData.emailVerified) return "/verify-email";
-        // Users without a company/tenant → onboarding wizard
         if (!userData.onboardingCompleted) return "/onboarding";
         return "/admin";
     }, []);
 
-    const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+    const login = useCallback(async (email: string, password: string, rememberMe = false): Promise<LoginResult> => {
         try {
             const res = await fetch(`${API_URL}/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email, password, rememberMe }),
             });
 
             const data = await res.json();
@@ -97,24 +219,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return { success: false, error: data.message || "Credenciales inválidas" };
             }
 
-            // Store tokens and user
             localStorage.setItem("accessToken", data.data.accessToken);
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
             setUser(data.data.user);
             return { success: true, redirect: getRedirectPath(data.data.user) };
-        } catch (err) {
+        } catch {
             return { success: false, error: "Error de conexión con el servidor" };
         }
     }, [getRedirectPath]);
 
-    const googleLogin = useCallback(async (idToken: string): Promise<GoogleLoginResult> => {
+    const googleLogin = useCallback(async (idToken: string, rememberMe = false): Promise<GoogleLoginResult> => {
         try {
             const res = await fetch(`${API_URL}/auth/google`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idToken }),
+                body: JSON.stringify({ idToken, rememberMe }),
             });
 
             const data = await res.json();
@@ -129,18 +250,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             setUser(data.data.user);
             return { success: true, redirect: getRedirectPath(data.data.user) };
-        } catch (err) {
+        } catch {
             return { success: false, error: "Error de conexión con el servidor" };
         }
     }, [getRedirectPath]);
 
-    const logout = useCallback(() => {
+    const performLogout = useCallback((expired = false) => {
+        // Call logout API to revoke refresh token
+        const refreshToken = localStorage.getItem("refreshToken");
+        if (refreshToken) {
+            fetch(`${API_URL}/auth/logout`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refreshToken }),
+            }).catch(() => { /* best effort */ });
+        }
+
+        // Broadcast logout to all tabs
+        try {
+            bcRef.current?.postMessage({ type: "logout" });
+        } catch { /* noop */ }
+
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
         setUser(null);
-        router.push("/login");
+        router.push(expired ? "/login?expired=1" : "/login");
     }, [router]);
+
+    const logout = useCallback(() => performLogout(false), [performLogout]);
 
     const hasRole = useCallback((...roles: string[]) => {
         if (!user) return false;
@@ -152,7 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             value={{
                 user,
                 isLoading,
-                isAuthenticated: !!user,
+                isAuthenticated,
                 login,
                 googleLogin,
                 logout,
@@ -160,6 +298,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }}
         >
             {children}
+            <SessionTimeoutModal
+                open={showWarning}
+                secondsLeft={WARNING_SECONDS}
+                onStayLoggedIn={handleStayLoggedIn}
+                onLogout={() => performLogout(true)}
+            />
         </AuthContext.Provider>
     );
 }

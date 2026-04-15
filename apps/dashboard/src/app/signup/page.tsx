@@ -137,6 +137,14 @@ export default function SignupPage() {
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
 
             <div className="w-full max-w-[460px] relative z-10">
+                {/* Back to landing */}
+                <a
+                    href="https://parallly-chat.cloud"
+                    className="inline-flex items-center gap-1.5 text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors mb-6"
+                >
+                    <ArrowLeft size={14} /> {t('backToLanding')}
+                </a>
+
                 {/* Logo */}
                 <div className="text-center mb-6">
                     <AnimatedLogo height={44} animate showPoweredBy={false} />
@@ -162,8 +170,8 @@ export default function SignupPage() {
                     )}
 
                     {/* Google Sign-In Button (rendered by Google GSI) */}
-                    <div className="w-full flex justify-center">
-                        <div ref={googleWrapperRef} className="w-full [&>div]:!w-full" />
+                    <div className="w-full">
+                        <div ref={googleWrapperRef} className="w-full [&>div]:!w-full [&>div>div]:!w-full [&_iframe]:!w-full" />
                         {!googleReady && (
                             <div className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-gray-400 text-sm cursor-wait">
                                 <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />

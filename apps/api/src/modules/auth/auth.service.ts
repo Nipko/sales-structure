@@ -2,14 +2,20 @@ import { Injectable, UnauthorizedException, ConflictException, NotFoundException
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { RedisService } from '../redis/redis.service';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
     welcomeEmail, passwordChangedEmail,
 } from '../email/email-layouts';
+
+// Refresh token TTLs (seconds)
+const REFRESH_TTL_DEFAULT = 8 * 60 * 60;       // 8 hours (one work shift)
+const REFRESH_TTL_REMEMBER = 14 * 24 * 60 * 60; // 14 days
 
 @Injectable()
 export class AuthService {
@@ -19,7 +25,70 @@ export class AuthService {
         private configService: ConfigService,
         private googleAuthService: GoogleAuthService,
         private emailService: EmailService,
+        private redis: RedisService,
     ) { }
+
+    // ── Token helpers ─────────────────────────────────────────────
+
+    /**
+     * Generate access + refresh token pair.
+     * Stores refresh token hash in Redis for validation & rotation.
+     */
+    private async generateTokens(
+        payload: JwtPayload,
+        options: { rememberMe?: boolean } = {},
+    ): Promise<{ accessToken: string; refreshToken: string }> {
+        const accessToken = this.jwtService.sign(payload, {
+            secret: this.configService.get<string>('auth.jwtSecret'),
+            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
+        });
+
+        const refreshTtl = options.rememberMe ? REFRESH_TTL_REMEMBER : REFRESH_TTL_DEFAULT;
+        const refreshExpiresIn = options.rememberMe ? '14d' : '8h';
+
+        const tokenId = crypto.randomUUID();
+        const refreshToken = this.jwtService.sign(
+            { ...payload, tid: tokenId },
+            {
+                secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+                expiresIn: refreshExpiresIn,
+            },
+        );
+
+        // Store in Redis: refresh:{userId}:{tokenId} → metadata
+        const redisKey = `refresh:${payload.sub}:${tokenId}`;
+        await this.redis.setJson(redisKey, {
+            userId: payload.sub,
+            rememberMe: !!options.rememberMe,
+            createdAt: Date.now(),
+        }, refreshTtl);
+
+        return { accessToken, refreshToken };
+    }
+
+    /**
+     * Revoke a specific refresh token by removing it from Redis.
+     */
+    private async revokeRefreshToken(userId: string, tokenId: string): Promise<void> {
+        await this.redis.del(`refresh:${userId}:${tokenId}`);
+    }
+
+    /**
+     * Revoke ALL refresh tokens for a user (e.g., on password change).
+     * Scans Redis for all refresh:{userId}:* keys and deletes them.
+     */
+    async revokeAllUserSessions(userId: string): Promise<void> {
+        const client = this.redis.getClient();
+        const pattern = `refresh:${userId}:*`;
+        let cursor = '0';
+        do {
+            const [nextCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+            cursor = nextCursor;
+            if (keys.length > 0) {
+                await client.del(...keys);
+            }
+        } while (cursor !== '0');
+    }
 
     async register(data: {
         email: string;
@@ -113,15 +182,7 @@ export class AuthService {
             role: user.role as UserRole,
         };
 
-        const accessToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
-        });
-
-        const refreshToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
-        });
+        const { accessToken, refreshToken } = await this.generateTokens(payload);
 
         // Auto-send verification email
         try {
@@ -147,7 +208,7 @@ export class AuthService {
         };
     }
 
-    async login(email: string, password: string) {
+    async login(email: string, password: string, rememberMe = false) {
         const user = await this.prisma.user.findUnique({
             where: { email },
             include: { tenant: true },
@@ -180,15 +241,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const accessToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
-        });
-
-        const refreshToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
-        });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
@@ -211,35 +264,76 @@ export class AuthService {
         };
     }
 
+    /**
+     * Refresh token rotation: validates old token, revokes it, issues new pair.
+     * If token is already revoked (replay attack), revokes ALL user sessions.
+     */
     async refreshToken(token: string) {
+        let decoded: any;
         try {
-            const payload = this.jwtService.verify(token, {
+            decoded = this.jwtService.verify(token, {
                 secret: this.configService.get<string>('auth.jwtRefreshSecret'),
             });
-
-            const user = await this.prisma.user.findUnique({
-                where: { id: payload.sub },
-            });
-
-            if (!user || !user.isActive) {
-                throw new UnauthorizedException('Invalid token');
-            }
-
-            const newPayload: JwtPayload = {
-                sub: user.id,
-                email: user.email,
-                role: user.role as UserRole,
-                tenantId: user.tenantId || undefined,
-            };
-
-            const accessToken = this.jwtService.sign(newPayload, {
-                secret: this.configService.get<string>('auth.jwtSecret'),
-                expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
-            });
-
-            return { accessToken };
         } catch {
             throw new UnauthorizedException('Invalid or expired refresh token');
+        }
+
+        const { sub: userId, tid: tokenId } = decoded;
+        if (!tokenId) {
+            // Legacy token without tid — still allow but don't rotate
+            const user = await this.prisma.user.findUnique({ where: { id: userId } });
+            if (!user || !user.isActive) throw new UnauthorizedException('Invalid token');
+
+            const payload: JwtPayload = {
+                sub: user.id, email: user.email,
+                role: user.role as UserRole, tenantId: user.tenantId || undefined,
+            };
+            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload);
+            return { accessToken, refreshToken: newRefresh };
+        }
+
+        // Check if this token exists in Redis (not revoked)
+        const redisKey = `refresh:${userId}:${tokenId}`;
+        const stored = await this.redis.getJson<{ rememberMe?: boolean }>(redisKey);
+
+        if (!stored) {
+            // Token was already used or revoked — possible replay attack
+            // Revoke ALL sessions for this user as a safety measure
+            await this.revokeAllUserSessions(userId);
+            throw new UnauthorizedException('Token reuse detected — all sessions revoked');
+        }
+
+        // Revoke the old token
+        await this.revokeRefreshToken(userId, tokenId);
+
+        // Issue new pair
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.isActive) throw new UnauthorizedException('Invalid token');
+
+        const payload: JwtPayload = {
+            sub: user.id, email: user.email,
+            role: user.role as UserRole, tenantId: user.tenantId || undefined,
+        };
+        const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, {
+            rememberMe: stored.rememberMe,
+        });
+
+        return { accessToken, refreshToken: newRefresh };
+    }
+
+    /**
+     * Logout: revoke the specific refresh token.
+     */
+    async logout(token: string): Promise<void> {
+        try {
+            const decoded = this.jwtService.verify(token, {
+                secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+            });
+            if (decoded.tid) {
+                await this.revokeRefreshToken(decoded.sub, decoded.tid);
+            }
+        } catch {
+            // Token already expired or invalid — nothing to revoke
         }
     }
 
@@ -293,7 +387,7 @@ export class AuthService {
 
     // ── Google OAuth ──────────────────────────────────────────────
 
-    async googleLogin(idToken: string) {
+    async googleLogin(idToken: string, rememberMe = false) {
         const googleUser = await this.googleAuthService.verifyIdToken(idToken);
 
         // Find existing user by email or googleId
@@ -348,15 +442,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const accessToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
-        });
-
-        const refreshToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
-        });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe });
 
         // super_admin and users with tenant are always "onboarded"
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
@@ -559,15 +645,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const accessToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
-        });
-        const refreshToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
-        });
-
+        const { accessToken, refreshToken } = await this.generateTokens(payload);
         return { accessToken, refreshToken };
     }
 
@@ -602,6 +680,9 @@ export class AuthService {
             where: { id: userId },
             data: { password: hashedPassword },
         });
+
+        // Revoke all sessions — user must re-login with new password
+        await this.revokeAllUserSessions(userId);
 
         this.emailService.send({
             to: user.email,
@@ -738,15 +819,7 @@ export class AuthService {
             tenantId: result.user.tenantId || undefined,
         };
 
-        const accessToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
-        });
-
-        const refreshToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('auth.jwtRefreshSecret'),
-            expiresIn: this.configService.get<string>('auth.jwtRefreshExpiration', '7d'),
-        });
+        const { accessToken, refreshToken } = await this.generateTokens(payload);
 
         return {
             accessToken,

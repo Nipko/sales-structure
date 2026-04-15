@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lock, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
@@ -32,6 +32,7 @@ export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -39,12 +40,14 @@ export default function LoginPage() {
     const googleWrapperRef = useRef<HTMLDivElement>(null);
     const { login, googleLogin } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const sessionExpired = searchParams.get("expired") === "1";
 
     const handleGoogleCallback = useCallback(
         async (response: { credential: string }) => {
             setError("");
             setIsGoogleLoading(true);
-            const result = await googleLogin(response.credential);
+            const result = await googleLogin(response.credential, rememberMe);
             if (result.success && result.redirect) {
                 router.push(result.redirect);
             } else {
@@ -70,7 +73,7 @@ export default function LoginPage() {
                 theme: "outline",
                 size: "large",
                 text: "continue_with",
-                width: 380,
+                width: 400,
                 locale: "es",
             });
             setGoogleReady(true);
@@ -94,7 +97,7 @@ export default function LoginPage() {
         setError("");
         setIsSubmitting(true);
 
-        const result = await login(email, password);
+        const result = await login(email, password, rememberMe);
 
         if (result.success) {
             router.push(result.redirect || "/admin");
@@ -111,6 +114,14 @@ export default function LoginPage() {
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
 
             <div className="w-full max-w-[420px] relative z-10">
+                {/* Back to landing */}
+                <a
+                    href="https://parallly-chat.cloud"
+                    className="inline-flex items-center gap-1.5 text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors mb-6"
+                >
+                    <ArrowLeft size={14} /> {t('backToLanding')}
+                </a>
+
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <AnimatedLogo height={44} animate showPoweredBy={false} />
@@ -128,6 +139,13 @@ export default function LoginPage() {
                         {t('enterCredentials')}
                     </p>
 
+                    {/* Session expired notice */}
+                    {sessionExpired && !error && (
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-[13px]">
+                            <AlertCircle size={16} /> {t('sessionExpired')}
+                        </div>
+                    )}
+
                     {/* Error */}
                     {error && (
                         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
@@ -136,8 +154,8 @@ export default function LoginPage() {
                     )}
 
                     {/* Google Sign-In Button (rendered by Google GSI) */}
-                    <div className="w-full flex justify-center">
-                        <div ref={googleWrapperRef} className="w-full [&>div]:!w-full" />
+                    <div className="w-full">
+                        <div ref={googleWrapperRef} className="w-full [&>div]:!w-full [&>div>div]:!w-full [&_iframe]:!w-full" />
                         {!googleReady && (
                             <div className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-gray-400 text-sm cursor-wait">
                                 <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
@@ -179,7 +197,7 @@ export default function LoginPage() {
                         </div>
 
                         {/* Password */}
-                        <div className="mb-6">
+                        <div className="mb-4">
                             <div className="flex items-center justify-between mb-1.5">
                                 <label className="text-[13px] text-muted-foreground font-medium">
                                     {t('password')}
@@ -207,6 +225,17 @@ export default function LoginPage() {
                                 </button>
                             </div>
                         </div>
+
+                        {/* Remember Me */}
+                        <label className="flex items-center gap-2 mb-6 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={(e) => setRememberMe(e.target.checked)}
+                                className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30 bg-gray-50 dark:bg-white/5 cursor-pointer"
+                            />
+                            <span className="text-[13px] text-muted-foreground">{t('rememberMe')}</span>
+                        </label>
 
                         {/* Submit */}
                         <button

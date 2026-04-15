@@ -61,6 +61,10 @@ async function refreshAccessToken(): Promise<string | null> {
         const data = await res.json();
         if (data.success && data.data.accessToken) {
             localStorage.setItem("accessToken", data.data.accessToken);
+            // Refresh token rotation: store new refresh token if provided
+            if (data.data.refreshToken) {
+                localStorage.setItem("refreshToken", data.data.refreshToken);
+            }
             return data.data.accessToken;
         }
         return null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 
 import esMessages from "../../messages/es.json";
@@ -22,7 +22,23 @@ const localeNames: Record<string, string> = {
     fr: "Français",
 };
 
+interface LangContextValue {
+    locale: string;
+    setLocale: (lang: string) => void;
+    localeNames: Record<string, string>;
+}
+
+const LangContext = createContext<LangContextValue>({
+    locale: "es",
+    setLocale: () => {},
+    localeNames,
+});
+
 export function useLang() {
+    return useContext(LangContext);
+}
+
+export default function LangProvider({ children }: { children: ReactNode }) {
     const [locale, setLocaleState] = useState("es");
 
     useEffect(() => {
@@ -31,20 +47,18 @@ export function useLang() {
     }, []);
 
     const setLocale = (lang: string) => {
+        if (!allMessages[lang]) return;
         document.cookie = `locale=${lang};path=/;max-age=31536000`;
         setLocaleState(lang);
     };
 
-    return { locale, setLocale, localeNames };
-}
-
-export default function LangProvider({ children }: { children: ReactNode }) {
-    const { locale } = useLang();
     const messages = allMessages[locale] || allMessages.es;
 
     return (
-        <NextIntlClientProvider locale={locale} messages={messages}>
-            {children}
-        </NextIntlClientProvider>
+        <LangContext.Provider value={{ locale, setLocale, localeNames }}>
+            <NextIntlClientProvider locale={locale} messages={messages}>
+                {children}
+            </NextIntlClientProvider>
+        </LangContext.Provider>
     );
 }

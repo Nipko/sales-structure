@@ -71,76 +71,9 @@ export class ChannelManagementController {
         };
     }
 
-    @Post(':channelType/connect')
-    @ApiOperation({ summary: 'Connect a channel (Instagram, Messenger, etc.)' })
-    async connect(
-        @Param('channelType') channelType: string,
-        @Body() body: { accountId: string; displayName?: string; accessToken: string; metadata?: any },
-        @Req() req: any,
-    ) {
-        const tenantId = req.user?.tenantId;
-        if (!tenantId) throw new Error('Tenant ID required');
-
-        const { accountId, displayName, accessToken, metadata } = body;
-        if (!accountId || !accessToken) throw new Error('accountId and accessToken are required');
-
-        // Encrypt the access token
-        const encryptedToken = this.cryptoService.encryptToken(accessToken);
-
-        // Upsert channel_account
-        const existing = await this.prisma.channelAccount.findFirst({
-            where: { channelType, accountId },
-        });
-
-        if (existing) {
-            await this.prisma.channelAccount.update({
-                where: { id: existing.id },
-                data: {
-                    tenantId,
-                    displayName: displayName || accountId,
-                    accessToken: 'encrypted_ref',
-                    isActive: true,
-                    metadata: { ...(existing.metadata as any), ...metadata, source: 'manual_connect' },
-                },
-            });
-        } else {
-            await this.prisma.channelAccount.create({
-                data: {
-                    tenantId,
-                    channelType,
-                    accountId,
-                    displayName: displayName || accountId,
-                    accessToken: 'encrypted_ref',
-                    isActive: true,
-                    metadata: { ...metadata, source: 'manual_connect' },
-                },
-            });
-        }
-
-        // Store encrypted credential (reuse whatsapp_credentials table for all channels)
-        const existingCred = await this.prisma.whatsappCredential.findFirst({
-            where: { tenantId, credentialType: `${channelType}_token` },
-        });
-
-        if (existingCred) {
-            await this.prisma.whatsappCredential.update({
-                where: { id: existingCred.id },
-                data: { encryptedValue: encryptedToken, rotationState: 'active' },
-            });
-        } else {
-            await this.prisma.whatsappCredential.create({
-                data: {
-                    tenantId,
-                    credentialType: `${channelType}_token`,
-                    encryptedValue: encryptedToken,
-                    rotationState: 'active',
-                },
-            });
-        }
-
-        this.logger.log(`Channel ${channelType} connected for tenant ${tenantId} (accountId=${accountId})`);
-        return { success: true, message: `${channelType} connected successfully` };
-    }
+    // ==========================================
+    // Telegram-specific (MUST be before :channelType params)
+    // ==========================================
 
     @Post('telegram/connect')
     @ApiOperation({ summary: 'Connect a Telegram bot — validates token, sets webhook, stores credentials' })
@@ -307,6 +240,81 @@ export class ChannelManagementController {
 
         this.logger.log(`Telegram disconnected for tenant ${tenantId}`);
         return { success: true, message: 'Bot de Telegram desconectado' };
+    }
+
+    // ==========================================
+    // Generic channel (parameterized — MUST be after specific routes)
+    // ==========================================
+
+    @Post(':channelType/connect')
+    @ApiOperation({ summary: 'Connect a channel (Instagram, Messenger, etc.)' })
+    async connect(
+        @Param('channelType') channelType: string,
+        @Body() body: { accountId: string; displayName?: string; accessToken: string; metadata?: any },
+        @Req() req: any,
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new Error('Tenant ID required');
+
+        const { accountId, displayName, accessToken, metadata } = body;
+        if (!accountId || !accessToken) throw new Error('accountId and accessToken are required');
+
+        // Encrypt the access token
+        const encryptedToken = this.cryptoService.encryptToken(accessToken);
+
+        // Upsert channel_account
+        const existing = await this.prisma.channelAccount.findFirst({
+            where: { channelType, accountId },
+        });
+
+        if (existing) {
+            await this.prisma.channelAccount.update({
+                where: { id: existing.id },
+                data: {
+                    tenantId,
+                    displayName: displayName || accountId,
+                    accessToken: 'encrypted_ref',
+                    isActive: true,
+                    metadata: { ...(existing.metadata as any), ...metadata, source: 'manual_connect' },
+                },
+            });
+        } else {
+            await this.prisma.channelAccount.create({
+                data: {
+                    tenantId,
+                    channelType,
+                    accountId,
+                    displayName: displayName || accountId,
+                    accessToken: 'encrypted_ref',
+                    isActive: true,
+                    metadata: { ...metadata, source: 'manual_connect' },
+                },
+            });
+        }
+
+        // Store encrypted credential (reuse whatsapp_credentials table for all channels)
+        const existingCred = await this.prisma.whatsappCredential.findFirst({
+            where: { tenantId, credentialType: `${channelType}_token` },
+        });
+
+        if (existingCred) {
+            await this.prisma.whatsappCredential.update({
+                where: { id: existingCred.id },
+                data: { encryptedValue: encryptedToken, rotationState: 'active' },
+            });
+        } else {
+            await this.prisma.whatsappCredential.create({
+                data: {
+                    tenantId,
+                    credentialType: `${channelType}_token`,
+                    encryptedValue: encryptedToken,
+                    rotationState: 'active',
+                },
+            });
+        }
+
+        this.logger.log(`Channel ${channelType} connected for tenant ${tenantId} (accountId=${accountId})`);
+        return { success: true, message: `${channelType} connected successfully` };
     }
 
     @Get(':channelType/config')

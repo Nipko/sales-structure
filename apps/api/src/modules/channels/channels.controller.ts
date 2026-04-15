@@ -207,23 +207,53 @@ export class ChannelsController {
     // Telegram
     // ==========================================
 
+    @Post('webhook/telegram/:botUsername')
+    @ApiOperation({ summary: 'Receive Telegram Bot webhook updates (bot-specific URL)' })
+    async receiveTelegramByBot(
+        @Param('botUsername') botUsername: string,
+        @Body() body: any,
+        @Res() res: Response,
+    ) {
+        res.status(200).send('OK');
+        await this.processTelegramUpdate(body, botUsername);
+    }
+
     @Post('webhook/telegram')
-    @ApiOperation({ summary: 'Receive Telegram Bot webhook updates' })
+    @ApiOperation({ summary: 'Receive Telegram Bot webhook updates (generic)' })
     async receiveTelegram(@Body() body: any, @Res() res: Response) {
         res.status(200).send('OK');
+        await this.processTelegramUpdate(body, null);
+    }
 
+    private async processTelegramUpdate(body: any, botUsername: string | null): Promise<void> {
         try {
-            // Telegram sends Update objects directly
-            // The bot token is used to identify which tenant owns the bot
-            const botId = body?.message?.from?.is_bot ? body?.message?.from?.id?.toString() : null;
+            // Idempotency check via update_id
+            const updateId = body?.update_id;
+            if (updateId) {
+                const idemKey = `idem:tg:${updateId}`;
+                if (await this.redis.get(idemKey)) return;
+                await this.redis.set(idemKey, '1', 86400);
+            }
 
-            // Try to find the tenant by any configured telegram channel account
-            const channelAccount = await this.prisma.channelAccount.findFirst({
-                where: { channelType: 'telegram', isActive: true },
-            });
+            // Resolve tenant: prefer bot-specific URL, fallback to chat.id lookup
+            let channelAccount: any;
+
+            if (botUsername) {
+                channelAccount = await this.prisma.channelAccount.findFirst({
+                    where: { channelType: 'telegram', accountId: botUsername, isActive: true },
+                });
+            }
 
             if (!channelAccount) {
-                this.logger.warn('No tenant configured for Telegram');
+                // Fallback: find any active Telegram channel account for this bot
+                // (for generic webhook URL with single-bot setups)
+                channelAccount = await this.prisma.channelAccount.findFirst({
+                    where: { channelType: 'telegram', isActive: true },
+                });
+            }
+
+            if (!channelAccount) {
+                this.logger.warn(`No tenant configured for Telegram bot: ${botUsername || 'unknown'}`);
                 return;
             }
 

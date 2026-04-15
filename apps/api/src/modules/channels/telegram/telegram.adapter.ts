@@ -6,10 +6,10 @@ import { v4 as uuid } from 'uuid';
 
 /**
  * Telegram Bot API Adapter
- * 
+ *
  * Handles incoming messages via Telegram Bot API.
  * Uses the standard Bot API (not TDLib) for simplicity.
- * 
+ *
  * Webhook: receives Update objects from Telegram
  * API: https://api.telegram.org/bot{token}/sendMessage
  */
@@ -27,13 +27,12 @@ export class TelegramAdapter implements IChannelAdapter {
      * there's no challenge/response like Meta.
      */
     verifyWebhook(_query: any): string | null {
-        // Telegram doesn't use GET verification. Return null to signal no challenge.
         return null;
     }
 
     /**
      * Parse incoming Telegram Update into normalized message
-     * 
+     *
      * Telegram Update structure:
      * { update_id, message: { message_id, from, chat, date, text, photo, document, etc } }
      */
@@ -53,6 +52,8 @@ export class TelegramAdapter implements IChannelAdapter {
             // Skip bot messages
             if (message.from?.is_bot) return null;
 
+            const senderName = [message.from?.first_name, message.from?.last_name].filter(Boolean).join(' ');
+
             const normalized: NormalizedMessage = {
                 id: uuid(),
                 tenantId: '', // Resolved by gateway
@@ -68,8 +69,10 @@ export class TelegramAdapter implements IChannelAdapter {
                     tgMessageId: message.message_id?.toString(),
                     tgChatId: chatId,
                     tgSenderId: senderId,
-                    tgSenderName: [message.from?.first_name, message.from?.last_name].filter(Boolean).join(' '),
+                    tgSenderName: senderName,
                     tgUsername: message.from?.username,
+                    contactName: senderName, // Used by ConversationsService for CRM lead name
+                    updateId: payload.update_id?.toString(),
                 },
             };
 
@@ -107,17 +110,21 @@ export class TelegramAdapter implements IChannelAdapter {
     }
 
     /**
-     * Send a photo/media via Telegram Bot API
+     * Send media via Telegram Bot API.
+     * Detects type from mimeType and routes to the correct API method.
      */
     async sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, _botId: string, botToken: string): Promise<string> {
-        const url = `${this.apiUrl}/bot${botToken}/sendPhoto`;
+        // Determine the correct Telegram method based on URL or default to photo
+        const method = this.resolveMediaMethod(mediaUrl);
+        const url = `${this.apiUrl}/bot${botToken}/${method}`;
+        const mediaField = this.resolveMediaField(method);
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: to,
-                photo: mediaUrl,
+                [mediaField]: mediaUrl,
                 caption: caption || '',
                 parse_mode: 'HTML',
             }),
@@ -126,10 +133,92 @@ export class TelegramAdapter implements IChannelAdapter {
         const data = await response.json() as any;
 
         if (!data.ok) {
+            this.logger.error(`Telegram media send failed: ${JSON.stringify(data)}`);
             throw new Error(`Telegram API error: ${data.description || 'Unknown error'}`);
         }
 
         return data.result?.message_id?.toString() || '';
+    }
+
+    /**
+     * Send typing indicator (sendChatAction with action=typing)
+     */
+    async sendTypingIndicator(_botId: string, to: string, botToken: string): Promise<void> {
+        const url = `${this.apiUrl}/bot${botToken}/sendChatAction`;
+
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: to,
+                action: 'typing',
+            }),
+        }).catch(() => { /* fire-and-forget */ });
+    }
+
+    /**
+     * Resolve a Telegram file_id to a downloadable URL.
+     * Calls getFile → constructs https://api.telegram.org/file/bot{token}/{file_path}
+     */
+    async resolveFileUrl(fileId: string, botToken: string): Promise<string | null> {
+        try {
+            const url = `${this.apiUrl}/bot${botToken}/getFile?file_id=${fileId}`;
+            const response = await fetch(url);
+            const data = await response.json() as any;
+
+            if (!data.ok || !data.result?.file_path) {
+                this.logger.warn(`Could not resolve Telegram file: ${fileId}`);
+                return null;
+            }
+
+            return `${this.apiUrl}/file/bot${botToken}/${data.result.file_path}`;
+        } catch (error) {
+            this.logger.error(`Error resolving Telegram file: ${error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Set webhook URL for a bot via Telegram API.
+     * Called when connecting a bot from the dashboard.
+     */
+    async setWebhook(botToken: string, webhookUrl: string): Promise<{ ok: boolean; description?: string }> {
+        const url = `${this.apiUrl}/bot${botToken}/setWebhook`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: webhookUrl,
+                allowed_updates: ['message', 'edited_message', 'callback_query'],
+                drop_pending_updates: false,
+            }),
+        });
+
+        const data = await response.json() as any;
+        return { ok: data.ok, description: data.description };
+    }
+
+    /**
+     * Validate bot token by calling getMe.
+     * Returns bot info if valid, null otherwise.
+     */
+    async validateBotToken(botToken: string): Promise<{ id: number; username: string; firstName: string } | null> {
+        try {
+            const url = `${this.apiUrl}/bot${botToken}/getMe`;
+            const response = await fetch(url);
+            const data = await response.json() as any;
+
+            if (!data.ok) return null;
+
+            return {
+                id: data.result.id,
+                username: data.result.username,
+                firstName: data.result.first_name,
+            };
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -146,7 +235,7 @@ export class TelegramAdapter implements IChannelAdapter {
             const photo = message.photo[message.photo.length - 1];
             return {
                 type: 'image' as const,
-                mediaUrl: photo.file_id, // Need to resolve via getFile API
+                mediaUrl: photo.file_id, // Resolved via resolveFileUrl when needed
                 mimeType: 'image/jpeg',
                 caption: message.caption,
             };
@@ -194,19 +283,42 @@ export class TelegramAdapter implements IChannelAdapter {
             };
         }
 
-        // Contact
+        // Contact shared
         if (message.contact) {
             return {
                 type: 'text' as const,
-                text: `📱 Contacto: ${message.contact.first_name} ${message.contact.last_name || ''} — ${message.contact.phone_number}`,
+                text: `Contacto: ${message.contact.first_name} ${message.contact.last_name || ''} — ${message.contact.phone_number}`,
             };
         }
 
         // Sticker
         if (message.sticker) {
-            return { type: 'text' as const, text: `[Sticker: ${message.sticker.emoji || '🎨'}]` };
+            return { type: 'text' as const, text: `[Sticker: ${message.sticker.emoji || ''}]` };
         }
 
         return { type: 'text' as const, text: '[Tipo de mensaje no soportado]' };
+    }
+
+    /**
+     * Determine the Telegram API method based on media URL extension/pattern
+     */
+    private resolveMediaMethod(mediaUrl: string): string {
+        const lower = mediaUrl.toLowerCase();
+        if (lower.match(/\.(mp4|mov|avi|mkv)$/)) return 'sendVideo';
+        if (lower.match(/\.(mp3|ogg|wav|m4a|opus)$/)) return 'sendAudio';
+        if (lower.match(/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt|csv)$/)) return 'sendDocument';
+        return 'sendPhoto';
+    }
+
+    /**
+     * Map Telegram method to the correct body field name
+     */
+    private resolveMediaField(method: string): string {
+        switch (method) {
+            case 'sendVideo': return 'video';
+            case 'sendAudio': return 'audio';
+            case 'sendDocument': return 'document';
+            default: return 'photo';
+        }
     }
 }

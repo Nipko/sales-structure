@@ -11,6 +11,7 @@ import {
     MessageSquare,
     Instagram,
     MessageCircle,
+    Send,
     CheckCircle,
     AlertCircle,
     ArrowRight,
@@ -40,6 +41,14 @@ const channels = [
         Icon: MessageCircle,
         href: "/admin/channels/messenger",
         description: "Messenger via Facebook Page integration",
+    },
+    {
+        key: "telegram",
+        name: "Telegram",
+        color: "#0088cc",
+        Icon: Send,
+        href: "/admin/channels/telegram",
+        description: "Telegram Bot API — mensajes directos automatizados",
     },
 ];
 

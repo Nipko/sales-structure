@@ -12,7 +12,6 @@ import {
     Instagram,
     Facebook,
     Send,
-    Headphones,
     Key,
     Eye,
     EyeOff,
@@ -25,7 +24,6 @@ const channelTabs = [
     { id: "instagram", label: "Instagram", icon: Instagram, color: "text-pink-500", activeBg: "bg-pink-500/10", activeBorder: "border-pink-500" },
     { id: "messenger", label: "Messenger", icon: Facebook, color: "text-blue-500", activeBg: "bg-blue-500/10", activeBorder: "border-blue-500" },
     { id: "telegram", label: "Telegram", icon: Send, color: "text-sky-500", activeBg: "bg-sky-500/10", activeBorder: "border-sky-500" },
-    { id: "chatwoot", label: "Chatwoot", icon: Headphones, color: "text-blue-400", activeBg: "bg-blue-400/10", activeBorder: "border-blue-400" },
 ];
 
 interface FieldConfig {
@@ -62,12 +60,6 @@ const fieldsSchema: Record<string, FieldConfig[]> = {
         { key: "telegram.bot_token", label: "Bot Token", description: "Token del bot (obtenido de @BotFather)", type: "password", placeholder: "1234567890:AAHfiqksKZ8WmR2zMn..." },
         { key: "telegram.bot_username", label: "Bot Username", description: "Username del bot (sin @)", type: "text", placeholder: "mi_bot" },
         { key: "telegram.webhook_url", label: "Webhook URL", description: "URL para setWebhook", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/telegram" },
-    ],
-    chatwoot: [
-        { key: "chatwoot.url", label: "Chatwoot URL", description: "URL base de tu instancia", type: "text", placeholder: "https://chatwoot.example.com" },
-        { key: "chatwoot.api_token", label: "API Token", description: "Token de API para integraciones", type: "password" },
-        { key: "chatwoot.account_id", label: "Account ID", description: "ID de la cuenta en Chatwoot", type: "text", placeholder: "1" },
-        { key: "chatwoot.inbox_id", label: "Inbox ID", description: "ID del inbox para handoff a agente humano", type: "text", placeholder: "1" },
     ],
 };
 

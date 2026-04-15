@@ -134,11 +134,19 @@
   },
   "inbox": {
     "title": "Caixa de entrada",
-    "noConversation": "Selecione uma conversa",
+    "live": "AO VIVO",
+    "noConversation": "Selecione uma conversa para ver as mensagens",
     "typeMessage": "Digite uma mensagem...",
     "send": "Enviar",
     "assignTo": "Atribuir a",
     "resolve": "Resolver",
+    "search": "Buscar conversas...",
+    "filters": {
+      "all": "Todos",
+      "mine": "Meus",
+      "unassigned": "Sem atribuir",
+      "handoff": "Handoff"
+    },
     "status": {
       "active": "Ativo",
       "waitingHuman": "Aguardando agente",
@@ -150,7 +158,30 @@
       "client": "Cliente",
       "ai": "IA",
       "agent": "Agente"
-    }
+    },
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "instagram": "Instagram DM",
+      "messenger": "Messenger",
+      "telegram": "Telegram"
+    },
+    "contact": {
+      "info": "Informações do contato",
+      "phone": "Telefone",
+      "email": "Email",
+      "channel": "Canal",
+      "connectedVia": "Conectado via",
+      "copyPhone": "Copiar telefone",
+      "viewInCrm": "Ver no CRM",
+      "lastActivity": "Última atividade",
+      "priority": "Prioridade",
+      "notes": "Notas internas",
+      "addNote": "Adicionar nota..."
+    },
+    "aiSuggestion": "Sugestão IA",
+    "useSuggestion": "Usar sugestão",
+    "cannedResponses": "Respostas rápidas",
+    "noConversations": "Sem conversas"
   },
   "settings": {
     "title": "Configurações",

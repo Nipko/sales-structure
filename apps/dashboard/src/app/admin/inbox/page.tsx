@@ -46,6 +46,72 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 };
 
 // ============================================
+// CHANNEL ICON COMPONENT
+// ============================================
+
+const channelConfig: Record<string, { label: string; bg: string; color: string }> = {
+    whatsapp: { label: "WhatsApp", bg: "#25D366", color: "#ffffff" },
+    instagram: { label: "Instagram DM", bg: "#E1306C", color: "#ffffff" },
+    messenger: { label: "Messenger", bg: "#0084FF", color: "#ffffff" },
+    telegram: { label: "Telegram", bg: "#0088cc", color: "#ffffff" },
+};
+
+function ChannelIcon({ channel, size = 20 }: { channel: string; size?: number }) {
+    const cfg = channelConfig[channel] || { label: channel, bg: "#6b7280", color: "#ffffff" };
+    const iconSize = Math.round(size * 0.55);
+    const common = "flex items-center justify-center rounded-full flex-shrink-0";
+
+    if (channel === "whatsapp") {
+        return (
+            <div className={common} style={{ width: size, height: size, background: cfg.bg }}>
+                <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill={cfg.color} />
+                    <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a7.96 7.96 0 01-4.106-1.138l-.294-.176-2.866.852.852-2.866-.176-.294A7.96 7.96 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z" fill={cfg.color} />
+                </svg>
+            </div>
+        );
+    }
+
+    if (channel === "instagram") {
+        return (
+            <div
+                className={common}
+                style={{
+                    width: size,
+                    height: size,
+                    background: "linear-gradient(135deg, #833AB4, #E1306C, #F77737)",
+                }}
+            >
+                <Instagram size={iconSize} color={cfg.color} strokeWidth={2.2} />
+            </div>
+        );
+    }
+
+    if (channel === "messenger") {
+        return (
+            <div className={common} style={{ width: size, height: size, background: cfg.bg }}>
+                <MessageSquare size={iconSize} color={cfg.color} strokeWidth={2.2} />
+            </div>
+        );
+    }
+
+    if (channel === "telegram") {
+        return (
+            <div className={common} style={{ width: size, height: size, background: cfg.bg }}>
+                <Send size={iconSize} color={cfg.color} strokeWidth={2.2} />
+            </div>
+        );
+    }
+
+    // Default / unknown channel
+    return (
+        <div className={common} style={{ width: size, height: size, background: cfg.bg }}>
+            <MessageSquare size={iconSize} color={cfg.color} strokeWidth={2.2} />
+        </div>
+    );
+}
+
+// ============================================
 // HELPERS
 // ============================================
 
@@ -53,8 +119,8 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 const DAY_ABBR = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const MONTH_ABBR = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-/** Format a date string with smart context: today → "14:30", yesterday → "Ayer 14:30",
- *  this week → "Lun 14:30", older → "15 Mar 14:30" */
+/** Format a date string with smart context: today -> "14:30", yesterday -> "Ayer 14:30",
+ *  this week -> "Lun 14:30", older -> "15 Mar 14:30" */
 function formatTime(dateStr: string): string {
     try {
         const d = new Date(dateStr);
@@ -99,6 +165,18 @@ function getDateKey(dateStr: string): string {
         return "";
     }
 }
+
+/** Status dot color mapping */
+const statusDotColor: Record<string, string> = {
+    active: "#22c55e",
+    open: "#22c55e",
+    pending: "#f97316",
+    waiting_human: "#f97316",
+    with_human: "#3b82f6",
+    assigned: "#3b82f6",
+    handoff: "#ef4444",
+    resolved: "#9ca3af",
+};
 
 // ============================================
 // COMPONENT
@@ -670,6 +748,8 @@ export default function InboxPage() {
         return result;
     }, [messages]);
 
+    // --- Channel display label ---
+    const channelLabel = channelConfig[selectedConv?.channel]?.label || selectedConv?.channel || '';
 
     return (
         <div className="flex h-[calc(100%+48px)] -m-6 overflow-hidden">
@@ -684,20 +764,28 @@ export default function InboxPage() {
                 .inbox-scrollbar::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.3); border-radius: 3px; }
             `}</style>
 
-            {/* ======== LEFT: Conversation List ======== */}
+            {/* ======== LEFT COLUMN: Conversation List (320px) ======== */}
             <div className={cn(
                 "border-r border-border flex flex-col bg-card flex-shrink-0",
-                "w-full md:w-[280px] lg:w-[320px]",
+                "w-full md:w-[320px]",
                 mobileShowChat ? "hidden md:flex" : "flex"
             )}>
                 {/* Header */}
-                <div className="p-4 border-b border-border">
+                <div className="px-4 pt-4 pb-3 border-b border-border">
                     <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-xl font-bold m-0">Inbox</h2>
                         <div className="flex items-center gap-2.5">
+                            <h2 className="text-lg font-bold m-0">Inbox</h2>
+                            {isLive && (
+                                <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    LIVE
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
                             {/* Notification Bell */}
                             <div className="relative cursor-pointer">
-                                <Bell size={20} className="text-muted-foreground" />
+                                <Bell size={18} className="text-muted-foreground" />
                                 {totalUnread > 0 && (
                                     <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-[5px] py-px min-w-[16px] text-center leading-[14px] shadow-[0_0_0_2px_hsl(var(--card))]">
                                         {totalUnread > 99 ? "99+" : totalUnread}
@@ -708,854 +796,984 @@ export default function InboxPage() {
                         </div>
                     </div>
 
-                    {/* Search */}
-                    <div className="relative mb-3">
-                        <Search size={16} className="absolute left-2.5 top-2.5 text-muted-foreground" />
-                        <input
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="Buscar conversaciones..."
-                            className="w-full py-2 px-3 pl-[34px] rounded-lg border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-[13px] outline-none"
-                        />
-                    </div>
-
-                    {/* Filters */}
-                    <div className="flex gap-1">
+                    {/* Filter pills */}
+                    <div className="flex gap-1.5 mb-3 flex-wrap">
                         {([
-                            { key: "all" as const, label: "Todas", count: conversations.length },
-                            { key: "handoff" as const, label: "Handoff", count: conversations.filter(c => c.status === "handoff").length },
-                            { key: "unassigned" as const, label: "IA", count: conversations.filter(c => c.isAiHandled).length },
+                            { key: "all" as const, label: "Todos" },
+                            { key: "mine" as const, label: "Mios" },
+                            { key: "unassigned" as const, label: "Sin asignar" },
+                            { key: "handoff" as const, label: "Handoff" },
                         ]).map(f => (
                             <button
                                 key={f.key}
                                 onClick={() => setFilter(f.key)}
                                 className={cn(
-                                    "py-1 px-2.5 rounded-md border-none text-xs cursor-pointer transition-colors",
+                                    "py-1 px-3 rounded-full border text-xs cursor-pointer transition-all",
                                     filter === f.key
-                                        ? "font-semibold bg-indigo-600 text-white"
-                                        : "font-normal bg-transparent text-muted-foreground hover:bg-muted"
+                                        ? "font-semibold bg-indigo-600 text-white border-indigo-600"
+                                        : "font-normal bg-transparent text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
                                 )}
                             >
-                                {f.label} ({f.count})
+                                {f.label}
                             </button>
                         ))}
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="Buscar conversaciones..."
+                            className="w-full py-2 px-3 pl-9 rounded-xl border border-border bg-muted/50 text-foreground text-[13px] outline-none focus:border-indigo-500/50 transition-colors"
+                        />
                     </div>
                 </div>
 
                 {/* Conversation List */}
                 <div className="inbox-scrollbar flex-1 overflow-auto">
+                    {loadingConv && conversations.length === 0 && (
+                        <div className="flex items-center justify-center py-12 text-muted-foreground">
+                            <Loader2 size={20} className="animate-spin" />
+                        </div>
+                    )}
                     {filteredConversations.map(conv => {
                         const hasUnread = (conv.unreadCount || 0) > 0;
                         const isSelected = selectedConv?.id === conv.id;
+                        const dotColor = statusDotColor[conv.status] || "#9ca3af";
                         return (
-                        <div
-                            key={conv.id}
-                            className="inbox-conv-item"
-                            onClick={() => {
-                                setSelectedConv(conv);
-                                setMobileShowChat(true);
-                                // Clear unread badge when selecting
-                                setConversations(prev => prev.map(c =>
-                                    c.id === conv.id ? { ...c, unreadCount: 0 } : c
-                                ));
-                            }}
-                            style={{
-                                padding: "12px 16px", cursor: "pointer", borderBottom: "1px solid hsl(var(--border))",
-                                background: isSelected ? "rgba(108, 92, 231, 0.08)" : "transparent",
-                                transition: "background 0.15s ease",
-                            }}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="flex gap-2.5 items-center flex-1">
-                                    {/* Avatar with unread green dot */}
-                                    <div className="relative flex-shrink-0">
-                                        <div
-                                            className="w-10 h-10 rounded-full flex items-center justify-center text-base font-bold text-white"
-                                            style={{ background: `linear-gradient(135deg, ${priorityColors[conv.priority]}, ${priorityColors[conv.priority]}88)` }}
-                                        >
-                                            {conv.contactName.charAt(0)}
+                            <div
+                                key={conv.id}
+                                className={cn(
+                                    "inbox-conv-item relative cursor-pointer transition-colors duration-150",
+                                    isSelected && "bg-indigo-600/[0.06] dark:bg-indigo-500/[0.08]"
+                                )}
+                                onClick={() => {
+                                    setSelectedConv(conv);
+                                    setMobileShowChat(true);
+                                    setConversations(prev => prev.map(c =>
+                                        c.id === conv.id ? { ...c, unreadCount: 0 } : c
+                                    ));
+                                }}
+                            >
+                                {/* Selected indicator: left border */}
+                                {isSelected && (
+                                    <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-indigo-600" />
+                                )}
+                                <div className="px-4 py-3 border-b border-border/60">
+                                    <div className="flex gap-3 items-start">
+                                        {/* Channel icon */}
+                                        <div className="relative flex-shrink-0 mt-0.5">
+                                            <ChannelIcon channel={conv.channel} size={36} />
+                                            {/* Status dot */}
+                                            <div
+                                                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-card"
+                                                style={{ background: dotColor }}
+                                            />
                                         </div>
-                                        {hasUnread && !isSelected && (
-                                            <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
-                                        )}
-                                    </div>
-                                    <div className="overflow-hidden flex-1">
-                                        <div className="flex items-center gap-1.5">
-                                            <span className={cn("text-sm", hasUnread ? "font-bold text-foreground" : "font-semibold")}>
-                                                {conv.contactName}
-                                            </span>
-                                            {conv.isAiHandled && <Bot size={14} className="text-indigo-600" />}
+
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <span className={cn(
+                                                        "text-sm truncate",
+                                                        hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground"
+                                                    )}>
+                                                        {conv.contactName}
+                                                    </span>
+                                                    {conv.isAiHandled && <Bot size={13} className="text-indigo-500 flex-shrink-0" />}
+                                                </div>
+                                                {/* Time badge */}
+                                                <span className={cn(
+                                                    "text-[11px] flex-shrink-0",
+                                                    hasUnread ? "text-indigo-500 font-semibold" : "text-muted-foreground"
+                                                )}>
+                                                    {conv.lastMessageAt}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2 mt-1">
+                                                <p className={cn(
+                                                    "text-xs whitespace-nowrap overflow-hidden text-ellipsis m-0",
+                                                    hasUnread ? "text-foreground font-medium" : "text-muted-foreground"
+                                                )}>
+                                                    {conv.lastMessage}
+                                                </p>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    {/* Assigned agent initial */}
+                                                    {conv.assignedAgentName && (
+                                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center text-[9px] font-bold flex-shrink-0" title={conv.assignedAgentName}>
+                                                            {conv.assignedAgentName.charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    {/* Unread badge */}
+                                                    {hasUnread && (
+                                                        <span className="bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold flex-shrink-0">
+                                                            {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {/* Tags row */}
+                                            {conv.tags.length > 0 && (
+                                                <div className="flex gap-1 mt-1.5 flex-wrap">
+                                                    {conv.tags.slice(0, 3).map((tag: string) => (
+                                                        <span key={tag} className="text-[10px] px-1.5 py-px rounded-md bg-indigo-600/10 text-indigo-500 dark:text-indigo-400">
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                                    {conv.tags.length > 3 && (
+                                                        <span className="text-[10px] text-muted-foreground">+{conv.tags.length - 3}</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className={cn(
-                                            "text-xs mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis",
-                                            hasUnread ? "text-foreground font-medium" : "text-muted-foreground font-normal"
-                                        )}>
-                                            {conv.lastMessage}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                    <span className="text-[11px] text-muted-foreground">{conv.lastMessageAt}</span>
-                                    <div className="flex gap-1 items-center">
-                                        {hasUnread && (
-                                            <span className="bg-emerald-500 text-white text-[10px] rounded-full px-1.5 py-px font-bold min-w-[18px] text-center">
-                                                {conv.unreadCount}
-                                            </span>
-                                        )}
-                                        <span
-                                            className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                                            style={{
-                                                background: `${(statusLabels[conv.status]?.color || '#95a5a6')}22`,
-                                                color: statusLabels[conv.status]?.color || '#95a5a6',
-                                            }}
-                                        >
-                                            {statusLabels[conv.status]?.label || conv.status}
-                                        </span>
                                     </div>
                                 </div>
                             </div>
-                            {conv.tags.length > 0 && (
-                                <div className="flex gap-1 mt-1.5 ml-[50px]">
-                                    {conv.tags.map((tag: string) => (
-                                        <span key={tag} className="text-[10px] px-1.5 py-px rounded bg-indigo-600/15 text-indigo-600 dark:text-indigo-400">
-                                            {tag}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
                         );
                     })}
+                    {!loadingConv && filteredConversations.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                            <MessageSquare size={32} className="opacity-20" />
+                            <span className="text-sm">Sin conversaciones</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* ======== CENTER: Chat Thread ======== */}
+            {/* ======== CENTER COLUMN: Chat Thread (flex-1) ======== */}
             <div className={cn(
                 "flex-1 flex flex-col bg-background min-w-0",
                 mobileShowChat ? "flex" : "hidden md:flex"
             )}>
                 {selectedConv ? (
                     <>
-                {/* Chat Header */}
-                <div className="px-3 md:px-5 py-3 border-b border-border flex justify-between items-center bg-card gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                        {/* Mobile back button */}
-                        <button
-                            onClick={() => setMobileShowChat(false)}
-                            className="md:hidden p-1.5 rounded-lg border-none bg-transparent text-muted-foreground cursor-pointer hover:bg-muted flex-shrink-0"
-                        >
-                            <ArrowLeft size={20} />
-                        </button>
-                        <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                            style={{ background: `linear-gradient(135deg, ${priorityColors[selectedConv.priority]}, ${priorityColors[selectedConv.priority]}88)` }}
-                        >
-                            {selectedConv.contactName.charAt(0)}
-                        </div>
-                        <div>
-                            <div className="font-semibold text-[15px]">{selectedConv.contactName}</div>
-                            <div className="text-xs text-muted-foreground">{selectedConv.contactPhone} · {selectedConv.channel}</div>
-                        </div>
-                    </div>
-                    <div className="flex gap-1.5 md:gap-2 flex-wrap justify-end flex-shrink-0">
-                        <button
-                            onClick={() => setShowNotes(!showNotes)}
-                            className={cn(
-                                "py-1.5 px-3 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
-                                showNotes
-                                    ? "bg-indigo-600 text-white border-indigo-600"
-                                    : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                            )}
-                        >
-                            <StickyNote size={14} /> Notas
-                        </button>
-                        {selectedConv.assignedAgentName && (
-                            <div className="py-1 px-2.5 rounded-md text-[11px] bg-blue-500/10 text-blue-500 flex gap-1 items-center font-medium">
-                                <UserCheck size={12} />
-                                {selectedConv.assignedAgentName}
-                            </div>
-                        )}
-                        <button
-                            onClick={handleResolve}
-                            className="py-1.5 px-3 rounded-lg border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1 items-center hover:bg-emerald-600"
-                        >
-                            <CheckCircle size={14} /> Resolver
-                        </button>
-                        <button
-                            onClick={handleAssign}
-                            disabled={assignLoading}
-                            className={cn(
-                                "py-1.5 px-3 rounded-lg border-none text-xs font-semibold flex gap-1 items-center transition-opacity",
-                                assignLoading
-                                    ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
-                                    : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
-                            )}
-                        >
-                            {assignLoading
-                                ? <><Loader2 size={14} className="animate-spin" /> Asignando...</>
-                                : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mi' : 'Asignarme'}</>
-                            }
-                        </button>
-                        {/* Snooze Button */}
-                        <div ref={snoozeRef} className="relative">
-                            <button
-                                onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
-                                className={cn(
-                                    "py-1.5 px-3 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
-                                    showSnoozeMenu
-                                        ? "bg-indigo-600 text-white border-indigo-600"
-                                        : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                                )}
-                            >
-                                <Clock size={14} /> Snooze
-                            </button>
-                            {showSnoozeMenu && (
-                                <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-[10px] p-1 z-[100] min-w-[160px] shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
-                                    {[
-                                        { key: "1h", label: "1 hora" },
-                                        { key: "3h", label: "3 horas" },
-                                        { key: "tomorrow", label: "Mañana 9am" },
-                                        { key: "monday", label: "Próximo lunes" },
-                                    ].map(opt => (
-                                        <button
-                                            key={opt.key}
-                                            onClick={() => handleSnooze(opt.key)}
-                                            className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-md bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted"
-                                        >
-                                            <Clock size={13} className="text-muted-foreground" />
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                        {/* Macros Button */}
-                        <div ref={macrosRef} className="relative">
-                            <button
-                                onClick={() => setShowMacrosMenu(!showMacrosMenu)}
-                                className={cn(
-                                    "py-1.5 px-3 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
-                                    showMacrosMenu
-                                        ? "bg-indigo-600 text-white border-indigo-600"
-                                        : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                                )}
-                            >
-                                <Zap size={14} /> Macros
-                            </button>
-                            {showMacrosMenu && (
-                                <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-[10px] p-1 z-[100] min-w-[200px] max-h-60 overflow-y-auto shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
-                                    {macros.length === 0 ? (
-                                        <div className="py-3 px-3.5 text-[13px] text-muted-foreground">
-                                            No hay macros configurados
-                                        </div>
-                                    ) : macros.map((m: any) => (
-                                        <button
-                                            key={m.id}
-                                            onClick={() => handleExecuteMacro(m.id)}
-                                            className="flex items-center justify-between w-full py-2 px-3 border-none rounded-md bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted"
-                                        >
-                                            <span>{m.name}</span>
-                                            {m.actions && (
-                                                <span className="text-[11px] text-muted-foreground">
-                                                    {Array.isArray(m.actions) ? m.actions.length : 0} acciones
-                                                </span>
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Messages Area */}
-                <div
-                    ref={messagesContainerRef}
-                    className="inbox-scrollbar flex-1 overflow-auto px-3 md:px-6 py-4 flex flex-col gap-1 bg-[radial-gradient(circle_at_20%_80%,hsl(var(--muted)/0.3)_0%,transparent_50%),radial-gradient(circle_at_80%_20%,hsl(var(--muted)/0.2)_0%,transparent_50%)]"
-                >
-                    {messagesWithSeparators.map((item: any) => {
-                        // Date separator
-                        if (item._type === "date-separator") {
-                            return (
-                                <div key={item.key} className="flex items-center justify-center py-3 gap-3">
-                                    <div className="flex-1 h-px bg-border opacity-50" />
-                                    <span className="text-[11px] text-muted-foreground bg-background px-3 py-1 rounded-xl font-medium border border-border capitalize">
-                                        {formatDateLabel(item.date)}
-                                    </span>
-                                    <div className="flex-1 h-px bg-border opacity-50" />
-                                </div>
-                            );
-                        }
-
-                        const msg = item;
-                        const isInbound = msg.direction === "inbound";
-
-                        // System messages
-                        if (msg.type === "system") {
-                            return (
-                                <div key={msg.id} className="inbox-msg-bubble text-center text-[11px] text-muted-foreground px-4 py-2 bg-red-500/[0.08] rounded-lg mx-auto max-w-[80%] flex gap-1.5 items-center justify-center">
-                                    <AlertCircle size={14} className="text-red-500" />
-                                    {msg.content}
-                                </div>
-                            );
-                        }
-
-                        return (
-                            <div key={msg.id} className={cn(
-                                "inbox-msg-bubble flex items-end gap-1.5 mb-1",
-                                isInbound ? "justify-start" : "justify-end"
-                            )}>
-                                {/* Customer avatar (left side) */}
-                                {isInbound && (
-                                    <div className="w-7 h-7 rounded-full flex-shrink-0 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-0.5">
-                                        <User size={14} className="text-muted-foreground" />
-                                    </div>
-                                )}
-
-                                <div className="max-w-[65%]">
-                                    {/* Sender label + timestamp */}
-                                    <div className={cn(
-                                        "text-[10px] text-muted-foreground mb-[3px] flex gap-1 items-center",
-                                        isInbound ? "text-left justify-start pl-1" : "text-right justify-end pr-1"
-                                    )}>
-                                        {!isInbound && msg.senderLabel === "IA" && <Bot size={10} className="text-indigo-600" />}
-                                        {!isInbound && msg.senderLabel === "Agente" && <User size={10} />}
-                                        <span className="font-semibold">{msg.senderLabel || msg.senderName}</span>
-                                        <span className="opacity-60">{msg.timestamp}</span>
-                                    </div>
-
-                                    {/* Bubble */}
-                                    <div className={cn(
-                                        "px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-words",
-                                        isInbound
-                                            ? "bg-card border border-border rounded-bl-sm"
-                                            : msg.senderLabel === "IA"
-                                                ? "bg-indigo-600/[0.18] border border-indigo-600/30 rounded-br-sm text-foreground"
-                                                : "bg-indigo-600 border-none rounded-br-sm text-white"
-                                    )}>
-                                        {msg.content}
-                                    </div>
-                                </div>
-
-                                {/* Outbound: small icon on right */}
-                                {!isInbound && (
-                                    <div className={cn(
-                                        "w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center mb-0.5",
-                                        msg.senderLabel === "IA" ? "bg-indigo-600/15" : "bg-indigo-600/25"
-                                    )}>
-                                        {msg.senderLabel === "IA"
-                                            ? <Bot size={14} className="text-indigo-600" />
-                                            : <User size={14} className="text-indigo-600" />
-                                        }
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    {/* AI Suggestion Banner -- only when conversation is active */}
-                    {selectedConv && ['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(selectedConv.status) && (
-                        aiSuggestionLoading ? (
-                            <div className="px-3.5 py-2.5 rounded-[10px] bg-emerald-500/[0.08] border border-emerald-500/20 flex gap-2 items-center mt-2">
-                                <Loader2 size={16} className="text-emerald-500 animate-spin flex-shrink-0" />
-                                <div className="text-[13px] text-muted-foreground">
-                                    Generando sugerencia de IA...
-                                </div>
-                            </div>
-                        ) : aiSuggestion ? (
-                            <div className="px-3.5 py-2.5 rounded-[10px] bg-emerald-500/[0.08] border border-emerald-500/20 flex gap-2 items-start mt-2">
-                                <Sparkles size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
-                                <div className="flex-1">
-                                    <div className="text-[11px] font-semibold text-emerald-500 mb-1">Sugerencia IA</div>
-                                    <div className="text-[13px] text-muted-foreground">
-                                        &quot;{aiSuggestion}&quot;
-                                    </div>
-                                    <div className="flex gap-1.5 mt-1.5">
-                                        <button
-                                            onClick={() => {
-                                                setMessageInput(aiSuggestion);
-                                                messageInputRef.current?.focus();
+                        {/* Chat Header */}
+                        <div className="px-4 md:px-5 py-3 border-b border-border flex justify-between items-center bg-card gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                                {/* Mobile back button */}
+                                <button
+                                    onClick={() => setMobileShowChat(false)}
+                                    className="md:hidden p-1.5 rounded-xl border-none bg-transparent text-muted-foreground cursor-pointer hover:bg-muted flex-shrink-0"
+                                >
+                                    <ArrowLeft size={20} />
+                                </button>
+                                {/* Channel icon */}
+                                <ChannelIcon channel={selectedConv.channel} size={38} />
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-[15px] truncate">{selectedConv.contactName}</span>
+                                        <span
+                                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0"
+                                            style={{
+                                                background: `${(statusLabels[selectedConv.status]?.color || '#95a5a6')}18`,
+                                                color: statusLabels[selectedConv.status]?.color || '#95a5a6',
                                             }}
-                                            className="py-1 px-2.5 rounded-md border border-emerald-500/30 bg-transparent text-emerald-500 text-xs cursor-pointer flex gap-1 items-center hover:bg-emerald-500/10"
                                         >
-                                            <Zap size={12} /> Usar sugerencia
-                                        </button>
-                                        <button
-                                            onClick={() => fetchAiSuggestion()}
-                                            className="py-1 px-2.5 rounded-md border border-border bg-transparent text-muted-foreground text-xs cursor-pointer flex gap-1 items-center hover:bg-muted"
-                                        >
-                                            <RefreshCw size={12} /> Actualizar
-                                        </button>
+                                            {statusLabels[selectedConv.status]?.label || selectedConv.status}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                        <span>{channelLabel}</span>
+                                        {selectedConv.contactPhone && (
+                                            <>
+                                                <span className="opacity-40">|</span>
+                                                <span>{selectedConv.contactPhone}</span>
+                                            </>
+                                        )}
+                                        {selectedConv.contactEmail && (
+                                            <>
+                                                <span className="opacity-40">|</span>
+                                                <span className="truncate">{selectedConv.contactEmail}</span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                        ) : null
-                    )}
-
-                    {/* Typing indicator area (visual placeholder for future use) */}
-                    <div className="min-h-1" />
-
-                    {/* Scroll anchor */}
-                    <div ref={messagesEndRef} />
-                </div>
-
-                {/* Notes Panel (conditional) */}
-                {showNotes && (
-                    <div className="border-t border-border px-3 md:px-5 py-3 bg-amber-500/5 max-h-[200px] overflow-auto">
-                        <div className="text-xs font-semibold text-amber-500 mb-2 flex gap-1 items-center">
-                            <StickyNote size={14} /> Notas internas
-                        </div>
-                        {notes.length > 0 ? notes.map(note => (
-                            <div key={note.id} className="px-2.5 py-1.5 rounded-md bg-card mb-1.5 text-[13px]">
-                                <div>{note.content}</div>
-                                <div className="text-[10px] text-muted-foreground mt-1">— {note.agentName}, {note.createdAt}</div>
+                            {/* Action buttons */}
+                            <div className="flex gap-1.5 md:gap-2 flex-wrap justify-end flex-shrink-0 items-center">
+                                <button
+                                    onClick={() => setShowNotes(!showNotes)}
+                                    className={cn(
+                                        "py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors",
+                                        showNotes
+                                            ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                                            : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                    )}
+                                >
+                                    <StickyNote size={14} /> Notas
+                                </button>
+                                {selectedConv.assignedAgentName && (
+                                    <div className="py-1 px-2.5 rounded-xl text-[11px] bg-blue-500/10 text-blue-500 flex gap-1 items-center font-medium border border-blue-500/20">
+                                        <UserCheck size={12} />
+                                        {selectedConv.assignedAgentName}
+                                    </div>
+                                )}
+                                <button
+                                    onClick={handleResolve}
+                                    className="py-1.5 px-3 rounded-xl border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1.5 items-center hover:bg-emerald-600 transition-colors"
+                                >
+                                    <CheckCircle size={14} /> Resolver
+                                </button>
+                                <button
+                                    onClick={handleAssign}
+                                    disabled={assignLoading}
+                                    className={cn(
+                                        "py-1.5 px-3 rounded-xl border-none text-xs font-semibold flex gap-1.5 items-center transition-all",
+                                        assignLoading
+                                            ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+                                            : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
+                                    )}
+                                >
+                                    {assignLoading
+                                        ? <><Loader2 size={14} className="animate-spin" /> Asignando...</>
+                                        : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mi' : 'Asignarme'}</>
+                                    }
+                                </button>
+                                {/* Snooze Button */}
+                                <div ref={snoozeRef} className="relative">
+                                    <button
+                                        onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
+                                        className={cn(
+                                            "py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors",
+                                            showSnoozeMenu
+                                                ? "bg-indigo-600 text-white border-indigo-600"
+                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                        )}
+                                    >
+                                        <Clock size={14} /> Snooze
+                                    </button>
+                                    {showSnoozeMenu && (
+                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[170px] shadow-lg">
+                                            {[
+                                                { key: "1h", label: "1 hora" },
+                                                { key: "3h", label: "3 horas" },
+                                                { key: "tomorrow", label: "Manana 9am" },
+                                                { key: "monday", label: "Proximo lunes" },
+                                            ].map(opt => (
+                                                <button
+                                                    key={opt.key}
+                                                    onClick={() => handleSnooze(opt.key)}
+                                                    className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                                >
+                                                    <Clock size={13} className="text-muted-foreground" />
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Macros Button */}
+                                <div ref={macrosRef} className="relative">
+                                    <button
+                                        onClick={() => setShowMacrosMenu(!showMacrosMenu)}
+                                        className={cn(
+                                            "py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors",
+                                            showMacrosMenu
+                                                ? "bg-indigo-600 text-white border-indigo-600"
+                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                        )}
+                                    >
+                                        <Zap size={14} /> Macros
+                                    </button>
+                                    {showMacrosMenu && (
+                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[220px] max-h-60 overflow-y-auto shadow-lg">
+                                            {macros.length === 0 ? (
+                                                <div className="py-3 px-3.5 text-[13px] text-muted-foreground">
+                                                    No hay macros configurados
+                                                </div>
+                                            ) : macros.map((m: any) => (
+                                                <button
+                                                    key={m.id}
+                                                    onClick={() => handleExecuteMacro(m.id)}
+                                                    className="flex items-center justify-between w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                                >
+                                                    <span>{m.name}</span>
+                                                    {m.actions && (
+                                                        <span className="text-[11px] text-muted-foreground">
+                                                            {Array.isArray(m.actions) ? m.actions.length : 0} acciones
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        )) : (
-                            <div className="text-xs text-muted-foreground opacity-60">No hay notas para esta conversacion</div>
+                        </div>
+
+                        {/* Messages Area */}
+                        <div
+                            ref={messagesContainerRef}
+                            className="inbox-scrollbar flex-1 overflow-auto px-4 md:px-8 py-5 flex flex-col gap-1"
+                            style={{
+                                background: "linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted) / 0.15) 100%)",
+                            }}
+                        >
+                            {messagesWithSeparators.map((item: any) => {
+                                // Date separator
+                                if (item._type === "date-separator") {
+                                    return (
+                                        <div key={item.key} className="flex items-center justify-center py-4 gap-4">
+                                            <div className="flex-1 h-px bg-border/50" />
+                                            <span className="text-[11px] text-muted-foreground bg-card px-3.5 py-1 rounded-full font-medium border border-border/60 shadow-sm capitalize">
+                                                {formatDateLabel(item.date)}
+                                            </span>
+                                            <div className="flex-1 h-px bg-border/50" />
+                                        </div>
+                                    );
+                                }
+
+                                const msg = item;
+                                const isInbound = msg.direction === "inbound";
+
+                                // System messages
+                                if (msg.type === "system") {
+                                    return (
+                                        <div key={msg.id} className="inbox-msg-bubble text-center text-[11px] text-muted-foreground px-4 py-2 bg-red-500/[0.08] rounded-xl mx-auto max-w-[80%] flex gap-1.5 items-center justify-center border border-red-500/10">
+                                            <AlertCircle size={14} className="text-red-500" />
+                                            {msg.content}
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div key={msg.id} className={cn(
+                                        "inbox-msg-bubble flex items-end gap-2 mb-1.5",
+                                        isInbound ? "justify-start" : "justify-end"
+                                    )}>
+                                        {/* Customer avatar (left side) */}
+                                        {isInbound && (
+                                            <div className="w-8 h-8 rounded-full flex-shrink-0 bg-muted flex items-center justify-center mb-0.5">
+                                                <User size={15} className="text-muted-foreground" />
+                                            </div>
+                                        )}
+
+                                        <div className="max-w-[65%]">
+                                            {/* Sender label + channel icon + timestamp */}
+                                            <div className={cn(
+                                                "text-[10px] text-muted-foreground mb-1 flex gap-1.5 items-center",
+                                                isInbound ? "text-left justify-start pl-1" : "text-right justify-end pr-1"
+                                            )}>
+                                                {!isInbound && msg.senderLabel === "IA" && <Bot size={10} className="text-indigo-500" />}
+                                                {!isInbound && msg.senderLabel === "Agente" && <User size={10} />}
+                                                <span className="font-semibold">{msg.senderLabel || msg.senderName}</span>
+                                                <ChannelIcon channel={selectedConv.channel} size={14} />
+                                                <span className="opacity-50">{msg.timestamp}</span>
+                                            </div>
+
+                                            {/* Bubble */}
+                                            <div className={cn(
+                                                "px-4 py-3 text-sm leading-relaxed break-words shadow-sm",
+                                                isInbound
+                                                    ? "bg-card border border-border rounded-2xl rounded-bl-md"
+                                                    : msg.senderLabel === "IA"
+                                                        ? "bg-indigo-600/[0.12] border border-indigo-500/20 rounded-2xl rounded-br-md text-foreground"
+                                                        : "bg-blue-600 border-none rounded-2xl rounded-br-md text-white"
+                                            )}>
+                                                {msg.content}
+                                            </div>
+                                        </div>
+
+                                        {/* Outbound: small icon on right */}
+                                        {!isInbound && (
+                                            <div className={cn(
+                                                "w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center mb-0.5",
+                                                msg.senderLabel === "IA" ? "bg-indigo-500/15" : "bg-blue-500/15"
+                                            )}>
+                                                {msg.senderLabel === "IA"
+                                                    ? <Bot size={15} className="text-indigo-500" />
+                                                    : <User size={15} className="text-blue-500" />
+                                                }
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {/* AI Suggestion Banner */}
+                            {selectedConv && ['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(selectedConv.status) && (
+                                aiSuggestionLoading ? (
+                                    <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500/[0.08] to-indigo-500/[0.08] border border-purple-500/20 flex gap-2.5 items-center mt-3">
+                                        <Loader2 size={16} className="text-purple-500 animate-spin flex-shrink-0" />
+                                        <div className="text-[13px] text-muted-foreground">
+                                            Generando sugerencia de IA...
+                                        </div>
+                                    </div>
+                                ) : aiSuggestion ? (
+                                    <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500/[0.08] to-indigo-500/[0.08] border border-purple-500/20 flex gap-2.5 items-start mt-3">
+                                        <Sparkles size={16} className="text-purple-500 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <div className="text-[11px] font-semibold text-purple-500 mb-1 flex items-center gap-1">
+                                                <span>Sugerencia IA</span>
+                                            </div>
+                                            <div className="text-[13px] text-muted-foreground leading-relaxed">
+                                                &quot;{aiSuggestion}&quot;
+                                            </div>
+                                            <div className="flex gap-2 mt-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setMessageInput(aiSuggestion);
+                                                        messageInputRef.current?.focus();
+                                                    }}
+                                                    className="py-1 px-3 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-500 text-xs cursor-pointer flex gap-1.5 items-center hover:bg-purple-500/20 transition-colors font-medium"
+                                                >
+                                                    <Zap size={12} /> Usar sugerencia
+                                                </button>
+                                                <button
+                                                    onClick={() => fetchAiSuggestion()}
+                                                    className="py-1 px-3 rounded-lg border border-border bg-transparent text-muted-foreground text-xs cursor-pointer flex gap-1.5 items-center hover:bg-muted transition-colors"
+                                                >
+                                                    <RefreshCw size={12} /> Actualizar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null
+                            )}
+
+                            {/* Spacing for scroll */}
+                            <div className="min-h-1" />
+
+                            {/* Scroll anchor */}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Notes Panel (conditional) */}
+                        {showNotes && (
+                            <div className="border-t border-border px-4 md:px-5 py-3 bg-amber-500/5 max-h-[200px] overflow-auto">
+                                <div className="text-xs font-semibold text-amber-500 mb-2.5 flex gap-1.5 items-center">
+                                    <StickyNote size={14} /> Notas internas
+                                </div>
+                                {notes.length > 0 ? notes.map(note => (
+                                    <div key={note.id} className="px-3 py-2 rounded-xl bg-card border border-border/50 mb-2 text-[13px]">
+                                        <div>{note.content}</div>
+                                        <div className="text-[10px] text-muted-foreground mt-1.5">-- {note.agentName}, {note.createdAt}</div>
+                                    </div>
+                                )) : (
+                                    <div className="text-xs text-muted-foreground opacity-60">No hay notas para esta conversacion</div>
+                                )}
+                                <div className="flex gap-2 mt-2.5">
+                                    <input
+                                        value={noteInput}
+                                        onChange={e => setNoteInput(e.target.value)}
+                                        placeholder="Agregar nota interna..."
+                                        className="flex-1 py-2 px-3 rounded-xl border border-border bg-muted/50 text-foreground text-xs outline-none focus:border-amber-500/50 transition-colors"
+                                    />
+                                    <button
+                                        onClick={handleAddNote}
+                                        className="py-2 px-4 rounded-xl border-none bg-amber-500 text-white text-xs font-semibold cursor-pointer hover:bg-amber-600 transition-colors"
+                                    >
+                                        Guardar
+                                    </button>
+                                </div>
+                            </div>
                         )}
-                        <div className="flex gap-2 mt-2">
-                            <input
-                                value={noteInput}
-                                onChange={e => setNoteInput(e.target.value)}
-                                placeholder="Agregar nota interna..."
-                                className="flex-1 py-1.5 px-2.5 rounded-md border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
-                            />
+
+                        {/* Message Input */}
+                        <div className="px-4 md:px-5 py-3 border-t border-border flex gap-2.5 items-center bg-card">
+                            <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1.5 hover:text-foreground rounded-lg hover:bg-muted transition-colors">
+                                <Paperclip size={18} />
+                            </button>
+                            <div className="relative flex-1">
+                                {/* Canned Responses Dropdown */}
+                                {showCannedMenu && filteredCanned.length > 0 && (
+                                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl shadow-lg max-h-[220px] overflow-auto z-50">
+                                        <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground border-b border-border flex gap-1.5 items-center">
+                                            <Zap size={12} className="text-indigo-500" /> Respuestas rapidas
+                                        </div>
+                                        {filteredCanned.map((cr, idx) => (
+                                            <div
+                                                key={cr.id}
+                                                onClick={() => selectCannedResponse(cr)}
+                                                className={cn(
+                                                    "px-3 py-2.5 cursor-pointer transition-colors duration-100",
+                                                    idx === cannedSelectedIndex ? "bg-indigo-600/[0.08]" : "bg-transparent hover:bg-muted",
+                                                    idx < filteredCanned.length - 1 && "border-b border-border/50"
+                                                )}
+                                                onMouseEnter={() => setCannedSelectedIndex(idx)}
+                                            >
+                                                <div className="flex gap-2 items-center">
+                                                    <span className="text-[11px] font-semibold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded font-mono">
+                                                        /{cr.shortcode}
+                                                    </span>
+                                                    <span className="text-xs font-medium text-foreground">
+                                                        {cr.title}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[11px] text-muted-foreground mt-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
+                                                    {cr.content}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {showCannedMenu && filteredCanned.length === 0 && cannedFilter && (
+                                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl shadow-lg px-4 py-3 z-50">
+                                        <div className="text-xs text-muted-foreground text-center">
+                                            No se encontraron respuestas para &quot;/{cannedFilter}&quot;
+                                        </div>
+                                    </div>
+                                )}
+                                <input
+                                    ref={messageInputRef}
+                                    value={messageInput}
+                                    onChange={e => handleMessageInputChange(e.target.value)}
+                                    onKeyDown={handleInputKeyDown}
+                                    onBlur={() => { setTimeout(() => setShowCannedMenu(false), 150); }}
+                                    placeholder="Escribe un mensaje... (/ para respuestas rapidas)"
+                                    className="w-full py-2.5 px-4 rounded-xl border border-border bg-muted/50 text-foreground text-sm outline-none focus:border-indigo-500/50 transition-colors"
+                                />
+                            </div>
+                            <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1.5 hover:text-foreground rounded-lg hover:bg-muted transition-colors">
+                                <Smile size={18} />
+                            </button>
                             <button
-                                onClick={handleAddNote}
-                                className="py-1.5 px-3 rounded-md border-none bg-amber-500 text-white text-xs cursor-pointer hover:bg-amber-600"
+                                onClick={handleSend}
+                                className="p-2.5 rounded-xl border-none bg-indigo-600 text-white cursor-pointer flex items-center justify-center hover:bg-indigo-700 transition-all duration-150 active:scale-95"
                             >
-                                Guardar
+                                <Send size={18} />
                             </button>
                         </div>
-                    </div>
-                )}
-
-                {/* Message Input */}
-                <div className="px-3 md:px-5 py-3 border-t border-border flex gap-2 items-center bg-card">
-                    <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1 hover:text-foreground">
-                        <Paperclip size={20} />
-                    </button>
-                    <div className="relative flex-1">
-                        {/* Canned Responses Dropdown */}
-                        {showCannedMenu && filteredCanned.length > 0 && (
-                            <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-[10px] shadow-[0_-4px_20px_rgba(0,0,0,0.15)] max-h-[220px] overflow-auto z-50">
-                                <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground border-b border-border flex gap-1 items-center">
-                                    <Zap size={12} /> Respuestas rapidas
-                                </div>
-                                {filteredCanned.map((cr, idx) => (
-                                    <div
-                                        key={cr.id}
-                                        onClick={() => selectCannedResponse(cr)}
-                                        className={cn(
-                                            "px-3 py-2 cursor-pointer transition-colors duration-100",
-                                            idx === cannedSelectedIndex ? "bg-indigo-600/[0.08]" : "bg-transparent",
-                                            idx < filteredCanned.length - 1 && "border-b border-border"
-                                        )}
-                                        onMouseEnter={() => setCannedSelectedIndex(idx)}
-                                    >
-                                        <div className="flex gap-2 items-center">
-                                            <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-600/10 px-1.5 py-0.5 rounded font-mono">
-                                                /{cr.shortcode}
-                                            </span>
-                                            <span className="text-xs font-medium text-foreground">
-                                                {cr.title}
-                                            </span>
-                                        </div>
-                                        <div className="text-[11px] text-muted-foreground mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
-                                            {cr.content}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {showCannedMenu && filteredCanned.length === 0 && cannedFilter && (
-                            <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-[10px] shadow-[0_-4px_20px_rgba(0,0,0,0.15)] px-3.5 py-3 z-50">
-                                <div className="text-xs text-muted-foreground text-center">
-                                    No se encontraron respuestas para &quot;/{cannedFilter}&quot;
-                                </div>
-                            </div>
-                        )}
-                        <input
-                            ref={messageInputRef}
-                            value={messageInput}
-                            onChange={e => handleMessageInputChange(e.target.value)}
-                            onKeyDown={handleInputKeyDown}
-                            onBlur={() => { setTimeout(() => setShowCannedMenu(false), 150); }}
-                            placeholder="Escribe un mensaje... (/ para respuestas rapidas)"
-                            className="w-full py-2.5 px-3.5 rounded-full border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-sm outline-none"
-                        />
-                    </div>
-                    <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1 hover:text-foreground">
-                        <Smile size={20} />
-                    </button>
-                    <button
-                        onClick={handleSend}
-                        className="p-2.5 rounded-full border-none bg-indigo-600 text-white cursor-pointer flex items-center justify-center hover:bg-indigo-700 transition-transform duration-100 active:scale-95"
-                    >
-                        <Send size={18} />
-                    </button>
-                </div>
                     </>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
-                        <MessageSquare size={48} className="opacity-20" />
-                        <span>Selecciona una conversacion para ver los mensajes.</span>
+                    <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+                        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+                            <MessageSquare size={28} className="opacity-30" />
+                        </div>
+                        <span className="text-sm">Selecciona una conversacion para ver los mensajes</span>
                     </div>
                 )}
             </div>
 
-            {/* ======== RIGHT: Contact Panel ======== */}
-            <div className="inbox-scrollbar hidden lg:block w-[280px] border-l border-border overflow-auto bg-card p-4 flex-shrink-0">
-                {/* Contact Header -- derived from selected conversation */}
-                {selectedConv && (
-                    <>
-                    <div className="text-center mb-5">
-                        <div className="w-16 h-16 rounded-full mx-auto mb-2.5 bg-gradient-to-br from-indigo-600 to-purple-500 flex items-center justify-center text-2xl font-bold text-white">
-                            {selectedConv.contactName?.charAt(0) || '?'}
-                        </div>
-                        <div className="font-bold text-base">{selectedConv.contactName}</div>
-                        <span
-                            className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
-                            style={{
-                                background: `${statusLabels[selectedConv.status]?.color || '#95a5a6'}22`,
-                                color: statusLabels[selectedConv.status]?.color || '#95a5a6',
-                            }}
-                        >
-                            {statusLabels[selectedConv.status]?.label || selectedConv.status}
-                        </span>
-                    </div>
-
-                    {/* Contact Details */}
-                    <div className="flex flex-col gap-2.5 mb-5">
-                        <div className="flex items-center gap-2 text-[13px]">
-                            <Phone size={14} className="text-muted-foreground" />
-                            <span>{selectedConv.contactPhone || 'Sin telefono'}</span>
-                        </div>
-                        {selectedConv.contactEmail && (
-                            <div className="flex items-center gap-2 text-[13px]">
-                                <Mail size={14} className="text-muted-foreground" />
-                                <span>{selectedConv.contactEmail}</span>
+            {/* ======== RIGHT COLUMN: Contact Panel (350px, collapsible) ======== */}
+            <div className="inbox-scrollbar hidden lg:flex lg:flex-col w-[350px] border-l border-border overflow-auto bg-card flex-shrink-0">
+                {selectedConv ? (
+                    <div className="p-5">
+                        {/* Contact Avatar & Name */}
+                        <div className="text-center mb-6">
+                            <div className="w-[72px] h-[72px] rounded-2xl mx-auto mb-3 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-indigo-500/20">
+                                {selectedConv.contactName?.charAt(0) || '?'}
                             </div>
-                        )}
-                        <div className="flex items-center gap-2 text-[13px]">
-                            <Clock size={14} className="text-muted-foreground" />
-                            <span>{selectedConv.lastMessageAt || 'Sin interacciones'}</span>
+                            <div className="font-bold text-base">{selectedConv.contactName}</div>
+                            <div className="flex items-center justify-center gap-2 mt-1.5">
+                                <span
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                                    style={{
+                                        background: `${statusLabels[selectedConv.status]?.color || '#95a5a6'}15`,
+                                        color: statusLabels[selectedConv.status]?.color || '#95a5a6',
+                                    }}
+                                >
+                                    <span
+                                        className="w-1.5 h-1.5 rounded-full"
+                                        style={{ background: statusLabels[selectedConv.status]?.color || '#95a5a6' }}
+                                    />
+                                    {statusLabels[selectedConv.status]?.label || selectedConv.status}
+                                </span>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[13px]">
-                            <MessageSquare size={14} className="text-muted-foreground" />
-                            <span>{selectedConv.channel}</span>
-                        </div>
-                    </div>
 
-                    {/* Assigned Agent */}
-                    <div className="mb-5">
-                        <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                            <UserCheck size={12} /> Agente asignado
-                        </div>
-                        {selectedConv.assignedAgentName ? (
-                            <div className="px-3 py-2 rounded-lg bg-blue-500/[0.08] border border-blue-500/20 flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                                    {selectedConv.assignedAgentName.charAt(0).toUpperCase()}
+                        {/* Contact Details Card */}
+                        <div className="rounded-xl border border-border bg-muted/30 p-3.5 mb-4">
+                            <div className="flex flex-col gap-2.5">
+                                <div className="flex items-center gap-2.5 text-[13px]">
+                                    <Phone size={14} className="text-muted-foreground flex-shrink-0" />
+                                    <span className="truncate">{selectedConv.contactPhone || 'Sin telefono'}</span>
+                                    {selectedConv.contactPhone && (
+                                        <button
+                                            onClick={() => navigator.clipboard.writeText(selectedConv.contactPhone)}
+                                            className="ml-auto bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer p-0.5 flex-shrink-0"
+                                            title="Copiar telefono"
+                                        >
+                                            <ExternalLink size={12} />
+                                        </button>
+                                    )}
                                 </div>
+                                {selectedConv.contactEmail && (
+                                    <div className="flex items-center gap-2.5 text-[13px]">
+                                        <Mail size={14} className="text-muted-foreground flex-shrink-0" />
+                                        <span className="truncate">{selectedConv.contactEmail}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Channel Info Card */}
+                        <div className="rounded-xl border border-border bg-muted/30 p-3.5 mb-4">
+                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Canal</div>
+                            <div className="flex items-center gap-2.5">
+                                <ChannelIcon channel={selectedConv.channel} size={28} />
                                 <div>
-                                    <div className="text-[13px] font-medium">{selectedConv.assignedAgentName}</div>
-                                    {selectedConv.assignedAgentId === user?.id && (
-                                        <div className="text-[10px] text-indigo-600">Tu</div>
-                                    )}
+                                    <div className="text-sm font-medium">{channelLabel}</div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                        {selectedConv.contactPhone && `via ${selectedConv.contactPhone}`}
+                                    </div>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="px-3 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs text-muted-foreground text-center">
-                                Sin asignar
+                        </div>
+
+                        {/* Assigned Agent */}
+                        <div className="mb-4">
+                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <UserCheck size={12} /> Agente asignado
+                            </div>
+                            {selectedConv.assignedAgentName ? (
+                                <div className="px-3.5 py-2.5 rounded-xl bg-blue-500/[0.08] border border-blue-500/20 flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-sm">
+                                        {selectedConv.assignedAgentName.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <div className="text-[13px] font-medium">{selectedConv.assignedAgentName}</div>
+                                        {selectedConv.assignedAgentId === user?.id && (
+                                            <div className="text-[10px] text-indigo-500 font-medium">Tu</div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="px-3.5 py-2.5 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground text-center">
+                                    Sin asignar
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tags */}
+                        {selectedConv.tags?.length > 0 && (
+                            <div className="mb-4">
+                                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    <Tag size={12} /> Tags
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {selectedConv.tags.map((tag: string) => (
+                                        <span key={tag} className="text-[11px] px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 font-medium">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
                         )}
-                    </div>
 
-                    {/* Tags */}
-                    {selectedConv.tags?.length > 0 && (
-                        <div className="mb-5">
-                            <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                                <Tag size={12} /> Tags
+                        {/* Estimated Value */}
+                        {selectedConv.estimatedValue > 0 && (
+                            <div className="p-3.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15 mb-4">
+                                <div className="text-[11px] text-muted-foreground mb-1">Valor estimado</div>
+                                <div className="text-xl font-bold text-emerald-500">
+                                    ${selectedConv.estimatedValue.toLocaleString()} COP
+                                </div>
                             </div>
-                            <div className="flex flex-wrap gap-1">
-                                {selectedConv.tags.map((tag: string) => (
-                                    <span key={tag} className="text-[11px] px-2 py-[3px] rounded-md bg-indigo-600/15 text-indigo-600 dark:text-indigo-400">
-                                        {tag}
+                        )}
+
+                        {/* Conversation Metadata */}
+                        <div className="rounded-xl border border-border bg-muted/30 p-3.5 mb-4">
+                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Conversacion</div>
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-2 text-[13px]">
+                                    <Clock size={13} className="text-muted-foreground flex-shrink-0" />
+                                    <span className="text-muted-foreground text-xs">Ultima actividad:</span>
+                                    <span className="text-xs ml-auto">{selectedConv.lastMessageAt || 'N/A'}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[13px]">
+                                    <MessageSquare size={13} className="text-muted-foreground flex-shrink-0" />
+                                    <span className="text-muted-foreground text-xs">Prioridad:</span>
+                                    <span
+                                        className="text-xs ml-auto font-medium px-1.5 py-0.5 rounded"
+                                        style={{
+                                            color: priorityColors[selectedConv.priority] || '#95a5a6',
+                                            background: `${priorityColors[selectedConv.priority] || '#95a5a6'}15`,
+                                        }}
+                                    >
+                                        {selectedConv.priority}
                                     </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Estimated Value */}
-                    {selectedConv.estimatedValue > 0 && (
-                        <div className="p-3 rounded-[10px] bg-neutral-100 dark:bg-neutral-800 border border-border mb-5">
-                            <div className="text-[11px] text-muted-foreground">Valor estimado</div>
-                            <div className="text-xl font-bold text-emerald-500">
-                                ${selectedConv.estimatedValue.toLocaleString()} COP
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Información adicional */}
-                    <div className="mb-5">
-                        <div className="text-xs font-semibold text-muted-foreground mb-2.5 flex items-center gap-1">
-                            <Edit2 size={12} /> Información adicional
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            {/* Empresa */}
-                            <div className="flex items-start gap-2 text-[13px] group">
-                                <Building2 size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] text-muted-foreground mb-0.5">Empresa</div>
-                                    {editingField === 'empresa' ? (
-                                        <input
-                                            autoFocus
-                                            value={contactMeta.empresa || ''}
-                                            onChange={e => updateContactMeta('empresa', e.target.value)}
-                                            onBlur={() => setEditingField(null)}
-                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                            className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
-                                        />
-                                    ) : (
-                                        <div
-                                            onClick={() => setEditingField('empresa')}
-                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
-                                        >
-                                            {contactMeta.empresa || <span className="text-muted-foreground opacity-50 italic">Agregar empresa...</span>}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
+                        </div>
 
-                            {/* Ciudad */}
-                            <div className="flex items-start gap-2 text-[13px] group">
-                                <MapPin size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] text-muted-foreground mb-0.5">Ciudad</div>
-                                    {editingField === 'ciudad' ? (
-                                        <input
-                                            autoFocus
-                                            value={contactMeta.ciudad || ''}
-                                            onChange={e => updateContactMeta('ciudad', e.target.value)}
-                                            onBlur={() => setEditingField(null)}
-                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                            className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
-                                        />
-                                    ) : (
-                                        <div
-                                            onClick={() => setEditingField('ciudad')}
-                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
-                                        >
-                                            {contactMeta.ciudad || <span className="text-muted-foreground opacity-50 italic">Agregar ciudad...</span>}
-                                        </div>
-                                    )}
-                                </div>
+                        {/* Informacion adicional */}
+                        <div className="mb-4">
+                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                                <Edit2 size={12} /> Informacion adicional
                             </div>
-
-                            {/* Sitio web */}
-                            <div className="flex items-start gap-2 text-[13px] group">
-                                <Globe size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] text-muted-foreground mb-0.5">Sitio web</div>
-                                    {editingField === 'sitio_web' ? (
-                                        <input
-                                            autoFocus
-                                            value={contactMeta.sitio_web || ''}
-                                            onChange={e => updateContactMeta('sitio_web', e.target.value)}
-                                            onBlur={() => setEditingField(null)}
-                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                            placeholder="https://..."
-                                            className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
-                                        />
-                                    ) : contactMeta.sitio_web ? (
-                                        <div className="flex items-center gap-1">
-                                            <a
-                                                href={contactMeta.sitio_web.startsWith('http') ? contactMeta.sitio_web : `https://${contactMeta.sitio_web}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-indigo-400 hover:text-indigo-300 truncate"
+                            <div className="flex flex-col gap-2.5">
+                                {/* Empresa */}
+                                <div className="flex items-start gap-2.5 text-[13px]">
+                                    <Building2 size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">Empresa</div>
+                                        {editingField === 'empresa' ? (
+                                            <input
+                                                autoFocus
+                                                value={contactMeta.empresa || ''}
+                                                onChange={e => updateContactMeta('empresa', e.target.value)}
+                                                onBlur={() => setEditingField(null)}
+                                                onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                className="w-full py-1.5 px-2.5 rounded-lg border border-border bg-muted/50 text-foreground text-xs outline-none focus:border-indigo-500/50"
+                                            />
+                                        ) : (
+                                            <div
+                                                onClick={() => setEditingField('empresa')}
+                                                className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
                                             >
-                                                {contactMeta.sitio_web}
-                                            </a>
-                                            <ExternalLink size={10} className="text-muted-foreground flex-shrink-0 cursor-pointer" onClick={() => setEditingField('sitio_web')} />
-                                        </div>
-                                    ) : (
-                                        <div
-                                            onClick={() => setEditingField('sitio_web')}
-                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors"
-                                        >
-                                            <span className="text-muted-foreground opacity-50 italic">Agregar sitio web...</span>
-                                        </div>
-                                    )}
+                                                {contactMeta.empresa || <span className="text-muted-foreground opacity-50 italic">Agregar empresa...</span>}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Redes sociales */}
-                            <div className="flex items-start gap-2 text-[13px]">
-                                <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] text-muted-foreground mb-1">Redes sociales</div>
-                                    <div className="flex gap-2">
-                                        {/* Instagram */}
-                                        <div className="relative group/social">
-                                            <button
-                                                onClick={() => setEditingField(editingField === 'instagram' ? null : 'instagram')}
-                                                className={cn(
-                                                    "w-7 h-7 rounded-md border flex items-center justify-center cursor-pointer transition-colors",
-                                                    contactMeta.instagram
-                                                        ? "border-pink-500/30 bg-pink-500/10 text-pink-500"
-                                                        : "border-border bg-transparent text-muted-foreground hover:border-pink-500/30 hover:text-pink-500"
-                                                )}
-                                                title={contactMeta.instagram || 'Instagram'}
+                                {/* Ciudad */}
+                                <div className="flex items-start gap-2.5 text-[13px]">
+                                    <MapPin size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">Ciudad</div>
+                                        {editingField === 'ciudad' ? (
+                                            <input
+                                                autoFocus
+                                                value={contactMeta.ciudad || ''}
+                                                onChange={e => updateContactMeta('ciudad', e.target.value)}
+                                                onBlur={() => setEditingField(null)}
+                                                onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                className="w-full py-1.5 px-2.5 rounded-lg border border-border bg-muted/50 text-foreground text-xs outline-none focus:border-indigo-500/50"
+                                            />
+                                        ) : (
+                                            <div
+                                                onClick={() => setEditingField('ciudad')}
+                                                className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
                                             >
-                                                <Instagram size={14} />
-                                            </button>
-                                            {editingField === 'instagram' && (
-                                                <input
-                                                    autoFocus
-                                                    value={contactMeta.instagram || ''}
-                                                    onChange={e => updateContactMeta('instagram', e.target.value)}
-                                                    onBlur={() => setEditingField(null)}
-                                                    onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                                    placeholder="@usuario"
-                                                    className="absolute top-full left-0 mt-1 w-32 py-1 px-2 rounded border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
-                                                />
-                                            )}
-                                        </div>
-                                        {/* Facebook */}
-                                        <div className="relative group/social">
-                                            <button
-                                                onClick={() => setEditingField(editingField === 'facebook' ? null : 'facebook')}
-                                                className={cn(
-                                                    "w-7 h-7 rounded-md border flex items-center justify-center cursor-pointer transition-colors",
-                                                    contactMeta.facebook
-                                                        ? "border-blue-500/30 bg-blue-500/10 text-blue-500"
-                                                        : "border-border bg-transparent text-muted-foreground hover:border-blue-500/30 hover:text-blue-500"
-                                                )}
-                                                title={contactMeta.facebook || 'Facebook'}
+                                                {contactMeta.ciudad || <span className="text-muted-foreground opacity-50 italic">Agregar ciudad...</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Sitio web */}
+                                <div className="flex items-start gap-2.5 text-[13px]">
+                                    <Globe size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">Sitio web</div>
+                                        {editingField === 'sitio_web' ? (
+                                            <input
+                                                autoFocus
+                                                value={contactMeta.sitio_web || ''}
+                                                onChange={e => updateContactMeta('sitio_web', e.target.value)}
+                                                onBlur={() => setEditingField(null)}
+                                                onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                placeholder="https://..."
+                                                className="w-full py-1.5 px-2.5 rounded-lg border border-border bg-muted/50 text-foreground text-xs outline-none focus:border-indigo-500/50"
+                                            />
+                                        ) : contactMeta.sitio_web ? (
+                                            <div className="flex items-center gap-1.5">
+                                                <a
+                                                    href={contactMeta.sitio_web.startsWith('http') ? contactMeta.sitio_web : `https://${contactMeta.sitio_web}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-indigo-400 hover:text-indigo-300 truncate"
+                                                >
+                                                    {contactMeta.sitio_web}
+                                                </a>
+                                                <ExternalLink size={10} className="text-muted-foreground flex-shrink-0 cursor-pointer" onClick={() => setEditingField('sitio_web')} />
+                                            </div>
+                                        ) : (
+                                            <div
+                                                onClick={() => setEditingField('sitio_web')}
+                                                className="text-xs cursor-pointer hover:text-indigo-400 transition-colors"
                                             >
-                                                <Facebook size={14} />
-                                            </button>
-                                            {editingField === 'facebook' && (
-                                                <input
-                                                    autoFocus
-                                                    value={contactMeta.facebook || ''}
-                                                    onChange={e => updateContactMeta('facebook', e.target.value)}
-                                                    onBlur={() => setEditingField(null)}
-                                                    onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                                    placeholder="facebook.com/..."
-                                                    className="absolute top-full left-0 mt-1 w-32 py-1 px-2 rounded border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
-                                                />
-                                            )}
-                                        </div>
-                                        {/* LinkedIn */}
-                                        <div className="relative group/social">
-                                            <button
-                                                onClick={() => setEditingField(editingField === 'linkedin' ? null : 'linkedin')}
-                                                className={cn(
-                                                    "w-7 h-7 rounded-md border flex items-center justify-center cursor-pointer transition-colors",
-                                                    contactMeta.linkedin
-                                                        ? "border-sky-500/30 bg-sky-500/10 text-sky-500"
-                                                        : "border-border bg-transparent text-muted-foreground hover:border-sky-500/30 hover:text-sky-500"
+                                                <span className="text-muted-foreground opacity-50 italic">Agregar sitio web...</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Redes sociales */}
+                                <div className="flex items-start gap-2.5 text-[13px]">
+                                    <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] text-muted-foreground mb-1.5">Redes sociales</div>
+                                        <div className="flex gap-2">
+                                            {/* Instagram */}
+                                            <div className="relative group/social">
+                                                <button
+                                                    onClick={() => setEditingField(editingField === 'instagram' ? null : 'instagram')}
+                                                    className={cn(
+                                                        "w-8 h-8 rounded-lg border flex items-center justify-center cursor-pointer transition-colors",
+                                                        contactMeta.instagram
+                                                            ? "border-pink-500/30 bg-pink-500/10 text-pink-500"
+                                                            : "border-border bg-transparent text-muted-foreground hover:border-pink-500/30 hover:text-pink-500"
+                                                    )}
+                                                    title={contactMeta.instagram || 'Instagram'}
+                                                >
+                                                    <Instagram size={14} />
+                                                </button>
+                                                {editingField === 'instagram' && (
+                                                    <input
+                                                        autoFocus
+                                                        value={contactMeta.instagram || ''}
+                                                        onChange={e => updateContactMeta('instagram', e.target.value)}
+                                                        onBlur={() => setEditingField(null)}
+                                                        onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                        placeholder="@usuario"
+                                                        className="absolute top-full left-0 mt-1 w-36 py-1.5 px-2.5 rounded-lg border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
+                                                    />
                                                 )}
-                                                title={contactMeta.linkedin || 'LinkedIn'}
-                                            >
-                                                <Linkedin size={14} />
-                                            </button>
-                                            {editingField === 'linkedin' && (
-                                                <input
-                                                    autoFocus
-                                                    value={contactMeta.linkedin || ''}
-                                                    onChange={e => updateContactMeta('linkedin', e.target.value)}
-                                                    onBlur={() => setEditingField(null)}
-                                                    onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                                    placeholder="linkedin.com/in/..."
-                                                    className="absolute top-full left-0 mt-1 w-32 py-1 px-2 rounded border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
-                                                />
-                                            )}
+                                            </div>
+                                            {/* Facebook */}
+                                            <div className="relative group/social">
+                                                <button
+                                                    onClick={() => setEditingField(editingField === 'facebook' ? null : 'facebook')}
+                                                    className={cn(
+                                                        "w-8 h-8 rounded-lg border flex items-center justify-center cursor-pointer transition-colors",
+                                                        contactMeta.facebook
+                                                            ? "border-blue-500/30 bg-blue-500/10 text-blue-500"
+                                                            : "border-border bg-transparent text-muted-foreground hover:border-blue-500/30 hover:text-blue-500"
+                                                    )}
+                                                    title={contactMeta.facebook || 'Facebook'}
+                                                >
+                                                    <Facebook size={14} />
+                                                </button>
+                                                {editingField === 'facebook' && (
+                                                    <input
+                                                        autoFocus
+                                                        value={contactMeta.facebook || ''}
+                                                        onChange={e => updateContactMeta('facebook', e.target.value)}
+                                                        onBlur={() => setEditingField(null)}
+                                                        onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                        placeholder="facebook.com/..."
+                                                        className="absolute top-full left-0 mt-1 w-36 py-1.5 px-2.5 rounded-lg border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
+                                                    />
+                                                )}
+                                            </div>
+                                            {/* LinkedIn */}
+                                            <div className="relative group/social">
+                                                <button
+                                                    onClick={() => setEditingField(editingField === 'linkedin' ? null : 'linkedin')}
+                                                    className={cn(
+                                                        "w-8 h-8 rounded-lg border flex items-center justify-center cursor-pointer transition-colors",
+                                                        contactMeta.linkedin
+                                                            ? "border-sky-500/30 bg-sky-500/10 text-sky-500"
+                                                            : "border-border bg-transparent text-muted-foreground hover:border-sky-500/30 hover:text-sky-500"
+                                                    )}
+                                                    title={contactMeta.linkedin || 'LinkedIn'}
+                                                >
+                                                    <Linkedin size={14} />
+                                                </button>
+                                                {editingField === 'linkedin' && (
+                                                    <input
+                                                        autoFocus
+                                                        value={contactMeta.linkedin || ''}
+                                                        onChange={e => updateContactMeta('linkedin', e.target.value)}
+                                                        onBlur={() => setEditingField(null)}
+                                                        onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                        placeholder="linkedin.com/in/..."
+                                                        className="absolute top-full left-0 mt-1 w-36 py-1.5 px-2.5 rounded-lg border border-border bg-card text-foreground text-xs outline-none z-10 shadow-lg"
+                                                    />
+                                                )}
+                                            </div>
                                         </div>
+                                    </div>
+                                </div>
+
+                                {/* Notas rapidas */}
+                                <div className="flex items-start gap-2.5 text-[13px]">
+                                    <StickyNote size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">Notas rapidas</div>
+                                        <textarea
+                                            value={contactMeta.notas_rapidas || ''}
+                                            onChange={e => updateContactMeta('notas_rapidas', e.target.value)}
+                                            placeholder="Escribir nota sobre este contacto..."
+                                            rows={2}
+                                            className="w-full py-1.5 px-2.5 rounded-lg border border-border bg-muted/50 text-foreground text-xs outline-none resize-none focus:border-indigo-500/50 transition-colors"
+                                        />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Notas rápidas */}
-                            <div className="flex items-start gap-2 text-[13px]">
-                                <StickyNote size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-[10px] text-muted-foreground mb-0.5">Notas rápidas</div>
-                                    <textarea
-                                        value={contactMeta.notas_rapidas || ''}
-                                        onChange={e => updateContactMeta('notas_rapidas', e.target.value)}
-                                        placeholder="Escribir nota sobre este contacto..."
-                                        rows={2}
-                                        className="w-full py-1.5 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none resize-none"
-                                    />
+                            {/* Save button */}
+                            {contactMetaDirty && (
+                                <button
+                                    onClick={saveContactMeta}
+                                    disabled={contactMetaSaving}
+                                    className={cn(
+                                        "w-full mt-3 py-2 px-3 rounded-xl border-none text-xs font-semibold flex gap-1.5 items-center justify-center transition-all",
+                                        contactMetaSaving
+                                            ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                            : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
+                                    )}
+                                >
+                                    {contactMetaSaving
+                                        ? <><Loader2 size={14} className="animate-spin" /> Guardando...</>
+                                        : <><Save size={14} /> Guardar cambios</>
+                                    }
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Custom Attributes */}
+                        {customAttrDefs.length > 0 && (
+                            <div className="mb-4">
+                                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    <Hash size={12} /> Atributos personalizados
+                                </div>
+                                <div className="flex flex-col gap-2.5">
+                                    {customAttrDefs.map((attr: any) => {
+                                        const key = attr.key || attr.name || attr.id;
+                                        const label = attr.label || attr.name || key;
+                                        const value = contactMeta[key] || '';
+                                        return (
+                                            <div key={key} className="flex items-start gap-2.5 text-[13px]">
+                                                <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-[10px] text-muted-foreground mb-0.5">{label}</div>
+                                                    {editingField === `custom_${key}` ? (
+                                                        <input
+                                                            autoFocus
+                                                            value={value}
+                                                            onChange={e => updateContactMeta(key, e.target.value)}
+                                                            onBlur={() => setEditingField(null)}
+                                                            onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
+                                                            className="w-full py-1.5 px-2.5 rounded-lg border border-border bg-muted/50 text-foreground text-xs outline-none focus:border-indigo-500/50"
+                                                        />
+                                                    ) : (
+                                                        <div
+                                                            onClick={() => setEditingField(`custom_${key}`)}
+                                                            className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
+                                                        >
+                                                            {value || <span className="text-muted-foreground opacity-50 italic">Sin valor</span>}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Save button */}
-                        {contactMetaDirty && (
-                            <button
-                                onClick={saveContactMeta}
-                                disabled={contactMetaSaving}
-                                className={cn(
-                                    "w-full mt-3 py-2 px-3 rounded-lg border-none text-xs font-semibold flex gap-1.5 items-center justify-center transition-colors",
-                                    contactMetaSaving
-                                        ? "bg-muted text-muted-foreground cursor-not-allowed"
-                                        : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
-                                )}
-                            >
-                                {contactMetaSaving
-                                    ? <><Loader2 size={14} className="animate-spin" /> Guardando...</>
-                                    : <><Save size={14} /> Guardar cambios</>
-                                }
-                            </button>
                         )}
-                    </div>
 
-                    {/* Custom Attributes */}
-                    {customAttrDefs.length > 0 && (
-                        <div className="mb-5">
-                            <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                                <Hash size={12} /> Atributos personalizados
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                {customAttrDefs.map((attr: any) => {
-                                    const key = attr.key || attr.name || attr.id;
-                                    const label = attr.label || attr.name || key;
-                                    const value = contactMeta[key] || '';
-                                    return (
-                                        <div key={key} className="flex items-start gap-2 text-[13px]">
-                                            <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-[10px] text-muted-foreground mb-0.5">{label}</div>
-                                                {editingField === `custom_${key}` ? (
-                                                    <input
-                                                        autoFocus
-                                                        value={value}
-                                                        onChange={e => updateContactMeta(key, e.target.value)}
-                                                        onBlur={() => setEditingField(null)}
-                                                        onKeyDown={e => e.key === 'Enter' && setEditingField(null)}
-                                                        className="w-full py-1 px-2 rounded border border-border bg-neutral-100 dark:bg-neutral-800 text-foreground text-xs outline-none"
-                                                    />
-                                                ) : (
-                                                    <div
-                                                        onClick={() => setEditingField(`custom_${key}`)}
-                                                        className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
-                                                    >
-                                                        {value || <span className="text-muted-foreground opacity-50 italic">Sin valor</span>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                        {/* Quick Actions */}
+                        <div className="mt-2 pt-4 border-t border-border">
+                            <div className="flex gap-2">
+                                {selectedConv.contactId && (
+                                    <a
+                                        href={`/admin/contacts/${selectedConv.contactId}`}
+                                        className="flex-1 py-2 px-3 rounded-xl border border-border bg-transparent text-foreground text-xs font-medium cursor-pointer flex gap-1.5 items-center justify-center hover:bg-muted transition-colors no-underline"
+                                    >
+                                        <ExternalLink size={12} /> Ver en CRM
+                                    </a>
+                                )}
+                                {selectedConv.contactPhone && (
+                                    <button
+                                        onClick={() => navigator.clipboard.writeText(selectedConv.contactPhone)}
+                                        className="flex-1 py-2 px-3 rounded-xl border border-border bg-transparent text-foreground text-xs font-medium cursor-pointer flex gap-1.5 items-center justify-center hover:bg-muted transition-colors"
+                                    >
+                                        <Phone size={12} /> Copiar tel.
+                                    </button>
+                                )}
                             </div>
                         </div>
-                    )}
-                    </>
+                    </div>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                        <span className="opacity-50">Selecciona una conversacion</span>
+                    </div>
                 )}
             </div>
         </div>

@@ -473,6 +473,25 @@ export const api = {
     deleteBlockedDate: (tenantId: string, dateId: string) =>
         apiDelete(`/appointments/${tenantId}/blocked-dates/${dateId}`),
 
+    // --- Dashboard Analytics V2 ---
+    getDashboardKPIs: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/overview-kpis/${tenantId}?start=${start}&end=${end}`),
+
+    getDashboardVolume: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/conversations-volume/${tenantId}?start=${start}&end=${end}`),
+
+    getDashboardResponseTimes: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/response-times/${tenantId}?start=${start}&end=${end}`),
+
+    getDashboardAIMetrics: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/ai-metrics/${tenantId}?start=${start}&end=${end}`),
+
+    getDashboardHeatmap: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/heatmap/${tenantId}?start=${start}&end=${end}`),
+
+    exportDashboardCSV: (tenantId: string, start: string, end: string) =>
+        apiGetBlob(`/dashboard-analytics/export/${tenantId}?start=${start}&end=${end}`),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {
@@ -541,6 +560,16 @@ async function apiPatch<T = any>(endpoint: string, body: any): Promise<{ success
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
+    }
+}
+
+async function apiGetBlob(endpoint: string): Promise<Blob | null> {
+    try {
+        const res = await authFetch(endpoint);
+        if (!res.ok) return null;
+        return await res.blob();
+    } catch {
+        return null;
     }
 }
 

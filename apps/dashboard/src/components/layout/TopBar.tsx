@@ -48,6 +48,7 @@ const pathLabels: Record<string, string> = {
   settings: "Configuración",
   channels: "Canales",
   analytics: "Analytics",
+  "analytics-v2": "Analytics",
   "agent-analytics": "Reportes",
   identity: "Identidad",
   knowledge: "Knowledge Base",

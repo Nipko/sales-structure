@@ -73,7 +73,8 @@ const sectionDefs: NavSectionDef[] = [
   {
     titleKey: "analytics",
     items: [
-      { labelKey: "analytics", href: "/admin/agent-analytics", icon: BarChart3 },
+      { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
+      { labelKey: "reports", href: "/admin/agent-analytics", icon: BarChart3 },
       { labelKey: "compliance", href: "/admin/compliance", icon: Shield },
     ],
   },

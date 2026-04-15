@@ -1,71 +1,169 @@
 {
   "meta": {
     "title": "Parallly — Automatize suas vendas no WhatsApp com IA",
-    "description": "Plataforma de IA conversacional para vendas. Automatize WhatsApp, Instagram e Messenger. Agente IA 24/7, CRM integrado, sem código."
+    "description": "Plataforma de IA conversacional para vendas. Automatize WhatsApp, Instagram e Messenger. Agente IA 24/7, CRM integrado, sem codigo."
   },
   "nav": {
     "features": "Funcionalidades",
     "howItWorks": "Como funciona",
-    "pricing": "Preços",
+    "pricing": "Precos",
     "contact": "Perguntas",
     "login": "Entrar",
-    "startFree": "Comece grátis"
+    "startFree": "Comece gratis"
   },
   "hero": {
     "badge": "IA Conversacional para Vendas",
-    "title": "Sua IA que responde WhatsApp e vende por você, 24/7",
-    "subtitle": "Seu agente IA responde em segundos. Sua equipe fecha em minutos. Tudo em uma só plataforma.",
-    "cta": "Teste 7 dias grátis",
+    "title": "Sua IA que responde WhatsApp e vende por voce, 24/7",
+    "subtitle": "Seu agente IA responde em segundos. Sua equipe fecha em minutos. Tudo em uma so plataforma.",
+    "cta": "Teste 7 dias gratis",
     "ctaSecondary": "Ver demo",
-    "noCard": "Sem cartão de crédito"
+    "noCard": "Sem cartao de credito"
+  },
+  "socialProof": {
+    "trust": "Mais de 500 empresas na America Latina confiam na Parallly",
+    "stat1Label": "conversas/mes",
+    "stat2Label": "satisfacao",
+    "stat3Label": "mais conversoes"
   },
   "stats": {
     "conversations": "Conversas automatizadas",
     "responseTime": "Tempo de resposta",
-    "satisfaction": "Satisfação do cliente",
+    "satisfaction": "Satisfacao do cliente",
     "sales": "Aumento nas vendas"
   },
-  "features": {
-    "title": "Tudo o que você precisa para vender mais",
-    "subtitle": "Uma plataforma completa para automatizar, gerenciar e escalar suas vendas por mensagens"
+  "problem": {
+    "title": "Quantas vendas voce perde por nao responder a tempo?",
+    "subtitle": "Cada minuto sem responder e um cliente que vai para o concorrente.",
+    "card1": "Seus clientes escrevem no WhatsApp, Instagram e Messenger... e voce responde horas depois.",
+    "card2": "Cada lead fica em um chat diferente. Voce nao sabe quem e quem nem o que ja disse.",
+    "card3": "Voce nao tem dados. Nao sabe qual canal vende mais nem quanto custa cada lead."
+  },
+  "demo": {
+    "title": "Veja em acao",
+    "subtitle": "Dois negocios reais. Duas conversas automaticas. Zero intervencao humana."
   },
   "howItWorks": {
     "title": "Como funciona?",
-    "subtitle": "Em 3 passos simples você está pronto para vender mais",
+    "sectionTitle": "Automatize em 3 passos",
+    "subtitle": "Em 3 passos simples voce esta pronto para vender mais",
     "step1": "Conecte seus canais",
-    "step1Desc": "WhatsApp, Instagram, Messenger. Sem código, em minutos.",
+    "step1Desc": "WhatsApp, Instagram, Messenger. Sem codigo, em minutos.",
     "step2": "Configure seu agente IA",
-    "step2Desc": "Envie seu catálogo, preços e perguntas frequentes. Dê personalidade ao seu assistente virtual.",
-    "step3": "Venda no automático",
-    "step3Desc": "Seu agente responde 24/7, qualifica leads e transfere para sua equipe quando necessário."
+    "step2Desc": "Envie seu catalogo, precos e perguntas frequentes. De personalidade ao seu assistente virtual.",
+    "step3": "Venda no automatico",
+    "step3Desc": "Seu agente responde 24/7, qualifica leads e transfere para sua equipe quando necessario."
+  },
+  "features": {
+    "title": "Tudo o que voce precisa para vender mais",
+    "subtitle": "Uma plataforma completa para automatizar, gerenciar e escalar suas vendas por mensagens",
+    "f1Title": "Agente IA que fala como voce",
+    "f1Desc": "Configure o tom, o estilo e as regras. Sua IA responde como se fosse voce, mas 24/7.",
+    "f2Title": "Todos os seus chats em um so lugar",
+    "f2Desc": "WhatsApp, Instagram e Messenger em uma caixa de entrada unificada. Nunca mais pule entre apps.",
+    "f3Title": "CRM que se preenche sozinho",
+    "f3Desc": "Cada conversa cria um lead automaticamente. Pipeline, scoring, acompanhamento... tudo automatico.",
+    "f4Title": "Automacoes sem codigo",
+    "f4Desc": "Regras de negocio, nurturing, acompanhamento... configure com cliques, nao com codigo.",
+    "f5Title": "Metricas que importam",
+    "f5Desc": "Tempo de resposta, conversao por canal, CSAT, desempenho de agentes. Tudo em tempo real.",
+    "f6Title": "Seguranca de verdade",
+    "f6Desc": "Criptografia AES-256, dados por tenant, funcoes granulares. Seus dados e os de seus clientes estao protegidos."
+  },
+  "comparison": {
+    "title": "Por que Parallly?",
+    "manual": "Manual",
+    "basicBots": "Chatbots basicos",
+    "row1": "Resposta 24/7",
+    "row2": "Entende contexto",
+    "row3": "Multi-canal",
+    "row4": "CRM integrado",
+    "row5": "Sem codigo",
+    "row6": "Escalacao humana"
+  },
+  "testimonials": {
+    "title": "O que nossos clientes dizem",
+    "t1Quote": "Antes demoravamos horas para responder no WhatsApp. Agora a IA responde em 3 segundos. As vendas subiram 45% no primeiro mes.",
+    "t1Name": "Maria Lopez",
+    "t1Role": "Fundadora",
+    "t1Company": "Loja Online Bogota",
+    "t1Stat": "+45% vendas",
+    "t2Quote": "Gerenciamos 15 clientes com WhatsApp e Instagram. Com a Parallly tudo chega em um so painel. Minha equipe parou de enlouquecer.",
+    "t2Name": "Carlos Gomez",
+    "t2Role": "Diretor Comercial",
+    "t2Company": "Agencia Digital Medellin",
+    "t2Stat": "+60% produtividade",
+    "t3Quote": "Os pedidos pelo WhatsApp sao gerenciados pela IA. Minha equipe foca em cozinhar, nao em responder mensagens.",
+    "t3Name": "Valentina Rios",
+    "t3Role": "Proprietaria",
+    "t3Company": "Restaurante Cali",
+    "t3Stat": "800+ pedidos/mes"
   },
   "pricing": {
-    "title": "Planos que crescem com você",
-    "subtitle": "Comece grátis. Escale quando precisar.",
+    "title": "Planos que crescem com voce",
+    "subtitle": "Comece gratis. Escale quando precisar.",
     "monthly": "Mensal",
     "annual": "Anual",
     "popular": "Mais popular",
-    "startFree": "Comece grátis",
+    "startFree": "Comece gratis",
     "contactSales": "Contatar vendas",
-    "perMonth": "/mês",
-    "features": "Inclui:"
+    "perMonth": "/mes",
+    "features": "Inclui:",
+    "freeTrial": "7 dias gratis. Sem cartao. Sem letras miudas.",
+    "starterName": "Starter",
+    "starterDesc": "Para empreendedores.",
+    "starterFeatures": ["3 canais conectados", "5.000 conversas/mes", "1 agente IA", "CRM basico", "Suporte por email"],
+    "starterCta": "Comecar com Starter",
+    "proName": "Pro",
+    "proDesc": "Para equipes que querem crescer.",
+    "proFeatures": ["Canais ilimitados", "Conversas ilimitadas", "5 agentes IA", "CRM avancado + API", "Analytics completo", "Suporte prioritario"],
+    "proCta": "Comecar com Pro",
+    "enterpriseName": "Enterprise",
+    "enterpriseDesc": "Para empresas com necessidades especiais.",
+    "enterpriseFeatures": ["Tudo ilimitado", "SLA garantido", "Suporte dedicado 24/7", "White-label", "Integracoes customizadas", "Onboarding personalizado"],
+    "enterpriseCta": "Vamos conversar",
+    "enterprisePrice": "Vamos conversar",
+    "annualDiscount": "-17%"
+  },
+  "faq": {
+    "title": "Perguntas frequentes",
+    "subtitle": "Tudo o que voce precisa saber para comecar.",
+    "q1": "Preciso saber programar?",
+    "a1": "De jeito nenhum. Tudo e configurado com cliques. Se voce sabe usar o WhatsApp, sabe usar a Parallly.",
+    "q2": "Como a IA funciona?",
+    "a2": "Voce envia suas informacoes (catalogo, perguntas frequentes, regras). A IA aprende e responde como se fosse voce. Usamos modelos avancados como GPT-4 e Claude, treinados com as informacoes do seu negocio.",
+    "q3": "E se a IA errar?",
+    "a3": "Fique tranquilo. Se a IA nao sabe o que dizer, passa a conversa para sua equipe na hora. Nosso sistema de handoff inteligente envia todo o contexto para seu agente humano, para que ele nao precise comecar do zero.",
+    "q4": "Integra com meu sistema atual?",
+    "a4": "Sim. Temos API aberta e nos conectamos com os CRMs mais usados. A Parallly inclui seu proprio CRM, mas tambem se integra com HubSpot, Salesforce e mais via webhooks.",
+    "q5": "E seguro?",
+    "a5": "100%. Criptografia militar (AES-256-GCM), dados isolados por empresa, backups diarios. Cumprimos todas as normas. Seus dados e os de seus clientes nunca sao compartilhados entre tenants.",
+    "q6": "Em quanto tempo fica pronto?",
+    "a6": "Em 1 hora voce ja tem seu agente IA respondendo. Serio, 1 hora. Basta conectar sua conta Meta, enviar suas informacoes e pronto."
   },
   "cta": {
     "title": "Pronto para parar de perder vendas?",
-    "subtitle": "Junte-se a centenas de empresas que já usam Parallly para vender mais.",
-    "button": "Comece seu teste gratuito"
+    "subtitle": "Comece seu teste gratis hoje. 7 dias, sem cartao, sem compromisso.",
+    "button": "Comecar teste gratis — 7 dias",
+    "guarantees": "Configuracao em 1 hora · Suporte em espanhol 24/7 · Garantia de 30 dias"
   },
   "footer": {
     "product": "Produto",
     "company": "Empresa",
     "legal": "Legal",
-    "privacy": "Política de Privacidade",
-    "terms": "Termos de Serviço",
-    "dataPolicy": "Política de Dados",
+    "privacy": "Privacidade",
+    "terms": "Termos de Servico",
+    "dataPolicy": "Politica de Dados",
     "about": "Sobre",
     "blog": "Blog",
     "careers": "Carreiras",
+    "features": "Funcionalidades",
+    "pricing": "Precos",
+    "demo": "Demo",
+    "contact": "Contato",
+    "brandDesc": "A plataforma de IA conversacional para vendas na America Latina.",
+    "madeBy": "Desenvolvido com ♥ pela Parallext",
     "copyright": "© {year} Parallly. Todos os direitos reservados.",
-    "madeWith": "Feito com ❤️ na Colômbia"
+    "madeWith": "Feito com ❤️ na Colombia",
+    "seeHow": "Veja como funciona ↓"
   }
 }

@@ -688,7 +688,7 @@ export default function LandingPage() {
               href="#como-funciona"
               className="inline-flex items-center justify-center px-8 py-4 border border-border hover:border-border-light text-text-primary rounded-xl text-lg font-medium transition-colors"
             >
-              Mira c&oacute;mo funciona &darr;
+              {t('footer.seeHow')}
             </a>
           </div>
           <p className="mt-6 text-sm text-text-muted">
@@ -716,7 +716,7 @@ export default function LandingPage() {
   const socialProof = (
     <Section>
       <p className="text-center text-text-muted text-sm uppercase tracking-widest mb-10">
-        M&aacute;s de 500 empresas en Latinoam&eacute;rica conf&iacute;an en Parallly
+        {t('socialProof.trust')}
       </p>
 
       {/* logos */}
@@ -740,21 +740,21 @@ export default function LandingPage() {
             <CountUp target={2000000} suffix="+" />
           </p>
           <p className="mt-1 text-text-secondary text-sm">
-            conversaciones/mes
+            {t('socialProof.stat1Label')}
           </p>
         </div>
         <div>
           <p className="text-4xl font-bold text-text-primary">
             <CountUp target={4.9} suffix="/5" />
           </p>
-          <p className="mt-1 text-text-secondary text-sm">satisfacci&oacute;n</p>
+          <p className="mt-1 text-text-secondary text-sm">{t('socialProof.stat2Label')}</p>
         </div>
         <div>
           <p className="text-4xl font-bold text-text-primary">
             <CountUp target={45} suffix="%" />
           </p>
           <p className="mt-1 text-text-secondary text-sm">
-            m&aacute;s conversiones
+            {t('socialProof.stat3Label')}
           </p>
         </div>
       </div>
@@ -766,28 +766,18 @@ export default function LandingPage() {
   /* -------------------------------------------------------------- */
 
   const problemCards = [
-    {
-      icon: icons.clock,
-      title: "Tus clientes escriben por WhatsApp, Instagram y Messenger... y t\u00FA respondes horas despu\u00E9s.",
-    },
-    {
-      icon: icons.users,
-      title:
-        "Cada lead queda en un chat diferente. No sabes qui\u00E9n es qui\u00E9n ni qu\u00E9 le dijiste.",
-    },
-    {
-      icon: icons.chart,
-      title: "No tienes datos. No sabes qu\u00E9 canal vende m\u00E1s ni cu\u00E1nto te cuesta cada lead.",
-    },
+    { icon: icons.clock, titleKey: "problem.card1" },
+    { icon: icons.users, titleKey: "problem.card2" },
+    { icon: icons.chart, titleKey: "problem.card3" },
   ];
 
   const problem = (
     <Section id="problema" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        &iquest;Cu&aacute;ntas ventas pierdes por no responder a tiempo?
+        {t('problem.title')}
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        Cada minuto sin responder es un cliente que se va con tu competencia.
+        {t('problem.subtitle')}
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {problemCards.map((card, i) => (
@@ -803,7 +793,7 @@ export default function LandingPage() {
               {card.icon}
             </div>
             <p className="text-text-primary font-medium leading-relaxed">
-              {card.title}
+              {t(card.titleKey)}
             </p>
           </motion.div>
         ))}
@@ -818,10 +808,10 @@ export default function LandingPage() {
   const demoConversations = (
     <Section id="como-funciona">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        As&iacute; se ve en acci&oacute;n
+        {t('demo.title')}
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        Dos negocios reales. Dos conversaciones autom&aacute;ticas. Cero intervenci&oacute;n humana.
+        {t('demo.subtitle')}
       </p>
       <DemoSection />
     </Section>
@@ -832,30 +822,15 @@ export default function LandingPage() {
   /* -------------------------------------------------------------- */
 
   const steps = [
-    {
-      num: "1",
-      icon: icons.link,
-      title: "Conecta tus canales",
-      desc: "WhatsApp, Instagram y Messenger en 5 minutos. Solo necesitas tu cuenta de Meta.",
-    },
-    {
-      num: "2",
-      icon: icons.cog,
-      title: "Configura tu agente IA",
-      desc: "Sube tu cat\u00E1logo, precios y preguntas frecuentes. Dale personalidad a tu asistente virtual.",
-    },
-    {
-      num: "3",
-      icon: icons.rocket,
-      title: "Vende en piloto autom\u00E1tico",
-      desc: "Tu IA responde al instante, califica leads y pasa los casos importantes a tu equipo.",
-    },
+    { num: "1", icon: icons.link, titleKey: "howItWorks.step1", descKey: "howItWorks.step1Desc" },
+    { num: "2", icon: icons.cog, titleKey: "howItWorks.step2", descKey: "howItWorks.step2Desc" },
+    { num: "3", icon: icons.rocket, titleKey: "howItWorks.step3", descKey: "howItWorks.step3Desc" },
   ];
 
   const howItWorks = (
     <Section>
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        Automatiza en 3 pasos
+        {t('howItWorks.sectionTitle')}
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
         {steps.map((step, i) => (
@@ -874,9 +849,9 @@ export default function LandingPage() {
               </span>
             </div>
             <h3 className="text-xl font-semibold mb-3 text-text-primary">
-              {step.title}
+              {t(step.titleKey)}
             </h3>
-            <p className="text-text-secondary leading-relaxed">{step.desc}</p>
+            <p className="text-text-secondary leading-relaxed">{t(step.descKey)}</p>
           </motion.div>
         ))}
       </div>
@@ -888,45 +863,21 @@ export default function LandingPage() {
   /* -------------------------------------------------------------- */
 
   const features = [
-    {
-      icon: icons.bot,
-      title: "Agente IA que suena como t\u00FA",
-      desc: "Configura el tono, el estilo y las reglas. Tu IA responde como si fueras t\u00FA, pero 24/7.",
-    },
-    {
-      icon: icons.messageSquare,
-      title: "Todos tus chats en un solo lugar",
-      desc: "WhatsApp, Instagram y Messenger en una bandeja unificada. Nunca m\u00E1s saltes entre apps.",
-    },
-    {
-      icon: icons.users,
-      title: "CRM que se llena solo",
-      desc: "Cada conversaci\u00F3n crea un lead autom\u00E1ticamente. Pipeline, scoring, seguimiento... todo autom\u00E1tico.",
-    },
-    {
-      icon: icons.zap,
-      title: "Automatizaciones sin c\u00F3digo",
-      desc: "Reglas de negocio, nurturing, seguimiento... configura con clicks, no con c\u00F3digo.",
-    },
-    {
-      icon: icons.barChart,
-      title: "M\u00E9tricas que importan",
-      desc: "Tiempo de respuesta, conversi\u00F3n por canal, CSAT, rendimiento de agentes. Todo en tiempo real.",
-    },
-    {
-      icon: icons.shield,
-      title: "Seguridad de verdad",
-      desc: "Cifrado AES-256, datos por tenant, roles granulares. Tu info y la de tus clientes est\u00E1n protegidas.",
-    },
+    { icon: icons.bot, titleKey: "features.f1Title", descKey: "features.f1Desc" },
+    { icon: icons.messageSquare, titleKey: "features.f2Title", descKey: "features.f2Desc" },
+    { icon: icons.users, titleKey: "features.f3Title", descKey: "features.f3Desc" },
+    { icon: icons.zap, titleKey: "features.f4Title", descKey: "features.f4Desc" },
+    { icon: icons.barChart, titleKey: "features.f5Title", descKey: "features.f5Desc" },
+    { icon: icons.shield, titleKey: "features.f6Title", descKey: "features.f6Desc" },
   ];
 
   const featuresSection = (
     <Section id="caracteristicas" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Todo lo que necesitas para vender m&aacute;s
+        {t('features.title')}
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        Una plataforma completa que reemplaza 5 herramientas diferentes.
+        {t('features.subtitle')}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {features.map((f, i) => (
@@ -942,10 +893,10 @@ export default function LandingPage() {
               {f.icon}
             </div>
             <h3 className="text-lg font-semibold mb-2 text-text-primary">
-              {f.title}
+              {t(f.titleKey)}
             </h3>
             <p className="text-text-secondary text-sm leading-relaxed">
-              {f.desc}
+              {t(f.descKey)}
             </p>
           </motion.div>
         ))}
@@ -958,18 +909,18 @@ export default function LandingPage() {
   /* -------------------------------------------------------------- */
 
   const compRows = [
-    { label: "Respuesta 24/7", manual: false, basic: true, parallly: true },
-    { label: "Entiende contexto", manual: false, basic: false, parallly: true },
-    { label: "Multi-canal", manual: false, basic: false, parallly: true },
-    { label: "CRM integrado", manual: false, basic: false, parallly: true },
-    { label: "Sin c\u00F3digo", manual: true, basic: false, parallly: true },
-    { label: "Escalada humana", manual: true, basic: false, parallly: true },
+    { labelKey: "comparison.row1", manual: false, basic: true, parallly: true },
+    { labelKey: "comparison.row2", manual: false, basic: false, parallly: true },
+    { labelKey: "comparison.row3", manual: false, basic: false, parallly: true },
+    { labelKey: "comparison.row4", manual: false, basic: false, parallly: true },
+    { labelKey: "comparison.row5", manual: true, basic: false, parallly: true },
+    { labelKey: "comparison.row6", manual: true, basic: false, parallly: true },
   ];
 
   const comparison = (
     <Section>
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        &iquest;Por qu&eacute; Parallly?
+        {t('comparison.title')}
       </h2>
       <div className="overflow-x-auto">
         <table className="w-full max-w-3xl mx-auto">
@@ -977,10 +928,10 @@ export default function LandingPage() {
             <tr className="border-b border-border">
               <th className="text-left py-4 pr-4 text-text-secondary text-sm font-medium"></th>
               <th className="py-4 px-4 text-text-secondary text-sm font-medium text-center">
-                Manual
+                {t('comparison.manual')}
               </th>
               <th className="py-4 px-4 text-text-secondary text-sm font-medium text-center">
-                Chatbots b&aacute;sicos
+                {t('comparison.basicBots')}
               </th>
               <th className="py-4 px-4 text-text-primary text-sm font-semibold text-center bg-[#3897f0]/5 rounded-t-xl border-x border-t border-[#3897f0]/20">
                 Parallly
@@ -991,7 +942,7 @@ export default function LandingPage() {
             {compRows.map((row, i) => (
               <tr key={i} className="border-b border-border/50">
                 <td className="py-4 pr-4 text-sm text-text-secondary">
-                  {row.label}
+                  {t(row.labelKey)}
                 </td>
                 <td className="py-4 px-4 text-center">
                   {row.manual ? icons.check : icons.x}
@@ -1023,42 +974,18 @@ export default function LandingPage() {
   /* -------------------------------------------------------------- */
 
   const testimonials = [
-    {
-      quote:
-        "Antes tard\u00E1bamos horas en responder por WhatsApp. Ahora la IA responde en 3 segundos. Las ventas subieron 45% en el primer mes.",
-      name: "Mar\u00EDa L\u00F3pez",
-      role: "Fundadora",
-      company: "Tienda Online Bogot\u00E1",
-      stat: "+45% ventas",
-      initials: "ML",
-    },
-    {
-      quote:
-        "Manejamos 15 clientes con WhatsApp e Instagram. Con Parallly todo llega a un solo panel. Mi equipo dej\u00F3 de volverse loco.",
-      name: "Carlos G\u00F3mez",
-      role: "Director Comercial",
-      company: "Agencia Digital Medell\u00EDn",
-      stat: "+60% productividad",
-      initials: "CG",
-    },
-    {
-      quote:
-        "Los pedidos por WhatsApp los maneja la IA. Mi equipo se enfoca en cocinar, no en contestar mensajes.",
-      name: "Valentina R\u00EDos",
-      role: "Due\u00F1a",
-      company: "Restaurante Cali",
-      stat: "800+ pedidos/mes",
-      initials: "VR",
-    },
+    { prefix: "t1", initials: "ML" },
+    { prefix: "t2", initials: "CG" },
+    { prefix: "t3", initials: "VR" },
   ];
 
   const testimonialsSection = (
     <Section className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        Lo que dicen nuestros clientes
+        {t('testimonials.title')}
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {testimonials.map((t, i) => (
+        {testimonials.map((tm, i) => (
           <motion.div
             key={i}
             className="bg-surface border border-border rounded-xl p-8 flex flex-col"
@@ -1068,22 +995,22 @@ export default function LandingPage() {
             transition={{ delay: i * 0.15, duration: 0.5 }}
           >
             <p className="text-text-secondary leading-relaxed flex-1 mb-6">
-              &ldquo;{t.quote}&rdquo;
+              &ldquo;{t(`testimonials.${tm.prefix}Quote`)}&rdquo;
             </p>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-[#3897f0]/20 flex items-center justify-center text-[#3897f0] text-sm font-bold">
-                {t.initials}
+                {tm.initials}
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-text-primary">
-                  {t.name}
+                  {t(`testimonials.${tm.prefix}Name`)}
                 </p>
                 <p className="text-xs text-text-muted">
-                  {t.role}, {t.company}
+                  {t(`testimonials.${tm.prefix}Role`)}, {t(`testimonials.${tm.prefix}Company`)}
                 </p>
               </div>
               <span className="text-xs bg-[#3897f0]/10 text-[#3897f0] px-2.5 py-1 rounded-full font-medium">
-                {t.stat}
+                {t(`testimonials.${tm.prefix}Stat`)}
               </span>
             </div>
           </motion.div>
@@ -1098,54 +1025,34 @@ export default function LandingPage() {
 
   const plans = [
     {
-      name: "Starter",
+      nameKey: "pricing.starterName",
       priceCOP: annual ? "$199.000" : "$239.000",
       priceUSD: annual ? "(~$49 USD)" : "(~$59 USD)",
       period: " COP/mes",
-      desc: "Para emprendedores.",
-      features: [
-        "3 canales conectados",
-        "5,000 conversaciones/mes",
-        "1 agente IA",
-        "CRM b\u00E1sico",
-        "Soporte por email",
-      ],
-      cta: "Empezar con Starter",
+      descKey: "pricing.starterDesc",
+      featuresKey: "pricing.starterFeatures",
+      ctaKey: "pricing.starterCta",
       highlighted: false,
     },
     {
-      name: "Pro",
+      nameKey: "pricing.proName",
       priceCOP: annual ? "$499.000" : "$599.000",
       priceUSD: annual ? "(~$119 USD)" : "(~$149 USD)",
       period: " COP/mes",
-      desc: "Para equipos que quieren crecer.",
-      features: [
-        "Canales ilimitados",
-        "Conversaciones ilimitadas",
-        "5 agentes IA",
-        "CRM avanzado + API",
-        "Analytics completo",
-        "Soporte prioritario",
-      ],
-      cta: "Empezar con Pro",
+      descKey: "pricing.proDesc",
+      featuresKey: "pricing.proFeatures",
+      ctaKey: "pricing.proCta",
       highlighted: true,
-      badge: "M\u00E1s popular",
+      badgeKey: "pricing.popular",
     },
     {
-      name: "Enterprise",
+      nameKey: "pricing.enterpriseName",
       priceCOP: null,
       priceUSD: "",
       period: "",
-      desc: "Para empresas con necesidades especiales.",
-      features: [
-        "Todo ilimitado",
-        "SLA garantizado",
-        "Soporte dedicado 24/7",
-        "White-label",
-        "Integraciones custom",
-        "Onboarding personalizado",
-      ],
-      cta: "Hablemos",
+      descKey: "pricing.enterpriseDesc",
+      featuresKey: "pricing.enterpriseFeatures",
+      ctaKey: "pricing.enterpriseCta",
       highlighted: false,
     },
   ];
@@ -1156,7 +1063,7 @@ export default function LandingPage() {
         {t('pricing.title')}
       </h2>
       <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
-        7 d&iacute;as gratis. Sin tarjeta. Sin letra peque&ntilde;a.
+        {t('pricing.freeTrial')}
       </p>
 
       {/* Toggle */}
@@ -1164,7 +1071,7 @@ export default function LandingPage() {
         <span
           className={`text-sm ${!annual ? "text-text-primary" : "text-text-muted"}`}
         >
-          Mensual
+          {t('pricing.monthly')}
         </span>
         <button
           onClick={() => setAnnual(!annual)}
@@ -1179,8 +1086,8 @@ export default function LandingPage() {
         <span
           className={`text-sm ${annual ? "text-text-primary" : "text-text-muted"}`}
         >
-          Anual{" "}
-          <span className="text-[#3897f0] text-xs font-medium">(-17%)</span>
+          {t('pricing.annual')}{" "}
+          <span className="text-[#3897f0] text-xs font-medium">({t('pricing.annualDiscount')})</span>
         </span>
       </div>
 
@@ -1199,15 +1106,15 @@ export default function LandingPage() {
             transition={{ delay: i * 0.1, duration: 0.5 }}
             whileHover={{ scale: 1.02 }}
           >
-            {plan.badge && (
+            {plan.badgeKey && (
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#3897f0] text-white text-xs font-semibold px-3 py-1 rounded-full">
-                {plan.badge}
+                {t(plan.badgeKey)}
               </span>
             )}
             <h3 className="text-xl font-semibold text-text-primary mb-2">
-              {plan.name}
+              {t(plan.nameKey)}
             </h3>
-            <p className="text-text-muted text-sm mb-6">{plan.desc}</p>
+            <p className="text-text-muted text-sm mb-6">{t(plan.descKey)}</p>
             <div className="mb-6">
               {plan.priceCOP !== null ? (
                 <div>
@@ -1221,12 +1128,12 @@ export default function LandingPage() {
                 </div>
               ) : (
                 <span className="text-4xl font-bold text-text-primary">
-                  Hablemos
+                  {t('pricing.enterprisePrice')}
                 </span>
               )}
             </div>
             <ul className="space-y-3 mb-8 flex-1">
-              {plan.features.map((f, fi) => (
+              {(t.raw(plan.featuresKey) as string[]).map((f: string, fi: number) => (
                 <li
                   key={fi}
                   className="flex items-center gap-3 text-sm text-text-secondary"
@@ -1244,7 +1151,7 @@ export default function LandingPage() {
                   : "bg-surface-light hover:bg-border border border-border text-text-primary"
               }`}
             >
-              {plan.cta}
+              {t(plan.ctaKey)}
             </a>
           </motion.div>
         ))}
@@ -1256,40 +1163,18 @@ export default function LandingPage() {
   /*  Section 11 — FAQ                                               */
   /* -------------------------------------------------------------- */
 
-  const faqs = [
-    {
-      q: "\u00BFNecesito saber programar?",
-      a: "Para nada. Todo se configura con clicks. Si sabes usar WhatsApp, sabes usar Parallly.",
-    },
-    {
-      q: "\u00BFC\u00F3mo funciona la IA?",
-      a: "Subes tu info (cat\u00E1logo, preguntas frecuentes, reglas). La IA aprende y responde como si fueras t\u00FA. Usamos modelos avanzados como GPT-4 y Claude, entrenados con la informaci\u00F3n de tu negocio.",
-    },
-    {
-      q: "\u00BFY si la IA mete la pata?",
-      a: "Tranquilo. Si la IA no sabe qu\u00E9 decir, pasa la conversaci\u00F3n a tu equipo al instante. Nuestro sistema de handoff inteligente le env\u00EDa todo el contexto a tu agente humano para que no tenga que empezar de cero.",
-    },
-    {
-      q: "\u00BFSe integra con mi sistema actual?",
-      a: "S\u00ED. Tenemos API abierta y nos conectamos con los CRMs m\u00E1s usados. Parallly incluye su propio CRM, pero tambi\u00E9n se integra con HubSpot, Salesforce y m\u00E1s v\u00EDa webhooks.",
-    },
-    {
-      q: "\u00BFEs seguro?",
-      a: "100%. Cifrado militar (AES-256-GCM), datos aislados por empresa, backups diarios. Cumplimos con todas las normas. Tu info y la de tus clientes nunca se comparten entre tenants.",
-    },
-    {
-      q: "\u00BFEn cu\u00E1nto tiempo lo tengo funcionando?",
-      a: "En 1 hora ya tienes tu agente IA respondiendo. En serio, 1 hora. Solo conectas tu cuenta de Meta, subes tu informaci\u00F3n y listo.",
-    },
-  ];
+  const faqs = [1, 2, 3, 4, 5, 6].map(n => ({
+    q: t(`faq.q${n}`),
+    a: t(`faq.a${n}`),
+  }));
 
   const faqSection = (
     <Section id="preguntas" className="bg-surface/50">
       <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        Preguntas frecuentes
+        {t('faq.title')}
       </h2>
       <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        Todo lo que necesitas saber para empezar.
+        {t('faq.subtitle')}
       </p>
       <div className="max-w-3xl mx-auto space-y-3">
         {faqs.map((faq, i) => (
@@ -1315,17 +1200,16 @@ export default function LandingPage() {
             {t('cta.title')}
           </h2>
           <p className="text-text-secondary text-lg mb-10 max-w-xl mx-auto">
-            Empieza tu prueba gratis hoy. 7 d&iacute;as, sin tarjeta, sin compromiso.
+            {t('cta.subtitle')}
           </p>
           <a
             href={SIGNUP}
             className="inline-flex items-center justify-center px-10 py-5 bg-[#3897f0] hover:bg-[#2b7fd4] text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_60px_rgba(56,151,240,0.3)]"
           >
-            Empezar prueba gratis — 7 d&iacute;as
+            {t('cta.button')}
           </a>
           <p className="mt-8 text-sm text-text-muted">
-            Configuraci&oacute;n en 1 hora &middot; Soporte en espa&ntilde;ol 24/7 &middot;
-            Garant&iacute;a 30 d&iacute;as
+            {t('cta.guarantees')}
           </p>
         </div>
       </div>
@@ -1348,7 +1232,7 @@ export default function LandingPage() {
               className="h-10 w-auto mb-4"
             />
             <p className="text-text-muted text-sm leading-relaxed">
-              La plataforma de IA conversacional para ventas en Latinoam&eacute;rica.
+              {t('footer.brandDesc')}
             </p>
           </div>
 
@@ -1363,7 +1247,7 @@ export default function LandingPage() {
                   href="#caracteristicas"
                   className="hover:text-text-secondary transition-colors"
                 >
-                  Caracter&iacute;sticas
+                  {t('footer.features')}
                 </a>
               </li>
               <li>
@@ -1371,7 +1255,7 @@ export default function LandingPage() {
                   href="#precios"
                   className="hover:text-text-secondary transition-colors"
                 >
-                  Precios
+                  {t('footer.pricing')}
                 </a>
               </li>
               <li>
@@ -1379,7 +1263,7 @@ export default function LandingPage() {
                   href="#como-funciona"
                   className="hover:text-text-secondary transition-colors"
                 >
-                  Demo
+                  {t('footer.demo')}
                 </a>
               </li>
             </ul>
@@ -1393,17 +1277,17 @@ export default function LandingPage() {
             <ul className="space-y-2 text-sm text-text-muted">
               <li>
                 <a href="#" className="hover:text-text-secondary transition-colors">
-                  Acerca de
+                  {t('footer.about')}
                 </a>
               </li>
               <li>
                 <a href="#" className="hover:text-text-secondary transition-colors">
-                  Blog
+                  {t('footer.blog')}
                 </a>
               </li>
               <li>
                 <a href="#" className="hover:text-text-secondary transition-colors">
-                  Contacto
+                  {t('footer.contact')}
                 </a>
               </li>
             </ul>
@@ -1436,10 +1320,10 @@ export default function LandingPage() {
 
         <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-text-muted">
-            Desarrollado con &hearts; por Parallext
+            {t('footer.madeBy')}
           </p>
           <p className="text-xs text-text-muted">
-            &copy; 2026 Parallly. Todos los derechos reservados.
+            {t('footer.copyright')}
           </p>
         </div>
       </div>

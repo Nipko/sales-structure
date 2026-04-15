@@ -19,18 +19,32 @@
     "ctaSecondary": "See demo",
     "noCard": "No credit card required"
   },
+  "socialProof": {
+    "trust": "Over 500 companies across Latin America trust Parallly",
+    "stat1Label": "conversations/month",
+    "stat2Label": "satisfaction",
+    "stat3Label": "more conversions"
+  },
   "stats": {
     "conversations": "Automated conversations",
     "responseTime": "Response time",
     "satisfaction": "Customer satisfaction",
     "sales": "Sales increase"
   },
-  "features": {
-    "title": "Everything you need to sell more",
-    "subtitle": "A complete platform to automate, manage and scale your messaging sales"
+  "problem": {
+    "title": "How many sales are you losing by not responding on time?",
+    "subtitle": "Every minute without a reply is a customer walking to your competitor.",
+    "card1": "Your customers message you on WhatsApp, Instagram and Messenger... and you reply hours later.",
+    "card2": "Every lead lives in a different chat. You don't know who's who or what you already told them.",
+    "card3": "You have no data. You don't know which channel sells more or how much each lead costs you."
+  },
+  "demo": {
+    "title": "See it in action",
+    "subtitle": "Two real businesses. Two automated conversations. Zero human intervention."
   },
   "howItWorks": {
     "title": "How does it work?",
+    "sectionTitle": "Automate in 3 steps",
     "subtitle": "In 3 simple steps you're ready to sell more",
     "step1": "Connect your channels",
     "step1Desc": "WhatsApp, Instagram, Messenger. No code, in minutes.",
@@ -38,6 +52,51 @@
     "step2Desc": "Upload your catalog, prices and FAQs. Give your virtual assistant a personality.",
     "step3": "Sell on autopilot",
     "step3Desc": "Your agent responds 24/7, qualifies leads and transfers to your team when needed."
+  },
+  "features": {
+    "title": "Everything you need to sell more",
+    "subtitle": "A complete platform to automate, manage and scale your messaging sales",
+    "f1Title": "An AI agent that sounds like you",
+    "f1Desc": "Set the tone, style and rules. Your AI responds as if it were you, but 24/7.",
+    "f2Title": "All your chats in one place",
+    "f2Desc": "WhatsApp, Instagram and Messenger in a unified inbox. Never jump between apps again.",
+    "f3Title": "A CRM that fills itself",
+    "f3Desc": "Every conversation automatically creates a lead. Pipeline, scoring, follow-ups... all automatic.",
+    "f4Title": "No-code automations",
+    "f4Desc": "Business rules, nurturing, follow-ups... configure with clicks, not code.",
+    "f5Title": "Metrics that matter",
+    "f5Desc": "Response time, conversion by channel, CSAT, agent performance. All in real time.",
+    "f6Title": "Real security",
+    "f6Desc": "AES-256 encryption, per-tenant data isolation, granular roles. Your data and your customers' data are protected."
+  },
+  "comparison": {
+    "title": "Why Parallly?",
+    "manual": "Manual",
+    "basicBots": "Basic chatbots",
+    "row1": "24/7 response",
+    "row2": "Understands context",
+    "row3": "Multi-channel",
+    "row4": "Built-in CRM",
+    "row5": "No code",
+    "row6": "Human escalation"
+  },
+  "testimonials": {
+    "title": "What our customers say",
+    "t1Quote": "We used to take hours to reply on WhatsApp. Now the AI responds in 3 seconds. Sales went up 45% in the first month.",
+    "t1Name": "Maria Lopez",
+    "t1Role": "Founder",
+    "t1Company": "Online Store Bogota",
+    "t1Stat": "+45% sales",
+    "t2Quote": "We manage 15 clients with WhatsApp and Instagram. With Parallly everything arrives in one panel. My team stopped going crazy.",
+    "t2Name": "Carlos Gomez",
+    "t2Role": "Sales Director",
+    "t2Company": "Digital Agency Medellin",
+    "t2Stat": "+60% productivity",
+    "t3Quote": "WhatsApp orders are handled by the AI. My team focuses on cooking, not answering messages.",
+    "t3Name": "Valentina Rios",
+    "t3Role": "Owner",
+    "t3Company": "Restaurant Cali",
+    "t3Stat": "800+ orders/month"
   },
   "pricing": {
     "title": "Plans that grow with you",
@@ -48,12 +107,44 @@
     "startFree": "Start free",
     "contactSales": "Contact sales",
     "perMonth": "/month",
-    "features": "Includes:"
+    "features": "Includes:",
+    "freeTrial": "7 days free. No card. No fine print.",
+    "starterName": "Starter",
+    "starterDesc": "For entrepreneurs.",
+    "starterFeatures": ["3 connected channels", "5,000 conversations/month", "1 AI agent", "Basic CRM", "Email support"],
+    "starterCta": "Start with Starter",
+    "proName": "Pro",
+    "proDesc": "For teams ready to grow.",
+    "proFeatures": ["Unlimited channels", "Unlimited conversations", "5 AI agents", "Advanced CRM + API", "Full analytics", "Priority support"],
+    "proCta": "Start with Pro",
+    "enterpriseName": "Enterprise",
+    "enterpriseDesc": "For companies with custom needs.",
+    "enterpriseFeatures": ["Everything unlimited", "Guaranteed SLA", "Dedicated 24/7 support", "White-label", "Custom integrations", "Personalized onboarding"],
+    "enterpriseCta": "Let's talk",
+    "enterprisePrice": "Let's talk",
+    "annualDiscount": "-17%"
+  },
+  "faq": {
+    "title": "Frequently asked questions",
+    "subtitle": "Everything you need to know to get started.",
+    "q1": "Do I need to know how to code?",
+    "a1": "Not at all. Everything is configured with clicks. If you know how to use WhatsApp, you know how to use Parallly.",
+    "q2": "How does the AI work?",
+    "a2": "You upload your info (catalog, FAQs, rules). The AI learns and responds as if it were you. We use advanced models like GPT-4 and Claude, trained with your business information.",
+    "q3": "What if the AI makes a mistake?",
+    "a3": "No worries. If the AI doesn't know what to say, it hands the conversation to your team instantly. Our smart handoff system sends all the context to your human agent so they don't have to start from scratch.",
+    "q4": "Does it integrate with my current system?",
+    "a4": "Yes. We have an open API and connect with the most popular CRMs. Parallly includes its own CRM, but also integrates with HubSpot, Salesforce and more via webhooks.",
+    "q5": "Is it secure?",
+    "a5": "100%. Military-grade encryption (AES-256-GCM), data isolated per company, daily backups. We comply with all regulations. Your data and your customers' data are never shared between tenants.",
+    "q6": "How long until it's up and running?",
+    "a6": "In 1 hour you'll have your AI agent responding. Seriously, 1 hour. Just connect your Meta account, upload your information and you're done."
   },
   "cta": {
     "title": "Ready to stop losing sales?",
-    "subtitle": "Join hundreds of companies already using Parallly to sell more.",
-    "button": "Start your free trial"
+    "subtitle": "Start your free trial today. 7 days, no card, no commitment.",
+    "button": "Start free trial — 7 days",
+    "guarantees": "Setup in 1 hour · 24/7 Spanish support · 30-day guarantee"
   },
   "footer": {
     "product": "Product",
@@ -65,7 +156,14 @@
     "about": "About",
     "blog": "Blog",
     "careers": "Careers",
+    "features": "Features",
+    "pricing": "Pricing",
+    "demo": "Demo",
+    "contact": "Contact",
+    "brandDesc": "The conversational AI platform for sales in Latin America.",
+    "madeBy": "Built with ♥ by Parallext",
     "copyright": "© {year} Parallly. All rights reserved.",
-    "madeWith": "Made with ❤️ in Colombia"
+    "madeWith": "Made with ❤️ in Colombia",
+    "seeHow": "See how it works ↓"
   }
 }

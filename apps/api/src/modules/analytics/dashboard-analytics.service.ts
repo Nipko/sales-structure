@@ -112,21 +112,21 @@ export class DashboardAnalyticsService {
     }
 
     private async fetchPeriodKPIs(schema: string, start: string, end: string) {
-        const [convRow, msgRow, resolutionRow, responseRow, csatRow, costRow] = await Promise.all([
+        const [convRow, msgRow, resolutionRow, responseRow, csatRow, costRow]: any = await Promise.all([
             // Conversations count
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COUNT(*)::int as count FROM "${schema}".conversations
                  WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')`,
                 start, end,
             ),
             // Messages count
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COUNT(*)::int as count FROM "${schema}".messages
                  WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')`,
                 start, end,
             ),
             // AI resolution rate: resolved conversations without handoff
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT
                     COUNT(*) FILTER (WHERE status = 'resolved')::int as resolved,
                     COUNT(*) FILTER (WHERE status = 'resolved' AND id NOT IN (
@@ -138,7 +138,7 @@ export class DashboardAnalyticsService {
                 start, end,
             ),
             // Avg first response time (seconds)
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (first_response_at - assigned_at))), 0)::numeric as avg_secs
                  FROM "${schema}".conversation_assignments
                  WHERE assigned_at >= $1::date AND assigned_at < ($2::date + interval '1 day')
@@ -146,14 +146,14 @@ export class DashboardAnalyticsService {
                 start, end,
             ),
             // CSAT average
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COALESCE(AVG(rating), 0)::numeric as avg_rating
                  FROM "${schema}".csat_surveys
                  WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')`,
                 start, end,
             ),
             // LLM cost
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COALESCE(SUM(llm_cost), 0)::numeric as total_cost
                  FROM "${schema}".messages
                  WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
@@ -182,7 +182,7 @@ export class DashboardAnalyticsService {
     ): Promise<{ series: any[] }> {
         const schema = await this.getSchemaName(tenantId);
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT DATE(created_at)::text as date,
                     COALESCE(channel_type, 'whatsapp') as channel,
                     COUNT(*)::int as count
@@ -215,7 +215,7 @@ export class DashboardAnalyticsService {
     ): Promise<{ series: any[] }> {
         const schema = await this.getSchemaName(tenantId);
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT DATE(assigned_at)::text as date,
                     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (first_response_at - assigned_at)))::numeric as median_response,
                     PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (first_response_at - assigned_at)))::numeric as p90_response,
@@ -257,9 +257,9 @@ export class DashboardAnalyticsService {
     }> {
         const schema = await this.getSchemaName(tenantId);
 
-        const [statsRow, costRow, modelRows, handoffRows] = await Promise.all([
+        const [statsRow, costRow, modelRows, handoffRows]: any = await Promise.all([
             // AI resolution + containment
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT
                     COUNT(*)::int as total,
                     COUNT(*) FILTER (WHERE status = 'resolved')::int as resolved,
@@ -274,7 +274,7 @@ export class DashboardAnalyticsService {
                 start, end,
             ),
             // Cost breakdown
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COALESCE(SUM(llm_cost), 0)::numeric as total_cost,
                         COUNT(DISTINCT conversation_id)::int as conv_count
                  FROM "${schema}".messages
@@ -283,7 +283,7 @@ export class DashboardAnalyticsService {
                 start, end,
             ),
             // Model usage
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COALESCE(llm_model_used, 'unknown') as model,
                         COUNT(*)::int as requests,
                         COALESCE(SUM(llm_cost), 0)::numeric as cost
@@ -295,7 +295,7 @@ export class DashboardAnalyticsService {
                 start, end,
             ),
             // Handoff reasons
-            this.prisma.$queryRawUnsafe<any[]>(
+            this.prisma.$queryRawUnsafe(
                 `SELECT COALESCE(data->>'reason', 'unknown') as reason, COUNT(*)::int as count
                  FROM "${schema}".analytics_events
                  WHERE event_type = 'handoff_triggered'
@@ -320,12 +320,12 @@ export class DashboardAnalyticsService {
             handoffs,
             avgCostPerConversation: convWithCost > 0 ? Math.round((totalCost / convWithCost) * 10000) / 10000 : 0,
             totalCost: Math.round(totalCost * 100) / 100,
-            modelUsage: modelRows.map(r => ({
+            modelUsage: modelRows.map((r: any) => ({
                 model: r.model,
                 requests: r.requests,
                 cost: Math.round(Number(r.cost) * 100) / 100,
             })),
-            handoffReasons: handoffRows.map(r => ({
+            handoffReasons: handoffRows.map((r: any) => ({
                 reason: r.reason,
                 count: r.count,
             })),
@@ -339,7 +339,7 @@ export class DashboardAnalyticsService {
     ): Promise<{ data: Array<{ day: number; hour: number; count: number }> }> {
         const schema = await this.getSchemaName(tenantId);
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT EXTRACT(DOW FROM created_at)::int as day,
                     EXTRACT(HOUR FROM created_at)::int as hour,
                     COUNT(*)::int as count

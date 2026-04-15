@@ -46,7 +46,7 @@ export class MetricsAggregationService {
         const nextDateStr = nextDate.toISOString().split('T')[0];
 
         // ── Global dimension ──
-        const [globalStats] = await this.prisma.$queryRawUnsafe<any[]>(
+        const [globalStats]: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT
                 (SELECT COUNT(*)::int FROM "${schemaName}".conversations WHERE created_at >= $1::date AND created_at < $2::date) as conversations,
                 (SELECT COUNT(*)::int FROM "${schemaName}".messages WHERE created_at >= $1::date AND created_at < $2::date) as messages,
@@ -71,7 +71,7 @@ export class MetricsAggregationService {
         });
 
         // ── Channel dimension ──
-        const channelRows = await this.prisma.$queryRawUnsafe<any[]>(
+        const channelRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT COALESCE(channel_type, 'whatsapp') as channel, COUNT(*)::int as count
              FROM "${schemaName}".conversations
              WHERE created_at >= $1::date AND created_at < $2::date
@@ -86,7 +86,7 @@ export class MetricsAggregationService {
         }
 
         // ── Hourly dimension ──
-        const hourlyRows = await this.prisma.$queryRawUnsafe<any[]>(
+        const hourlyRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT EXTRACT(HOUR FROM created_at)::int as hour, COUNT(*)::int as count
              FROM "${schemaName}".messages
              WHERE created_at >= $1::date AND created_at < $2::date
@@ -107,7 +107,7 @@ export class MetricsAggregationService {
         metrics: Record<string, any>,
     ): Promise<void> {
         // Check if exists
-        const existing = await this.prisma.$queryRawUnsafe<any[]>(
+        const existing: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id FROM "${schema}".daily_metrics
              WHERE tenant_id = $1 AND metric_date = $2::date
                AND dimension_type = $3 AND COALESCE(dimension_id, '') = $4`,

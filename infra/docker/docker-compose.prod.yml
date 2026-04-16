@@ -274,6 +274,21 @@ services:
     mem_limit: 384m
     logging: *default-logging
 
+  # ---- Promtail (ships Docker logs to Loki) ----
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: parallext-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ../promtail/config.yml:/etc/promtail/config.yml:ro
+    depends_on:
+      - loki
+    mem_limit: 128m
+    logging: *default-logging
+
 volumes:
   postgres_data:
     name: parallext-postgres-data

@@ -250,13 +250,15 @@ automation_executions  — Rule execution audit trail
 ## Observability Stack
 
 - **Logging**: Pino (nestjs-pino) structured JSON with tenantId/userId context. Pretty in dev, JSON in prod. Docker json-file driver with rotation (50MB x 5)
-- **BullMQ Dashboard**: Bull Board embedded at `/admin/queues` (auth via BULL_BOARD_TOKEN query param or X-Admin-Token header). All 5 queues visible
+- **BullMQ Dashboard**: Bull Board at `/api/v1/admin/queues` (auth via BULL_BOARD_TOKEN query param or X-Admin-Token header). All 5 queues visible
 - **Error Tracking**: Sentry with `@OnWorkerEvent('failed')` on all 4 BullMQ processors (outbound, broadcast, automation, nurturing)
-- **Log Viewer**: Dozzle (port 9999) — real-time Docker log viewer with search
-- **Endpoint Monitoring**: Uptime Kuma (port 3003) — monitors API/Dashboard/WA/Landing/PG/Redis with email+Telegram alerts
-- **Dashboards**: Grafana (port 3004) + Loki (port 3100) — log aggregation, dashboards, alerting
+- **Log Viewer**: Dozzle (port 9999) — real-time Docker log viewer with search → `logs.parallly-chat.cloud`
+- **Endpoint Monitoring**: Uptime Kuma (port 3003) — monitors API/Dashboard/WA/Landing/PG/Redis with email+Telegram alerts → `status.parallly-chat.cloud`
+- **Dashboards**: Grafana (port 3004) + Loki (port 3100) + Promtail — log aggregation, dashboards, alerting → `grafana.parallly-chat.cloud`
+- **Log Pipeline**: Promtail reads Docker logs → sends to Loki → Grafana queries Loki
 - **Log Persistence**: Docker volumes `parallext-api-logs`, `parallext-worker-logs` survive deploys
-- **All observability bound to 127.0.0.1** — only accessible through Cloudflare Tunnel or SSH
+- **All observability bound to 127.0.0.1** — exposed through Cloudflare Tunnel (hostnames use `container_name`)
+- **Config files**: `infra/promtail/config.yml` (Promtail), `infra/docker/docker-compose.prod.yml` (all services)
 - **Full manual**: `docs/observability-manual.md`
 
 ## i18n (4 languages)

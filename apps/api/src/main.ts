@@ -70,7 +70,7 @@ async function bootstrap() {
 
     // Protect Bull Board with token
     const bullBoardToken = process.env.BULL_BOARD_TOKEN || 'parallly-queues-2026';
-    app.use('/admin/queues', (req: any, res: any, next: any) => {
+    app.use('/api/v1/admin/queues', (req: any, res: any, next: any) => {
         if (req.query?.token !== bullBoardToken && req.headers?.['x-admin-token'] !== bullBoardToken) {
             return res.status(401).json({ message: 'Unauthorized' });
         }

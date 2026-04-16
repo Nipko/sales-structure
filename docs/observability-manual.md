@@ -2,7 +2,7 @@
 
 ## Resumen
 
-El stack de observabilidad de Parallly proporciona logging estructurado, monitoreo de endpoints, dashboards de metricas, alertas automaticas, y un panel de gestion de colas BullMQ. Todo auto-hospedado en el mismo VPS.
+El stack de observabilidad de Parallly proporciona logging estructurado, monitoreo de endpoints, dashboards de metricas, alertas automaticas, y un panel de gestion de colas BullMQ. Todo auto-hospedado en el mismo VPS (8GB RAM).
 
 ---
 
@@ -17,110 +17,96 @@ El stack de observabilidad de Parallly proporciona logging estructurado, monitor
     |                  |                  |
 status.parallly    grafana.parallly   logs.parallly
     |                  |                  |
-Uptime Kuma       Grafana + Loki       Dozzle
-  (3003)           (3004)  (3100)      (9999)
-    |                  |                  |
-    +------ Docker Socket / Logs ---------+
-    |                                     |
-    +---- parallext-api (Pino JSON) ------+
-    |---- parallext-worker (Pino JSON) ---+
-    |---- parallext-whatsapp -------------+
-    |---- parallext-postgres -------------+
-    |---- parallext-redis ---------------+
-
+Uptime Kuma       Grafana             Dozzle
+  (3003)           (3004)             (9999)
+                     |
+                   Loki (3100) <-- Promtail (lee Docker logs)
+                     
 Interno (embebido en API):
-    Bull Board (/admin/queues) — Dashboard BullMQ
+    Bull Board (/api/v1/admin/queues) — Dashboard BullMQ
     Sentry (@OnWorkerEvent) — Error tracking en jobs
+    Pino — Logging JSON estructurado
 ```
 
-### RAM estimado
+### Containers del stack
 
-| Componente | RAM |
-|------------|-----|
-| Dozzle | ~15-30MB |
-| Uptime Kuma | ~80-120MB |
-| Grafana | ~150-250MB |
-| Loki | ~250-380MB |
-| **Total observabilidad** | **~500-780MB** |
-| App stack (API, Worker, WA, Dashboard, PG, Redis, etc.) | ~3-4GB |
-| **Total VPS** | **~4-5GB de 8GB** |
+| Container | Imagen | RAM | Puerto | Proposito |
+|-----------|--------|-----|--------|-----------|
+| parallext-dozzle | amir20/dozzle:latest | ~15MB | 9999 | Visor de logs Docker en tiempo real |
+| parallext-uptime-kuma | louislam/uptime-kuma:1 | ~80MB | 3003 | Monitoreo endpoints + alertas |
+| parallext-grafana | grafana/grafana:latest | ~200MB | 3004 | Dashboards + alertas avanzadas |
+| parallext-loki | grafana/loki:3.0.0 | ~300MB | 3100 | Almacenamiento de logs |
+| parallext-promtail | grafana/promtail:3.0.0 | ~100MB | — | Recolecta logs Docker y los envia a Loki |
+| **Total observabilidad** | | **~700MB** | | |
 
 ---
 
-## 2. Pino — Logging Estructurado
+## 2. URLs de Acceso
+
+| Servicio | URL | Autenticacion |
+|----------|-----|---------------|
+| **Bull Board** | `https://api.parallly-chat.cloud/api/v1/admin/queues?token={BULL_BOARD_TOKEN}` | Token en query param o header X-Admin-Token |
+| **Uptime Kuma** | `https://status.parallly-chat.cloud` | Admin account (creado primera vez) |
+| **Grafana** | `https://grafana.parallly-chat.cloud` | admin / {password configurada} |
+| **Dozzle** | `https://logs.parallly-chat.cloud` | Sin auth (proteger con Cloudflare Access si necesario) |
+| **Sentry** | `https://sentry.io` (cloud) | Tu cuenta existente |
+
+---
+
+## 3. Pino — Logging Estructurado
 
 ### Que es
-Pino es el logger mas rapido de Node.js (5-8x mas rapido que Winston). Reemplaza el logger default de NestJS y produce logs en formato JSON estructurado.
+Pino reemplaza el logger default de NestJS. Produce logs en formato JSON estructurado en produccion y formato legible (pretty) en desarrollo.
 
-### Formato de log
-
-**Produccion (JSON):**
+### Formato de log en produccion
 ```json
 {
   "level": 30,
   "time": 1713200000000,
-  "pid": 1,
-  "hostname": "parallext-api",
-  "tenantId": "cf0d5cc5-5816-433a-8766-4fd578edf1ec",
+  "tenantId": "cf0d5cc5-...",
   "userId": "a1b2c3d4-...",
   "req": { "method": "POST", "url": "/api/v1/conversations/..." },
-  "msg": "Processing incoming WhatsApp message",
-  "context": "ConversationsService"
+  "responseTime": 45,
+  "msg": "request completed"
 }
 ```
 
-**Desarrollo (pretty):**
-```
-[12:08:17] INFO (ConversationsService): Processing incoming WhatsApp message
-  tenantId: "cf0d5cc5-..."
-  userId: "a1b2c3d4-..."
-```
+### Niveles de log
+| Level | Numero | Significado |
+|-------|--------|-------------|
+| fatal | 60 | Error critico, app va a cerrar |
+| error | 50 | Error que necesita atencion |
+| warn | 40 | Situacion anormal pero no critica |
+| info | 30 | Operacion normal (default en prod) |
+| debug | 20 | Detalle para debugging (default en dev) |
 
-### Contexto automatico
-Cada request HTTP automaticamente incluye:
-- `tenantId` — del JWT del usuario autenticado
-- `userId` — del JWT (sub claim)
-- `req.method`, `req.url` — metodo y ruta HTTP
-
-### Endpoints excluidos del auto-logging
-- `/api/v1/health` — health checks
-- `/docs` — Swagger UI
-- `/admin/queues` — Bull Board
-
-### Buscar en logs
-
+### Buscar en logs por CLI
 ```bash
 # Por tenant
 docker logs parallext-api 2>&1 | grep '"tenantId":"cf0d5cc5"'
 
-# Por nivel de error
-docker logs parallext-api 2>&1 | grep '"level":50'  # level 50 = error
+# Solo errores
+docker logs parallext-api 2>&1 | grep '"level":50'
 
-# Por servicio
+# Por servicio/contexto
 docker logs parallext-api 2>&1 | grep '"context":"OutboundQueueProcessor"'
 
 # Con jq (mas potente)
 docker logs parallext-api 2>&1 | jq 'select(.level >= 50)'
-docker logs parallext-api 2>&1 | jq 'select(.tenantId == "cf0d5cc5-...")'
 ```
 
-### Persistencia
-- Docker json-file driver: 50MB x 5 archivos por container (rotacion automatica)
-- Volumenes Docker: `parallext-api-logs`, `parallext-worker-logs` sobreviven deploys
-- Loki: agrega logs para busqueda en Grafana (retencion configurable)
+### Endpoints excluidos del auto-logging
+- `/api/v1/health`
+- `/docs`
+- `/api/v1/admin/queues`
 
 ---
 
-## 3. Bull Board — Dashboard BullMQ
+## 4. Bull Board — Dashboard BullMQ
 
 ### Acceso
 ```
-https://api.parallly-chat.cloud/admin/queues?token={BULL_BOARD_TOKEN}
-```
-
-O con header:
-```bash
-curl -H "X-Admin-Token: {BULL_BOARD_TOKEN}" https://api.parallly-chat.cloud/admin/queues
+https://api.parallly-chat.cloud/api/v1/admin/queues?token={BULL_BOARD_TOKEN}
 ```
 
 ### Colas monitoreadas
@@ -135,69 +121,63 @@ curl -H "X-Admin-Token: {BULL_BOARD_TOKEN}" https://api.parallly-chat.cloud/admi
 
 ### Que puedes hacer
 - **Ver jobs por estado**: waiting, active, completed, failed, delayed
-- **Inspeccionar job data**: ver el payload completo (tenantId, channelType, mensaje, etc.)
+- **Inspeccionar job data**: ver el payload (tenantId, channelType, mensaje, etc.)
 - **Ver errores**: stacktrace completo de cada job fallido
 - **Retry**: reintenta un job fallido con un click
 - **Limpiar**: elimina jobs completados o fallidos antiguos
-- **Pausar/reanudar**: pausar una cola completa
 
 ### Cuando usar Bull Board
-- Un usuario reporta que no recibio un mensaje → busca en outbound-messages/failed
-- Campana de broadcast se "quedo pegada" → revisa broadcast-messages/waiting y active
-- Nurturing no esta enviando follow-ups → revisa nurturing/failed
-- Despues de un deploy, verificar que las colas estan procesando
+- Un usuario no recibio un mensaje -> busca en outbound-messages/failed
+- Campana de broadcast pegada -> revisa broadcast-messages/waiting
+- Nurturing no envia follow-ups -> revisa nurturing/failed
 
 ---
 
-## 4. Uptime Kuma — Monitoreo + Alertas
-
-### Acceso
-```
-https://status.parallly-chat.cloud
-```
+## 5. Uptime Kuma — Monitoreo + Alertas
 
 ### Monitors recomendados
 
 | Monitor | Tipo | Target | Intervalo |
 |---------|------|--------|-----------|
-| API Health | HTTP(s) | `http://api:3000/api/v1/health` | 60s |
-| Dashboard | HTTP(s) | `http://dashboard:3001` | 60s |
-| WhatsApp Service | HTTP(s) | `http://whatsapp:3002/api/v1/health/live` | 60s |
-| Landing | HTTP(s) | `http://landing:80` | 120s |
-| PostgreSQL | TCP Port | `postgres:5432` | 60s |
-| Redis | TCP Port | `redis:6379` | 60s |
-| PgBouncer | TCP Port | `pgbouncer:5432` | 60s |
-| SSL Certificate | HTTPS | `https://api.parallly-chat.cloud` | 86400s (1/dia) |
+| API Health | HTTP(s) | `http://parallext-api:3000/api/v1/health` | 60s |
+| Dashboard | HTTP(s) | `http://parallext-dashboard:3001` | 60s |
+| WhatsApp Service | HTTP(s) | `http://parallext-whatsapp:3002/api/v1/health/live` | 60s |
+| Landing | HTTP(s) | `http://parallext-landing:80` | 120s |
+| PostgreSQL | TCP Port | `parallext-postgres:5432` | 60s |
+| Redis | TCP Port | `parallext-redis:6379` | 60s |
+| PgBouncer | TCP Port | `parallext-pgbouncer:5432` | 60s |
+
+NOTA: Los hostnames usan los `container_name` del docker-compose ya que todos estan en la misma red Docker.
 
 ### Canales de notificacion
-Uptime Kuma soporta 90+ canales. Los mas utiles:
-- **Telegram Bot** — alertas instantaneas al celular
+- **Telegram Bot** (recomendado) — alertas instantaneas al celular
 - **Email** (SMTP) — para el equipo
 - **Slack/Discord** — si usas alguno
 - **Webhook** — para integraciones custom
 
-### Status Page publica
-Uptime Kuma puede generar una pagina de estado publica (como status.github.com) que muestra a tus clientes si los servicios estan operativos.
+### Configurar Telegram
+1. Busca @BotFather en Telegram, envia `/newbot`, sigue los pasos
+2. Copia el token del bot
+3. Envia `/start` a tu nuevo bot
+4. Abre `https://api.telegram.org/bot{TOKEN}/getUpdates` — busca `"chat":{"id":NUMERO}`
+5. En Uptime Kuma: Settings > Notifications > Add > Telegram > pega token y chat_id
 
 ---
 
-## 5. Grafana + Loki — Dashboards y Busqueda de Logs
+## 6. Grafana + Loki + Promtail
 
-### Acceso
-```
-https://grafana.parallly-chat.cloud
-User: admin
-Password: {GRAFANA_PASSWORD del .env}
-```
+### Como funciona
+1. **Promtail** lee los logs de todos los containers Docker via el Docker socket
+2. **Promtail** envia los logs a **Loki** via HTTP
+3. **Loki** almacena y indexa los logs
+4. **Grafana** consulta Loki y muestra dashboards
 
-### Configurar Loki como Data Source
-1. Menu lateral → Connections → Data Sources
-2. Add data source → Loki
-3. URL: `http://loki:3100`
-4. Click "Save & Test" (debe mostrar "Data source connected")
+### Configurar Data Source
+1. Grafana > Connections > Data Sources > Add > Loki
+2. URL: `http://parallext-loki:3100`
+3. Save & Test
 
-### Queries utiles en Loki (LogQL)
-
+### Queries utiles (LogQL)
 ```logql
 # Todos los logs del API
 {container_name="parallext-api"}
@@ -205,41 +185,36 @@ Password: {GRAFANA_PASSWORD del .env}
 # Solo errores
 {container_name="parallext-api"} |= "error"
 
-# Logs de un tenant especifico
+# BullMQ failures
+{container_name=~"parallext-api|parallext-worker"} |= "failed"
+
+# Por tenant especifico (JSON parsing)
 {container_name="parallext-api"} | json | tenantId = "cf0d5cc5-..."
 
-# Logs del outbound processor
-{container_name="parallext-api"} |= "OutboundQueueProcessor"
+# Por numero de telefono
+{container_name=~"parallext-.*"} |= "573123302706"
 
-# Jobs fallidos
-{container_name="parallext-api"} |= "failed"
-
-# Logs de BullMQ worker
-{container_name="parallext-worker"} |= "Outbound"
-
-# Buscar por numero de telefono
-{container_name=~"parallext-api|parallext-worker"} |= "573123302706"
+# Webhooks de WhatsApp
+{container_name="parallext-api"} |= "webhook/whatsapp"
 ```
 
-### Dashboards recomendados
-Crea un dashboard con estos paneles:
+### Paneles recomendados para dashboard
 
-1. **Log Volume**: grafico de barras con `sum(count_over_time({container_name="parallext-api"}[5m]))` — muestra volumen de logs por minuto
-2. **Errors**: panel con `{container_name=~"parallext-.*"} |= "error"` — muestra errores recientes
-3. **BullMQ Failures**: `{container_name=~"parallext-api|parallext-worker"} |= "Job failed"` — jobs que fallaron
-4. **Per-Tenant Activity**: filtro variable por tenantId
-
-### Alertas en Grafana
-Grafana puede enviar alertas basadas en queries de Loki:
-- "Si hay mas de 10 errores en 5 minutos → alerta por email"
-- "Si no hay logs del API en 2 minutos → alerta por Telegram"
+| Panel | Query | Tipo |
+|-------|-------|------|
+| Volumen de logs | `sum(count_over_time({container_name=~"parallext-.*"}[5m])) by (container_name)` | Time series |
+| Errores por minuto | `sum(count_over_time({container_name=~"parallext-.*"} \|= "error" [5m])) by (container_name)` | Time series |
+| Requests/min | `count_over_time({container_name="parallext-api"} \|= "request completed" [1m])` | Stat |
+| Jobs fallidos (1h) | `count_over_time({container_name=~"parallext-api\|parallext-worker"} \|= "Job failed" [1h])` | Stat |
+| Ultimos errores | `{container_name=~"parallext-.*"} \|= "error"` | Logs |
+| Webhooks WhatsApp | `count_over_time({container_name="parallext-api"} \|= "webhook/whatsapp" [5m])` | Time series |
 
 ---
 
-## 6. Sentry — Error Tracking en BullMQ
+## 7. Sentry — Error Tracking en BullMQ
 
-### Que se captura
-Todos los processors de BullMQ tienen `@OnWorkerEvent('failed')` que envia a Sentry:
+### Processors instrumentados
+Todos los processors BullMQ tienen `@OnWorkerEvent('failed')` que envia errores a Sentry:
 
 | Processor | Tags | Extra |
 |-----------|------|-------|
@@ -248,22 +223,15 @@ Todos los processors de BullMQ tienen `@OnWorkerEvent('failed')` que envia a Sen
 | automation-jobs | queue, tenantId | jobId, ruleId |
 | nurturing | queue, tenantId | jobId, conversationId, attempt |
 
-### Como ver en Sentry
-1. Abre el proyecto en sentry.io
-2. Issues → filtrar por tag `queue:outbound-messages`
-3. Cada issue muestra: error message, stacktrace, tenantId, jobId, datos del job
-
-### Alertas de Sentry
-En sentry.io → Alerts → Create Alert:
-- "When there are more than 5 events with tag queue:outbound-messages in 10 minutes"
-- "When a new issue is seen with tag queue:nurturing"
+### Filtrar en Sentry
+- Issues > filtrar por tag `queue:outbound-messages`
+- Crear alertas: "When there are more than 5 events with tag queue:outbound-messages in 10 minutes"
 
 ---
 
-## 7. Docker Log Rotation
+## 8. Docker Log Rotation
 
-### Configuracion
-Todos los containers usan el driver `json-file` con rotacion:
+Todos los containers usan el driver `json-file` con rotacion automatica:
 
 ```yaml
 x-logging: &default-logging
@@ -273,64 +241,38 @@ x-logging: &default-logging
     max-file: "5"      # Mantener max 5 archivos
 ```
 
-Esto significa:
-- Cada container puede usar max 250MB en logs (5 x 50MB)
-- Con 14 containers: max ~3.5GB total en disco para logs
-- La rotacion es automatica por Docker
-
-### Volumenes de logs
-Ademas de los logs de Docker, la API y Worker escriben a volumenes dedicados:
-
-```
-parallext-api-logs    → /data/logs/ dentro del container API
-parallext-worker-logs → /data/logs/ dentro del container Worker
-```
-
-Estos volumenes NO se eliminan cuando Watchtower recrea containers, asi que los logs sobreviven deploys.
+- Cada container: max 250MB en logs (5 x 50MB)
+- Volumenes dedicados para API y Worker que sobreviven deploys
 
 ---
 
-## 8. Flujo de Diagnostico
+## 9. Flujos de Diagnostico
 
-### "Un usuario dice que no recibio un mensaje"
-
-1. **Bull Board** → `outbound-messages/failed` → buscar por numero de telefono en el job data
-2. Si hay job fallido → ver el error (token expirado? channelAccountId vacio? rate limit?)
+### "Un usuario no recibio un mensaje"
+1. **Bull Board** > outbound-messages/failed > buscar por numero
+2. Si hay job fallido > ver error (token? channelAccountId vacio? rate limit?)
 3. **Retry** el job desde Bull Board
-4. Si no hay job → el mensaje nunca se encolo → buscar en logs:
-   ```bash
-   docker logs parallext-api 2>&1 | grep "573XXXXXXX"
-   ```
+4. Si no hay job > buscar en Grafana: `{container_name="parallext-api"} |= "573XXXXXXX"`
 
 ### "La plataforma esta lenta"
-
-1. **Uptime Kuma** → ver response time graphs
-2. **Grafana** → `{container_name="parallext-api"} | json | responseTime > 5000` (requests > 5s)
-3. `docker stats` → ver CPU/RAM de cada container
+1. **Uptime Kuma** > ver response time graphs
+2. **Grafana** > requests lentos: `{container_name="parallext-api"} | json | responseTime > 5000`
+3. En el VPS: `docker stats` para ver CPU/RAM
 
 ### "No llegan las alertas de automatizacion"
+1. **Bull Board** > automation-jobs > ver si hay jobs waiting/failed
+2. **Sentry** > filtrar por tag `queue:automation-jobs`
+3. **Grafana** > `{container_name="parallext-api"} |= "AutomationListener"`
 
-1. **Bull Board** → `automation-jobs` → ver si hay jobs waiting/failed
-2. **Sentry** → filtrar por tag `queue:automation-jobs`
-3. **Logs** → `docker logs parallext-api 2>&1 | grep "AutomationListener"`
+### "Embedded Signup de WhatsApp se quedo pegado"
+1. Los onboardings se auto-expiran despues de 30 minutos
+2. Si necesitas forzar: `UPDATE whatsapp_onboardings SET status='FAILED', error_code='MANUAL', completed_at=NOW() WHERE tenant_id='...' AND status NOT IN ('COMPLETED','FAILED','CANCELLED');`
+3. El cron `*/10 * * * *` limpia onboardings stuck automaticamente
 
 ### "El deploy rompio algo"
-
-1. **Uptime Kuma** → deberia haber detectado el downtime
-2. **Dozzle** → `https://logs.parallly-chat.cloud` → ver logs en tiempo real del container que fallo
-3. **Grafana + Loki** → comparar volumen de errores antes/despues del deploy
-
----
-
-## 9. URLs del Stack
-
-| Servicio | URL | Autenticacion |
-|----------|-----|---------------|
-| Bull Board | `https://api.parallly-chat.cloud/admin/queues?token={TOKEN}` | Query param o header |
-| Uptime Kuma | `https://status.parallly-chat.cloud` | Admin account (primera vez) |
-| Grafana | `https://grafana.parallly-chat.cloud` | admin / {GRAFANA_PASSWORD} |
-| Dozzle | `https://logs.parallly-chat.cloud` | Sin auth (proteger con CF Access) |
-| Sentry | `https://sentry.io` (cloud) | Tu cuenta existente |
+1. **Uptime Kuma** > deberia detectar downtime
+2. **Dozzle** > `logs.parallly-chat.cloud` > ver logs en tiempo real del container
+3. **Grafana** > comparar errores antes/despues del deploy
 
 ---
 
@@ -339,35 +281,62 @@ Estos volumenes NO se eliminan cuando Watchtower recrea containers, asi que los 
 Agregar al `.env` de produccion:
 
 ```bash
-# Bull Board
+# Bull Board (acceso al dashboard de colas)
 BULL_BOARD_TOKEN=un-token-secreto-largo
 
-# Grafana
+# Grafana (password del admin)
 GRAFANA_PASSWORD=una-password-segura
-
-# Ya existentes (verificar que estan):
-SENTRY_DSN=https://xxx@sentry.io/xxx
-SMTP_HOST=...
-SMTP_USER=...
-SMTP_PASS=...
 ```
+
+Estas variables NO van en GitHub Actions — son solo para el VPS.
 
 ---
 
-## 11. Mantenimiento
+## 11. Configuracion de Cloudflare Tunnel
+
+Los servicios de observabilidad se exponen via el Cloudflare Tunnel existente.
+
+### Hostnames en Cloudflare Zero Trust > Tunnels > Public Hostname
+
+| Subdomain | Domain | Service Type | URL |
+|-----------|--------|-------------|-----|
+| status | parallly-chat.cloud | HTTP | `parallext-uptime-kuma:3001` |
+| grafana | parallly-chat.cloud | HTTP | `parallext-grafana:3000` |
+| logs | parallly-chat.cloud | HTTP | `parallext-dozzle:8080` |
+
+IMPORTANTE: Los hostnames del Service URL deben coincidir con el `container_name` del docker-compose, no con el nombre del servicio.
+
+### DNS Records necesarios (CNAME)
+- `status` > `{tunnel-id}.cfargotunnel.com` (Proxied)
+- `grafana` > `{tunnel-id}.cfargotunnel.com` (Proxied)
+- `logs` > `{tunnel-id}.cfargotunnel.com` (Proxied)
+
+---
+
+## 12. Mantenimiento
 
 ### Semanal
-- Revisar Uptime Kuma → verificar que todos los monitors estan en verde
-- Revisar Bull Board → limpiar jobs completados antiguos
-- Revisar Sentry → resolver o silenciar issues conocidos
+- Revisar Uptime Kuma > verificar todos los monitors en verde
+- Revisar Bull Board > limpiar jobs completados antiguos
+- Revisar Sentry > resolver o silenciar issues conocidos
 
 ### Mensual
 - Verificar espacio en disco: `df -h`
-- Verificar tamano de volumenes de logs: `docker system df -v`
+- Verificar volumenes: `docker system df -v`
 - Limpiar imagenes Docker antiguas: `docker image prune -a --filter "until=720h"`
-- Revisar dashboards de Grafana → ajustar alertas si es necesario
 
 ### En cada deploy
 - Verificar que todos los containers arrancaron: `docker ps`
-- Verificar Bull Board: las 5 colas deben estar visibles
-- Verificar Uptime Kuma: todos los monitors en verde despues de 2 minutos
+- Verificar Bull Board: las 5 colas visibles
+- Verificar Uptime Kuma: todos monitors en verde despues de 2 min
+
+---
+
+## 13. Archivos de Configuracion
+
+| Archivo | Proposito |
+|---------|-----------|
+| `infra/docker/docker-compose.prod.yml` | Stack completo: app + observabilidad |
+| `infra/promtail/config.yml` | Config de Promtail (que logs enviar a Loki) |
+| `apps/api/src/main.ts` | Pino logger init + Bull Board auth middleware |
+| `apps/api/src/app.module.ts` | LoggerModule (Pino) + BullBoardModule config |

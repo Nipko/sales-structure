@@ -38,6 +38,7 @@ export default function LoginPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [googleReady, setGoogleReady] = useState(false);
+    const googleHiddenRef = useRef<HTMLDivElement>(null);
     const { login, googleLogin } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -58,15 +59,19 @@ export default function LoginPage() {
         [googleLogin, router]
     );
 
-    // Load GSI script and initialize (no rendered button — we use a custom one)
+    // Load GSI script and render hidden button (works even without Google session)
     useEffect(() => {
         const initGsi = () => {
-            if (!window.google) return;
+            if (!window.google || !googleHiddenRef.current) return;
             window.google.accounts.id.initialize({
                 client_id: GOOGLE_CLIENT_ID,
                 callback: handleGoogleCallback,
                 ux_mode: "popup",
                 use_fedcm_for_prompt: false,
+            });
+            window.google.accounts.id.renderButton(googleHiddenRef.current, {
+                type: "icon",
+                size: "large",
             });
             setGoogleReady(true);
         };
@@ -85,7 +90,10 @@ export default function LoginPage() {
     }, [handleGoogleCallback]);
 
     const handleGoogleClick = () => {
-        if (window.google) {
+        const btn = googleHiddenRef.current?.querySelector('[role="button"]') as HTMLElement;
+        if (btn) {
+            btn.click();
+        } else if (window.google) {
             window.google.accounts.id.prompt();
         }
     };
@@ -178,6 +186,8 @@ export default function LoginPage() {
                             </>
                         )}
                     </button>
+                    {/* Hidden Google rendered button */}
+                    <div ref={googleHiddenRef} className="hidden" />
                     {isGoogleLoading && (
                         <div className="flex items-center justify-center gap-2 mt-2 text-sm text-muted-foreground">
                             <div className="w-4 h-4 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />

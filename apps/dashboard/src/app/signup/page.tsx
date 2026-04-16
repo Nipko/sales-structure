@@ -3,12 +3,13 @@
 import { useState, useCallback, useEffect, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
+import { User, Mail, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import PasswordInput, { isPasswordValid } from "@/components/PasswordInput";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 const GOOGLE_CLIENT_ID =
@@ -36,7 +37,6 @@ export default function SignupPage() {
     const [form, setForm] = useState({
         email: "", password: "", firstName: "", lastName: "",
     });
-    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -63,15 +63,22 @@ export default function SignupPage() {
         [googleLogin, router]
     );
 
-    // Load GSI script and initialize
+    const googleHiddenRef = useRef<HTMLDivElement>(null);
+
+    // Load GSI script and render hidden button (works even without Google session)
     useEffect(() => {
         const initGsi = () => {
-            if (!window.google) return;
+            if (!window.google || !googleHiddenRef.current) return;
             window.google.accounts.id.initialize({
                 client_id: GOOGLE_CLIENT_ID,
                 callback: handleGoogleCallback,
                 ux_mode: "popup",
                 use_fedcm_for_prompt: false,
+            });
+            // Render a hidden Google button — clicking it triggers the full OAuth popup
+            window.google.accounts.id.renderButton(googleHiddenRef.current, {
+                type: "icon",
+                size: "large",
             });
             setGoogleReady(true);
         };
@@ -90,13 +97,21 @@ export default function SignupPage() {
     }, [handleGoogleCallback]);
 
     const handleGoogleClick = () => {
-        if (window.google) {
+        // Click the hidden rendered Google button to trigger OAuth popup
+        const btn = googleHiddenRef.current?.querySelector('[role="button"]') as HTMLElement;
+        if (btn) {
+            btn.click();
+        } else if (window.google) {
             window.google.accounts.id.prompt();
         }
     };
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
+        if (!isPasswordValid(form.password)) {
+            setError(t('passwordRequirementsError'));
+            return;
+        }
         setError("");
         setIsSubmitting(true);
 
@@ -194,6 +209,8 @@ export default function SignupPage() {
                             </>
                         )}
                     </button>
+                    {/* Hidden Google rendered button (triggers OAuth popup) */}
+                    <div ref={googleHiddenRef} className="hidden" />
                     {isGoogleLoading && (
                         <div className="flex items-center justify-center gap-2 mt-2 text-sm text-muted-foreground">
                             <div className="w-4 h-4 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
@@ -264,25 +281,12 @@ export default function SignupPage() {
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                 {t('password')}
                             </label>
-                            <div className="relative">
-                                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-                                <input
-                                    type={showPassword ? "text" : "password"}
-                                    value={form.password}
-                                    onChange={(e) => updateField("password", e.target.value)}
-                                    placeholder={t('minChars')}
-                                    required
-                                    minLength={6}
-                                    className={cn(inputClasses, "pr-11")}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer text-muted-foreground/50 p-0 hover:text-muted-foreground"
-                                >
-                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
+                            <PasswordInput
+                                value={form.password}
+                                onChange={(v) => updateField("password", v)}
+                                showValidation={true}
+                                showGenerator={true}
+                            />
                         </div>
 
                         {/* Submit */}

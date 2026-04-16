@@ -278,17 +278,19 @@ x-logging: &default-logging
 
 ## 10. Variables de Entorno
 
-Agregar al `.env` de produccion:
+Las siguientes variables deben estar tanto en **GitHub Actions Secrets** como en el `.env` del VPS:
 
-```bash
-# Bull Board (acceso al dashboard de colas)
-BULL_BOARD_TOKEN=un-token-secreto-largo
+| Variable | GitHub Secret Name | Proposito |
+|----------|-------------------|-----------|
+| `BULL_BOARD_TOKEN` | `BULL_BOARD_TOKEN` | Token para acceder al dashboard de colas BullMQ |
+| `GRAFANA_PASSWORD` | `GRAFANA_PASSWORD` | Password del admin de Grafana |
 
-# Grafana (password del admin)
-GRAFANA_PASSWORD=una-password-segura
-```
+**CRITICO**: El deploy workflow (`deploy.yml`) regenera el `.env` completo desde GitHub Secrets en cada push a main. Si agregas variables solo al `.env` del VPS sin agregarlas a GitHub Secrets y al workflow, se perderan en el proximo deploy.
 
-Estas variables NO van en GitHub Actions — son solo para el VPS.
+### Para agregar una variable nueva:
+1. GitHub repo > Settings > Secrets > Actions > New secret
+2. Editar `.github/workflows/deploy.yml`: agregar en env, envs, y script
+3. Para efecto inmediato: `echo "VAR=valor" >> .env && docker compose up -d api`
 
 ---
 

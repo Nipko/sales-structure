@@ -294,7 +294,8 @@ cd infra/docker && docker compose up -d # Dev infrastructure (postgres + redis)
 See `.env.example`. Key ones:
 - `DATABASE_URL` — PostgreSQL connection string
 - `INTERNAL_JWT_SECRET` — JWT secret shared between API and WhatsApp service
-- `JWT_SECRET`, `JWT_REFRESH_SECRET` — JWT signing secrets
+- `JWT_SECRET` — Access token signing secret
+- `JWT_REFRESH_SECRET` — Refresh token signing secret (MUST be different from JWT_SECRET). Falls back to insecure default if not set
 - `ENCRYPTION_KEY` — 64-char hex for AES-256-GCM (WhatsApp/IG/Messenger/Telegram tokens)
 - `INTERNAL_API_KEY` — Service-to-service auth (WhatsApp → API)
 - `META_APP_ID/SECRET/CONFIG_ID/VERIFY_TOKEN` — Facebook app credentials
@@ -318,4 +319,5 @@ See `.env.example`. Key ones:
 - VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
 - PgBouncer: Transaction pooling mode, 500→25 connections (parallext-pgbouncer container)
 - Sentry: Error tracking + profiling (@sentry/nestjs, instrument.ts loaded first)
-- Deploy: Push to main → GitHub Actions → build 5 images → SSH deploy → migrate (via DIRECT_DATABASE_URL) → restart
+- Deploy: Push to main → GitHub Actions → build 5 images → SSH deploy → **regenerate .env from secrets** → migrate (via DIRECT_DATABASE_URL) → restart
+- **CRITICAL**: `.env` is regenerated on every deploy from GitHub Actions Secrets. New env vars MUST be added to both GitHub Secrets AND `.github/workflows/deploy.yml`, or they will be lost on next deploy

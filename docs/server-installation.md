@@ -318,16 +318,53 @@ docker logs parallext-api 2>&1 | grep '"level":50'
 
 ## Paso 11: Configurar GitHub Actions (CI/CD)
 
-En el repositorio de GitHub, ve a Settings > Secrets and variables > Actions y agrega:
+En el repositorio de GitHub, ve a Settings > Secrets and variables > Actions.
+
+### Secrets de conexion al VPS
 
 | Secret | Valor |
 |--------|-------|
-| `VPS_HOST` | IP del servidor |
-| `VPS_USER` | root (o usuario SSH) |
-| `VPS_SSH_KEY` | Clave SSH privada |
-| `GHCR_TOKEN` | GitHub PAT con permisos de packages |
+| `SERVER_HOST` | IP del servidor |
+| `SERVER_USER` | root (o usuario SSH) |
+| `SERVER_PASSWORD` | Password SSH |
+| `SERVER_PORT` | 22 (o tu puerto SSH) |
 
-El deploy automatico funciona: push a `main` > GitHub Actions > build Docker images > push a GHCR > Watchtower detecta nuevas imagenes > pull + recreate containers.
+### Secrets de la aplicacion
+
+| Secret | Descripcion |
+|--------|-------------|
+| `DATABASE_URL` | `postgresql://parallext:PASSWORD@pgbouncer:5432/parallext_engine?pgbouncer=true` |
+| `DATABASE_PASSWORD` | Password de PostgreSQL |
+| `REDIS_HOST` | `redis` |
+| `INTERNAL_JWT_SECRET` | Secret para JWT (generado con `openssl rand -base64 48`) |
+| `JWT_REFRESH_SECRET` | Secret para refresh tokens (generado con `openssl rand -base64 48`) |
+| `ENCRYPTION_KEY` | 64 hex chars para AES-256-GCM (`openssl rand -hex 32`) |
+| `INTERNAL_API_KEY` | API key servicio-a-servicio (`openssl rand -base64 32`) |
+| `META_APP_ID` | Facebook App ID |
+| `META_APP_SECRET` | Facebook App Secret |
+| `META_VERIFY_TOKEN` | Token de verificacion de webhooks |
+| `META_CONFIG_ID` | Meta Config ID para Embedded Signup |
+| `SYSTEM_USER_ID` | Meta Business System User ID |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GOOGLE_AI_KEY` | Google Gemini API key |
+| `XAI_API_KEY` | xAI Grok API key |
+| `DEEPSEEK_API_KEY` | DeepSeek API key |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google Sign-In client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google Sign-In client secret |
+| `SENTRY_DSN` | Sentry DSN |
+| `SMTP_HOST` | SMTP server host |
+| `SMTP_PORT` | SMTP port (587) |
+| `SMTP_USER` | SMTP user/email |
+| `SMTP_PASS` | SMTP password |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Token del Cloudflare Tunnel |
+| `BULL_BOARD_TOKEN` | Token para acceder al dashboard de colas BullMQ |
+| `GRAFANA_PASSWORD` | Password del admin de Grafana |
+
+**IMPORTANTE**: El deploy workflow regenera el `.env` completo desde estos secrets en CADA deploy. Si agregas una variable manual al `.env` del VPS sin agregarla a GitHub Secrets, se perdera en el proximo deploy.
+
+### Como funciona el deploy
+Push a `main` > GitHub Actions > build 5 Docker images > push a GHCR > SSH al VPS > pull images > regenerar `.env` > migrate DB > recreate containers.
 
 ---
 
@@ -352,13 +389,15 @@ El deploy automatico funciona: push a `main` > GitHub Actions > build Docker ima
 
 | Credencial | Donde esta | Proposito |
 |------------|-----------|-----------|
-| `.env` completo | `/opt/parallext-engine/.env` | Todas las variables de entorno |
+| `.env` completo | Regenerado por GitHub Actions desde secrets | Todas las variables de entorno |
 | Admin login | `admin@parallext.com` / `Parallext2026!` | Super admin del dashboard |
-| BULL_BOARD_TOKEN | En `.env` | Acceso al dashboard de colas |
-| GRAFANA_PASSWORD | En `.env` | Login de Grafana |
-| Uptime Kuma password | Creada al configurar | Monitoreo + alertas |
-| GitHub PAT | En GitHub Actions secrets | CI/CD deploy |
-| SSH key | En GitHub Actions secrets | Acceso al VPS |
+| JWT_REFRESH_SECRET | GitHub Secrets + `.env` | Firma de refresh tokens (session management) |
+| BULL_BOARD_TOKEN | GitHub Secrets + `.env` | Acceso al dashboard de colas BullMQ |
+| GRAFANA_PASSWORD | GitHub Secrets + `.env` | Login de Grafana admin |
+| Uptime Kuma password | Creada manualmente al configurar | Monitoreo + alertas |
+| GitHub Actions secrets | GitHub repo > Settings > Secrets | 25+ secrets que generan el `.env` en cada deploy |
+
+**CRITICO**: El `.env` se regenera completamente en cada deploy desde GitHub Secrets. NUNCA agregar variables solo al `.env` del VPS — siempre agregarlas tambien a GitHub Secrets y al workflow `deploy.yml`.
 
 ---
 
@@ -371,18 +410,27 @@ El deploy automatico funciona: push a `main` > GitHub Actions > build Docker ima
 - NUNCA el `.env` debe estar en git (esta en `.gitignore`). Verificar que no se pierda al hacer `git pull`
 
 ### Variables nuevas agregadas post-instalacion
-Si agregas variables al `.env` despues del setup inicial:
+El `.env` se regenera en cada deploy desde GitHub Secrets. Para agregar una variable nueva permanentemente:
+
 ```bash
-# 1. Editar el .env
-nano /opt/parallext-engine/.env
+# 1. Agregar a GitHub: repo > Settings > Secrets and variables > Actions > New secret
+#    Nombre: PROD_MI_VARIABLE  /  Valor: el-valor
 
-# 2. Recrear el container que usa la variable
+# 2. Agregar al workflow deploy.yml:
+#    - En la seccion 'env' del step "Deploy to VPS": PROD_MI_VARIABLE: ${{ secrets.MI_VARIABLE }}
+#    - En la seccion 'envs': agregar PROD_MI_VARIABLE a la lista
+#    - En la seccion del script que genera .env: echo "MI_VARIABLE=${PROD_MI_VARIABLE}" >> .env
+
+# 3. Para efecto inmediato sin esperar deploy:
+echo "MI_VARIABLE=el-valor" >> /opt/parallext-engine/.env
 cd /opt/parallext-engine/infra/docker
-docker compose -f docker-compose.prod.yml up -d api    # o worker, whatsapp, etc.
+docker compose -f docker-compose.prod.yml up -d api
 
-# 3. Verificar que la variable esta disponible
-docker exec parallext-api printenv | grep TU_VARIABLE
+# 4. Verificar
+docker exec parallext-api printenv | grep MI_VARIABLE
 ```
+
+**IMPORTANTE**: Si solo editas el `.env` en el VPS sin agregar a GitHub Secrets, el proximo deploy lo sobreescribira y perdera la variable.
 
 ### Container no arranca
 ```bash

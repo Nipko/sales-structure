@@ -56,7 +56,7 @@ export default function SignupPage() {
             if (result.success && result.redirect) {
                 router.push(result.redirect);
             } else {
-                setError(result.error || "Error al registrarse con Google");
+                setError(result.error || t('googleSignupError'));
             }
             setIsGoogleLoading(false);
         },
@@ -110,7 +110,7 @@ export default function SignupPage() {
             const data = await res.json();
 
             if (!res.ok || !data.success) {
-                setError(data.message || "Error al crear la cuenta");
+                setError(data.message || t('accountCreationError'));
                 setIsSubmitting(false);
                 return;
             }
@@ -123,7 +123,7 @@ export default function SignupPage() {
             // Email signup → verify email → onboarding wizard → admin
             router.push("/verify-email");
         } catch {
-            setError("Error de conexión con el servidor");
+            setError(t('connectionError'));
         }
         setIsSubmitting(false);
     };
@@ -160,7 +160,7 @@ export default function SignupPage() {
                         {t('signup')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
-                        Regístrate y comienza en minutos
+                        {t('signupSubtitle')}
                     </p>
 
                     {/* Error */}
@@ -180,7 +180,7 @@ export default function SignupPage() {
                         {!googleReady ? (
                             <>
                                 <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
-                                Cargando Google...
+                                {t('loadingGoogle')}
                             </>
                         ) : (
                             <>
@@ -197,7 +197,7 @@ export default function SignupPage() {
                     {isGoogleLoading && (
                         <div className="flex items-center justify-center gap-2 mt-2 text-sm text-muted-foreground">
                             <div className="w-4 h-4 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
-                            Verificando...
+                            {t('verifying')}
                         </div>
                     )}
 
@@ -212,28 +212,28 @@ export default function SignupPage() {
                         {/* Name row */}
                         <div className="grid grid-cols-2 gap-3 mb-3.5">
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">Nombre</label>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('firstName')}</label>
                                 <div className="relative">
                                     <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
                                         type="text"
                                         value={form.firstName}
                                         onChange={(e) => updateField("firstName", e.target.value)}
-                                        placeholder="Juan"
+                                        placeholder={t('firstNamePlaceholder')}
                                         required
                                         className={inputClasses}
                                     />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">Apellido</label>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('lastName')}</label>
                                 <div className="relative">
                                     <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
                                         type="text"
                                         value={form.lastName}
                                         onChange={(e) => updateField("lastName", e.target.value)}
-                                        placeholder="Pérez"
+                                        placeholder={t('lastNamePlaceholder')}
                                         required
                                         className={inputClasses}
                                     />
@@ -244,7 +244,7 @@ export default function SignupPage() {
                         {/* Email */}
                         <div className="mb-3.5">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Email corporativo
+                                {t('corporateEmail')}
                             </label>
                             <div className="relative">
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -252,7 +252,7 @@ export default function SignupPage() {
                                     type="email"
                                     value={form.email}
                                     onChange={(e) => updateField("email", e.target.value)}
-                                    placeholder="juan@miempresa.com"
+                                    placeholder={t('emailPlaceholder')}
                                     required
                                     className={inputClasses}
                                 />
@@ -262,7 +262,7 @@ export default function SignupPage() {
                         {/* Password */}
                         <div className="mb-6">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Contraseña
+                                {t('password')}
                             </label>
                             <div className="relative">
                                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -270,7 +270,7 @@ export default function SignupPage() {
                                     type={showPassword ? "text" : "password"}
                                     value={form.password}
                                     onChange={(e) => updateField("password", e.target.value)}
-                                    placeholder="Mínimo 6 caracteres"
+                                    placeholder={t('minChars')}
                                     required
                                     minLength={6}
                                     className={cn(inputClasses, "pr-11")}
@@ -296,7 +296,7 @@ export default function SignupPage() {
                                     : "bg-gradient-to-r from-indigo-600 to-indigo-400 cursor-pointer hover:shadow-[0_6px_20px_rgba(108,92,231,0.4)] hover:brightness-110"
                             )}
                         >
-                            {isSubmitting ? "Creando tu cuenta..." : "Crear cuenta y comenzar"}
+                            {isSubmitting ? t('creatingAccount') : t('createAccountBtn')}
                         </button>
                     </form>
 

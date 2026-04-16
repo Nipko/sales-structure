@@ -51,7 +51,7 @@ export default function LoginPage() {
             if (result.success && result.redirect) {
                 router.push(result.redirect);
             } else {
-                setError(result.error || "Error al iniciar sesión con Google");
+                setError(result.error || t('googleLoginError'));
             }
             setIsGoogleLoading(false);
         },
@@ -100,7 +100,7 @@ export default function LoginPage() {
         if (result.success) {
             router.push(result.redirect || "/admin");
         } else {
-            setError(result.error || "Error al iniciar sesión");
+            setError(result.error || t('loginError'));
         }
         setIsSubmitting(false);
     };
@@ -164,7 +164,7 @@ export default function LoginPage() {
                         {!googleReady ? (
                             <>
                                 <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
-                                Cargando Google...
+                                {t('loadingGoogle')}
                             </>
                         ) : (
                             <>
@@ -181,7 +181,7 @@ export default function LoginPage() {
                     {isGoogleLoading && (
                         <div className="flex items-center justify-center gap-2 mt-2 text-sm text-muted-foreground">
                             <div className="w-4 h-4 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
-                            Verificando...
+                            {t('verifying')}
                         </div>
                     )}
 

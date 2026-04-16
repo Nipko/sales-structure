@@ -1,6 +1,7 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import * as Sentry from '@sentry/nestjs';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { BroadcastService, BROADCAST_QUEUE, BroadcastJobData } from './broadcast.service';
 
@@ -85,5 +86,11 @@ export class BroadcastQueueProcessor extends WorkerHost {
             // Re-throw to trigger BullMQ retry with exponential backoff
             throw error;
         }
+    }
+
+    @OnWorkerEvent('failed')
+    onFailed(job: Job<BroadcastJobData>, error: Error) {
+        this.logger.error({ msg: 'Broadcast job failed', jobId: job.id, campaignId: job.data.campaignId, phone: job.data.phone, error: error.message });
+        Sentry.captureException(error, { tags: { queue: 'broadcast-messages', campaignId: job.data.campaignId }, extra: { jobId: job.id, phone: job.data.phone } });
     }
 }

@@ -1,6 +1,7 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import * as Sentry from '@sentry/nestjs';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { OutboundMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -51,5 +52,24 @@ export class OutboundQueueProcessor extends WorkerHost {
         );
 
         return result;
+    }
+
+    @OnWorkerEvent('failed')
+    onFailed(job: Job<OutboundJobData>, error: Error) {
+        const { outbound } = job.data;
+        this.logger.error({
+            msg: 'Outbound message failed after all retries',
+            jobId: job.id,
+            attempt: job.attemptsMade,
+            tenantId: outbound.tenantId,
+            channelType: outbound.channelType,
+            to: outbound.to,
+            channelAccountId: outbound.channelAccountId,
+            error: error.message,
+        });
+        Sentry.captureException(error, {
+            tags: { queue: 'outbound-messages', tenantId: outbound.tenantId, channel: outbound.channelType },
+            extra: { jobId: job.id, to: outbound.to, attempt: job.attemptsMade },
+        });
     }
 }

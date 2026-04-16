@@ -1,6 +1,7 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -226,5 +227,11 @@ export class AutomationJobsProcessor extends WorkerHost {
             newStage,
             updatedOpportunities: rows?.length || 0,
         };
+    }
+
+    @OnWorkerEvent('failed')
+    onFailed(job: Job<AutomationJobData>, error: Error) {
+        this.logger.error({ msg: 'Automation job failed', jobId: job.id, ruleId: job.data.ruleId, tenantId: job.data.tenantId, error: error.message });
+        Sentry.captureException(error, { tags: { queue: 'automation-jobs', tenantId: job.data.tenantId }, extra: { jobId: job.id, ruleId: job.data.ruleId } });
     }
 }

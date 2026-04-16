@@ -4,6 +4,7 @@ import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import * as Sentry from '@sentry/nestjs';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -13,9 +14,12 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule, {
-        logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+        bufferLogs: true,
         rawBody: true,
     });
+
+    // Use Pino structured logger globally
+    app.useLogger(app.get(Logger));
 
     // Security
     app.use(helmet({
@@ -63,6 +67,15 @@ async function bootstrap() {
 
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document);
+
+    // Protect Bull Board with token
+    const bullBoardToken = process.env.BULL_BOARD_TOKEN || 'parallly-queues-2026';
+    app.use('/admin/queues', (req: any, res: any, next: any) => {
+        if (req.query?.token !== bullBoardToken && req.headers?.['x-admin-token'] !== bullBoardToken) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        next();
+    });
 
     const port = process.env.PORT || 3000;
     await app.listen(port);

@@ -5,6 +5,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
+import { LoggerModule } from 'nestjs-pino';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { ExpressAdapter } from '@bull-board/express';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 
 // Core modules
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -78,6 +82,31 @@ import llmConfig from './config/llm.config';
 
         // Event Emitter
         EventEmitterModule.forRoot(),
+
+        // Structured logging (Pino)
+        LoggerModule.forRoot({
+            pinoHttp: {
+                level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+                transport: process.env.NODE_ENV !== 'production'
+                    ? { target: 'pino-pretty', options: { colorize: true, singleLine: true } }
+                    : undefined,
+                autoLogging: {
+                    ignore: (req: any) => ['/api/v1/health', '/docs', '/admin/queues'].some(p => req.url?.startsWith(p)),
+                },
+                customProps: (req: any) => ({
+                    tenantId: req.user?.tenantId || req.headers?.['x-tenant-id'],
+                    userId: req.user?.sub,
+                }),
+            },
+        }),
+
+        // BullMQ Dashboard (Bull Board)
+        BullBoardModule.forRoot({ route: '/admin/queues', adapter: ExpressAdapter }),
+        BullBoardModule.forFeature({ name: 'outbound-messages', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'broadcast-messages', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'automation-jobs', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'nurturing', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'conversation-snooze', adapter: BullMQAdapter }),
 
         // Core infrastructure
         PrismaModule,

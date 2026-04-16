@@ -1,10 +1,11 @@
 #!/bin/bash
 # ============================================
-# Parallext Engine — VPS Initial Setup
-# Run on a fresh Hostinger Ubuntu VPS:
+# Parallly — VPS Initial Setup
+# Run on a fresh Ubuntu VPS:
 #   cd /opt/parallext-engine && bash infra/scripts/setup-vps.sh
 #
 # Prerequisites: Docker + Docker Compose installed
+# Full guide: docs/server-installation.md
 # ============================================
 
 set -e
@@ -12,116 +13,167 @@ cd /opt/parallext-engine
 
 echo ""
 echo "=========================================="
-echo "  PARALLEXT ENGINE — VPS INITIAL SETUP"
+echo "  PARALLLY — VPS INITIAL SETUP"
 echo "=========================================="
 echo ""
 
 # ---- 1. Generate secrets ----
-echo "===> [1/5] Generating secrets..."
+echo "===> [1/6] Generating secrets..."
+JWT_SECRET=$(openssl rand -base64 48)
+JWT_REFRESH_SECRET=$(openssl rand -base64 48)
 INTERNAL_JWT_SECRET=$(openssl rand -base64 48)
-ENCRYPTION_KEY=$(openssl rand -hex 32)   # 64 hex chars = 32 bytes for AES-256-GCM
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 INTERNAL_API_KEY=$(openssl rand -base64 32)
 DB_PASSWORD="p4r4ll3xt$(openssl rand -hex 4)"
+BULL_BOARD_TOKEN=$(openssl rand -hex 32)
+GRAFANA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+META_VERIFY_TOKEN=$(openssl rand -hex 32)
 echo "  [OK] Secrets generated"
 
 # ---- 2. Create production .env ----
-echo "===> [2/5] Creating .env..."
+echo "===> [2/6] Creating .env..."
 cat > .env << EOF
 # ============================================
-# Parallext Engine — Production Configuration
+# Parallly — Production Configuration
 # Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # ============================================
 
-# ---- General ----
 NODE_ENV=production
-LOG_LEVEL=info
 
-# ---- Database (PostgreSQL) ----
-DATABASE_URL=postgresql://parallext:${DB_PASSWORD}@postgres:5432/parallext_engine
+# ---- Database ----
 DB_PASSWORD=${DB_PASSWORD}
+DATABASE_URL=postgresql://parallext:\${DB_PASSWORD}@pgbouncer:5432/parallext_engine?pgbouncer=true
+DIRECT_DATABASE_URL=postgresql://parallext:\${DB_PASSWORD}@postgres:5432/parallext_engine
 
 # ---- Redis ----
 REDIS_HOST=redis
 REDIS_PORT=6379
-REDIS_PASSWORD=
 
-# ---- Authentication ----
-# Shared JWT secret between API and WhatsApp services
-INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET}
+# ---- JWT Auth ----
+JWT_SECRET=${JWT_SECRET}
+JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+JWT_EXPIRATION=15m
+JWT_REFRESH_EXPIRATION=8h
 
-# ---- Encryption (AES-256-GCM for WhatsApp tokens) ----
+# ---- Encryption (AES-256-GCM) ----
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
-# ---- Internal Service-to-Service Auth ----
+# ---- Internal Service Auth ----
+INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET}
 API_INTERNAL_URL=http://api:3000/api/v1
 INTERNAL_API_KEY=${INTERNAL_API_KEY}
 
-# ---- Meta / WhatsApp Cloud API ----
-# Fill these from your Meta Developer App:
-META_APP_ID=CHANGE_ME
-META_APP_SECRET=CHANGE_ME
-META_VERIFY_TOKEN=CHANGE_ME
-META_CONFIG_ID=CHANGE_ME
-WHATSAPP_VERIFY_TOKEN=CHANGE_ME
-# System User ID from business.facebook.com → Settings → System Users
+# ---- Meta / WhatsApp (EDIT THESE) ----
+META_APP_ID=CAMBIAR
+META_APP_SECRET=CAMBIAR
+META_CONFIG_ID=CAMBIAR
+META_VERIFY_TOKEN=${META_VERIFY_TOKEN}
+WHATSAPP_VERIFY_TOKEN=${META_VERIFY_TOKEN}
 SYSTEM_USER_ID=
 
-# ---- AI Providers (at least one required) ----
+# ---- Google OAuth (EDIT) ----
+GOOGLE_OAUTH_CLIENT_ID=CAMBIAR
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=CAMBIAR
+
+# ---- AI Providers (at least 1 required) ----
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GOOGLE_GENERATIVE_AI_API_KEY=
 XAI_API_KEY=
 DEEPSEEK_API_KEY=
 
-# ---- Frontend URLs ----
+# ---- Sentry (EDIT) ----
+SENTRY_DSN=CAMBIAR
+
+# ---- SMTP / Email (EDIT) ----
+SMTP_HOST=CAMBIAR
+SMTP_PORT=587
+SMTP_USER=CAMBIAR
+SMTP_PASS=CAMBIAR
+
+# ---- Frontend URLs (EDIT domain) ----
 NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1
 NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1
-NEXT_PUBLIC_META_APP_ID=CHANGE_ME
-NEXT_PUBLIC_META_CONFIG_ID=CHANGE_ME
+NEXT_PUBLIC_META_APP_ID=CAMBIAR
+NEXT_PUBLIC_META_CONFIG_ID=CAMBIAR
 DASHBOARD_URL=https://admin.parallly-chat.cloud
 
-# ---- Cloudflare Tunnel ----
-CLOUDFLARE_TUNNEL_TOKEN=CHANGE_ME
+# ---- Media ----
+MEDIA_STORAGE_PATH=/data/media
+
+# ---- Observability ----
+BULL_BOARD_TOKEN=${BULL_BOARD_TOKEN}
+GRAFANA_PASSWORD=${GRAFANA_PASSWORD}
 EOF
 
 chmod 600 .env
 echo "  [OK] .env created and secured"
+echo ""
+echo "  IMPORTANT: Edit .env now to fill in CAMBIAR values:"
+echo "    nano /opt/parallext-engine/.env"
+echo ""
+read -p "  Press Enter after editing .env to continue..."
 
-# ---- 3. Start infrastructure (postgres + redis) ----
-echo "===> [3/5] Starting PostgreSQL and Redis..."
+# ---- 3. Start infrastructure ----
+echo "===> [3/6] Starting PostgreSQL and Redis..."
 docker compose -f infra/docker/docker-compose.prod.yml up -d postgres redis
 echo "  Waiting for PostgreSQL..."
-for i in $(seq 1 20); do
+for i in $(seq 1 30); do
     if docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres pg_isready -U parallext > /dev/null 2>&1; then
         echo "  [OK] PostgreSQL ready"
         break
     fi
-    [ $i -eq 20 ] && { echo "  [ERROR] PostgreSQL not ready after 20s"; exit 1; }
+    [ $i -eq 30 ] && { echo "  [ERROR] PostgreSQL not ready after 30s"; exit 1; }
     sleep 1
 done
 
 # ---- 4. Run fresh database setup ----
-echo "===> [4/5] Running fresh database setup..."
+echo "===> [4/6] Running fresh database setup..."
 bash infra/scripts/setup-fresh.sh
 
-# ---- 5. Start remaining services + tunnel ----
-echo "===> [5/5] Starting all services..."
+# ---- 5. Start all services ----
+echo "===> [5/6] Starting all services (app + observability)..."
 docker compose -f infra/docker/docker-compose.prod.yml up -d
 
+# Wait for API health
+echo "  Waiting for API..."
+for i in $(seq 1 60); do
+    if docker compose -f infra/docker/docker-compose.prod.yml exec -T api wget -q -O/dev/null http://localhost:3000/api/v1/health 2>/dev/null; then
+        echo "  [OK] API healthy after ${i}s"
+        break
+    fi
+    [ $i -eq 60 ] && echo "  [WARN] API not healthy after 60s"
+    sleep 1
+done
+
+# ---- 6. Print summary ----
 echo ""
 echo "=========================================="
-echo "  VPS SETUP COMPLETE"
+echo "  SETUP COMPLETE"
 echo "=========================================="
 echo ""
-echo "  Dashboard: https://admin.parallly-chat.cloud"
-echo "  API:       https://api.parallly-chat.cloud"
-echo "  WhatsApp:  https://wa.parallly-chat.cloud"
+echo "  App URLs:"
+echo "    Landing:    https://parallly-chat.cloud"
+echo "    Dashboard:  https://admin.parallly-chat.cloud"
+echo "    API:        https://api.parallly-chat.cloud"
+echo "    WhatsApp:   https://wa.parallly-chat.cloud"
 echo ""
-echo "  Login:     admin@parallext.com / Parallext2026!"
+echo "  Admin Login:"
+echo "    Email:    admin@parallext.com"
+echo "    Password: Parallext2026!"
 echo ""
-echo "  IMPORTANT: Edit /opt/parallext-engine/.env to add:"
-echo "    - Meta/WhatsApp credentials (META_APP_ID, META_APP_SECRET, etc.)"
-echo "    - At least one AI provider API key"
-echo "    - Cloudflare Tunnel token"
-echo "  Then restart: docker compose -f infra/docker/docker-compose.prod.yml restart"
+echo "  Observability:"
+echo "    Bull Board:  https://api.parallly-chat.cloud/api/v1/admin/queues?token=${BULL_BOARD_TOKEN}"
+echo "    Uptime Kuma: https://status.parallly-chat.cloud (create admin on first visit)"
+echo "    Grafana:     https://grafana.parallly-chat.cloud (admin / admin, then change password)"
+echo "    Dozzle:      https://logs.parallly-chat.cloud"
+echo ""
+echo "  Next steps:"
+echo "    1. Configure Cloudflare Tunnel hostnames (see docs/server-installation.md step 4)"
+echo "    2. Configure Uptime Kuma monitors + Telegram alerts"
+echo "    3. Configure Grafana: add Loki datasource (http://parallext-loki:3100)"
+echo "    4. Reset Grafana password: docker exec parallext-grafana /usr/share/grafana/bin/grafana cli admin reset-admin-password YOUR_PASS --homepath /usr/share/grafana --config /etc/grafana/grafana.ini"
+echo ""
+echo "  Credentials saved in /opt/parallext-engine/.env"
+echo "  Full guide: docs/server-installation.md"
 echo ""

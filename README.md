@@ -295,6 +295,7 @@ VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
 
 | Documento | Descripcion |
 |-----------|-------------|
+| [docs/server-installation.md](docs/server-installation.md) | **Guia completa de instalacion en servidor nuevo** (paso a paso) |
 | [CLAUDE.md](CLAUDE.md) | Contexto tecnico completo para desarrollo |
 | [docs/analytics-manual.md](docs/analytics-manual.md) | Manual de analytics, alertas, BI API, anomalias, cohortes |
 | [docs/observability-manual.md](docs/observability-manual.md) | Manual de observabilidad: Pino, Bull Board, Grafana, Loki, Uptime Kuma |

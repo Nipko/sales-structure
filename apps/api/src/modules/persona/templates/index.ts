@@ -43,8 +43,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     {
         id: 'sales-qualifier',
         icon: 'target',
-        nameKey: 'setupWizard.templates.salesQualifier',
-        descKey: 'setupWizard.templates.salesQualifierDesc',
+        nameKey: 'templates.salesQualifier',
+        descKey: 'templates.salesQualifierDesc',
         industries: ['retail', 'ecommerce', 'services', 'education', 'technology', 'other'],
         config: {
             persona: {
@@ -84,8 +84,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     {
         id: 'customer-support',
         icon: 'headphones',
-        nameKey: 'setupWizard.templates.customerSupport',
-        descKey: 'setupWizard.templates.customerSupportDesc',
+        nameKey: 'templates.customerSupport',
+        descKey: 'templates.customerSupportDesc',
         industries: ['retail', 'ecommerce', 'technology', 'services', 'finance', 'other'],
         config: {
             persona: {
@@ -125,8 +125,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     {
         id: 'appointment-scheduler',
         icon: 'calendar',
-        nameKey: 'setupWizard.templates.appointmentScheduler',
-        descKey: 'setupWizard.templates.appointmentSchedulerDesc',
+        nameKey: 'templates.appointmentScheduler',
+        descKey: 'templates.appointmentSchedulerDesc',
         industries: ['health', 'services', 'beauty', 'education', 'legal', 'other'],
         config: {
             persona: {
@@ -166,8 +166,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     {
         id: 'ecommerce-assistant',
         icon: 'shopping-cart',
-        nameKey: 'setupWizard.templates.ecommerceAssistant',
-        descKey: 'setupWizard.templates.ecommerceAssistantDesc',
+        nameKey: 'templates.ecommerceAssistant',
+        descKey: 'templates.ecommerceAssistantDesc',
         industries: ['retail', 'ecommerce', 'fashion', 'other'],
         config: {
             persona: {
@@ -207,8 +207,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     {
         id: 'real-estate',
         icon: 'building',
-        nameKey: 'setupWizard.templates.realEstate',
-        descKey: 'setupWizard.templates.realEstateDesc',
+        nameKey: 'templates.realEstate',
+        descKey: 'templates.realEstateDesc',
         industries: ['real_estate', 'construction', 'services', 'other'],
         config: {
             persona: {
@@ -248,8 +248,8 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
     {
         id: 'restaurant',
         icon: 'utensils',
-        nameKey: 'setupWizard.templates.restaurant',
-        descKey: 'setupWizard.templates.restaurantDesc',
+        nameKey: 'templates.restaurant',
+        descKey: 'templates.restaurantDesc',
         industries: ['food', 'hospitality', 'restaurant', 'other'],
         config: {
             persona: {

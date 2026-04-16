@@ -46,7 +46,7 @@ export default function SetupWizardPage() {
     const [saving, setSaving] = useState(false);
 
     // Form state
-    const [selectedGoal, setSelectedGoal] = useState("");
+    const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
     const [agentName, setAgentName] = useState("");
     const [greeting, setGreeting] = useState("");
@@ -104,11 +104,12 @@ export default function SetupWizardPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-4xl max-h-[90vh] mx-4 bg-white dark:bg-[#12122a] rounded-2xl shadow-2xl dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="border-b border-gray-200 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.02] backdrop-blur-xl">
-                <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <AnimatedLogo height={32} animate={false} showPoweredBy={false} />
+            <div className="border-b border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.02] shrink-0">
+                <div className="px-6 py-4 flex items-center justify-between">
+                    <AnimatedLogo height={28} animate={false} showPoweredBy={false} />
                     <button onClick={handleSkip} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
                         {t("navigation.skip")}
                     </button>
@@ -116,7 +117,7 @@ export default function SetupWizardPage() {
             </div>
 
             {/* Progress */}
-            <div className="max-w-4xl mx-auto px-6 pt-8">
+            <div className="px-6 pt-6 shrink-0">
                 <div className="flex items-center gap-2 mb-2">
                     {STEPS.map((s, i) => (
                         <div key={i} className="flex items-center gap-2 flex-1">
@@ -140,27 +141,33 @@ export default function SetupWizardPage() {
             </div>
 
             {/* Content */}
-            <div className="max-w-4xl mx-auto px-6 py-8">
+            <div className="px-6 py-6 overflow-y-auto flex-1">
 
                 {/* Step 0: Goal */}
                 {step === 0 && (
                     <div>
                         <h2 className="text-2xl font-bold text-foreground mb-2">{t("step1Subtitle")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("subtitle")}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {GOALS.map(goal => (
-                                <button
-                                    key={goal}
-                                    onClick={() => setSelectedGoal(goal)}
-                                    className={`p-5 rounded-xl border text-left transition-all ${
-                                        selectedGoal === goal
-                                            ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
-                                            : "border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
-                                    }`}
-                                >
-                                    <p className="text-sm font-medium text-foreground">{t(`goal_${goal}`)}</p>
-                                </button>
-                            ))}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {GOALS.map(goal => {
+                                const selected = selectedGoals.includes(goal);
+                                return (
+                                    <button
+                                        key={goal}
+                                        onClick={() => setSelectedGoals(prev => selected ? prev.filter(g => g !== goal) : [...prev, goal])}
+                                        className={`p-4 rounded-xl border text-left transition-all flex items-center gap-3 ${
+                                            selected
+                                                ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
+                                                : "border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
+                                        }`}
+                                    >
+                                        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${selected ? "bg-indigo-500 text-white" : "border-2 border-gray-300 dark:border-white/20"}`}>
+                                            {selected && <Check size={12} />}
+                                        </div>
+                                        <p className="text-sm font-medium text-foreground">{t(`goal_${goal}`)}</p>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -192,8 +199,8 @@ export default function SetupWizardPage() {
                                         <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-3">
                                             <Icon size={20} />
                                         </div>
-                                        <p className="text-sm font-semibold text-foreground mb-1">{t(tmpl.nameKey)}</p>
-                                        <p className="text-[12px] text-muted-foreground leading-relaxed">{t(tmpl.descKey)}</p>
+                                        <p className="text-sm font-semibold text-foreground mb-1 truncate">{t(tmpl.nameKey)}</p>
+                                        <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">{t(tmpl.descKey)}</p>
                                     </button>
                                 );
                             })}
@@ -314,8 +321,8 @@ export default function SetupWizardPage() {
             </div>
 
             {/* Navigation */}
-            <div className="border-t border-gray-200 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.02] backdrop-blur-xl">
-                <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="border-t border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.02] shrink-0">
+                <div className="px-6 py-4 flex items-center justify-between">
                     <button
                         onClick={() => setStep(Math.max(0, step - 1))}
                         disabled={step === 0}
@@ -327,7 +334,7 @@ export default function SetupWizardPage() {
                     {step < 3 ? (
                         <button
                             onClick={() => setStep(step + 1)}
-                            disabled={(step === 0 && !selectedGoal) || (step === 1 && !selectedTemplate)}
+                            disabled={(step === 0 && selectedGoals.length === 0) || (step === 1 && !selectedTemplate)}
                             className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 transition-colors"
                         >
                             {t("navigation.next")} <ChevronRight size={16} />
@@ -344,6 +351,7 @@ export default function SetupWizardPage() {
                     )}
                 </div>
             </div>
+            </div>{/* end modal card */}
         </div>
     );
 }

@@ -159,7 +159,9 @@ export default function OnboardingPage() {
                 if (d.user) localStorage.setItem("user", JSON.stringify(d.user));
             }
 
-            router.push("/admin");
+            // Full page reload so AuthContext re-reads the new tokens with tenantId
+            // router.push would keep the old user state without tenantId
+            window.location.href = "/admin";
         } catch {
             setError("Error de conexión con el servidor");
         }

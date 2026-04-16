@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+// Setup wizard renders as a modal overlay on the dashboard
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
@@ -17,11 +17,9 @@ export default function AdminLayout({
 }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Setup wizard is full-page — no sidebar/topbar
-  const isSetupWizard = pathname === "/admin/setup-wizard";
+  // Setup wizard renders as modal overlay on top of dashboard
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -43,11 +41,6 @@ export default function AdminLayout({
   }
 
   if (!isAuthenticated) return null;
-
-  // Setup wizard renders without sidebar/topbar
-  if (isSetupWizard) {
-    return <TenantProvider>{children}</TenantProvider>;
-  }
 
   return (
     <TenantProvider>

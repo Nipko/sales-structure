@@ -370,11 +370,11 @@ export class NurturingService {
         // Try to send a template. If the tenant has a nurturing template configured, use it.
         // Otherwise, fall back to a text message (if within 24h window).
         try {
-            const accessToken = await this.resolveAccessToken(tenantId);
+            const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId);
             const outbound: OutboundMessage = {
                 tenantId,
                 channelType: 'whatsapp',
-                channelAccountId: '',  // will be resolved by gateway
+                channelAccountId: accountId,
                 to: phone,
                 content: {
                     type: 'text' as any,
@@ -467,12 +467,13 @@ export class NurturingService {
         }
 
         const conversation = await this.getConversation(schemaName, conversationId);
-        const accessToken = await this.resolveAccessToken(tenantId);
+        const channelType = conversation?.channel_type || 'whatsapp';
+        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
 
         const outbound: OutboundMessage = {
             tenantId,
-            channelType: conversation?.channel_type || 'whatsapp',
-            channelAccountId: conversation?.channel_account_id || '',
+            channelType,
+            channelAccountId: conversation?.channel_account_id || accountId,
             to: phone,
             content: { type: 'text', text },
         };
@@ -612,14 +613,20 @@ export class NurturingService {
         };
     }
 
-    private async resolveAccessToken(tenantId: string): Promise<string> {
+    private async resolveChannelCredentials(tenantId: string, channelType = 'whatsapp'): Promise<{ accessToken: string; accountId: string }> {
         try {
-            const creds = await this.channelToken.getWhatsAppToken(tenantId);
-            return creds.accessToken;
+            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
+            return { accessToken: creds.accessToken, accountId: creds.accountId };
         } catch (e: any) {
-            this.logger.warn(`Could not resolve WhatsApp token for tenant ${tenantId}: ${e.message}`);
-            return '';
+            this.logger.warn(`Could not resolve ${channelType} token for tenant ${tenantId}: ${e.message}`);
+            return { accessToken: '', accountId: '' };
         }
+    }
+
+    /** @deprecated Use resolveChannelCredentials instead */
+    private async resolveAccessToken(tenantId: string): Promise<string> {
+        const { accessToken } = await this.resolveChannelCredentials(tenantId);
+        return accessToken;
     }
 
     private buildJobId(tenantId: string, conversationId: string, attempt: number): string {

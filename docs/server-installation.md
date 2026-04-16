@@ -364,6 +364,26 @@ El deploy automatico funciona: push a `main` > GitHub Actions > build Docker ima
 
 ## Troubleshooting
 
+### Variables de entorno no se aplican
+- Despues de editar `.env`, los containers NO releen automaticamente
+- Para aplicar: `cd infra/docker && docker compose -f docker-compose.prod.yml up -d SERVICIO`
+- `docker restart` relee el `.env` pero `docker compose up -d` es mas seguro porque recrea el container
+- NUNCA el `.env` debe estar en git (esta en `.gitignore`). Verificar que no se pierda al hacer `git pull`
+
+### Variables nuevas agregadas post-instalacion
+Si agregas variables al `.env` despues del setup inicial:
+```bash
+# 1. Editar el .env
+nano /opt/parallext-engine/.env
+
+# 2. Recrear el container que usa la variable
+cd /opt/parallext-engine/infra/docker
+docker compose -f docker-compose.prod.yml up -d api    # o worker, whatsapp, etc.
+
+# 3. Verificar que la variable esta disponible
+docker exec parallext-api printenv | grep TU_VARIABLE
+```
+
 ### Container no arranca
 ```bash
 docker logs parallext-NOMBRE --tail 50

@@ -247,6 +247,18 @@ automation_executions  — Rule execution audit trail
 | nurturing | 5 | 10/s | Follow-up sequences |
 | conversation-snooze | 1 | — | Delayed wake-up for snoozed conversations |
 
+## Observability Stack
+
+- **Logging**: Pino (nestjs-pino) structured JSON with tenantId/userId context. Pretty in dev, JSON in prod. Docker json-file driver with rotation (50MB x 5)
+- **BullMQ Dashboard**: Bull Board embedded at `/admin/queues` (auth via BULL_BOARD_TOKEN query param or X-Admin-Token header). All 5 queues visible
+- **Error Tracking**: Sentry with `@OnWorkerEvent('failed')` on all 4 BullMQ processors (outbound, broadcast, automation, nurturing)
+- **Log Viewer**: Dozzle (port 9999) — real-time Docker log viewer with search
+- **Endpoint Monitoring**: Uptime Kuma (port 3003) — monitors API/Dashboard/WA/Landing/PG/Redis with email+Telegram alerts
+- **Dashboards**: Grafana (port 3004) + Loki (port 3100) — log aggregation, dashboards, alerting
+- **Log Persistence**: Docker volumes `parallext-api-logs`, `parallext-worker-logs` survive deploys
+- **All observability bound to 127.0.0.1** — only accessible through Cloudflare Tunnel or SSH
+- **Full manual**: `docs/observability-manual.md`
+
 ## i18n (4 languages)
 
 - **Dashboard**: next-intl, 4 files in `apps/dashboard/messages/` (es/en/pt/fr), ~700 lines each

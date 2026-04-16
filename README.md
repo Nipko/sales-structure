@@ -107,17 +107,22 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 ## Arquitectura
 
 ```
-Internet -> Cloudflare (SSL + Zero Trust Tunnel) -> Docker Stack (VPS)
+Internet -> Cloudflare (SSL + Zero Trust Tunnel) -> Docker Stack (VPS 8GB RAM)
     |-- Landing           (Next.js static, port 80)
     |-- Dashboard         (Next.js 16, port 3001)
-    |-- API               (NestJS 10, port 3000, 36 modules)
+    |-- API               (NestJS 10, port 3000, 36 modules, Pino + Bull Board)
+    |-- Worker            (BullMQ processors + cron jobs)
     |-- WhatsApp Service  (NestJS 10, port 3002)
     |-- PostgreSQL        (pgvector, schema-per-tenant)
     |-- PgBouncer         (transaction mode, 500->25 connections)
     |-- Redis             (cache, counters, BullMQ, refresh tokens)
-    |-- Nginx             (reverse proxy, WebSocket upgrade)
     |-- Cloudflare Tunnel (cloudflared)
     |-- Sentry            (error tracking + profiling)
+    |-- Dozzle            (real-time log viewer, port 9999)
+    |-- Uptime Kuma       (endpoint monitoring + alerting, port 3003)
+    |-- Grafana           (dashboards + alerting, port 3004)
+    |-- Loki              (log aggregation, port 3100)
+    |-- Watchtower        (auto-deploy on push to main)
 ```
 
 ### Flujo de mensaje
@@ -292,6 +297,7 @@ VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
 |-----------|-------------|
 | [CLAUDE.md](CLAUDE.md) | Contexto tecnico completo para desarrollo |
 | [docs/analytics-manual.md](docs/analytics-manual.md) | Manual de analytics, alertas, BI API, anomalias, cohortes |
+| [docs/observability-manual.md](docs/observability-manual.md) | Manual de observabilidad: Pino, Bull Board, Grafana, Loki, Uptime Kuma |
 | [docs/SECURITY.md](docs/SECURITY.md) | Autenticacion, JWT, RBAC, cifrado |
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Endpoints REST, WebSocket, BullMQ |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios |

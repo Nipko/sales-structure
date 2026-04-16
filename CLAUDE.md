@@ -257,7 +257,7 @@ automation_executions  — Rule execution audit trail
 - **Dashboards**: Grafana (port 3004) + Loki (port 3100) + Promtail — log aggregation, dashboards, alerting → `grafana.parallly-chat.cloud`
 - **Log Pipeline**: Promtail reads Docker logs → sends to Loki → Grafana queries Loki
 - **Log Persistence**: Docker volumes `parallext-api-logs`, `parallext-worker-logs` survive deploys
-- **All observability bound to 127.0.0.1** — exposed through Cloudflare Tunnel (hostnames use `container_name`)
+- **All observability bound to 127.0.0.1** — exposed through Cloudflare Tunnel (hostnames use service name, not container_name)
 - **Config files**: `infra/promtail/config.yml` (Promtail), `infra/docker/docker-compose.prod.yml` (all services)
 - **Full manual**: `docs/observability-manual.md`
 

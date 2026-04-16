@@ -139,15 +139,15 @@ https://api.parallly-chat.cloud/api/v1/admin/queues?token={BULL_BOARD_TOKEN}
 
 | Monitor | Tipo | Target | Intervalo |
 |---------|------|--------|-----------|
-| API Health | HTTP(s) | `http://parallext-api:3000/api/v1/health` | 60s |
-| Dashboard | HTTP(s) | `http://parallext-dashboard:3001` | 60s |
-| WhatsApp Service | HTTP(s) | `http://parallext-whatsapp:3002/api/v1/health/live` | 60s |
-| Landing | HTTP(s) | `http://parallext-landing:80` | 120s |
-| PostgreSQL | TCP Port | `parallext-postgres:5432` | 60s |
-| Redis | TCP Port | `parallext-redis:6379` | 60s |
-| PgBouncer | TCP Port | `parallext-pgbouncer:5432` | 60s |
+| API Health | HTTP(s) | `http://api:3000/api/v1/health` | 60s |
+| Dashboard | HTTP(s) | `http://dashboard:3001` | 60s |
+| WhatsApp Service | HTTP(s) | `http://whatsapp:3002/api/v1/health/live` | 60s |
+| Landing | HTTP(s) | `http://landing:80` | 120s |
+| PostgreSQL | TCP Port | `postgres:5432` | 60s |
+| Redis | TCP Port | `redis:6379` | 60s |
+| PgBouncer | TCP Port | `pgbouncer:5432` | 60s |
 
-NOTA: Los hostnames usan los `container_name` del docker-compose ya que todos estan en la misma red Docker.
+NOTA: Los hostnames usan el nombre del servicio del docker-compose (sin prefijo). Docker resuelve estos nombres internamente en la misma red.
 
 ### Canales de notificacion
 - **Telegram Bot** (recomendado) — alertas instantaneas al celular
@@ -174,7 +174,7 @@ NOTA: Los hostnames usan los `container_name` del docker-compose ya que todos es
 
 ### Configurar Data Source
 1. Grafana > Connections > Data Sources > Add > Loki
-2. URL: `http://parallext-loki:3100`
+2. URL: `http://loki:3100`
 3. Save & Test
 
 ### Queries utiles (LogQL)
@@ -300,11 +300,11 @@ Los servicios de observabilidad se exponen via el Cloudflare Tunnel existente.
 
 | Subdomain | Domain | Service Type | URL |
 |-----------|--------|-------------|-----|
-| status | parallly-chat.cloud | HTTP | `parallext-uptime-kuma:3001` |
-| grafana | parallly-chat.cloud | HTTP | `parallext-grafana:3000` |
-| logs | parallly-chat.cloud | HTTP | `parallext-dozzle:8080` |
+| status | parallly-chat.cloud | HTTP | `uptime-kuma:3001` |
+| grafana | parallly-chat.cloud | HTTP | `grafana:3000` |
+| logs | parallly-chat.cloud | HTTP | `dozzle:8080` |
 
-IMPORTANTE: Los hostnames del Service URL deben coincidir con el `container_name` del docker-compose, no con el nombre del servicio.
+IMPORTANTE: Los hostnames del Service URL usan el **nombre del servicio** del docker-compose (sin prefijo `parallext-`), NO el `container_name`.
 
 ### DNS Records necesarios (CNAME)
 - `status` > `{tunnel-id}.cfargotunnel.com` (Proxied)

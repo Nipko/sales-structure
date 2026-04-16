@@ -192,16 +192,16 @@ En **Zero Trust > Tunnels > tu tunnel > Configure > Public Hostname**, agrega:
 
 | Subdomain | Domain | Service Type | URL |
 |-----------|--------|-------------|-----|
-| api | tu-dominio.com | HTTP | `parallext-api:3000` |
-| admin | tu-dominio.com | HTTP | `parallext-dashboard:3001` |
-| wa | tu-dominio.com | HTTP | `parallext-whatsapp:3002` |
-| (vacio) | tu-dominio.com | HTTP | `parallext-landing:80` |
-| www | tu-dominio.com | HTTP | `parallext-landing:80` |
-| status | tu-dominio.com | HTTP | `parallext-uptime-kuma:3001` |
-| grafana | tu-dominio.com | HTTP | `parallext-grafana:3000` |
-| logs | tu-dominio.com | HTTP | `parallext-dozzle:8080` |
+| api | tu-dominio.com | HTTP | `api:3000` |
+| admin | tu-dominio.com | HTTP | `dashboard:3001` |
+| wa | tu-dominio.com | HTTP | `whatsapp:3002` |
+| (vacio) | tu-dominio.com | HTTP | `landing:80` |
+| www | tu-dominio.com | HTTP | `landing:80` |
+| status | tu-dominio.com | HTTP | `uptime-kuma:3001` |
+| grafana | tu-dominio.com | HTTP | `grafana:3000` |
+| logs | tu-dominio.com | HTTP | `dozzle:8080` |
 
-**IMPORTANTE**: Los URLs del Service usan el `container_name` del docker-compose (prefijo `parallext-`), NO el nombre del servicio.
+**IMPORTANTE**: Los URLs del Service usan el **nombre del servicio** del docker-compose (sin prefijo), NO el `container_name`.
 
 ### 4.4 Crear DNS Records en Cloudflare
 
@@ -277,7 +277,7 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
    ```bash
    docker exec parallext-grafana /usr/share/grafana/bin/grafana cli admin reset-admin-password TU_PASSWORD --homepath /usr/share/grafana --config /etc/grafana/grafana.ini
    ```
-5. Agregar Loki: Connections > Data Sources > Add > Loki > URL: `http://parallext-loki:3100` > Save & Test
+5. Agregar Loki: Connections > Data Sources > Add > Loki > URL: `http://loki:3100` > Save & Test
 6. Crear dashboard con queries:
    - `sum(count_over_time({container_name=~"parallext-.*"}[5m])) by (container_name)` (Time series)
    - `{container_name=~"parallext-.*"} |= "error"` (Logs)
@@ -392,8 +392,8 @@ docker exec parallext-grafana /usr/share/grafana/bin/grafana cli admin reset-adm
 - Incluir el token: `?token={BULL_BOARD_TOKEN}`
 
 ### Cloudflare Tunnel no enruta a un servicio
-- El tunnel es **remote-managed** — la config se gestiona en Cloudflare dashboard, NO en el archivo local `config.yml`
-- Los hostnames del Service URL deben usar el `container_name` (ej: `parallext-grafana:3000`, NO `grafana:3000`)
+- El tunnel es **remote-managed** — la config se gestiona en Cloudflare dashboard (Zero Trust > Tunnels > Configure), NO en el archivo local `config.yml`
+- Los hostnames del Service URL usan el **nombre del servicio** del docker-compose (ej: `grafana:3000`, `dashboard:3001`, `api:3000`), NO el `container_name`
 - Despues de agregar un hostname, esperar 30-60 segundos
 
 ### Mensajes de nurturing no llegan

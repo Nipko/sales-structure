@@ -5,10 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft, Globe } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
-import { locales, localeNames, type Locale } from "@/i18n/config";
+import LocaleSwitcher from "@/components/LocaleSwitcher";
 
 const GOOGLE_CLIENT_ID =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -120,21 +120,7 @@ export default function LoginPage() {
                     >
                         <ArrowLeft size={14} /> {t('backToLanding')}
                     </a>
-                    <div className="relative inline-flex items-center gap-1.5">
-                        <Globe size={14} className="text-muted-foreground" />
-                        <select
-                            defaultValue={typeof document !== 'undefined' ? (document.cookie.match(/locale=(\w+)/)?.[1] || 'es') : 'es'}
-                            onChange={(e) => {
-                                document.cookie = `locale=${e.target.value};path=/;max-age=31536000`;
-                                window.location.reload();
-                            }}
-                            className="bg-transparent text-[13px] text-muted-foreground border-none outline-none cursor-pointer appearance-none pr-4"
-                        >
-                            {locales.map(l => (
-                                <option key={l} value={l} className="text-black">{localeNames[l]}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <LocaleSwitcher />
                 </div>
 
                 {/* Logo */}

@@ -21,10 +21,13 @@ async function bootstrap() {
     // Use Pino structured logger globally
     app.useLogger(app.get(Logger));
 
-    // Security
-    app.use(helmet({
-        crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow media embedding from dashboard
-    }));
+    // Security — disable Helmet CSP for Bull Board route (needs inline scripts)
+    app.use((req: any, res: any, next: any) => {
+        if (req.url?.startsWith('/api/v1/admin/queues')) return next();
+        helmet({
+            crossOriginResourcePolicy: { policy: 'cross-origin' },
+        })(req, res, next);
+    });
     app.enableCors({
         origin: [
             process.env.DASHBOARD_URL || 'http://localhost:3001',

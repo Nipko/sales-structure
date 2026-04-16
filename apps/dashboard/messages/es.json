@@ -601,15 +601,71 @@
   },
   "onboarding": {
     "title": "Configurar tu empresa",
-    "step1": "Datos de la empresa",
-    "step2": "Tipo de clientes",
+    "step1": "Tu empresa",
+    "step2": "Tus clientes",
     "step3": "Objetivos",
-    "step4": "Como nos conociste",
+    "step4": "Referencia",
     "companyName": "Nombre de la empresa",
     "website": "Sitio web",
+    "socialMedia": "Redes sociales (opcional)",
     "industry": "Industria",
     "companySize": "Tamaño de la empresa",
-    "finish": "Finalizar"
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "finish": "Finalizar configuración",
+    "finishing": "Configurando tu empresa...",
+    "industries": {
+      "turismo": "Turismo",
+      "educación": "Educación",
+      "salud": "Salud",
+      "retail": "Retail / Comercio",
+      "tecnología": "Tecnología",
+      "servicios_profesionales": "Servicios profesionales",
+      "restaurantes": "Restaurantes / Gastronomía",
+      "inmobiliaria": "Inmobiliaria",
+      "automotriz": "Automotriz",
+      "finanzas": "Finanzas / Banca",
+      "moda_belleza": "Moda / Belleza",
+      "otro": "Otro"
+    },
+    "orgSizes": {
+      "1-10": "1-10 personas",
+      "11-20": "11-20",
+      "21-50": "21-50",
+      "51-200": "51-200",
+      "201-1000": "201-1000",
+      "1000+": "Más de 1000"
+    },
+    "audiences": {
+      "b2c": "Consumidores finales (B2C)",
+      "b2b": "Empresas (B2B)",
+      "government": "Gobierno",
+      "other": "Otro"
+    },
+    "audienceTitle": "¿A quién le vendes?",
+    "goals": {
+      "faq": "Responder preguntas frecuentes",
+      "appointments": "Agendar citas o reservas",
+      "sales": "Vender productos o servicios",
+      "support": "Soporte post-venta",
+      "promotions": "Enviar promociones y ofertas",
+      "lead_qualification": "Calificar leads automáticamente",
+      "response_time": "Reducir tiempo de respuesta",
+      "other": "Otro"
+    },
+    "goalsTitle": "¿Qué quieres lograr con Parallly?",
+    "referrals": {
+      "google": "Google / búsqueda web",
+      "social_media": "Redes sociales (Instagram, Facebook, TikTok)",
+      "referral": "Recomendación de un conocido",
+      "ai_chat": "ChatGPT / Claude / IA conversacional",
+      "youtube": "YouTube",
+      "blog": "Blog o artículo",
+      "event": "Evento o conferencia",
+      "other": "Otro"
+    },
+    "referralTitle": "¿Cómo nos conociste?",
+    "otherSpecify": "Especifica"
   },
   "analytics": {
     "title": "Analytics",

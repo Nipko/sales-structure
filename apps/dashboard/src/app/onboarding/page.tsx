@@ -11,64 +11,26 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
-const STEPS = [
-    "Tu empresa",
-    "Tus clientes",
-    "Objetivos",
-    "Referencia",
+const STEP_KEYS = ["step1", "step2", "step3", "step4"];
+
+const INDUSTRY_KEYS = [
+    "turismo", "educación", "salud", "retail", "tecnología",
+    "servicios_profesionales", "restaurantes", "inmobiliaria",
+    "automotriz", "finanzas", "moda_belleza", "otro",
 ];
 
-const INDUSTRIES = [
-    { value: "turismo", label: "Turismo" },
-    { value: "educación", label: "Educación" },
-    { value: "salud", label: "Salud" },
-    { value: "retail", label: "Retail / Comercio" },
-    { value: "tecnología", label: "Tecnología" },
-    { value: "servicios_profesionales", label: "Servicios profesionales" },
-    { value: "restaurantes", label: "Restaurantes / Gastronomía" },
-    { value: "inmobiliaria", label: "Inmobiliaria" },
-    { value: "automotriz", label: "Automotriz" },
-    { value: "finanzas", label: "Finanzas / Banca" },
-    { value: "moda_belleza", label: "Moda / Belleza" },
-    { value: "otro", label: "Otro" },
+const ORG_SIZE_KEYS = ["1-10", "11-20", "21-50", "51-200", "201-1000", "1000+"];
+
+const AUDIENCE_KEYS = ["b2c", "b2b", "government", "other"];
+
+const GOAL_KEYS = [
+    "faq", "appointments", "sales", "support",
+    "promotions", "lead_qualification", "response_time", "other",
 ];
 
-const ORG_SIZES = [
-    "1-10 personas",
-    "11-20",
-    "21-50",
-    "51-200",
-    "201-1000",
-    "Más de 1000",
-];
-
-const AUDIENCE_OPTIONS = [
-    { value: "b2c", label: "Consumidores finales (B2C)" },
-    { value: "b2b", label: "Empresas (B2B)" },
-    { value: "government", label: "Gobierno" },
-    { value: "other", label: "Otro" },
-];
-
-const GOAL_OPTIONS = [
-    { value: "faq", label: "Responder preguntas frecuentes" },
-    { value: "appointments", label: "Agendar citas o reservas" },
-    { value: "sales", label: "Vender productos o servicios" },
-    { value: "support", label: "Soporte post-venta" },
-    { value: "promotions", label: "Enviar promociones y ofertas" },
-    { value: "lead_qualification", label: "Calificar leads automáticamente" },
-    { value: "response_time", label: "Reducir tiempo de respuesta" },
-    { value: "other", label: "Otro" },
-];
-
-const REFERRAL_OPTIONS = [
-    { value: "google", label: "Google / búsqueda web" },
-    { value: "social_media", label: "Redes sociales (Instagram, Facebook, TikTok)" },
-    { value: "referral", label: "Recomendación de un conocido" },
-    { value: "ai_chat", label: "ChatGPT / Claude / IA conversacional" },
-    { value: "youtube", label: "YouTube" },
-    { value: "blog", label: "Blog o artículo" },
-    { value: "event", label: "Evento o conferencia" },
-    { value: "other", label: "Otro" },
+const REFERRAL_KEYS = [
+    "google", "social_media", "referral", "ai_chat",
+    "youtube", "blog", "event", "other",
 ];
 
 // TikTok icon (lucide doesn't have one)
@@ -219,7 +181,7 @@ export default function OnboardingPage() {
                 {/* Progress bar */}
                 <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
-                        {STEPS.map((s, i) => (
+                        {STEP_KEYS.map((s, i) => (
                             <div
                                 key={i}
                                 className={cn(
@@ -229,14 +191,14 @@ export default function OnboardingPage() {
                                         : "text-muted-foreground/50"
                                 )}
                             >
-                                {s}
+                                {t(s)}
                             </div>
                         ))}
                     </div>
                     <div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
                         <div
                             className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-300"
-                            style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+                            style={{ width: `${((step + 1) / STEP_KEYS.length) * 100}%` }}
                         />
                     </div>
                 </div>
@@ -344,17 +306,18 @@ export default function OnboardingPage() {
                             {/* Industry */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    Sector de la industria *
+                                    {t('industry')} *
                                 </label>
                                 <select
                                     value={industry}
                                     onChange={(e) => setIndustry(e.target.value)}
-                                    className={selectClasses}
+                                    className={cn(selectClasses, "pr-8")}
+                                    style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
-                                    <option value="" disabled>Selecciona un sector</option>
-                                    {INDUSTRIES.map((i) => (
-                                        <option key={i.value} value={i.value} className="bg-white dark:bg-[#1a1a2e] text-foreground">
-                                            {i.label}
+                                    <option value="" disabled>—</option>
+                                    {INDUSTRY_KEYS.map((key) => (
+                                        <option key={key} value={key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
+                                            {t(`industries.${key}`)}
                                         </option>
                                     ))}
                                 </select>
@@ -363,17 +326,18 @@ export default function OnboardingPage() {
                             {/* Org Size */}
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    Tamaño de la organización *
+                                    {t('companySize')} *
                                 </label>
                                 <select
                                     value={orgSize}
                                     onChange={(e) => setOrgSize(e.target.value)}
-                                    className={selectClasses}
+                                    className={cn(selectClasses, "pr-8")}
+                                    style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
-                                    <option value="" disabled>Selecciona el tamaño</option>
-                                    {ORG_SIZES.map((s) => (
-                                        <option key={s} value={s} className="bg-white dark:bg-[#1a1a2e] text-foreground">
-                                            {s}
+                                    <option value="" disabled>—</option>
+                                    {ORG_SIZE_KEYS.map((key) => (
+                                        <option key={key} value={key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
+                                            {t(`orgSizes.${key}`)}
                                         </option>
                                     ))}
                                 </select>
@@ -384,29 +348,29 @@ export default function OnboardingPage() {
                     {/* Step 2: Audience */}
                     {step === 1 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">Tus clientes</h2>
+                            <h2 className="text-xl font-bold text-foreground mb-1">{t('step2')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">
-                                ¿A quién le vendes principalmente? (selecciona al menos 1)
+                                {t('audienceTitle')}
                             </p>
 
                             <div className="space-y-3">
-                                {AUDIENCE_OPTIONS.map((opt) => (
+                                {AUDIENCE_KEYS.map((key) => (
                                     <label
-                                        key={opt.value}
+                                        key={key}
                                         className={cn(
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                                            audiences.includes(opt.value)
+                                            audiences.includes(key)
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
                                                 : "border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] hover:border-gray-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
                                             type="checkbox"
-                                            checked={audiences.includes(opt.value)}
-                                            onChange={() => toggleCheckbox(audiences, setAudiences, opt.value)}
+                                            checked={audiences.includes(key)}
+                                            onChange={() => toggleCheckbox(audiences, setAudiences, key)}
                                             className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-foreground">{opt.label}</span>
+                                        <span className="text-sm text-foreground">{t(`audiences.${key}`)}</span>
                                     </label>
                                 ))}
 
@@ -415,7 +379,7 @@ export default function OnboardingPage() {
                                         type="text"
                                         value={audienceOther}
                                         onChange={(e) => setAudienceOther(e.target.value)}
-                                        placeholder="Especifica..."
+                                        placeholder={t('otherSpecify')}
                                         className={cn(inputClasses, "ml-7")}
                                     />
                                 )}
@@ -426,31 +390,27 @@ export default function OnboardingPage() {
                     {/* Step 3: Goals */}
                     {step === 2 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">
-                                ¿Por qué quieres chatear con tus clientes?
-                            </h2>
-                            <p className="text-muted-foreground text-sm mb-6">
-                                Selecciona al menos 1 objetivo
-                            </p>
+                            <h2 className="text-xl font-bold text-foreground mb-1">{t('goalsTitle')}</h2>
+                            <p className="text-muted-foreground text-sm mb-6">{t('step3')}</p>
 
                             <div className="space-y-3">
-                                {GOAL_OPTIONS.map((opt) => (
+                                {GOAL_KEYS.map((key) => (
                                     <label
-                                        key={opt.value}
+                                        key={key}
                                         className={cn(
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                                            goals.includes(opt.value)
+                                            goals.includes(key)
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
                                                 : "border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] hover:border-gray-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
                                             type="checkbox"
-                                            checked={goals.includes(opt.value)}
-                                            onChange={() => toggleCheckbox(goals, setGoals, opt.value)}
+                                            checked={goals.includes(key)}
+                                            onChange={() => toggleCheckbox(goals, setGoals, key)}
                                             className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-foreground">{opt.label}</span>
+                                        <span className="text-sm text-foreground">{t(`goals.${key}`)}</span>
                                     </label>
                                 ))}
 
@@ -459,7 +419,7 @@ export default function OnboardingPage() {
                                         type="text"
                                         value={goalOther}
                                         onChange={(e) => setGoalOther(e.target.value)}
-                                        placeholder="Especifica..."
+                                        placeholder={t('otherSpecify')}
                                         className={cn(inputClasses, "ml-7")}
                                     />
                                 )}
@@ -470,20 +430,16 @@ export default function OnboardingPage() {
                     {/* Step 4: Referral */}
                     {step === 3 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">
-                                ¿Cómo nos conociste?
-                            </h2>
-                            <p className="text-muted-foreground text-sm mb-6">
-                                Selecciona una opción
-                            </p>
+                            <h2 className="text-xl font-bold text-foreground mb-1">{t('referralTitle')}</h2>
+                            <p className="text-muted-foreground text-sm mb-6">{t('step4')}</p>
 
                             <div className="space-y-3">
-                                {REFERRAL_OPTIONS.map((opt) => (
+                                {REFERRAL_KEYS.map((key) => (
                                     <label
-                                        key={opt.value}
+                                        key={key}
                                         className={cn(
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                                            referral === opt.value
+                                            referral === key
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
                                                 : "border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] hover:border-gray-300 dark:hover:border-white/20"
                                         )}
@@ -491,11 +447,11 @@ export default function OnboardingPage() {
                                         <input
                                             type="radio"
                                             name="referral"
-                                            checked={referral === opt.value}
-                                            onChange={() => setReferral(opt.value)}
+                                            checked={referral === key}
+                                            onChange={() => setReferral(key)}
                                             className="w-4 h-4 border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-foreground">{opt.label}</span>
+                                        <span className="text-sm text-foreground">{t(`referrals.${key}`)}</span>
                                     </label>
                                 ))}
 
@@ -504,7 +460,7 @@ export default function OnboardingPage() {
                                         type="text"
                                         value={referralOther}
                                         onChange={(e) => setReferralOther(e.target.value)}
-                                        placeholder="Especifica..."
+                                        placeholder={t('otherSpecify')}
                                         className={cn(inputClasses, "ml-7")}
                                     />
                                 )}

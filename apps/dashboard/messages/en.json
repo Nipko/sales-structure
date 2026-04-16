@@ -601,15 +601,71 @@
   },
   "onboarding": {
     "title": "Set up your company",
-    "step1": "Company details",
-    "step2": "Customer types",
+    "step1": "Your company",
+    "step2": "Your customers",
     "step3": "Goals",
-    "step4": "How did you find us",
+    "step4": "Reference",
     "companyName": "Company name",
     "website": "Website",
+    "socialMedia": "Social media (optional)",
     "industry": "Industry",
     "companySize": "Company size",
-    "finish": "Finish"
+    "next": "Next",
+    "previous": "Previous",
+    "finish": "Finish setup",
+    "finishing": "Setting up your company...",
+    "industries": {
+      "turismo": "Tourism",
+      "educación": "Education",
+      "salud": "Healthcare",
+      "retail": "Retail / Commerce",
+      "tecnología": "Technology",
+      "servicios_profesionales": "Professional services",
+      "restaurantes": "Restaurants / Food",
+      "inmobiliaria": "Real estate",
+      "automotriz": "Automotive",
+      "finanzas": "Finance / Banking",
+      "moda_belleza": "Fashion / Beauty",
+      "otro": "Other"
+    },
+    "orgSizes": {
+      "1-10": "1-10 people",
+      "11-20": "11-20",
+      "21-50": "21-50",
+      "51-200": "51-200",
+      "201-1000": "201-1000",
+      "1000+": "More than 1000"
+    },
+    "audiences": {
+      "b2c": "End consumers (B2C)",
+      "b2b": "Businesses (B2B)",
+      "government": "Government",
+      "other": "Other"
+    },
+    "audienceTitle": "Who do you sell to?",
+    "goals": {
+      "faq": "Answer frequently asked questions",
+      "appointments": "Schedule appointments or bookings",
+      "sales": "Sell products or services",
+      "support": "Post-sale support",
+      "promotions": "Send promotions and offers",
+      "lead_qualification": "Qualify leads automatically",
+      "response_time": "Reduce response time",
+      "other": "Other"
+    },
+    "goalsTitle": "What do you want to achieve with Parallly?",
+    "referrals": {
+      "google": "Google / web search",
+      "social_media": "Social media (Instagram, Facebook, TikTok)",
+      "referral": "Recommendation from someone",
+      "ai_chat": "ChatGPT / Claude / Conversational AI",
+      "youtube": "YouTube",
+      "blog": "Blog or article",
+      "event": "Event or conference",
+      "other": "Other"
+    },
+    "referralTitle": "How did you find us?",
+    "otherSpecify": "Please specify"
   },
   "analytics": {
     "title": "Analytics",

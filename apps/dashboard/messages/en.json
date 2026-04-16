@@ -729,5 +729,102 @@
     "cohortMonth": "Cohort Month",
     "cohortSize": "Size",
     "month": "Month"
+  },
+  "setupWizard": {
+    "title": "Set up your AI agent",
+    "subtitle": "In less than 5 minutes your agent will be ready to serve customers",
+    "step1Title": "Your goal",
+    "step2Title": "Choose your agent",
+    "step3Title": "Customize",
+    "step4Title": "Channels",
+    "step1Subtitle": "What problem do you want to solve first?",
+    "goal_respond247": "Respond to customers 24/7",
+    "goal_qualifySales": "Qualify and close more sales",
+    "goal_scheduleAppointments": "Schedule appointments automatically",
+    "goal_handleOrders": "Handle orders and inquiries",
+    "templates": {
+      "chooseTemplate": "Choose a template to get started",
+      "customizeAfter": "You can customize it later",
+      "startFromScratch": "Start from scratch",
+      "preview": "See example",
+      "popular": "Popular",
+      "salesQualifier": "Sales Qualifier",
+      "salesQualifierDesc": "Qualifies leads, books meetings and closes sales. Ideal for sales teams.",
+      "customerSupport": "Customer Support",
+      "customerSupportDesc": "Answers FAQs, resolves issues and escalates complex cases to humans.",
+      "appointmentScheduler": "Appointment Scheduler",
+      "appointmentSchedulerDesc": "Books appointments, manages schedules and sends automatic reminders.",
+      "ecommerceAssistant": "Store Assistant",
+      "ecommerceAssistantDesc": "Recommends products, tracks orders and does upselling.",
+      "realEstate": "Real Estate Agent",
+      "realEstateDesc": "Filters clients by budget, area and schedules property viewings.",
+      "restaurant": "Restaurant Assistant",
+      "restaurantDesc": "Menu, reservations, delivery orders and promotions."
+    },
+    "customize": {
+      "agentName": "Agent name",
+      "greeting": "Welcome message",
+      "tone": "Communication tone",
+      "toneAmigable": "Friendly (informal)",
+      "toneProfesional": "Professional (formal)",
+      "toneCasual": "Casual (relaxed)",
+      "hours": "Business hours",
+      "hours247": "24/7 (recommended)",
+      "hoursCustom": "Custom hours",
+      "afterHoursMsg": "After hours message"
+    },
+    "channels": {
+      "title": "Where do you want to serve?",
+      "subtitle": "Select channels (you'll connect them later)",
+      "whatsapp": "WhatsApp — #1 in Latin America",
+      "instagram": "Instagram DM — Great for retail and fashion",
+      "messenger": "Messenger — Connect with your Facebook page",
+      "telegram": "Telegram — Popular in tech communities",
+      "integrations": "Available integrations",
+      "comingSoon": "Coming soon"
+    },
+    "completion": {
+      "title": "Your agent {name} is ready!",
+      "configured": "Configured",
+      "pending": "Pending connection",
+      "testAgent": "Test my agent",
+      "goToDashboard": "Go to dashboard"
+    },
+    "navigation": {
+      "next": "Next",
+      "previous": "Previous",
+      "finish": "Finish setup",
+      "skip": "Skip for now",
+      "stepOf": "Step {current} of {total}"
+    }
+  },
+  "checklist": {
+    "title": "Your Progress",
+    "essentials": "Essentials",
+    "recommended": "Recommended",
+    "complete": "complete",
+    "dismiss": "Dismiss guide",
+    "items": {
+      "createAccount": "Create account",
+      "configureAgent": "Configure AI agent",
+      "connectWhatsapp": "Connect WhatsApp",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Add Knowledge Base (FAQs)",
+      "inviteTeam": "Invite team",
+      "connectInstagram": "Connect Instagram",
+      "createAutomation": "Create automation rules",
+      "customizeTemplates": "Customize email templates"
+    },
+    "actions": {
+      "connect": "Connect",
+      "configure": "Configure",
+      "try": "Try",
+      "invite": "Invite",
+      "create": "Create",
+      "edit": "Edit"
+    },
+    "time": {
+      "min": "~{n} min"
+    }
   }
 }

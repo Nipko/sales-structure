@@ -729,5 +729,102 @@
     "cohortMonth": "Mês Coorte",
     "cohortSize": "Tamanho",
     "month": "Mês"
+  },
+  "setupWizard": {
+    "title": "Configure seu agente IA",
+    "subtitle": "Em menos de 5 minutos seu agente estará pronto para atender clientes",
+    "step1Title": "Seu objetivo",
+    "step2Title": "Escolha seu agente",
+    "step3Title": "Personalize",
+    "step4Title": "Canais",
+    "step1Subtitle": "Qual problema você quer resolver primeiro?",
+    "goal_respond247": "Responder clientes 24/7",
+    "goal_qualifySales": "Qualificar e fechar mais vendas",
+    "goal_scheduleAppointments": "Agendar consultas automaticamente",
+    "goal_handleOrders": "Atender pedidos e consultas",
+    "templates": {
+      "chooseTemplate": "Escolha um modelo para começar",
+      "customizeAfter": "Você pode personalizar depois",
+      "startFromScratch": "Começar do zero",
+      "preview": "Ver exemplo",
+      "popular": "Popular",
+      "salesQualifier": "Vendedor Virtual",
+      "salesQualifierDesc": "Qualifica leads, agenda reuniões e fecha vendas.",
+      "customerSupport": "Suporte ao Cliente",
+      "customerSupportDesc": "Responde FAQs, resolve dúvidas e escala casos complexos.",
+      "appointmentScheduler": "Assistente de Agendamento",
+      "appointmentSchedulerDesc": "Agenda consultas, gerencia horários e envia lembretes.",
+      "ecommerceAssistant": "Assessor de Loja",
+      "ecommerceAssistantDesc": "Recomenda produtos, rastreia pedidos e faz upselling.",
+      "realEstate": "Assessor Imobiliário",
+      "realEstateDesc": "Filtra clientes por orçamento e agenda visitas.",
+      "restaurant": "Assistente Restaurante",
+      "restaurantDesc": "Cardápio, reservas, pedidos delivery e promoções."
+    },
+    "customize": {
+      "agentName": "Nome do agente",
+      "greeting": "Mensagem de boas-vindas",
+      "tone": "Tom de comunicação",
+      "toneAmigable": "Amigável (você)",
+      "toneProfesional": "Profissional (senhor/a)",
+      "toneCasual": "Casual (relaxado)",
+      "hours": "Horário de atendimento",
+      "hours247": "24/7 (recomendado)",
+      "hoursCustom": "Horário personalizado",
+      "afterHoursMsg": "Mensagem fora do horário"
+    },
+    "channels": {
+      "title": "Onde você quer atender?",
+      "subtitle": "Selecione canais (você conectará depois)",
+      "whatsapp": "WhatsApp — O #1 na América Latina",
+      "instagram": "Instagram DM — Ideal para varejo e moda",
+      "messenger": "Messenger — Conecte com sua página do Facebook",
+      "telegram": "Telegram — Popular em comunidades tech",
+      "integrations": "Integrações disponíveis",
+      "comingSoon": "Em breve"
+    },
+    "completion": {
+      "title": "Seu agente {name} está pronto!",
+      "configured": "Configurado",
+      "pending": "Falta conectar",
+      "testAgent": "Testar meu agente",
+      "goToDashboard": "Ir ao dashboard"
+    },
+    "navigation": {
+      "next": "Próximo",
+      "previous": "Anterior",
+      "finish": "Finalizar configuração",
+      "skip": "Pular por agora",
+      "stepOf": "Passo {current} de {total}"
+    }
+  },
+  "checklist": {
+    "title": "Seu Progresso",
+    "essentials": "Essenciais",
+    "recommended": "Recomendados",
+    "complete": "completo",
+    "dismiss": "Fechar guia",
+    "items": {
+      "createAccount": "Criar conta",
+      "configureAgent": "Configurar agente IA",
+      "connectWhatsapp": "Conectar WhatsApp",
+      "sendTestMessage": "Enviar mensagem de teste",
+      "addKnowledgeBase": "Adicionar Knowledge Base",
+      "inviteTeam": "Convidar equipe",
+      "connectInstagram": "Conectar Instagram",
+      "createAutomation": "Criar regras de automação",
+      "customizeTemplates": "Personalizar templates de email"
+    },
+    "actions": {
+      "connect": "Conectar",
+      "configure": "Configurar",
+      "try": "Testar",
+      "invite": "Convidar",
+      "create": "Criar",
+      "edit": "Editar"
+    },
+    "time": {
+      "min": "~{n} min"
+    }
   }
 }

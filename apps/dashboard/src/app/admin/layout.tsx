@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { useRouter } from "next/navigation";
@@ -15,7 +17,11 @@ export default function AdminLayout({
 }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Setup wizard is full-page — no sidebar/topbar
+  const isSetupWizard = pathname === "/admin/setup-wizard";
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -38,6 +44,11 @@ export default function AdminLayout({
 
   if (!isAuthenticated) return null;
 
+  // Setup wizard renders without sidebar/topbar
+  if (isSetupWizard) {
+    return <TenantProvider>{children}</TenantProvider>;
+  }
+
   return (
     <TenantProvider>
       <div className="flex h-screen bg-white dark:bg-neutral-950">
@@ -47,7 +58,10 @@ export default function AdminLayout({
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
-          <main className="flex-1 overflow-auto p-6">{children}</main>
+          <div className="flex-1 flex overflow-hidden">
+            <main className="flex-1 overflow-auto p-6">{children}</main>
+            <OnboardingChecklist />
+          </div>
         </div>
       </div>
     </TenantProvider>

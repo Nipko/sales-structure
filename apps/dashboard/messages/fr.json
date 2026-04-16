@@ -729,5 +729,102 @@
     "cohortMonth": "Mois Cohorte",
     "cohortSize": "Taille",
     "month": "Mois"
+  },
+  "setupWizard": {
+    "title": "Configurez votre agent IA",
+    "subtitle": "En moins de 5 minutes votre agent sera prêt à servir vos clients",
+    "step1Title": "Votre objectif",
+    "step2Title": "Choisissez votre agent",
+    "step3Title": "Personnalisez",
+    "step4Title": "Canaux",
+    "step1Subtitle": "Quel problème voulez-vous résoudre en premier ?",
+    "goal_respond247": "Répondre aux clients 24/7",
+    "goal_qualifySales": "Qualifier et conclure plus de ventes",
+    "goal_scheduleAppointments": "Planifier des rendez-vous automatiquement",
+    "goal_handleOrders": "Gérer les commandes et demandes",
+    "templates": {
+      "chooseTemplate": "Choisissez un modèle pour commencer",
+      "customizeAfter": "Vous pourrez le personnaliser ensuite",
+      "startFromScratch": "Commencer de zéro",
+      "preview": "Voir exemple",
+      "popular": "Populaire",
+      "salesQualifier": "Vendeur Virtuel",
+      "salesQualifierDesc": "Qualifie les leads, planifie des réunions et conclut des ventes.",
+      "customerSupport": "Support Client",
+      "customerSupportDesc": "Répond aux FAQ, résout les problèmes et escalade les cas complexes.",
+      "appointmentScheduler": "Assistant Rendez-vous",
+      "appointmentSchedulerDesc": "Planifie des RDV, gère les horaires et envoie des rappels.",
+      "ecommerceAssistant": "Assistant Boutique",
+      "ecommerceAssistantDesc": "Recommande des produits, suit les commandes et fait de l'upselling.",
+      "realEstate": "Agent Immobilier",
+      "realEstateDesc": "Filtre les clients par budget et planifie des visites.",
+      "restaurant": "Assistant Restaurant",
+      "restaurantDesc": "Menu, réservations, livraisons et promotions."
+    },
+    "customize": {
+      "agentName": "Nom de l'agent",
+      "greeting": "Message de bienvenue",
+      "tone": "Ton de communication",
+      "toneAmigable": "Amical (tutoiement)",
+      "toneProfesional": "Professionnel (vouvoiement)",
+      "toneCasual": "Décontracté",
+      "hours": "Horaires d'ouverture",
+      "hours247": "24/7 (recommandé)",
+      "hoursCustom": "Horaires personnalisés",
+      "afterHoursMsg": "Message hors horaires"
+    },
+    "channels": {
+      "title": "Où voulez-vous servir ?",
+      "subtitle": "Sélectionnez les canaux (vous les connecterez plus tard)",
+      "whatsapp": "WhatsApp — Le #1 en Amérique latine",
+      "instagram": "Instagram DM — Idéal pour le retail et la mode",
+      "messenger": "Messenger — Connectez votre page Facebook",
+      "telegram": "Telegram — Populaire dans les communautés tech",
+      "integrations": "Intégrations disponibles",
+      "comingSoon": "Bientôt disponible"
+    },
+    "completion": {
+      "title": "Votre agent {name} est prêt !",
+      "configured": "Configuré",
+      "pending": "Connexion en attente",
+      "testAgent": "Tester mon agent",
+      "goToDashboard": "Aller au tableau de bord"
+    },
+    "navigation": {
+      "next": "Suivant",
+      "previous": "Précédent",
+      "finish": "Terminer la configuration",
+      "skip": "Passer pour l'instant",
+      "stepOf": "Étape {current} sur {total}"
+    }
+  },
+  "checklist": {
+    "title": "Votre Progrès",
+    "essentials": "Essentiels",
+    "recommended": "Recommandés",
+    "complete": "terminé",
+    "dismiss": "Fermer le guide",
+    "items": {
+      "createAccount": "Créer un compte",
+      "configureAgent": "Configurer l'agent IA",
+      "connectWhatsapp": "Connecter WhatsApp",
+      "sendTestMessage": "Envoyer un message test",
+      "addKnowledgeBase": "Ajouter une base de connaissances",
+      "inviteTeam": "Inviter l'équipe",
+      "connectInstagram": "Connecter Instagram",
+      "createAutomation": "Créer des règles d'automatisation",
+      "customizeTemplates": "Personnaliser les modèles d'email"
+    },
+    "actions": {
+      "connect": "Connecter",
+      "configure": "Configurer",
+      "try": "Essayer",
+      "invite": "Inviter",
+      "create": "Créer",
+      "edit": "Modifier"
+    },
+    "time": {
+      "min": "~{n} min"
+    }
   }
 }

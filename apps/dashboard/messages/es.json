@@ -729,5 +729,102 @@
     "cohortMonth": "Mes Cohorte",
     "cohortSize": "Tamaño",
     "month": "Mes"
+  },
+  "setupWizard": {
+    "title": "Configura tu agente IA",
+    "subtitle": "En menos de 5 minutos tendrás tu agente listo para atender clientes",
+    "step1Title": "Tu objetivo",
+    "step2Title": "Elige tu agente",
+    "step3Title": "Personaliza",
+    "step4Title": "Canales",
+    "step1Subtitle": "¿Qué problema quieres resolver primero?",
+    "goal_respond247": "Responder clientes 24/7",
+    "goal_qualifySales": "Calificar y cerrar más ventas",
+    "goal_scheduleAppointments": "Agendar citas automáticamente",
+    "goal_handleOrders": "Atender pedidos y consultas",
+    "templates": {
+      "chooseTemplate": "Elige una plantilla para empezar",
+      "customizeAfter": "La puedes personalizar después",
+      "startFromScratch": "Empezar desde cero",
+      "preview": "Ver ejemplo",
+      "popular": "Popular",
+      "salesQualifier": "Vendedor Virtual",
+      "salesQualifierDesc": "Califica leads, agenda reuniones y cierra ventas. Ideal para equipos comerciales.",
+      "customerSupport": "Soporte al Cliente",
+      "customerSupportDesc": "Responde FAQs, resuelve dudas y escala casos complejos a humanos.",
+      "appointmentScheduler": "Asistente de Citas",
+      "appointmentSchedulerDesc": "Agenda citas, maneja horarios y envía recordatorios automáticos.",
+      "ecommerceAssistant": "Asesor de Tienda",
+      "ecommerceAssistantDesc": "Recomienda productos, rastrea pedidos y hace upselling.",
+      "realEstate": "Asesor Inmobiliario",
+      "realEstateDesc": "Filtra clientes por presupuesto, zona y agenda visitas a propiedades.",
+      "restaurant": "Asistente Restaurante",
+      "restaurantDesc": "Menú, reservas, pedidos a domicilio y promociones."
+    },
+    "customize": {
+      "agentName": "Nombre del agente",
+      "greeting": "Mensaje de bienvenida",
+      "tone": "Tono de comunicación",
+      "toneAmigable": "Amigable (tú)",
+      "toneProfesional": "Profesional (usted)",
+      "toneCasual": "Casual (relajado)",
+      "hours": "Horario de atención",
+      "hours247": "24/7 (recomendado)",
+      "hoursCustom": "Horario personalizado",
+      "afterHoursMsg": "Mensaje fuera de horario"
+    },
+    "channels": {
+      "title": "¿Dónde quieres atender?",
+      "subtitle": "Selecciona los canales (los conectarás después)",
+      "whatsapp": "WhatsApp — El #1 en Latinoamérica",
+      "instagram": "Instagram DM — Ideal para retail y moda",
+      "messenger": "Messenger — Conecta con tu página de Facebook",
+      "telegram": "Telegram — Popular en comunidades tech",
+      "integrations": "Integraciones disponibles",
+      "comingSoon": "Próximamente"
+    },
+    "completion": {
+      "title": "¡Tu agente {name} está listo!",
+      "configured": "Configurado",
+      "pending": "Falta conectar",
+      "testAgent": "Probar mi agente",
+      "goToDashboard": "Ir al dashboard"
+    },
+    "navigation": {
+      "next": "Siguiente",
+      "previous": "Anterior",
+      "finish": "Finalizar configuración",
+      "skip": "Omitir por ahora",
+      "stepOf": "Paso {current} de {total}"
+    }
+  },
+  "checklist": {
+    "title": "Tu Progreso",
+    "essentials": "Esenciales",
+    "recommended": "Recomendados",
+    "complete": "completo",
+    "dismiss": "Cerrar guía",
+    "items": {
+      "createAccount": "Crear cuenta",
+      "configureAgent": "Configurar agente IA",
+      "connectWhatsapp": "Conectar WhatsApp",
+      "sendTestMessage": "Enviar mensaje de prueba",
+      "addKnowledgeBase": "Agregar Knowledge Base (FAQs)",
+      "inviteTeam": "Invitar equipo",
+      "connectInstagram": "Conectar Instagram",
+      "createAutomation": "Crear reglas de automatización",
+      "customizeTemplates": "Personalizar plantillas de email"
+    },
+    "actions": {
+      "connect": "Conectar",
+      "configure": "Configurar",
+      "try": "Probar",
+      "invite": "Invitar",
+      "create": "Crear",
+      "edit": "Editar"
+    },
+    "time": {
+      "min": "~{n} min"
+    }
   }
 }

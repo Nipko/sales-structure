@@ -110,6 +110,16 @@ export const api = {
     updateProfile: (data: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string }) =>
         apiPost("/auth/update-profile", data),
 
+    // --- Setup Wizard ---
+    getPersonaTemplates: () =>
+        apiGet("/persona/templates"),
+
+    applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[] }) =>
+        apiPost(`/persona/${tenantId}/setup-wizard`, data),
+
+    getSetupStatus: (tenantId: string) =>
+        apiGet(`/persona/${tenantId}/setup-status`),
+
     // --- Tenants ---
     getTenants: () => apiGet("/tenants"),
     getTenant: (id: string) => apiGet(`/tenants/${id}`),

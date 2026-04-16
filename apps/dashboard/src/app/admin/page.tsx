@@ -50,6 +50,20 @@ export default function AdminDashboard() {
     const [isLive, setIsLive] = useState(false);
     const [platformStats, setPlatformStats] = useState({ totalTenants: 0, totalUsers: 0 });
 
+    // Check if setup wizard needs to be shown
+    useEffect(() => {
+        async function checkSetupWizard() {
+            if (!user?.tenantId || user?.role === "super_admin") return;
+            try {
+                const res = await api.getSetupStatus(user.tenantId);
+                if (res.success && !res.data?.setupWizardCompleted) {
+                    window.location.href = "/admin/setup-wizard";
+                }
+            } catch { /* proceed to dashboard */ }
+        }
+        checkSetupWizard();
+    }, [user?.tenantId, user?.role]);
+
     useEffect(() => {
         async function loadPlatformStats() {
             if (user?.role !== "super_admin") return;

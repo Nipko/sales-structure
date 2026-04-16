@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MetaGraphService, MetaApiError } from '../meta-graph/meta-graph.service';
 import { AuditService } from '../audit/audit.service';
 import { StartOnboardingDto } from './dto/start-onboarding.dto';
+import { Cron } from '@nestjs/schedule';
 import {
   OnboardingStatus,
   OnboardingMode,
@@ -671,6 +672,44 @@ export class OnboardingService {
   }
 
   // ==========================================
+  // CRON: Auto-expire stuck onboardings
+  // ==========================================
+
+  /**
+   * Every 10 minutes, check for onboardings stuck in IN_PROGRESS for > 30 min
+   * and mark them as FAILED so users can retry.
+   */
+  @Cron('*/10 * * * *')
+  async expireStuckOnboardings(): Promise<void> {
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000); // 30 min ago
+
+    const stuck = await this.prisma.whatsappOnboarding.findMany({
+      where: {
+        status: { in: IN_PROGRESS_STATUSES },
+        createdAt: { lt: cutoff },
+      },
+    });
+
+    if (stuck.length === 0) return;
+
+    this.logger.warn(`[Onboarding] Found ${stuck.length} stuck onboarding(s) — auto-expiring`);
+
+    for (const ob of stuck) {
+      await this.prisma.whatsappOnboarding.update({
+        where: { id: ob.id },
+        data: {
+          status: OnboardingStatus.FAILED,
+          errorCode: 'TIMEOUT',
+          errorMessage: `Onboarding expirado automaticamente (creado ${ob.createdAt.toISOString()}, status: ${ob.status})`,
+          completedAt: new Date(),
+        },
+      });
+
+      this.logger.warn(`[Onboarding] Expired: ${ob.id} for tenant ${ob.tenantId} (status was: ${ob.status})`);
+    }
+  }
+
+  // ==========================================
   // PRIVATE HELPERS
   // ==========================================
 
@@ -713,11 +752,32 @@ export class OnboardingService {
     });
 
     if (existingInProgress) {
-      throw new ConflictException({
-        code: OnboardingErrorCode.DUPLICATE_CUSTOMER_BINDING,
-        userMessage: 'Ya hay un onboarding en progreso para este tenant',
-        existingOnboardingId: existingInProgress.id,
-      });
+      // Auto-expire stuck onboardings older than 30 minutes
+      const ageMs = Date.now() - new Date(existingInProgress.createdAt).getTime();
+      const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+      if (ageMs > TIMEOUT_MS) {
+        this.logger.warn(
+          `[Onboarding] Auto-expiring stuck onboarding ${existingInProgress.id} for tenant ${tenantId} ` +
+          `(age: ${Math.round(ageMs / 60000)}min, status: ${existingInProgress.status})`,
+        );
+        await this.prisma.whatsappOnboarding.update({
+          where: { id: existingInProgress.id },
+          data: {
+            status: OnboardingStatus.FAILED,
+            errorCode: 'TIMEOUT',
+            errorMessage: `Onboarding expirado automaticamente tras ${Math.round(ageMs / 60000)} minutos sin completar`,
+            completedAt: new Date(),
+          },
+        });
+        // Allow the new onboarding to proceed
+      } else {
+        throw new ConflictException({
+          code: OnboardingErrorCode.DUPLICATE_CUSTOMER_BINDING,
+          userMessage: `Ya hay un onboarding en progreso (iniciado hace ${Math.round(ageMs / 60000)} minutos). Si el proceso se quedo pegado, espera unos minutos e intenta de nuevo.`,
+          existingOnboardingId: existingInProgress.id,
+        });
+      }
     }
 
     // Coexistencia requiere acknowledgment explícito

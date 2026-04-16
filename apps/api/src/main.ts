@@ -71,9 +71,13 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document);
 
-    // Protect Bull Board with token
+    // Protect Bull Board with token (allow static assets through)
     const bullBoardToken = process.env.BULL_BOARD_TOKEN || 'parallly-queues-2026';
     app.use('/api/v1/admin/queues', (req: any, res: any, next: any) => {
+        // Allow static assets (JS, CSS, images) without auth
+        if (req.url?.includes('/static/') || req.url?.endsWith('.js') || req.url?.endsWith('.css') || req.url?.endsWith('.svg')) {
+            return next();
+        }
         if (req.query?.token !== bullBoardToken && req.headers?.['x-admin-token'] !== bullBoardToken) {
             return res.status(401).json({ message: 'Unauthorized' });
         }

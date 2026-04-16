@@ -48,7 +48,7 @@ export default function VerifyEmailPage() {
             try {
                 const result = await api.verifyEmail(code);
                 if (!result.success) {
-                    setError(result.error || "Código incorrecto");
+                    setError(result.error || t('wrongCode'));
                     setIsSubmitting(false);
                     return;
                 }
@@ -63,7 +63,7 @@ export default function VerifyEmailPage() {
                 }
                 router.push("/onboarding");
             } catch {
-                setError("Error de conexión con el servidor");
+                setError(t('connectionError'));
             }
             setIsSubmitting(false);
         },
@@ -117,12 +117,12 @@ export default function VerifyEmailPage() {
         try {
             const result = await api.sendVerification();
             if (!result.success) {
-                setError(result.error || "Error al reenviar el código");
+                setError(result.error || t('resendCodeError'));
                 return;
             }
             setCooldown(60);
         } catch {
-            setError("Error de conexión");
+            setError(t('connectionError'));
         }
     };
 
@@ -151,9 +151,9 @@ export default function VerifyEmailPage() {
                         {t('verifyCode')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-8 text-center">
-                        Enviamos un código de 6 dígitos a{" "}
+                        {t('codeSentToEmail')}{" "}
                         <span className="font-medium text-foreground">
-                            {userEmail || "tu correo"}
+                            {userEmail || t('yourEmail')}
                         </span>
                     </p>
 
@@ -212,8 +212,8 @@ export default function VerifyEmailPage() {
                             )}
                         >
                             {cooldown > 0
-                                ? `Reenviar código en ${cooldown}s`
-                                : "Reenviar código"}
+                                ? t('resendCodeCountdown', { seconds: cooldown })
+                                : t('resendCode')}
                         </button>
                     </div>
                 </div>

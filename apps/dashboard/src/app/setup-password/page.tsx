@@ -25,11 +25,11 @@ export default function SetupPasswordPage() {
     }, [router]);
 
     const validations = [
-        { label: "Al menos 8 caracteres", valid: password.length >= 8 },
-        { label: "Al menos 1 letra mayúscula", valid: /[A-Z]/.test(password) },
-        { label: "Al menos 1 letra minúscula", valid: /[a-z]/.test(password) },
-        { label: "Al menos 1 número", valid: /[0-9]/.test(password) },
-        { label: "Al menos 1 carácter especial (!@#$%^&*)", valid: /[!@#$%^&*]/.test(password) },
+        { label: t('passwordRequirements.minLength'), valid: password.length >= 8 },
+        { label: t('passwordRequirements.uppercase'), valid: /[A-Z]/.test(password) },
+        { label: t('passwordRequirements.lowercase'), valid: /[a-z]/.test(password) },
+        { label: t('passwordRequirements.number'), valid: /[0-9]/.test(password) },
+        { label: t('passwordRequirements.special'), valid: /[!@#$%^&*]/.test(password) },
     ];
 
     const allValid = validations.every((v) => v.valid);
@@ -46,7 +46,7 @@ export default function SetupPasswordPage() {
         try {
             const result = await api.setupPassword(password);
             if (!result.success) {
-                setError(result.error || "Error al establecer la contraseña");
+                setError(result.error || t('setupPasswordError'));
                 setIsSubmitting(false);
                 return;
             }
@@ -56,7 +56,7 @@ export default function SetupPasswordPage() {
 
             router.push("/verify-email");
         } catch {
-            setError("Error de conexión con el servidor");
+            setError(t('connectionError'));
         }
         setIsSubmitting(false);
     };
@@ -79,7 +79,7 @@ export default function SetupPasswordPage() {
                         {t('password')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
-                        Crea una contraseña segura para acceder a tu cuenta
+                        {t('setupPasswordInstructions')}
                     </p>
 
                     {/* Error */}
@@ -93,7 +93,7 @@ export default function SetupPasswordPage() {
                         {/* Password */}
                         <div className="mb-4">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Contraseña
+                                {t('password')}
                             </label>
                             <div className="relative">
                                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -163,7 +163,7 @@ export default function SetupPasswordPage() {
                                 )}
                             >
                                 {passwordsMatch ? <Check size={14} /> : <X size={14} />}
-                                Las contraseñas coinciden
+                                {t('passwordsMatch')}
                             </div>
                         </div>
 
@@ -180,7 +180,7 @@ export default function SetupPasswordPage() {
                                         : "bg-gradient-to-r from-indigo-600 to-indigo-400 cursor-pointer hover:shadow-[0_6px_20px_rgba(108,92,231,0.4)] hover:brightness-110"
                             )}
                         >
-                            {isSubmitting ? "Estableciendo..." : "Establecer contraseña"}
+                            {isSubmitting ? t('settingPassword') : t('setupPassword')}
                         </button>
                     </form>
                 </div>

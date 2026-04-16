@@ -80,7 +80,7 @@ export default function ForgotPasswordPage() {
 
             if (!res.ok) {
                 setError(
-                    data.message || "Error al enviar el codigo. Intenta de nuevo."
+                    data.message || t('codeError')
                 );
                 setIsSubmitting(false);
                 return;
@@ -88,7 +88,7 @@ export default function ForgotPasswordPage() {
 
             setStep(2);
         } catch {
-            setError("Error de conexion con el servidor");
+            setError(t('connectionError'));
         }
 
         setIsSubmitting(false);
@@ -136,17 +136,17 @@ export default function ForgotPasswordPage() {
 
         const code = digits.join("");
         if (code.length !== 6) {
-            setError("Ingresa el codigo de 6 digitos");
+            setError(t('enter6DigitCode'));
             return;
         }
 
         if (!allRequirementsMet) {
-            setError("La contrasena no cumple con los requisitos");
+            setError(t('passwordRequirementsError'));
             return;
         }
 
         if (!passwordsMatch) {
-            setError("Las contrasenas no coinciden");
+            setError(t('passwordsNoMatch'));
             return;
         }
 
@@ -164,17 +164,17 @@ export default function ForgotPasswordPage() {
             if (!res.ok) {
                 setError(
                     data.message ||
-                        "Error al restablecer la contrasena. Verifica el codigo."
+                        t('resetError')
                 );
                 setIsSubmitting(false);
                 return;
             }
 
             setSuccessMessage(
-                "Contrasena restablecida correctamente. Redirigiendo al inicio de sesion..."
+                t('passwordResetSuccess')
             );
         } catch {
-            setError("Error de conexion con el servidor");
+            setError(t('connectionError'));
         }
 
         setIsSubmitting(false);
@@ -209,7 +209,7 @@ export default function ForgotPasswordPage() {
                                 </div>
                             </div>
                             <h2 className="text-xl font-bold text-foreground mb-2">
-                                Contrasena restablecida
+                                {t('passwordResetSuccess')}
                             </h2>
                             <p className="text-muted-foreground text-sm">
                                 {successMessage}
@@ -231,8 +231,7 @@ export default function ForgotPasswordPage() {
                                 {t('resetPassword')}
                             </h1>
                             <p className="text-muted-foreground text-sm mb-6 text-center">
-                                Ingresa tu correo electronico y te enviaremos un
-                                codigo de verificacion
+                                {t('resetEmailInstructions')}
                             </p>
 
                             {/* Error */}
@@ -259,7 +258,7 @@ export default function ForgotPasswordPage() {
                                             onChange={(e) =>
                                                 setEmail(e.target.value)
                                             }
-                                            placeholder="tu@correo.com"
+                                            placeholder={t('resetEmailPlaceholder')}
                                             required
                                             autoFocus
                                             className="w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
@@ -278,7 +277,7 @@ export default function ForgotPasswordPage() {
                                     )}
                                 >
                                     {isSubmitting
-                                        ? "Enviando..."
+                                        ? t('sending')
                                         : t('sendCode')}
                                 </button>
                             </form>
@@ -298,14 +297,14 @@ export default function ForgotPasswordPage() {
                                 }}
                                 className="flex items-center gap-1 text-muted-foreground text-[13px] mb-4 bg-transparent border-none cursor-pointer p-0 hover:text-indigo-500 transition-colors"
                             >
-                                <ArrowLeft size={14} /> Cambiar correo
+                                <ArrowLeft size={14} /> {t('changeEmail')}
                             </button>
 
                             <h1 className="text-2xl font-bold text-foreground mb-1">
                                 {t('resetPassword')}
                             </h1>
                             <p className="text-muted-foreground text-sm mb-6">
-                                Enviamos un codigo a{" "}
+                                {t('codeSentTo')}{" "}
                                 <span className="font-medium text-foreground">
                                     {email}
                                 </span>
@@ -323,7 +322,7 @@ export default function ForgotPasswordPage() {
                                 {/* OTP Inputs */}
                                 <div className="mb-5">
                                     <label className="block text-[13px] text-muted-foreground mb-2 font-medium">
-                                        Codigo de verificacion
+                                        {t('verificationCodeLabel')}
                                     </label>
                                     <div className="flex justify-center gap-3">
                                         {digits.map((digit, i) => (
@@ -382,7 +381,7 @@ export default function ForgotPasswordPage() {
                                             onChange={(e) =>
                                                 setNewPassword(e.target.value)
                                             }
-                                            placeholder="Minimo 8 caracteres"
+                                            placeholder={t('passwordRequirements.minLength')}
                                             required
                                             className="w-full py-3 px-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                         />
@@ -424,7 +423,7 @@ export default function ForgotPasswordPage() {
                                                     e.target.value
                                                 )
                                             }
-                                            placeholder="Repite la contrasena"
+                                            placeholder={t('repeatPassword')}
                                             required
                                             className="w-full py-3 px-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                         />
@@ -496,8 +495,8 @@ export default function ForgotPasswordPage() {
                                                 )}
                                             >
                                                 {passwordsMatch
-                                                    ? "Las contrasenas coinciden"
-                                                    : "Las contrasenas no coinciden"}
+                                                    ? t('passwordsMatch')
+                                                    : t('passwordsNoMatch')}
                                             </span>
                                         </div>
                                     )}
@@ -520,7 +519,7 @@ export default function ForgotPasswordPage() {
                                     )}
                                 >
                                     {isSubmitting
-                                        ? "Restableciendo..."
+                                        ? t('resetting')
                                         : t('resetPassword')}
                                 </button>
                             </form>
@@ -535,7 +534,7 @@ export default function ForgotPasswordPage() {
                         className="text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors inline-flex items-center gap-1.5"
                     >
                         <ArrowLeft size={14} />
-                        Volver al inicio de sesion
+                        {t('backToLogin')}
                     </Link>
                 </div>
 

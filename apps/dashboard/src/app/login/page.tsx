@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
+import { locales, localeNames, type Locale } from "@/i18n/config";
 
 const GOOGLE_CLIENT_ID =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -111,13 +112,30 @@ export default function LoginPage() {
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
 
             <div className="w-full max-w-[420px] relative z-10">
-                {/* Back to landing */}
-                <a
-                    href="https://parallly-chat.cloud"
-                    className="inline-flex items-center gap-1.5 text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors mb-6"
-                >
-                    <ArrowLeft size={14} /> {t('backToLanding')}
-                </a>
+                {/* Top bar: back + language */}
+                <div className="flex items-center justify-between mb-6">
+                    <a
+                        href="https://parallly-chat.cloud"
+                        className="inline-flex items-center gap-1.5 text-muted-foreground text-[13px] no-underline hover:text-indigo-500 transition-colors"
+                    >
+                        <ArrowLeft size={14} /> {t('backToLanding')}
+                    </a>
+                    <div className="relative inline-flex items-center gap-1.5">
+                        <Globe size={14} className="text-muted-foreground" />
+                        <select
+                            defaultValue={typeof document !== 'undefined' ? (document.cookie.match(/locale=(\w+)/)?.[1] || 'es') : 'es'}
+                            onChange={(e) => {
+                                document.cookie = `locale=${e.target.value};path=/;max-age=31536000`;
+                                window.location.reload();
+                            }}
+                            className="bg-transparent text-[13px] text-muted-foreground border-none outline-none cursor-pointer appearance-none pr-4"
+                        >
+                            {locales.map(l => (
+                                <option key={l} value={l} className="text-black">{localeNames[l]}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
 
                 {/* Logo */}
                 <div className="text-center mb-8">

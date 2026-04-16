@@ -78,7 +78,7 @@ export default function SignupPage() {
                 theme: "outline",
                 size: "large",
                 text: "signup_with",
-                width: 400,
+                width: 396,
                 locale: "es",
             });
             setGoogleReady(true);
@@ -171,7 +171,7 @@ export default function SignupPage() {
 
                     {/* Google Sign-In Button (rendered by Google GSI) */}
                     <div className="w-full">
-                        <div ref={googleWrapperRef} className="w-full [&>div]:!w-full [&>div>div]:!w-full [&_iframe]:!w-full" />
+                        <div ref={googleWrapperRef} className="w-full [&>div]:!w-full [&>div>div]:!w-full [&_iframe]:!w-full [&_iframe]:!rounded-lg" />
                         {!googleReady && (
                             <div className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-gray-400 text-sm cursor-wait">
                                 <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />

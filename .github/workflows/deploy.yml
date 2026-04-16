@@ -203,6 +203,9 @@ jobs:
           PROD_SMTP_PORT: ${{ secrets.SMTP_PORT }}
           PROD_SMTP_USER: ${{ secrets.SMTP_USER }}
           PROD_SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          PROD_BULL_BOARD_TOKEN: ${{ secrets.BULL_BOARD_TOKEN }}
+          PROD_GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
+          PROD_JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -218,7 +221,8 @@ jobs:
             PROD_OPENAI_API_KEY,PROD_ANTHROPIC_API_KEY,PROD_GOOGLE_AI_KEY,PROD_XAI_API_KEY,PROD_DEEPSEEK_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,
-            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS
+            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,
+            PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -273,6 +277,7 @@ jobs:
             echo "REDIS_PASSWORD=${PROD_REDIS_PASSWORD}" >> .env
             echo "INTERNAL_JWT_SECRET=${PROD_INTERNAL_JWT_SECRET}" >> .env
             echo "JWT_SECRET=${PROD_INTERNAL_JWT_SECRET}" >> .env
+            echo "JWT_REFRESH_SECRET=${PROD_JWT_REFRESH_SECRET}" >> .env
             echo "ENCRYPTION_KEY=${PROD_ENCRYPTION_KEY}" >> .env
             echo "META_APP_ID=${PROD_META_APP_ID}" >> .env
             echo "META_APP_SECRET=${PROD_META_APP_SECRET}" >> .env
@@ -303,6 +308,9 @@ jobs:
             echo "SMTP_FROM=Parallly <${PROD_SMTP_USER}>" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             echo "CLOUDFLARE_TUNNEL_TOKEN=${PROD_TUNNEL_TOKEN}" >> .env
+            echo "# Observability" >> .env
+            echo "BULL_BOARD_TOKEN=${PROD_BULL_BOARD_TOKEN}" >> .env
+            echo "GRAFANA_PASSWORD=${PROD_GRAFANA_PASSWORD}" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 

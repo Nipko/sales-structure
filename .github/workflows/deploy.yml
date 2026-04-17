@@ -208,6 +208,8 @@ jobs:
           PROD_JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           PROD_MS_AUTH_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
           PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
+          PROD_MS_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
+          PROD_MS_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -225,7 +227,8 @@ jobs:
             PROD_SENTRY_DSN,
             PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
-            PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET
+            PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
+            PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -318,6 +321,11 @@ jobs:
             echo "MS_AUTH_CLIENT_ID=${PROD_MS_AUTH_CLIENT_ID}" >> .env
             echo "MS_AUTH_CLIENT_SECRET=${PROD_MS_AUTH_CLIENT_SECRET}" >> .env
             echo "MS_AUTH_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/auth/microsoft/callback" >> .env
+            echo "# Microsoft Calendar (same app as auth)" >> .env
+            echo "MS_CLIENT_ID=${PROD_MS_CLIENT_ID}" >> .env
+            echo "MS_CLIENT_SECRET=${PROD_MS_CLIENT_SECRET}" >> .env
+            echo "MS_TENANT_ID=common" >> .env
+            echo "MS_CALENDAR_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/calendar/microsoft/callback" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 
@@ -357,6 +365,16 @@ jobs:
             echo "===> Running tenant schema migration (idempotent)..."
             docker compose -f infra/docker/docker-compose.prod.yml \
               run --rm api npm run migrate:tenants || true
+
+            echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
+            for schema in $(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$'); do
+              docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+                psql -U parallext -d parallext_engine -c "
+                  DROP INDEX IF EXISTS ${schema}.ci_user_idx;
+                  CREATE UNIQUE INDEX IF NOT EXISTS ci_user_idx ON ${schema}.calendar_integrations (user_id, provider);
+                " 2>/dev/null || true
+            done
 
             echo "===> Applying tenant-schema.sql to all existing tenants..."
             TENANTS=$(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \

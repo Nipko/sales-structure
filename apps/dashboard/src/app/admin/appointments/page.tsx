@@ -396,11 +396,12 @@ export default function AppointmentsPage() {
     }
   }, [activeTenantId]);
 
-  // Initial load
+  // Initial load (including calendar integrations for banner visibility)
   useEffect(() => {
     loadAppointments();
     loadServices();
-  }, [loadAppointments, loadServices]);
+    loadCalendarIntegrations();
+  }, [loadAppointments, loadServices, loadCalendarIntegrations]);
 
   // Tab-dependent loads
   useEffect(() => {

@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import ConfigTab from "@/components/appointments/ConfigTab";
+import ServicesTab from "@/components/appointments/ServicesTab";
 import {
   CalendarDays,
   List,
@@ -547,10 +548,10 @@ export default function AppointmentsPage() {
       };
       if (editingAppointment) {
         await api.updateAppointment(activeTenantId, editingAppointment.id, payload);
-        showToast("Cita actualizada correctamente");
+        showToast(t("editAppointment") + " ✓");
       } else {
         await api.createAppointment(activeTenantId, payload);
-        showToast("Cita creada correctamente");
+        showToast(t("newAppointment") + " ✓");
       }
       setShowModal(false);
       loadAppointments();
@@ -565,11 +566,11 @@ export default function AppointmentsPage() {
     try {
       if (action === "cancel") {
         await api.cancelAppointment(activeTenantId, apptId);
-        showToast("Cita cancelada");
+        showToast(t("status.cancelled") + " ✓");
       } else {
         const statusMap = { confirm: "confirmed", complete: "completed" };
         await api.updateAppointment(activeTenantId, apptId, { status: statusMap[action] });
-        showToast(action === "confirm" ? "Cita confirmada" : "Cita completada");
+        showToast(action === "confirm" ? t("status.confirmed") + " ✓" : t("status.completed") + " ✓");
       }
       loadAppointments();
     } catch {
@@ -589,7 +590,7 @@ export default function AppointmentsPage() {
         .filter((s) => s.active)
         .map(({ dayOfWeek, startTime, endTime }) => ({ dayOfWeek, startTime, endTime }));
       await api.saveAvailability(activeTenantId, { userId: undefined, slots: activeSlots });
-      showToast("Disponibilidad guardada");
+      showToast(t("configSection.schedule") + " ✓");
     } catch {
       showToast("Error al guardar disponibilidad");
     }
@@ -608,7 +609,7 @@ export default function AppointmentsPage() {
       setNewBlockedDate("");
       setNewBlockedReason("");
       loadBlockedDates();
-      showToast("Fecha bloqueada agregada");
+      showToast(t("configSection.addBlockedDate") + " ✓");
     } catch {
       showToast("Error al agregar fecha bloqueada");
     }
@@ -619,7 +620,7 @@ export default function AppointmentsPage() {
     try {
       await api.deleteBlockedDate(activeTenantId, dateId);
       loadBlockedDates();
-      showToast("Fecha bloqueada eliminada");
+      showToast(t("configSection.blockedDates") + " ✓");
     } catch {
       showToast("Error al eliminar fecha bloqueada");
     }
@@ -766,7 +767,7 @@ export default function AppointmentsPage() {
               {t("title")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-[52px]">
-              Gestiona las citas y la agenda de tu equipo
+              {t("subtitle")}
             </p>
           </div>
           <button
@@ -774,7 +775,7 @@ export default function AppointmentsPage() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer hover:opacity-90 transition-opacity shadow-sm"
           >
             <Plus size={18} />
-            Nueva cita
+            {t("newAppointment")}
           </button>
         </div>
 
@@ -784,28 +785,28 @@ export default function AppointmentsPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             {
-              label: "Total esta semana",
+              label: `${t("total")} ${t("thisWeek")}`,
               value: kpis.total,
               icon: CalendarDays,
               iconBg: "bg-violet-50 dark:bg-violet-500/10",
               iconColor: "text-violet-600 dark:text-violet-400",
             },
             {
-              label: "Pendientes",
+              label: t("status.pending"),
               value: kpis.pending,
               icon: AlertCircle,
               iconBg: "bg-amber-50 dark:bg-amber-500/10",
               iconColor: "text-amber-600 dark:text-amber-400",
             },
             {
-              label: "Confirmadas",
+              label: t("status.confirmed"),
               value: kpis.confirmed,
               icon: CheckCircle2,
               iconBg: "bg-emerald-50 dark:bg-emerald-500/10",
               iconColor: "text-emerald-600 dark:text-emerald-400",
             },
             {
-              label: "Completadas",
+              label: t("status.completed"),
               value: kpis.completed,
               icon: CalendarCheck,
               iconBg: "bg-blue-50 dark:bg-blue-500/10",
@@ -1310,26 +1311,25 @@ export default function AppointmentsPage() {
         )}
 
         {/* ============================================================ */}
-        {/*  TAB: SERVICIOS                                               */}
+        {/*  TAB: SERVICIOS (refactored component)                        */}
         {/* ============================================================ */}
         {activeTab === "services" && (
-          <div className="space-y-4">
+          <ServicesTab
+            services={services}
+            loading={loadingServices}
+            onCreateService={openCreateServiceModal}
+            onEditService={openEditServiceModal}
+            onDeleteService={handleDeleteService}
+            onToggleActive={handleToggleServiceActive}
+          />
+        )}
+
+        {/* OLD SERVICES TAB - kept for reference */}
+        {false && activeTab === "services" && (
+          <div className="space-y-4 hidden">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Servicios disponibles
-                </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                  Configura los servicios que puedes agendar
-                </p>
-              </div>
-              <button
-                onClick={openCreateServiceModal}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                <Plus size={16} />
-                Nuevo servicio
-              </button>
+              <div></div>
+              <button className="">Placeholder</button>
             </div>
 
             {loadingServices ? (

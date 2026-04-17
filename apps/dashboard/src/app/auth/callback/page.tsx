@@ -15,11 +15,19 @@ export default function AuthCallbackPage() {
         if (accessToken && refreshToken) {
             localStorage.setItem("accessToken", accessToken);
             localStorage.setItem("refreshToken", refreshToken);
+
+            // Determine redirect based on user state
+            let redirectPath = "/admin";
             if (userStr) {
-                try { localStorage.setItem("user", userStr); } catch { /* noop */ }
+                try {
+                    localStorage.setItem("user", userStr);
+                    const user = JSON.parse(userStr);
+                    if (!user.emailVerified) redirectPath = "/verify-email";
+                    else if (!user.onboardingCompleted && !user.tenantId) redirectPath = "/onboarding";
+                } catch { /* noop */ }
             }
-            // Full reload so AuthContext reads the new tokens
-            window.location.href = "/admin";
+
+            window.location.href = redirectPath;
         } else {
             window.location.href = "/login?error=auth_failed";
         }

@@ -991,8 +991,9 @@ export default function AppointmentsPage() {
                         )}
                         onClick={() => openCreateModal(day, hour)}
                       >
-                        {hour === 7 &&
-                          getAppointmentsForDay(day).map((appt) => {
+                        {hour === 7 && (<>
+                          {/* Internal appointments */}
+                          {getAppointmentsForDay(day).map((appt) => {
                             const pos = getAppointmentPosition(appt);
                             const svc = services.find((s) => s.name === appt.serviceName);
                             const blockColor = svc?.color || STATUS_CONFIG[appt.status]?.color || "#6c5ce7";
@@ -1024,6 +1025,52 @@ export default function AppointmentsPage() {
                               </div>
                             );
                           })}
+                          {/* External calendar events (Google/Microsoft) */}
+                          {externalEvents
+                            .filter(evt => {
+                              if (evt.allDay) return false;
+                              const evtDate = evt.start ? toLocalDate(new Date(evt.start)) : '';
+                              return evtDate === toLocalDate(day);
+                            })
+                            .map(evt => {
+                              const start = new Date(evt.start);
+                              const end = new Date(evt.end);
+                              const startMin = start.getHours() * 60 + start.getMinutes();
+                              const endMin = end.getHours() * 60 + end.getMinutes();
+                              const topOffset = startMin - 7 * 60;
+                              const height = Math.max((endMin - startMin) / 60 * 64, 20);
+                              const extColor = evt.provider === 'microsoft' ? '#0078d4' : '#4285f4';
+                              return (
+                                <div
+                                  key={`ext-${evt.id}`}
+                                  className="absolute left-1 right-1 rounded-lg px-2 py-1 text-[10px] leading-tight overflow-hidden z-[5] border-l-[3px] opacity-70"
+                                  style={{
+                                    top: `${(topOffset / 60) * 64}px`,
+                                    height: `${height}px`,
+                                    background: `${extColor}12`,
+                                    borderLeftColor: extColor,
+                                    color: extColor,
+                                    borderStyle: 'dashed',
+                                  }}
+                                  title={`${evt.title} (${evt.provider === 'microsoft' ? 'Outlook' : 'Google'})`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (evt.htmlLink) window.open(evt.htmlLink, '_blank');
+                                  }}
+                                >
+                                  <div className="font-medium truncate flex items-center gap-1">
+                                    <span className="opacity-60">{evt.provider === 'microsoft' ? '📅' : '📆'}</span>
+                                    {evt.title}
+                                  </div>
+                                  {height > 30 && (
+                                    <div className="truncate opacity-80">
+                                      {start.getHours()}:{String(start.getMinutes()).padStart(2,'0')} - {end.getHours()}:{String(end.getMinutes()).padStart(2,'0')}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </>)}
                       </div>
                     );
                   })}

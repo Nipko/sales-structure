@@ -835,9 +835,12 @@ export default function AppointmentsPage() {
                   </span>
                 ))}
               </div>
-              {externalEvents.length > 0 && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{externalEvents.length} evento(s) sincronizado(s) esta semana</p>
-              )}
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                {externalEvents.length > 0
+                  ? `${externalEvents.length} evento(s) sincronizado(s) esta semana`
+                  : 'Sincronizado'}
+                {' · '}Zona horaria: America/Bogota (UTC-5)
+              </p>
             </div>
           </div>
         )}

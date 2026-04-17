@@ -10,9 +10,10 @@ import { cn } from "@/lib/utils";
 import {
   Sun, Moon, Monitor, ChevronDown, ChevronRight, LogOut, Menu, User, Settings,
   Bell, MessageSquare, Calendar, Mail, Shield, UserX, AlertTriangle,
-  Users, Zap, Package,
+  Users, Zap, Package, Clock,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
+import { api } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
 import { locales, localeNames, type Locale } from "@/i18n/config";
 
@@ -298,6 +299,9 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         ))}
       </select>
 
+      {/* Timezone indicator */}
+      <TimezoneIndicator />
+
       {/* Notification bell */}
       <div ref={notifRef} className="relative">
         <button
@@ -494,5 +498,32 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         )}
       </div>
     </header>
+  );
+}
+
+function TimezoneIndicator() {
+  const [tz, setTz] = useState("");
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user?.tenantId) return;
+    api.getTenantTimezone().then((res: any) => {
+      if (res?.success) setTz(res.data?.timezone || "");
+    }).catch(() => {});
+  }, [user?.tenantId]);
+
+  if (!tz) return null;
+
+  // Format: "America/Bogota" → "Bogota (UTC-5)"
+  const city = tz.split("/").pop()?.replace(/_/g, " ") || tz;
+  const now = new Date();
+  const offset = new Intl.DateTimeFormat("en", { timeZone: tz, timeZoneName: "shortOffset" })
+    .formatToParts(now).find(p => p.type === "timeZoneName")?.value || "";
+
+  return (
+    <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-neutral-500 dark:text-neutral-400" title={tz}>
+      <Clock size={12} />
+      <span>{city} {offset}</span>
+    </div>
   );
 }

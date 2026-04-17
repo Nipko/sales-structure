@@ -110,6 +110,10 @@ export const api = {
     updateProfile: (data: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string }) =>
         apiPost("/auth/update-profile", data),
 
+    // --- Tenant Timezone ---
+    getTenantTimezone: () => apiGet("/auth/tenant/timezone"),
+    updateTenantTimezone: (timezone: string) => apiPost("/auth/tenant/timezone", { timezone }),
+
     // --- Setup Wizard ---
     getPersonaTemplates: () =>
         apiGet("/persona/templates"),

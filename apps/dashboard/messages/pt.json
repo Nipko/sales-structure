@@ -653,6 +653,7 @@
     "socialMedia": "Redes sociais (opcional)",
     "industry": "Indústria",
     "companySize": "Tamanho da empresa",
+    "timezone": "Fuso horário",
     "next": "Próximo",
     "previous": "Anterior",
     "finish": "Finalizar configuração",

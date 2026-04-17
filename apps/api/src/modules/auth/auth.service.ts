@@ -796,6 +796,7 @@ export class AuthService {
         const socialLinks = company.socialMedia || data.socialLinks;
         const industry = company.industry || data.industry;
         const companySize = company.orgSize || data.companySize;
+        const timezone = company.timezone || data.timezone || 'America/Bogota';
         const customerTypes = data.audiences || data.customerTypes;
         const chatReasons = data.goals || data.chatReasons;
         const referralSource = data.referral || data.referralSource;
@@ -831,6 +832,7 @@ export class AuthService {
                         website,
                         socialLinks,
                         companySize,
+                        timezone,
                         customerTypes,
                         chatReasons,
                         referralSource,

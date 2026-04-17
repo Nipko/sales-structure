@@ -209,6 +209,41 @@ export class AuthController {
         }
     }
 
+    // ── Tenant Timezone ─────────────────────────────────────────
+
+    @Get('tenant/timezone')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get tenant timezone' })
+    async getTenantTimezone(@Request() req: any) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) return { success: true, data: { timezone: 'America/Bogota' } };
+        const tenant = await this.authService['prisma'].tenant.findUnique({
+            where: { id: tenantId }, select: { settings: true },
+        });
+        const tz = (tenant?.settings as any)?.timezone || 'America/Bogota';
+        return { success: true, data: { timezone: tz } };
+    }
+
+    @Post('tenant/timezone')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Update tenant timezone' })
+    async updateTenantTimezone(@Request() req: any, @Body() body: { timezone: string }) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('No tenant');
+        const tenant = await this.authService['prisma'].tenant.findUnique({
+            where: { id: tenantId }, select: { settings: true },
+        });
+        await this.authService['prisma'].tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: { ...(tenant?.settings as any || {}), timezone: body.timezone },
+            },
+        });
+        return { success: true };
+    }
+
     @Post('setup-password')
     @UseGuards(AuthGuard('jwt'))
     @ApiBearerAuth()

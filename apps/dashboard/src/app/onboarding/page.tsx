@@ -62,6 +62,7 @@ export default function OnboardingPage() {
     const [tiktok, setTiktok] = useState("");
     const [industry, setIndustry] = useState("");
     const [orgSize, setOrgSize] = useState("");
+    const [timezone, setTimezone] = useState("America/Bogota");
 
     // Step 2
     const [audiences, setAudiences] = useState<string[]>([]);
@@ -133,6 +134,7 @@ export default function OnboardingPage() {
                 },
                 industry,
                 orgSize,
+                timezone,
             },
             audiences: audiences.includes("other")
                 ? [...audiences.filter((a) => a !== "other"), `other:${audienceOther}`]
@@ -342,6 +344,33 @@ export default function OnboardingPage() {
                                             {t(`orgSizes.${key}`)}
                                         </option>
                                     ))}
+                                </select>
+                            </div>
+
+                            {/* Timezone */}
+                            <div className="mt-4">
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                    {t('timezone')} *
+                                </label>
+                                <select
+                                    value={timezone}
+                                    onChange={(e) => setTimezone(e.target.value)}
+                                    className={cn(selectClasses, "pr-8")}
+                                    style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
+                                >
+                                    <option value="America/Bogota">Bogotá, Lima, Quito (UTC-5)</option>
+                                    <option value="America/Mexico_City">Ciudad de México (UTC-6)</option>
+                                    <option value="America/Santiago">Santiago (UTC-3)</option>
+                                    <option value="America/Argentina/Buenos_Aires">Buenos Aires (UTC-3)</option>
+                                    <option value="America/Sao_Paulo">São Paulo (UTC-3)</option>
+                                    <option value="America/Caracas">Caracas (UTC-4)</option>
+                                    <option value="America/Panama">Panamá (UTC-5)</option>
+                                    <option value="America/Guayaquil">Guayaquil (UTC-5)</option>
+                                    <option value="America/Costa_Rica">Costa Rica (UTC-6)</option>
+                                    <option value="America/New_York">New York (UTC-5/4)</option>
+                                    <option value="America/Los_Angeles">Los Angeles (UTC-8/7)</option>
+                                    <option value="Europe/Madrid">Madrid (UTC+1/2)</option>
+                                    <option value="Europe/London">London (UTC+0/1)</option>
                                 </select>
                             </div>
                         </div>

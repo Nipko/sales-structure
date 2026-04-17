@@ -10,6 +10,8 @@ import * as crypto from 'crypto';
 
 type CalendarProvider = 'google' | 'microsoft';
 
+const DEFAULT_TIMEZONE = 'America/Bogota';
+
 interface FreeBusySlot {
     start: string;
     end: string;
@@ -192,11 +194,12 @@ export class CalendarIntegrationService {
 
     private async microsoftFreeBusy(schemaName: string, userId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
         const client = await this.getMicrosoftClient(schemaName, userId);
+        const tz = await this.getTimezoneFromSchema(schemaName);
 
         const res = await client.api('/me/calendar/getSchedule').post({
             schedules: ['me'],
-            startTime: { dateTime: timeMin, timeZone: 'UTC' },
-            endTime: { dateTime: timeMax, timeZone: 'UTC' },
+            startTime: { dateTime: timeMin, timeZone: tz },
+            endTime: { dateTime: timeMax, timeZone: tz },
         });
 
         const items = res.value?.[0]?.scheduleItems || [];
@@ -252,8 +255,11 @@ export class CalendarIntegrationService {
     private async microsoftListEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
         const client = await this.getMicrosoftClient(schemaName, userId);
 
+        // Use Prefer header to get times in tenant's timezone (not UTC)
+        const tz = await this.getTimezoneFromSchema(schemaName);
         const res = await client
             .api('/me/calendarView')
+            .header('Prefer', `outlook.timezone="${tz}"`)
             .query({
                 startDateTime: new Date(startDate).toISOString(),
                 endDateTime: new Date(endDate + 'T23:59:59').toISOString(),
@@ -273,6 +279,7 @@ export class CalendarIntegrationService {
             provider: 'microsoft',
             status: e.showAs || 'busy',
             htmlLink: e.webLink || '',
+            timezone: e.start?.timeZone || tz,
         }));
     }
 
@@ -310,8 +317,8 @@ export class CalendarIntegrationService {
 
                 const event: any = {
                     subject: data.summary,
-                    start: { dateTime: data.startAt, timeZone: 'UTC' },
-                    end: { dateTime: data.endAt, timeZone: 'UTC' },
+                    start: { dateTime: data.startAt, timeZone: await this.getTimezoneFromSchema(schemaName) },
+                    end: { dateTime: data.endAt, timeZone: await this.getTimezoneFromSchema(schemaName) },
                     location: data.location ? { displayName: data.location } : undefined,
                     body: data.description ? { content: data.description, contentType: 'text' } : undefined,
                 };
@@ -363,6 +370,39 @@ export class CalendarIntegrationService {
         const r = rows?.[0];
         if (!r) throw new BadRequestException('Calendar integration not found');
         return { id: r.id, userId: r.user_id, provider: r.provider, calendarId: r.calendar_id, accountEmail: r.account_email, isActive: r.is_active, connectedAt: r.connected_at };
+    }
+
+    /**
+     * Resolve the tenant timezone from settings.
+     * Falls back to DEFAULT_TIMEZONE if not configured.
+     */
+    async getTenantTimezone(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings as any) || {};
+            return settings.timezone || DEFAULT_TIMEZONE;
+        } catch {
+            return DEFAULT_TIMEZONE;
+        }
+    }
+
+    /**
+     * Resolve timezone from schema name (looks up tenant by schema).
+     */
+    private async getTimezoneFromSchema(schemaName: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findFirst({
+                where: { schemaName },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings as any) || {};
+            return settings.timezone || DEFAULT_TIMEZONE;
+        } catch {
+            return DEFAULT_TIMEZONE;
+        }
     }
 
     private async getIntegrationOrNull(schemaName: string, userId: string): Promise<(CalendarIntegration & { provider: CalendarProvider }) | null> {

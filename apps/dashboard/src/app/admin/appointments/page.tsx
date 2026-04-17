@@ -380,7 +380,19 @@ export default function AppointmentsPage() {
     setLoadingServices(true);
     try {
       const res = await api.getServices(activeTenantId);
-      if (res?.success) setServices(res.data || []);
+      if (res?.success) {
+        // Map API field names to frontend interface
+        const mapped = (res.data || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          duration: s.durationMinutes || s.duration || 30,
+          buffer: s.bufferMinutes || s.buffer || 0,
+          price: parseFloat(s.price || 0),
+          color: s.color || '#6c5ce7',
+          active: s.isActive ?? s.active ?? true,
+        }));
+        setServices(mapped);
+      }
     } catch {
       /* ignore */
     }
@@ -2014,29 +2026,47 @@ export default function AppointmentsPage() {
               {/* Buffer + Price row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Buffer (min)
+                  <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    Tiempo entre citas (min)
+                    <span className="relative group">
+                      <span className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] flex items-center justify-center cursor-help font-bold">?</span>
+                      <span className="absolute bottom-6 left-1/2 -translate-x-1/2 w-48 p-2 rounded-lg bg-gray-900 text-white text-[11px] leading-relaxed hidden group-hover:block z-50 shadow-lg">
+                        Tiempo de descanso entre una cita y la siguiente. Por ejemplo, 10 min para preparar el espacio.
+                      </span>
+                    </span>
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={serviceForm.buffer || ""}
-                    onChange={(e) => setServiceForm({ ...serviceForm, buffer: e.target.value === "" ? 0 : Number(e.target.value) })}
+                  <select
+                    value={serviceForm.buffer}
+                    onChange={(e) => setServiceForm({ ...serviceForm, buffer: Number(e.target.value) })}
                     className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
+                  >
+                    <option value={0}>Sin tiempo entre citas</option>
+                    <option value={5}>5 minutos</option>
+                    <option value={10}>10 minutos</option>
+                    <option value={15}>15 minutos</option>
+                    <option value={20}>20 minutos</option>
+                    <option value={30}>30 minutos</option>
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Precio (COP)
+                  <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                    Precio
                   </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={serviceForm.price || ""}
-                    onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value === "" ? 0 : Number(e.target.value) })}
-                    placeholder="0"
-                    className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={serviceForm.price > 0 ? serviceForm.price.toLocaleString('es-CO') : ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        setServiceForm({ ...serviceForm, price: raw ? Number(raw) : 0 });
+                      }}
+                      placeholder="0"
+                      className="w-full px-3 pl-7 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">COP</span>
+                  </div>
                 </div>
               </div>
 

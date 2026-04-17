@@ -1112,6 +1112,24 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."services" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 
+-- Add columns to services if not exist
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "category" VARCHAR(100);
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "location_type" VARCHAR(50) DEFAULT 'in_person';
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "max_concurrent" INTEGER DEFAULT 1;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "required_fields" JSONB DEFAULT '["name","phone"]';
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT true;
+
+-- ---- Service Staff Assignment (many-to-many) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_staff" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "service_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."services"("id") ON DELETE CASCADE,
+    "user_id" UUID NOT NULL,
+    "is_primary" BOOLEAN DEFAULT false,
+    "sort_order" INTEGER DEFAULT 0,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ss_service_user_idx" ON "{{SCHEMA_NAME}}"."service_staff" ("service_id", "user_id");
+
 -- ---- Calendar Integrations (per agent) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_integrations" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

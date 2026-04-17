@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
+import { AIToolExecutorService } from './ai-tool-executor.service';
 import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
@@ -33,7 +34,7 @@ import { IdentityModule } from '../identity/identity.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService],
     controllers: [ConversationsController],
     exports: [ConversationsService, ConversationsGateway],
 })

@@ -205,6 +205,77 @@ export class CalendarIntegrationService {
             .map((i: any) => ({ start: i.start?.dateTime || '', end: i.end?.dateTime || '' }));
     }
 
+    // ── List external calendar events ──────────────────────────────
+
+    async listExternalEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
+        const integration = await this.getIntegrationOrNull(schemaName, userId);
+        if (!integration || !integration.isActive) return [];
+
+        try {
+            if (integration.provider === 'google') {
+                return this.googleListEvents(schemaName, userId, startDate, endDate);
+            } else if (integration.provider === 'microsoft') {
+                return this.microsoftListEvents(schemaName, userId, startDate, endDate);
+            }
+        } catch (error: any) {
+            this.logger.warn(`ListEvents failed for ${userId} (${integration.provider}): ${error.message}`);
+        }
+        return [];
+    }
+
+    private async googleListEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
+        const client = await this.getGoogleClient(schemaName, userId);
+        const cal = google.calendar({ version: 'v3', auth: client });
+
+        const res = await cal.events.list({
+            calendarId: 'primary',
+            timeMin: new Date(startDate).toISOString(),
+            timeMax: new Date(endDate + 'T23:59:59').toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 100,
+        });
+
+        return (res.data.items || []).map(e => ({
+            id: e.id,
+            title: e.summary || '(Sin título)',
+            start: e.start?.dateTime || e.start?.date || '',
+            end: e.end?.dateTime || e.end?.date || '',
+            allDay: !!e.start?.date && !e.start?.dateTime,
+            location: e.location || '',
+            provider: 'google',
+            status: e.status || 'confirmed',
+            htmlLink: e.htmlLink || '',
+        }));
+    }
+
+    private async microsoftListEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
+        const client = await this.getMicrosoftClient(schemaName, userId);
+
+        const res = await client
+            .api('/me/calendarView')
+            .query({
+                startDateTime: new Date(startDate).toISOString(),
+                endDateTime: new Date(endDate + 'T23:59:59').toISOString(),
+            })
+            .top(100)
+            .orderby('start/dateTime')
+            .select('id,subject,start,end,location,isAllDay,webLink,showAs')
+            .get();
+
+        return (res.value || []).map((e: any) => ({
+            id: e.id,
+            title: e.subject || '(Sin título)',
+            start: e.start?.dateTime || '',
+            end: e.end?.dateTime || '',
+            allDay: e.isAllDay || false,
+            location: e.location?.displayName || '',
+            provider: 'microsoft',
+            status: e.showAs || 'busy',
+            htmlLink: e.webLink || '',
+        }));
+    }
+
     // ── Create calendar event ────────────────────────────────────
 
     async createEvent(schemaName: string, userId: string, data: {

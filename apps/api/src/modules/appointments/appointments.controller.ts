@@ -60,6 +60,18 @@ export class AppointmentsController {
         return { success: true, data };
     }
 
+    @Get(':tenantId/calendar/events')
+    @ApiOperation({ summary: 'List external calendar events (Google/Microsoft)' })
+    async listCalendarEvents(
+        @Param('tenantId') tenantId: string,
+        @Query('startDate') startDate: string,
+        @Query('endDate') endDate: string,
+        @CurrentUser() user: any,
+    ) {
+        const events = await this.calendarService.listExternalEvents(user.schemaName, user.id, startDate, endDate);
+        return { success: true, data: events };
+    }
+
     @Get(':tenantId/calendar/google/connect')
     async connectGoogle(@Param('tenantId') tenantId: string, @CurrentUser() user: any, @Res() res: Response) {
         const url = this.calendarService.getGoogleAuthUrl(tenantId, user.id);

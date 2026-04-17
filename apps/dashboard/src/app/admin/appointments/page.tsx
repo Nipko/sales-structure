@@ -272,6 +272,7 @@ export default function AppointmentsPage() {
   );
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
   const [calendarIntegrations, setCalendarIntegrations] = useState<CalendarIntegration[]>([]);
+  const [externalEvents, setExternalEvents] = useState<any[]>([]);
 
   // ---- UI state ----
   const [activeTab, setActiveTab] = useState<"calendar" | "agenda" | "services" | "config">("calendar");
@@ -396,12 +397,29 @@ export default function AppointmentsPage() {
     }
   }, [activeTenantId]);
 
+  const loadExternalEvents = useCallback(async () => {
+    if (!activeTenantId || calendarIntegrations.length === 0) return;
+    try {
+      const startDate = weekStart.toISOString().split('T')[0];
+      const endDate = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const res = await api.getCalendarEvents(activeTenantId, startDate, endDate);
+      if (res?.success) setExternalEvents(res.data || []);
+    } catch {
+      /* ignore */
+    }
+  }, [activeTenantId, calendarIntegrations.length, weekStart]);
+
   // Initial load (including calendar integrations for banner visibility)
   useEffect(() => {
     loadAppointments();
     loadServices();
     loadCalendarIntegrations();
   }, [loadAppointments, loadServices, loadCalendarIntegrations]);
+
+  // Load external events when calendar is connected and week changes
+  useEffect(() => {
+    loadExternalEvents();
+  }, [loadExternalEvents]);
 
   // Tab-dependent loads
   useEffect(() => {
@@ -799,6 +817,30 @@ export default function AppointmentsPage() {
             </div>
           ))}
         </div>
+
+        {/* ============================================================ */}
+        {/*  CONNECTED CALENDAR BANNER                                   */}
+        {/* ============================================================ */}
+        {calendarIntegrations.length > 0 && (
+          <div className="flex items-center gap-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20">
+            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-500/20">
+              <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                {calendarIntegrations.map((cal: any) => (
+                  <span key={cal.id} className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                    {cal.provider === 'microsoft' ? '📅 Outlook' : '📅 Google'} Calendar
+                    <span className="text-xs text-emerald-500 dark:text-emerald-400">({cal.account_email || cal.accountEmail || 'conectado'})</span>
+                  </span>
+                ))}
+              </div>
+              {externalEvents.length > 0 && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{externalEvents.length} evento(s) sincronizado(s) esta semana</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ============================================================ */}
         {/*  CALENDAR SYNC BANNER (shows when no calendar connected)     */}

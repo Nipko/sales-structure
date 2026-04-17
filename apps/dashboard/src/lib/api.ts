@@ -454,6 +454,8 @@ export const api = {
     // --- Calendar Integrations ---
     getCalendarIntegrations: (tenantId: string) =>
         apiGet(`/appointments/${tenantId}/calendar/integrations`),
+    getCalendarEvents: (tenantId: string, startDate: string, endDate: string) =>
+        apiGet(`/appointments/${tenantId}/calendar/events?startDate=${startDate}&endDate=${endDate}`),
     connectGoogleCalendar: (tenantId: string) =>
         apiGet(`/appointments/${tenantId}/calendar/google/connect`),
     connectMicrosoftCalendar: (tenantId: string) =>

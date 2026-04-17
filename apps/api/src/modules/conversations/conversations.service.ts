@@ -395,6 +395,37 @@ export class ConversationsService {
         if (toolsEnabled) {
             systemPrompt += '\n' + APPOINTMENT_SYSTEM_PROMPT;
             tools = [...APPOINTMENT_TOOLS];
+
+            // Inject tool context from previous turns (persisted in conversation metadata)
+            const prevContext = (conversation.metadata as any)?.toolContext;
+            if (prevContext) {
+                const ctxLines: string[] = ['\n## Datos obtenidos en esta conversación (NO vuelvas a pedirlos):'];
+                if (prevContext.list_services?.services?.length) {
+                    ctxLines.push('Servicios disponibles:');
+                    for (const svc of prevContext.list_services.services) {
+                        ctxLines.push(`- "${svc.name}" → serviceId: ${svc.id}, duración: ${svc.durationMinutes}min, precio: $${svc.price} ${svc.currency}`);
+                    }
+                    ctxLines.push('IMPORTANTE: Cuando el cliente mencione un servicio por nombre, usa el serviceId correspondiente de esta lista. NO vuelvas a llamar list_services.');
+                }
+                if (prevContext.check_availability) {
+                    const avail = prevContext.check_availability;
+                    ctxLines.push(`\nDisponibilidad consultada para ${avail.date}:`);
+                    if (avail.available && avail.slots?.length) {
+                        for (const slot of avail.slots) {
+                            ctxLines.push(`- ${slot.time}-${slot.endTime}${slot.staffName ? ` con ${slot.staffName}` : ''}`);
+                        }
+                    } else {
+                        ctxLines.push('- Sin disponibilidad para esa fecha');
+                    }
+                }
+                if (prevContext.create_appointment?.appointment) {
+                    const apt = prevContext.create_appointment.appointment;
+                    ctxLines.push(`\nCita ya agendada: ${apt.service} el ${apt.date} a las ${apt.time} (${apt.status})`);
+                }
+                systemPrompt += '\n' + ctxLines.join('\n');
+                this.logger.log(`[Pipeline] Injected tool context from previous turns`);
+            }
+
             this.logger.log(`[Pipeline] AI tools enabled: appointments (${tools.length} tools)`);
         }
 
@@ -479,6 +510,40 @@ export class ConversationsService {
                 // No tool calls — this is the final text response
                 finalResponse = response.content || '[Error Generating AI Response]';
                 break;
+            }
+
+            // Persist tool context for subsequent turns
+            if (toolsEnabled) {
+                const toolContext: Record<string, any> = {};
+                for (const msg of currentMessages) {
+                    if ((msg as any).role === 'tool' && (msg as any).content) {
+                        try {
+                            const parsed = JSON.parse((msg as any).content);
+                            // Find the tool name from the preceding assistant message
+                            const assistantMsg = currentMessages.find(
+                                (m: any) => m.toolCalls?.some((tc: any) => tc.id === (msg as any).toolCallId)
+                            ) as any;
+                            const toolCall = assistantMsg?.toolCalls?.find((tc: any) => tc.id === (msg as any).toolCallId);
+                            if (toolCall) {
+                                toolContext[toolCall.function.name] = parsed;
+                            }
+                        } catch { /* ignore parse errors */ }
+                    }
+                }
+
+                if (Object.keys(toolContext).length > 0) {
+                    await this.prisma.executeInTenantSchema(schemaName,
+                        `UPDATE conversations
+                         SET metadata = jsonb_set(
+                             COALESCE(metadata, '{}'::jsonb),
+                             '{toolContext}',
+                             COALESCE(metadata->'toolContext', '{}'::jsonb) || $2::jsonb
+                         )
+                         WHERE id = $1::uuid`,
+                        [conversation.id, JSON.stringify(toolContext)],
+                    );
+                    this.logger.log(`[Pipeline] Persisted tool context: ${Object.keys(toolContext).join(', ')}`);
+                }
             }
 
             // Reset failedAttempts on successful AI response

@@ -15,6 +15,8 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
+import { AIToolExecutorService } from './ai-tool-executor.service';
+import { APPOINTMENT_TOOLS, APPOINTMENT_SYSTEM_PROMPT } from './tools/appointment-tools';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -39,6 +41,7 @@ export class ConversationsService {
         private eventEmitter: EventEmitter2,
         private nurturingService: NurturingService,
         private identityService: IdentityService,
+        private toolExecutor: AIToolExecutorService,
     ) {}
 
     /**
@@ -384,7 +387,18 @@ export class ConversationsService {
         // 2. Build Prompt (with optional RAG context)
         let systemPrompt = this.personaService.buildSystemPrompt(config);
 
-        // 2b. Inject knowledge base context if available
+        // 2b. Inject AI tools prompt if appointments tool is enabled
+        const toolsConfig = (config as any)?.tools?.appointments;
+        const toolsEnabled = toolsConfig?.enabled === true;
+        let tools: any[] = [];
+
+        if (toolsEnabled) {
+            systemPrompt += '\n' + APPOINTMENT_SYSTEM_PROMPT;
+            tools = [...APPOINTMENT_TOOLS];
+            this.logger.log(`[Pipeline] AI tools enabled: appointments (${tools.length} tools)`);
+        }
+
+        // 2c. Inject knowledge base context if available
         try {
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
             if (hasKnowledge) {
@@ -408,21 +422,68 @@ export class ConversationsService {
 
         const messages = this.truncateHistory(history || [], userText);
 
-        // 4. Execute LLM Call using Router
+        // 4. Execute LLM Call using Router (with tool execution loop)
         try {
-            const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
-                messages: messages as any[],
-                systemPrompt,
-                temperature: 0.7,
-                routingFactors: {
-                    ticketValue: 50,
-                    complexity,
-                    conversationStage: stageScore,
-                    sentiment,
-                    intentType: complexity,
-                },
-            });
+            const MAX_TOOL_ITERATIONS = 5;
+            let currentMessages = [...messages] as any[];
+            let finalResponse = '';
+
+            for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+                const response = await this.llmRouter.execute({
+                    model: 'gpt-4o-mini',
+                    messages: currentMessages,
+                    systemPrompt,
+                    temperature: 0.7,
+                    tools: tools.length > 0 ? tools : undefined,
+                    routingFactors: {
+                        ticketValue: 50,
+                        complexity,
+                        conversationStage: stageScore,
+                        sentiment,
+                        intentType: complexity,
+                    },
+                });
+
+                // Check if LLM wants to call tools
+                if (response.toolCalls?.length && toolsEnabled) {
+                    this.logger.log(`[Pipeline] LLM requested ${response.toolCalls.length} tool call(s) (iteration ${iteration + 1})`);
+
+                    // Add assistant message with tool calls
+                    currentMessages.push({
+                        role: 'assistant',
+                        content: response.content || '',
+                        tool_calls: response.toolCalls.map((tc: any) => ({
+                            id: tc.id,
+                            type: 'function',
+                            function: { name: tc.function.name, arguments: tc.function.arguments },
+                        })),
+                    });
+
+                    // Execute each tool and add results
+                    const contactId = conversation.contact_id || '';
+                    for (const tc of response.toolCalls) {
+                        const args = typeof tc.function.arguments === 'string'
+                            ? JSON.parse(tc.function.arguments)
+                            : tc.function.arguments;
+
+                        const result = await this.toolExecutor.execute(
+                            schemaName, tenantId, contactId, tc.function.name, args,
+                        );
+
+                        currentMessages.push({
+                            role: 'tool',
+                            tool_call_id: tc.id,
+                            content: JSON.stringify(result),
+                        });
+                    }
+
+                    continue; // Loop back for another LLM call with tool results
+                }
+
+                // No tool calls — this is the final text response
+                finalResponse = response.content || '[Error Generating AI Response]';
+                break;
+            }
 
             // Reset failedAttempts on successful AI response
             await this.prisma.executeInTenantSchema(schemaName,
@@ -436,7 +497,7 @@ export class ConversationsService {
                 [conversation.id],
             );
 
-            return response.content || '[Error Generating AI Response]';
+            return finalResponse;
         } catch (e: any) {
             this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);
 

@@ -1,90 +1,76 @@
 /**
  * AI Tool definitions for appointment scheduling.
- * These are passed to the LLM as available functions.
+ * Uses the ToolDefinition interface from @parallext/shared.
+ * The LLM providers wrap these in their own format (e.g., OpenAI adds { type: 'function', function: ... }).
  */
+import { ToolDefinition } from '@parallext/shared';
 
-export const APPOINTMENT_TOOLS = [
+export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     {
-        type: 'function' as const,
-        function: {
-            name: 'list_services',
-            description: 'List all bookable services offered by this business. Call this when a customer wants to schedule an appointment.',
-            parameters: {
-                type: 'object',
-                properties: {},
-                required: [],
-            },
+        name: 'list_services',
+        description: 'List all bookable services offered by this business. Call this when a customer wants to schedule an appointment.',
+        parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
         },
     },
     {
-        type: 'function' as const,
-        function: {
-            name: 'check_availability',
-            description: 'Check available time slots for a specific date and service. Returns concrete bookable times.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
-                    serviceId: { type: 'string', description: 'Service UUID from list_services' },
-                    staffId: { type: 'string', description: 'Optional: specific staff member UUID' },
-                },
-                required: ['date', 'serviceId'],
+        name: 'check_availability',
+        description: 'Check available time slots for a specific date and service. Returns concrete bookable times.',
+        parameters: {
+            type: 'object',
+            properties: {
+                date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
+                serviceId: { type: 'string', description: 'Service UUID from list_services' },
+                staffId: { type: 'string', description: 'Optional: specific staff member UUID' },
             },
+            required: ['date', 'serviceId'],
         },
     },
     {
-        type: 'function' as const,
-        function: {
-            name: 'create_appointment',
-            description: 'Book a confirmed appointment. ONLY call AFTER the customer explicitly confirms the proposed time. Never book without confirmation.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    serviceId: { type: 'string', description: 'Service UUID' },
-                    staffId: { type: 'string', description: 'Staff member UUID to assign' },
-                    date: { type: 'string', description: 'YYYY-MM-DD' },
-                    time: { type: 'string', description: 'HH:MM (24h format)' },
-                    customerName: { type: 'string', description: 'Full name of the customer' },
-                    customerPhone: { type: 'string', description: 'Phone number' },
-                    customerEmail: { type: 'string', description: 'Email address' },
-                    notes: { type: 'string', description: 'Additional notes' },
-                },
-                required: ['serviceId', 'date', 'time', 'customerName'],
+        name: 'create_appointment',
+        description: 'Book a confirmed appointment. ONLY call AFTER the customer explicitly confirms the proposed time. Never book without confirmation.',
+        parameters: {
+            type: 'object',
+            properties: {
+                serviceId: { type: 'string', description: 'Service UUID' },
+                staffId: { type: 'string', description: 'Staff member UUID to assign' },
+                date: { type: 'string', description: 'YYYY-MM-DD' },
+                time: { type: 'string', description: 'HH:MM (24h format)' },
+                customerName: { type: 'string', description: 'Full name of the customer' },
+                customerPhone: { type: 'string', description: 'Phone number' },
+                customerEmail: { type: 'string', description: 'Email address' },
+                notes: { type: 'string', description: 'Additional notes' },
             },
+            required: ['serviceId', 'date', 'time', 'customerName'],
         },
     },
     {
-        type: 'function' as const,
-        function: {
-            name: 'cancel_appointment',
-            description: 'Cancel an appointment. Only cancel appointments belonging to the current customer.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    appointmentId: { type: 'string', description: 'Appointment UUID to cancel' },
-                    reason: { type: 'string', description: 'Cancellation reason' },
-                },
-                required: ['appointmentId'],
+        name: 'cancel_appointment',
+        description: 'Cancel an appointment. Only cancel appointments belonging to the current customer.',
+        parameters: {
+            type: 'object',
+            properties: {
+                appointmentId: { type: 'string', description: 'Appointment UUID to cancel' },
+                reason: { type: 'string', description: 'Cancellation reason' },
             },
+            required: ['appointmentId'],
         },
     },
     {
-        type: 'function' as const,
-        function: {
-            name: 'list_customer_appointments',
-            description: 'List upcoming appointments for the current customer.',
-            parameters: {
-                type: 'object',
-                properties: {},
-                required: [],
-            },
+        name: 'list_customer_appointments',
+        description: 'List upcoming appointments for the current customer.',
+        parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
         },
     },
 ];
 
 /**
  * System prompt addition when appointment tools are enabled.
- * Injected into the persona system prompt.
  */
 export const APPOINTMENT_SYSTEM_PROMPT = `
 ## Herramientas de Agendamiento
@@ -100,9 +86,9 @@ Tienes acceso a herramientas para gestionar citas. Sigue este flujo EXACTO:
 7. Una vez el cliente elige horario, recopila información faltante (nombre completo, teléfono).
 8. SIEMPRE presenta un resumen antes de confirmar:
    "Perfecto, confirmo tu cita:
-   📋 Servicio: [nombre]
-   📅 Fecha: [fecha]
-   🕐 Hora: [hora]
+   Servicio: [nombre]
+   Fecha: [fecha]
+   Hora: [hora]
    ¿Confirmas? (sí/no)"
 9. SOLO cuando el cliente diga "sí", "confirmo", "dale", o similar, usa create_appointment.
 10. Después de agendar, envía un mensaje de confirmación con los detalles.

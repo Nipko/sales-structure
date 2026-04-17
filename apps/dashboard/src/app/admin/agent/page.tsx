@@ -475,11 +475,46 @@ export default function AgentConfigPage() {
             { value: "America/Buenos_Aires", label: "Buenos Aires (GMT-3)" },
         ];
 
+        const is247 = Object.values(config.hours.schedule).every(v => v !== null) &&
+            Object.values(config.hours.schedule).every(v => v === null || ((v as any).start === '00:00' && (v as any).end === '23:59'));
+
+        const toggle247 = (enabled: boolean) => {
+            if (enabled) {
+                const allDay = { start: '00:00', end: '23:59' };
+                setConfig(prev => ({
+                    ...prev,
+                    hours: {
+                        ...prev.hours,
+                        schedule: { lun: allDay, mar: allDay, mie: allDay, jue: allDay, vie: allDay, sab: allDay, dom: allDay },
+                        afterHoursMessage: '',
+                    },
+                }));
+            } else {
+                setConfig(prev => ({
+                    ...prev,
+                    hours: {
+                        ...prev.hours,
+                        schedule: {
+                            lun: { start: '08:00', end: '18:00' },
+                            mar: { start: '08:00', end: '18:00' },
+                            mie: { start: '08:00', end: '18:00' },
+                            jue: { start: '08:00', end: '18:00' },
+                            vie: { start: '08:00', end: '18:00' },
+                            sab: { start: '08:00', end: '14:00' },
+                            dom: null,
+                        },
+                    },
+                }));
+            }
+        };
+
         return (
             <div className={cardCls}>
                 <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
-                    <Calendar size={20} className="text-primary" /> Horario Comercial
+                    <Calendar size={20} className="text-primary" /> Horario del Agente
                 </h3>
+
+                {/* Timezone */}
                 <div className="mb-5">
                     <label className={labelCls}>Zona horaria</label>
                     <select
@@ -492,62 +527,88 @@ export default function AgentConfigPage() {
                         ))}
                     </select>
                 </div>
-                <div className="flex flex-col gap-2.5 mb-5">
-                    {Object.entries(DAY_LABELS).map(([key, label]) => {
-                        const daySchedule = config.hours.schedule[key];
-                        const isActive = daySchedule !== null;
-                        return (
-                            <div key={key} className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-[10px] bg-[var(--bg-primary)] border border-border">
-                                <button
-                                    onClick={() => updateScheduleDay(key, !isActive)}
-                                    className={cn(
-                                        "w-[42px] h-6 rounded-xl border-none cursor-pointer relative transition-colors duration-200",
-                                        isActive ? "bg-[var(--success)]" : "bg-border"
-                                    )}
-                                >
-                                    <div
-                                        className="w-[18px] h-[18px] rounded-full bg-white absolute top-[3px] transition-[left] duration-200"
-                                        style={{ left: isActive ? 21 : 3 }}
-                                    />
-                                </button>
-                                <span className={cn(
-                                    "w-[90px] text-sm font-semibold",
-                                    isActive ? "text-foreground" : "text-[var(--text-secondary)]"
-                                )}>
-                                    {label}
-                                </span>
-                                {isActive ? (
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="time"
-                                            className={cn(inputCls, "w-[130px]")}
-                                            value={(daySchedule as any).start}
-                                            onChange={e => updateScheduleTime(key, "start", e.target.value)}
-                                        />
-                                        <span className="text-[var(--text-secondary)] text-[13px]">a</span>
-                                        <input
-                                            type="time"
-                                            className={cn(inputCls, "w-[130px]")}
-                                            value={(daySchedule as any).end}
-                                            onChange={e => updateScheduleTime(key, "end", e.target.value)}
-                                        />
+
+                {/* 24/7 Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 mb-5">
+                    <div>
+                        <p className="text-sm font-semibold text-foreground">Disponible 24/7</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">El agente atiende todos los días, las 24 horas</p>
+                    </div>
+                    <button
+                        onClick={() => toggle247(!is247)}
+                        className={cn(
+                            "w-12 h-7 rounded-full border-none cursor-pointer relative transition-colors duration-200",
+                            is247 ? "bg-indigo-500" : "bg-gray-300 dark:bg-white/20"
+                        )}
+                    >
+                        <div
+                            className="w-5 h-5 rounded-full bg-white absolute top-1 transition-[left] duration-200 shadow-sm"
+                            style={{ left: is247 ? 26 : 4 }}
+                        />
+                    </button>
+                </div>
+
+                {/* Per-day schedule (hidden when 24/7) */}
+                {!is247 && (
+                    <>
+                        <div className="flex flex-col gap-2.5 mb-5">
+                            {Object.entries(DAY_LABELS).map(([key, label]) => {
+                                const daySchedule = config.hours.schedule[key];
+                                const isActive = daySchedule !== null;
+                                return (
+                                    <div key={key} className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-[10px] bg-[var(--bg-primary)] border border-border">
+                                        <button
+                                            onClick={() => updateScheduleDay(key, !isActive)}
+                                            className={cn(
+                                                "w-[42px] h-6 rounded-xl border-none cursor-pointer relative transition-colors duration-200",
+                                                isActive ? "bg-[var(--success)]" : "bg-border"
+                                            )}
+                                        >
+                                            <div
+                                                className="w-[18px] h-[18px] rounded-full bg-white absolute top-[3px] transition-[left] duration-200"
+                                                style={{ left: isActive ? 21 : 3 }}
+                                            />
+                                        </button>
+                                        <span className={cn(
+                                            "w-[90px] text-sm font-semibold",
+                                            isActive ? "text-foreground" : "text-[var(--text-secondary)]"
+                                        )}>
+                                            {label}
+                                        </span>
+                                        {isActive ? (
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="time"
+                                                    className={cn(inputCls, "w-[130px]")}
+                                                    value={(daySchedule as any).start}
+                                                    onChange={e => updateScheduleTime(key, "start", e.target.value)}
+                                                />
+                                                <span className="text-[var(--text-secondary)] text-[13px]">a</span>
+                                                <input
+                                                    type="time"
+                                                    className={cn(inputCls, "w-[130px]")}
+                                                    value={(daySchedule as any).end}
+                                                    onChange={e => updateScheduleTime(key, "end", e.target.value)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <span className="text-[13px] text-[var(--text-secondary)] italic">Cerrado</span>
+                                        )}
                                     </div>
-                                ) : (
-                                    <span className="text-[13px] text-[var(--text-secondary)] italic">Cerrado</span>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-                <div>
-                    <label className={labelCls}>Mensaje fuera de horario</label>
-                    <textarea
-                        className={cn(inputCls, "min-h-[70px] resize-y")}
-                        placeholder="Mensaje que se envia fuera del horario comercial..."
-                        value={config.hours.afterHoursMessage}
-                        onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, afterHoursMessage: e.target.value } }))}
-                    />
-                </div>
+                                );
+                            })}
+                        </div>
+                        <div>
+                            <label className={labelCls}>Mensaje fuera de horario</label>
+                            <textarea
+                                className={cn(inputCls, "min-h-[70px] resize-y")}
+                                placeholder="Mensaje que se envia fuera del horario comercial..."
+                                value={config.hours.afterHoursMessage}
+                                onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, afterHoursMessage: e.target.value } }))}
+                            />
+                        </div>
+                    </>
+                )}
             </div>
         );
     }

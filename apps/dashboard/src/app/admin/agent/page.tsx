@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
     Bot, User, MessageSquare, Brain, Clock, Cpu, CheckCircle,
     ChevronLeft, ChevronRight, Plus, X, Save, Sparkles,
-    Shield, AlertTriangle, Smile, Globe, Calendar, Thermometer,
+    Shield, AlertTriangle, Smile, Globe, Calendar, Thermometer, Wrench,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -44,6 +44,13 @@ interface PersonaConfig {
         chunkOverlap: number;
         topK: number;
         similarityThreshold: number;
+    };
+    tools?: {
+        appointments?: {
+            enabled: boolean;
+            canBook: boolean;
+            canCancel: boolean;
+        };
     };
     industry: string;
     language: string;
@@ -98,6 +105,7 @@ const defaultConfig: PersonaConfig = {
         memory: { shortTerm: 20, longTerm: false, summaryAfter: 30 },
     },
     rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+    tools: { appointments: { enabled: false, canBook: true, canCancel: true } },
     industry: "general",
     language: "es-CO",
     name: "",
@@ -114,6 +122,7 @@ const STEPS = [
     { label: "Comportamiento", icon: Shield },
     { label: "Horario", icon: Calendar },
     { label: "Modelo IA", icon: Cpu },
+    { label: "Herramientas", icon: Wrench },
     { label: "Resumen", icon: CheckCircle },
 ];
 
@@ -592,6 +601,94 @@ export default function AgentConfigPage() {
     }
 
     function renderStep5() {
+        const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
+        const apt = tools.appointments || { enabled: false, canBook: true, canCancel: true };
+
+        const updateTools = (updates: Partial<typeof apt>) => {
+            setConfig({
+                ...config,
+                tools: { ...tools, appointments: { ...apt, ...updates } },
+            });
+        };
+
+        return (
+            <div>
+                <h3 className="text-lg font-bold mb-1">Herramientas del Agente</h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                    Activa las herramientas que tu agente IA puede usar durante las conversaciones.
+                </p>
+
+                {/* Appointments Tool */}
+                <div className={cn(cardCls, "mb-4")}>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                                <Calendar size={20} className="text-indigo-500" />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-bold">Agendamiento de Citas</h4>
+                                <p className="text-xs text-muted-foreground">Permite al agente consultar disponibilidad, agendar y cancelar citas</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => updateTools({ enabled: !apt.enabled })}
+                            className={cn(
+                                "relative w-11 h-6 rounded-full transition-colors",
+                                apt.enabled ? "bg-indigo-500" : "bg-gray-300 dark:bg-white/20"
+                            )}
+                        >
+                            <div className={cn(
+                                "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
+                                apt.enabled ? "translate-x-[22px]" : "translate-x-0.5"
+                            )} />
+                        </button>
+                    </div>
+
+                    {apt.enabled && (
+                        <div className="pl-13 space-y-3 border-t border-gray-200 dark:border-white/10 pt-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={apt.canBook} onChange={(e) => updateTools({ canBook: e.target.checked })}
+                                    className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500" />
+                                <div>
+                                    <span className="text-sm font-medium">Crear citas</span>
+                                    <p className="text-xs text-muted-foreground">El agente puede agendar citas nuevas con confirmación del cliente</p>
+                                </div>
+                            </label>
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={apt.canCancel} onChange={(e) => updateTools({ canCancel: e.target.checked })}
+                                    className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500" />
+                                <div>
+                                    <span className="text-sm font-medium">Cancelar citas</span>
+                                    <p className="text-xs text-muted-foreground">El agente puede cancelar citas del mismo cliente que lo solicita</p>
+                                </div>
+                            </label>
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+                                <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+                                <p className="text-xs text-amber-700 dark:text-amber-300">
+                                    El agente siempre pedirá confirmación antes de agendar. Necesitas tener servicios y horarios configurados en Citas.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Future tools placeholder */}
+                <div className={cn(cardCls, "opacity-50")}>
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                            <Wrench size={20} className="text-muted-foreground" />
+                        </div>
+                        <div>
+                            <h4 className="text-sm font-bold text-muted-foreground">Más herramientas próximamente</h4>
+                            <p className="text-xs text-muted-foreground">Catálogo, CRM, pagos y más</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    function renderStep6() {
         const summarySection = (title: string, icon: any, items: { label: string; value: string }[]) => (
             <div className={cn(cardCls, "mb-4")}>
                 <h4 className="text-[15px] font-bold mt-0 mb-3.5 flex items-center gap-2">
@@ -675,7 +772,7 @@ export default function AgentConfigPage() {
         );
     }
 
-    const stepRenderers = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4, renderStep5];
+    const stepRenderers = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4, renderStep5, renderStep6];
 
     return (
         <div>

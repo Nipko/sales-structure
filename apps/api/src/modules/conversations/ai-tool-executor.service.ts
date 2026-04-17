@@ -148,7 +148,7 @@ export class AIToolExecutorService {
                 where: { id: { in: userIds } },
                 select: { id: true, firstName: true, lastName: true },
             });
-            userNames = Object.fromEntries(users.map(u => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
+            userNames = Object.fromEntries(users.map((u: any) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
         }
 
         return {

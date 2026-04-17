@@ -448,15 +448,11 @@ export class ConversationsService {
                 if (response.toolCalls?.length && toolsEnabled) {
                     this.logger.log(`[Pipeline] LLM requested ${response.toolCalls.length} tool call(s) (iteration ${iteration + 1})`);
 
-                    // Add assistant message with tool calls
+                    // Add assistant message with tool calls (using ChatMessage format)
                     currentMessages.push({
                         role: 'assistant',
                         content: response.content || '',
-                        tool_calls: response.toolCalls.map((tc: any) => ({
-                            id: tc.id,
-                            type: 'function',
-                            function: { name: tc.function.name, arguments: tc.function.arguments },
-                        })),
+                        toolCalls: response.toolCalls,
                     });
 
                     // Execute each tool and add results
@@ -472,7 +468,7 @@ export class ConversationsService {
 
                         currentMessages.push({
                             role: 'tool',
-                            tool_call_id: tc.id,
+                            toolCallId: tc.id,
                             content: JSON.stringify(result),
                         });
                     }

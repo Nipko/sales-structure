@@ -42,7 +42,7 @@ export class MicrosoftAuthService {
             client_id: this.clientId,
             response_type: 'code',
             redirect_uri: this.redirectUri,
-            scope: 'openid profile email User.Read',
+            scope: 'openid profile email User.Read offline_access',
             state,
             prompt: 'select_account',
             response_mode: 'query',
@@ -63,7 +63,7 @@ export class MicrosoftAuthService {
         const result = await this.msalClient.acquireTokenByCode({
             code,
             redirectUri: this.redirectUri,
-            scopes: ['openid', 'profile', 'email', 'User.Read'],
+            scopes: ['User.Read'],
         });
 
         if (!result || !result.account) {

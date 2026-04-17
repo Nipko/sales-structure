@@ -399,31 +399,31 @@ export class ConversationsService {
             // Inject tool context from previous turns (persisted in conversation metadata)
             const prevContext = (conversation.metadata as any)?.toolContext;
             if (prevContext) {
-                const ctxLines: string[] = ['\n## Datos obtenidos en esta conversación (NO vuelvas a pedirlos):'];
+                const ctxLines: string[] = ['\n## Previously obtained data (DO NOT re-ask for this):'];
                 if (prevContext.list_services?.services?.length) {
-                    ctxLines.push('Servicios disponibles:');
+                    ctxLines.push('Available services:');
                     for (const svc of prevContext.list_services.services) {
-                        ctxLines.push(`- "${svc.name}" → serviceId: ${svc.id}, duración: ${svc.durationMinutes}min, precio: $${svc.price} ${svc.currency}`);
+                        ctxLines.push(`- "${svc.name}" → serviceId: ${svc.id}, duration: ${svc.durationMinutes}min, price: $${svc.price} ${svc.currency}`);
                     }
-                    ctxLines.push('IMPORTANTE: Cuando el cliente mencione un servicio por nombre, usa el serviceId correspondiente de esta lista. NO vuelvas a llamar list_services.');
+                    ctxLines.push('IMPORTANT: When the customer mentions a service by name, use the corresponding serviceId from this list. DO NOT call list_services again.');
                 }
                 if (prevContext.check_availability) {
                     const avail = prevContext.check_availability;
-                    ctxLines.push(`\nDisponibilidad consultada para ${avail.date}:`);
+                    ctxLines.push(`\nAvailability checked for ${avail.date}:`);
                     if (avail.available && avail.slots?.length) {
                         for (const slot of avail.slots) {
-                            ctxLines.push(`- ${slot.time}-${slot.endTime}${slot.staffName ? ` con ${slot.staffName}` : ''}`);
+                            ctxLines.push(`- ${slot.time}-${slot.endTime}${slot.staffName ? ` with ${slot.staffName}` : ''}`);
                         }
                     } else {
-                        ctxLines.push('- Sin disponibilidad para esa fecha');
+                        ctxLines.push('- No availability for that date');
                     }
                 }
                 if (prevContext.create_appointment?.appointment) {
                     const apt = prevContext.create_appointment.appointment;
-                    ctxLines.push(`\nCita ya agendada: ${apt.service} el ${apt.date} a las ${apt.time} (${apt.status})`);
+                    ctxLines.push(`\nAppointment already booked: ${apt.service} on ${apt.date} at ${apt.time} (${apt.status})`);
                 }
                 systemPrompt += '\n' + ctxLines.join('\n');
-                this.logger.log(`[Pipeline] Injected tool context from previous turns`);
+                this.logger.log(`[Pipeline] Injected tool context from previous turns: ${Object.keys(prevContext).join(', ')}`);
             }
 
             this.logger.log(`[Pipeline] AI tools enabled: appointments (${tools.length} tools)`);

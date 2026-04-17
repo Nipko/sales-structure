@@ -1128,7 +1128,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_integrations" (
     "connected_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS "ci_user_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
+CREATE UNIQUE INDEX IF NOT EXISTS "ci_user_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
 
 -- ---- Appointments ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (

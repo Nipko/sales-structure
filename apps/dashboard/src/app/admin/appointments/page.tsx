@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import ConfigTab from "@/components/appointments/ConfigTab";
 import {
   CalendarDays,
   List,
@@ -595,12 +596,14 @@ export default function AppointmentsPage() {
     setSavingAvailability(false);
   };
 
-  const handleAddBlockedDate = async () => {
-    if (!activeTenantId || !newBlockedDate) return;
+  const handleAddBlockedDate = async (date?: string, reason?: string) => {
+    const d = date || newBlockedDate;
+    const r = reason || newBlockedReason;
+    if (!activeTenantId || !d) return;
     try {
       await api.saveBlockedDate(activeTenantId, {
-        blockedDate: newBlockedDate,
-        reason: newBlockedReason || undefined,
+        blockedDate: d,
+        reason: r || undefined,
       });
       setNewBlockedDate("");
       setNewBlockedReason("");
@@ -1437,11 +1440,29 @@ export default function AppointmentsPage() {
         )}
 
         {/* ============================================================ */}
-        {/*  TAB: CONFIGURACION                                           */}
+        {/*  TAB: CONFIGURACION (refactored component)                    */}
         {/* ============================================================ */}
-        {activeTab === "config" && (
-          <div className="space-y-6">
-            {/* ---- Section 1: Horario de atencion ---- */}
+        {activeTab === "config" && activeTenantId && (
+          <ConfigTab
+            activeTenantId={activeTenantId}
+            availabilitySlots={availabilitySlots}
+            setAvailabilitySlots={setAvailabilitySlots}
+            blockedDates={blockedDates}
+            calendarIntegrations={calendarIntegrations}
+            externalEventsCount={externalEvents.length}
+            onConnectCalendar={handleConnectCalendar}
+            onDisconnectCalendar={handleDisconnectCalendar}
+            onSaveAvailability={handleSaveAvailability}
+            onAddBlockedDate={handleAddBlockedDate}
+            onDeleteBlockedDate={handleDeleteBlockedDate}
+            onRefresh={() => { loadCalendarIntegrations(); loadBlockedDates(); loadAvailability(); }}
+            showToast={showToast}
+          />
+        )}
+        {/* OLD CONFIG TAB - removed, replaced by ConfigTab component */}
+        {false && (
+          <div className="space-y-6 hidden">
+            {/* OLD CONFIG - kept for reference, remove later */}
             <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
               <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800">
                 <div className="flex items-center gap-3">
@@ -1689,7 +1710,7 @@ export default function AppointmentsPage() {
                     className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm flex-1 min-w-[200px] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                   <button
-                    onClick={handleAddBlockedDate}
+                    onClick={() => handleAddBlockedDate()}
                     disabled={!newBlockedDate}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-none bg-red-500 text-white font-semibold text-sm cursor-pointer disabled:opacity-40 hover:bg-red-600 transition-colors"
                   >

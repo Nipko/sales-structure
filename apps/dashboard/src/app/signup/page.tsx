@@ -218,6 +218,22 @@ export default function SignupPage() {
                         </div>
                     )}
 
+                    {/* Microsoft Sign-Up Button */}
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            try {
+                                const res = await fetch(`${API_URL}/auth/microsoft/url`);
+                                const data = await res.json();
+                                if (data.success) window.location.href = data.data.url;
+                            } catch { setError(t('connectionError')); }
+                        }}
+                        className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-foreground text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.08] transition-colors mt-3"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
+                        {t('continueWithMicrosoft')}
+                    </button>
+
                     {/* Separator */}
                     <div className="flex items-center gap-3 my-6">
                         <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />

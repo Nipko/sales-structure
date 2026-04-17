@@ -465,6 +465,73 @@ export class AuthService {
         };
     }
 
+    // ── Microsoft OAuth ─────────────────────────────────────────
+
+    async microsoftLogin(microsoftUser: {
+        microsoftId: string; email: string;
+        firstName: string; lastName: string; displayName: string;
+    }, rememberMe = false) {
+        let user = await this.prisma.user.findFirst({
+            where: {
+                OR: [
+                    { email: microsoftUser.email },
+                    { microsoftId: microsoftUser.microsoftId },
+                ],
+            },
+            include: { tenant: true },
+        });
+
+        if (!user) {
+            const firstName = microsoftUser.firstName || microsoftUser.displayName.split(' ')[0] || '';
+            const lastName = microsoftUser.lastName || microsoftUser.displayName.split(' ').slice(1).join(' ') || '';
+
+            user = await this.prisma.user.create({
+                data: {
+                    email: microsoftUser.email,
+                    firstName,
+                    lastName,
+                    authProvider: 'microsoft',
+                    microsoftId: microsoftUser.microsoftId,
+                    emailVerified: true,
+                    role: 'tenant_admin',
+                },
+                include: { tenant: true },
+            });
+        } else if (!user.microsoftId) {
+            user = await this.prisma.user.update({
+                where: { id: user.id },
+                data: { microsoftId: microsoftUser.microsoftId },
+                include: { tenant: true },
+            });
+        }
+
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+        });
+
+        const payload: JwtPayload = {
+            sub: user.id, email: user.email,
+            role: user.role as UserRole, tenantId: user.tenantId || undefined,
+        };
+
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe });
+        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+
+        return {
+            accessToken, refreshToken,
+            user: {
+                id: user.id, email: user.email,
+                firstName: user.firstName, lastName: user.lastName,
+                role: user.role, tenantId: user.tenantId,
+                tenantName: user.tenant?.name,
+                hasPassword: !!user.password,
+                emailVerified: user.emailVerified,
+                onboardingCompleted: effectiveOnboarding,
+            },
+        };
+    }
+
     // ── Password setup ────────────────────────────────────────────
 
     async setupPassword(userId: string, password: string) {

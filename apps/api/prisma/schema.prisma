@@ -51,6 +51,7 @@ model User {
   isActive            Boolean  @default(true) @map("is_active")
   authProvider        String   @default("email") @map("auth_provider")
   googleId            String?  @map("google_id")
+  microsoftId         String?  @map("microsoft_id")
   picture             String?
   emailVerified       Boolean  @default(false) @map("email_verified")
   emailVerifyCode     String?  @map("email_verify_code")

@@ -206,6 +206,8 @@ jobs:
           PROD_BULL_BOARD_TOKEN: ${{ secrets.BULL_BOARD_TOKEN }}
           PROD_GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
           PROD_JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          PROD_MS_AUTH_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
+          PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -222,7 +224,8 @@ jobs:
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,
             PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,
-            PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET
+            PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
+            PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -311,6 +314,10 @@ jobs:
             echo "# Observability" >> .env
             echo "BULL_BOARD_TOKEN=${PROD_BULL_BOARD_TOKEN}" >> .env
             echo "GRAFANA_PASSWORD=${PROD_GRAFANA_PASSWORD}" >> .env
+            echo "# Microsoft OAuth" >> .env
+            echo "MS_AUTH_CLIENT_ID=${PROD_MS_AUTH_CLIENT_ID}" >> .env
+            echo "MS_AUTH_CLIENT_SECRET=${PROD_MS_AUTH_CLIENT_SECRET}" >> .env
+            echo "MS_AUTH_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/auth/microsoft/callback" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 
@@ -332,6 +339,7 @@ jobs:
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email';" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS google_id TEXT;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS microsoft_id TEXT;" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS picture TEXT;" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_code TEXT;" \

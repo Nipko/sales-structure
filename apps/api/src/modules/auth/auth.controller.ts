@@ -1,8 +1,11 @@
-import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+import { Response } from 'express';
 import { IsEmail, IsString, IsOptional, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
+import { MicrosoftAuthService } from './microsoft-auth.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -74,7 +77,11 @@ class SignupDto {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-    constructor(private authService: AuthService) { }
+    constructor(
+        private authService: AuthService,
+        private microsoftAuth: MicrosoftAuthService,
+        private configService: ConfigService,
+    ) { }
 
     @Post('login')
     @HttpCode(HttpStatus.OK)
@@ -168,6 +175,38 @@ export class AuthController {
         }
         const result = await this.authService.googleLogin(body.idToken, body.rememberMe);
         return { success: true, data: result };
+    }
+
+    // ── Microsoft OAuth ──────────────────────────────────────────
+
+    @Get('microsoft/url')
+    @ApiOperation({ summary: 'Get Microsoft OAuth login URL' })
+    getMicrosoftAuthUrl(@Query('rememberMe') rememberMe?: string) {
+        const state = rememberMe === 'true' ? 'remember' : '';
+        const url = this.microsoftAuth.getAuthUrl(state);
+        return { success: true, data: { url } };
+    }
+
+    @Get('microsoft/callback')
+    @ApiOperation({ summary: 'Microsoft OAuth callback' })
+    async microsoftCallback(
+        @Query('code') code: string,
+        @Query('state') state: string,
+        @Res() res: Response,
+    ) {
+        const dashboardUrl = this.configService.get('DASHBOARD_URL', 'https://admin.parallly-chat.cloud');
+        try {
+            const microsoftUser = await this.microsoftAuth.exchangeCode(code);
+            const result = await this.authService.microsoftLogin(microsoftUser, state === 'remember');
+            const params = new URLSearchParams({
+                accessToken: result.accessToken,
+                refreshToken: result.refreshToken,
+                user: JSON.stringify(result.user),
+            });
+            return res.redirect(`${dashboardUrl}/auth/callback?${params}`);
+        } catch (error: any) {
+            return res.redirect(`${dashboardUrl}/login?error=${encodeURIComponent(error.message || 'Microsoft auth failed')}`);
+        }
     }
 
     @Post('setup-password')

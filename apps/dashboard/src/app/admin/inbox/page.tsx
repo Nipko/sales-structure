@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { useTranslations } from "next-intl";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { io } from "socket.io-client";
@@ -34,15 +35,15 @@ const priorityColors: Record<string, string> = {
     low: "#95a5a6",
 };
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-    handoff: { label: "Handoff", color: "#e74c3c" },
-    open: { label: "Abierta", color: "#2ecc71" },
-    active: { label: "Activa", color: "#2ecc71" },
-    assigned: { label: "Asignada", color: "#3498db" },
-    pending: { label: "Pendiente", color: "#e67e22" },
-    resolved: { label: "Resuelta", color: "#95a5a6" },
-    with_human: { label: "Con agente", color: "#3498db" },
-    waiting_human: { label: "Esperando agente", color: "#e67e22" },
+const STATUS_COLORS: Record<string, string> = {
+    handoff: "#e74c3c", open: "#2ecc71", active: "#2ecc71",
+    assigned: "#3498db", pending: "#e67e22", resolved: "#95a5a6",
+    with_human: "#3498db", waiting_human: "#e67e22",
+};
+const STATUS_I18N_KEYS: Record<string, string> = {
+    handoff: "statusHandoff", open: "statusOpen", active: "statusActive",
+    assigned: "statusAssigned", pending: "statusPending", resolved: "statusResolved",
+    with_human: "statusWithHuman", waiting_human: "statusWaitingHuman",
 };
 
 // ============================================
@@ -115,17 +116,12 @@ function ChannelIcon({ channel, size = 20 }: { channel: string; size?: number })
 // HELPERS
 // ============================================
 
-/** Day abbreviations in Spanish */
-const DAY_ABBR = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-const MONTH_ABBR = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-
-/** Format a date string with smart context: today -> "14:30", yesterday -> "Ayer 14:30",
- *  this week -> "Lun 14:30", older -> "15 Mar 14:30" */
-function formatTime(dateStr: string): string {
+/** Locale-aware date formatting */
+function formatTime(dateStr: string, todayLabel = "Today", yesterdayLabel = "Yesterday"): string {
     try {
         const d = new Date(dateStr);
         if (isNaN(d.getTime())) return "";
-        const time = d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+        const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -133,25 +129,24 @@ function formatTime(dateStr: string): string {
         const diffDays = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
 
         if (diffDays === 0) return time;
-        if (diffDays === 1) return `Ayer ${time}`;
-        if (diffDays < 7) return `${DAY_ABBR[d.getDay()]} ${time}`;
-        return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]} ${time}`;
+        if (diffDays === 1) return `${yesterdayLabel} ${time}`;
+        if (diffDays < 7) return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+        return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${time}`;
     } catch {
         return "";
     }
 }
 
-/** Format a date for the day separator label */
-function formatDateLabel(dateStr: string): string {
+function formatDateLabel(dateStr: string, todayLabel = "Today", yesterdayLabel = "Yesterday"): string {
     try {
         const d = new Date(dateStr);
         const today = new Date();
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
-        if (d.toDateString() === today.toDateString()) return "Hoy";
-        if (d.toDateString() === yesterday.toDateString()) return "Ayer";
-        return d.toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
+        if (d.toDateString() === today.toDateString()) return todayLabel;
+        if (d.toDateString() === yesterday.toDateString()) return yesterdayLabel;
+        return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
     } catch {
         return "";
     }
@@ -185,6 +180,7 @@ const statusDotColor: Record<string, string> = {
 export default function InboxPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
+    const t = useTranslations("inbox");
     const [filter, setFilter] = useState<InboxFilter>("all");
     const [conversations, setConversations] = useState<any[]>([]);
     const [selectedConv, setSelectedConv] = useState<any>(null);
@@ -799,9 +795,9 @@ export default function InboxPage() {
                     {/* Filter pills */}
                     <div className="flex gap-1.5 mb-3 flex-wrap">
                         {([
-                            { key: "all" as const, label: "Todos" },
-                            { key: "mine" as const, label: "Mios" },
-                            { key: "unassigned" as const, label: "Sin asignar" },
+                            { key: "all" as const, label: t("filterAll") },
+                            { key: "mine" as const, label: t("filterMine") },
+                            { key: "unassigned" as const, label: t("filterUnassigned") },
                             { key: "handoff" as const, label: "Handoff" },
                         ]).map(f => (
                             <button
@@ -825,7 +821,7 @@ export default function InboxPage() {
                         <input
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="Buscar conversaciones..."
+                            placeholder={t("searchPlaceholder")}
                             className="w-full py-2 px-3 pl-9 rounded-xl border border-border bg-muted/50 text-foreground text-[13px] outline-none focus:border-indigo-500/50 transition-colors"
                         />
                     </div>
@@ -937,7 +933,7 @@ export default function InboxPage() {
                     {!loadingConv && filteredConversations.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                             <MessageSquare size={32} className="opacity-20" />
-                            <span className="text-sm">Sin conversaciones</span>
+                            <span className="text-sm">{t("noConversations")}</span>
                         </div>
                     )}
                 </div>
@@ -968,11 +964,11 @@ export default function InboxPage() {
                                         <span
                                             className="text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0"
                                             style={{
-                                                background: `${(statusLabels[selectedConv.status]?.color || '#95a5a6')}18`,
-                                                color: statusLabels[selectedConv.status]?.color || '#95a5a6',
+                                                background: `${(STATUS_COLORS[selectedConv.status] || '#95a5a6')}18`,
+                                                color: STATUS_COLORS[selectedConv.status] || '#95a5a6',
                                             }}
                                         >
-                                            {statusLabels[selectedConv.status]?.label || selectedConv.status}
+                                            {t(STATUS_I18N_KEYS[selectedConv.status] || selectedConv.status)}
                                         </span>
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
@@ -1029,7 +1025,7 @@ export default function InboxPage() {
                                 >
                                     {assignLoading
                                         ? <><Loader2 size={14} className="animate-spin" /> Asignando...</>
-                                        : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? 'Reasignar a mi' : 'Asignarme'}</>
+                                        : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? t('reassignToMe') : t('assignToMe')}</>
                                     }
                                 </button>
                                 {/* Snooze Button */}
@@ -1050,8 +1046,8 @@ export default function InboxPage() {
                                             {[
                                                 { key: "1h", label: "1 hora" },
                                                 { key: "3h", label: "3 horas" },
-                                                { key: "tomorrow", label: "Manana 9am" },
-                                                { key: "monday", label: "Proximo lunes" },
+                                                { key: "tomorrow", label: t("snoozeTomorrow") },
+                                                { key: "monday", label: t("snoozeMonday") },
                                             ].map(opt => (
                                                 <button
                                                     key={opt.key}
@@ -1253,13 +1249,13 @@ export default function InboxPage() {
                                         <div className="text-[10px] text-muted-foreground mt-1.5">-- {note.agentName}, {note.createdAt}</div>
                                     </div>
                                 )) : (
-                                    <div className="text-xs text-muted-foreground opacity-60">No hay notas para esta conversacion</div>
+                                    <div className="text-xs text-muted-foreground opacity-60">{t("noNotes")}</div>
                                 )}
                                 <div className="flex gap-2 mt-2.5">
                                     <input
                                         value={noteInput}
                                         onChange={e => setNoteInput(e.target.value)}
-                                        placeholder="Agregar nota interna..."
+                                        placeholder={t("addNotePlaceholder")}
                                         className="flex-1 py-2 px-3 rounded-xl border border-border bg-muted/50 text-foreground text-xs outline-none focus:border-amber-500/50 transition-colors"
                                     />
                                     <button
@@ -1323,7 +1319,7 @@ export default function InboxPage() {
                                     onChange={e => handleMessageInputChange(e.target.value)}
                                     onKeyDown={handleInputKeyDown}
                                     onBlur={() => { setTimeout(() => setShowCannedMenu(false), 150); }}
-                                    placeholder="Escribe un mensaje... (/ para respuestas rapidas)"
+                                    placeholder={t("messagePlaceholder")}
                                     className="w-full py-2.5 px-4 rounded-xl border border-border bg-muted/50 text-foreground text-sm outline-none focus:border-indigo-500/50 transition-colors"
                                 />
                             </div>
@@ -1343,7 +1339,7 @@ export default function InboxPage() {
                         <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
                             <MessageSquare size={28} className="opacity-30" />
                         </div>
-                        <span className="text-sm">Selecciona una conversacion para ver los mensajes</span>
+                        <span className="text-sm">{t("selectConversation")}</span>
                     </div>
                 )}
             </div>
@@ -1362,15 +1358,15 @@ export default function InboxPage() {
                                 <span
                                     className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
                                     style={{
-                                        background: `${statusLabels[selectedConv.status]?.color || '#95a5a6'}15`,
-                                        color: statusLabels[selectedConv.status]?.color || '#95a5a6',
+                                        background: `${STATUS_COLORS[selectedConv.status] || '#95a5a6'}15`,
+                                        color: STATUS_COLORS[selectedConv.status] || '#95a5a6',
                                     }}
                                 >
                                     <span
                                         className="w-1.5 h-1.5 rounded-full"
-                                        style={{ background: statusLabels[selectedConv.status]?.color || '#95a5a6' }}
+                                        style={{ background: STATUS_COLORS[selectedConv.status] || '#95a5a6' }}
                                     />
-                                    {statusLabels[selectedConv.status]?.label || selectedConv.status}
+                                    {t(STATUS_I18N_KEYS[selectedConv.status] || selectedConv.status)}
                                 </span>
                             </div>
                         </div>
@@ -1385,7 +1381,7 @@ export default function InboxPage() {
                                         <button
                                             onClick={() => navigator.clipboard.writeText(selectedConv.contactPhone)}
                                             className="ml-auto bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer p-0.5 flex-shrink-0"
-                                            title="Copiar telefono"
+                                            title={t("copyPhone")}
                                         >
                                             <ExternalLink size={12} />
                                         </button>
@@ -1427,7 +1423,7 @@ export default function InboxPage() {
                                     <div>
                                         <div className="text-[13px] font-medium">{selectedConv.assignedAgentName}</div>
                                         {selectedConv.assignedAgentId === user?.id && (
-                                            <div className="text-[10px] text-indigo-500 font-medium">Tu</div>
+                                            <div className="text-[10px] text-indigo-500 font-medium">{t("you")}</div>
                                         )}
                                     </div>
                                 </div>
@@ -1457,7 +1453,7 @@ export default function InboxPage() {
                         {/* Estimated Value */}
                         {selectedConv.estimatedValue > 0 && (
                             <div className="p-3.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15 mb-4">
-                                <div className="text-[11px] text-muted-foreground mb-1">Valor estimado</div>
+                                <div className="text-[11px] text-muted-foreground mb-1">{t("estimatedValue")}</div>
                                 <div className="text-xl font-bold text-emerald-500">
                                     ${selectedConv.estimatedValue.toLocaleString()} COP
                                 </div>
@@ -1466,7 +1462,7 @@ export default function InboxPage() {
 
                         {/* Conversation Metadata */}
                         <div className="rounded-xl border border-border bg-muted/30 p-3.5 mb-4">
-                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Conversacion</div>
+                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">{t("conversation")}</div>
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <Clock size={13} className="text-muted-foreground flex-shrink-0" />
@@ -1495,11 +1491,11 @@ export default function InboxPage() {
                                 <Edit2 size={12} /> Informacion adicional
                             </div>
                             <div className="flex flex-col gap-2.5">
-                                {/* Empresa */}
+                                {/* {t("company")} */}
                                 <div className="flex items-start gap-2.5 text-[13px]">
                                     <Building2 size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] text-muted-foreground mb-0.5">Empresa</div>
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">{t("company")}</div>
                                         {editingField === 'empresa' ? (
                                             <input
                                                 autoFocus
@@ -1514,17 +1510,17 @@ export default function InboxPage() {
                                                 onClick={() => setEditingField('empresa')}
                                                 className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
                                             >
-                                                {contactMeta.empresa || <span className="text-muted-foreground opacity-50 italic">Agregar empresa...</span>}
+                                                {contactMeta.empresa || <span className="text-muted-foreground opacity-50 italic">{t("addCompany")}</span>}
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Ciudad */}
+                                {/* {t("city")} */}
                                 <div className="flex items-start gap-2.5 text-[13px]">
                                     <MapPin size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] text-muted-foreground mb-0.5">Ciudad</div>
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">{t("city")}</div>
                                         {editingField === 'ciudad' ? (
                                             <input
                                                 autoFocus
@@ -1539,17 +1535,17 @@ export default function InboxPage() {
                                                 onClick={() => setEditingField('ciudad')}
                                                 className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
                                             >
-                                                {contactMeta.ciudad || <span className="text-muted-foreground opacity-50 italic">Agregar ciudad...</span>}
+                                                {contactMeta.ciudad || <span className="text-muted-foreground opacity-50 italic">{t("addCity")}</span>}
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Sitio web */}
+                                {/* {t("website")} */}
                                 <div className="flex items-start gap-2.5 text-[13px]">
                                     <Globe size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] text-muted-foreground mb-0.5">Sitio web</div>
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">{t("website")}</div>
                                         {editingField === 'sitio_web' ? (
                                             <input
                                                 autoFocus
@@ -1577,17 +1573,17 @@ export default function InboxPage() {
                                                 onClick={() => setEditingField('sitio_web')}
                                                 className="text-xs cursor-pointer hover:text-indigo-400 transition-colors"
                                             >
-                                                <span className="text-muted-foreground opacity-50 italic">Agregar sitio web...</span>
+                                                <span className="text-muted-foreground opacity-50 italic">{t("addWebsite")}</span>
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Redes sociales */}
+                                {/* {t("socialNetworks")} */}
                                 <div className="flex items-start gap-2.5 text-[13px]">
                                     <Hash size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] text-muted-foreground mb-1.5">Redes sociales</div>
+                                        <div className="text-[10px] text-muted-foreground mb-1.5">{t("socialNetworks")}</div>
                                         <div className="flex gap-2">
                                             {/* Instagram */}
                                             <div className="relative group/social">
@@ -1671,15 +1667,15 @@ export default function InboxPage() {
                                     </div>
                                 </div>
 
-                                {/* Notas rapidas */}
+                                {/* {t("quickNotes")} */}
                                 <div className="flex items-start gap-2.5 text-[13px]">
                                     <StickyNote size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] text-muted-foreground mb-0.5">Notas rapidas</div>
+                                        <div className="text-[10px] text-muted-foreground mb-0.5">{t("quickNotes")}</div>
                                         <textarea
                                             value={contactMeta.notas_rapidas || ''}
                                             onChange={e => updateContactMeta('notas_rapidas', e.target.value)}
-                                            placeholder="Escribir nota sobre este contacto..."
+                                            placeholder={t("writeNotePlaceholder")}
                                             rows={2}
                                             className="w-full py-1.5 px-2.5 rounded-lg border border-border bg-muted/50 text-foreground text-xs outline-none resize-none focus:border-indigo-500/50 transition-colors"
                                         />
@@ -1737,7 +1733,7 @@ export default function InboxPage() {
                                                             onClick={() => setEditingField(`custom_${key}`)}
                                                             className="text-xs cursor-pointer hover:text-indigo-400 transition-colors truncate"
                                                         >
-                                                            {value || <span className="text-muted-foreground opacity-50 italic">Sin valor</span>}
+                                                            {value || <span className="text-muted-foreground opacity-50 italic">{t("noValue")}</span>}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1772,7 +1768,7 @@ export default function InboxPage() {
                     </div>
                 ) : (
                     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                        <span className="opacity-50">Selecciona una conversacion</span>
+                        <span className="opacity-50">{t("selectConversation")}</span>
                     </div>
                 )}
             </div>

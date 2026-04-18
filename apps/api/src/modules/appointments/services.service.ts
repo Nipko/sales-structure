@@ -83,6 +83,56 @@ export class ServicesService {
         );
     }
 
+    // ── Service-Staff Assignment ────────────────────────────────
+
+    async getStaff(schemaName: string, serviceId: string): Promise<any[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT ss.id, ss.user_id, ss.is_primary, ss.sort_order,
+                    u.first_name, u.last_name, u.email
+             FROM service_staff ss
+             JOIN public.users u ON u.id = ss.user_id
+             WHERE ss.service_id = $1::uuid
+             ORDER BY ss.sort_order ASC, u.first_name ASC`,
+            [serviceId],
+        );
+        return (rows || []).map(r => ({
+            id: r.id,
+            userId: r.user_id,
+            isPrimary: r.is_primary,
+            sortOrder: r.sort_order,
+            firstName: r.first_name,
+            lastName: r.last_name,
+            email: r.email,
+        }));
+    }
+
+    async assignStaff(schemaName: string, serviceId: string, userId: string, isPrimary = false): Promise<void> {
+        const id = randomUUID();
+        await this.prisma.executeInTenantSchema(schemaName,
+            `INSERT INTO service_staff (id, service_id, user_id, is_primary)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
+             ON CONFLICT (service_id, user_id) DO UPDATE SET is_primary = $4`,
+            [id, serviceId, userId, isPrimary],
+        );
+    }
+
+    async removeStaff(schemaName: string, serviceId: string, userId: string): Promise<void> {
+        await this.prisma.executeInTenantSchema(schemaName,
+            `DELETE FROM service_staff WHERE service_id = $1::uuid AND user_id = $2::uuid`,
+            [serviceId, userId],
+        );
+    }
+
+    // ── Public: list active services by tenant slug ─────────────
+
+    async listPublicBySlug(tenantSlug: string): Promise<BookableService[]> {
+        const tenant = await this.prisma.$queryRaw<any[]>`
+            SELECT schema_name FROM tenants WHERE slug = ${tenantSlug} AND is_active = true LIMIT 1
+        `;
+        if (!tenant?.[0]) return [];
+        return this.list(tenant[0].schema_name, true);
+    }
+
     private mapRow(row: any): BookableService {
         return {
             id: row.id,

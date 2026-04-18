@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { randomUUID } from 'crypto';
 
@@ -40,7 +41,10 @@ export interface BlockedDate {
 export class AppointmentsService {
     private readonly logger = new Logger(AppointmentsService.name);
 
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private eventEmitter: EventEmitter2,
+    ) {}
 
     // ── Appointments CRUD ─────────────────────────────────────
 
@@ -124,7 +128,12 @@ export class AppointmentsService {
         );
 
         this.logger.log(`Appointment created: ${id} — ${data.serviceName} at ${data.startAt}`);
-        return this.getById(schemaName, id);
+        const appointment = await this.getById(schemaName, id);
+
+        // Emit event for WhatsApp confirmation
+        this.eventEmitter.emit('appointment.created', { schemaName, appointment });
+
+        return appointment;
     }
 
     async update(schemaName: string, appointmentId: string, data: {
@@ -157,11 +166,17 @@ export class AppointmentsService {
 
     async cancel(schemaName: string, appointmentId: string, reason?: string): Promise<Appointment> {
         await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE appointments SET status = 'cancelled', notes = COALESCE(notes, '') || $2, updated_at = NOW()
+            `UPDATE appointments SET status = 'cancelled',
+                    cancellation_reason = $2, updated_at = NOW()
              WHERE id = $1::uuid`,
-            [appointmentId, reason ? `\n[Cancelado: ${reason}]` : ''],
+            [appointmentId, reason || null],
         );
-        return this.getById(schemaName, appointmentId);
+        const appointment = await this.getById(schemaName, appointmentId);
+
+        // Emit event for WhatsApp cancellation notification
+        this.eventEmitter.emit('appointment.cancelled', { schemaName, appointment, reason });
+
+        return appointment;
     }
 
     // ── Availability ──────────────────────────────────────────

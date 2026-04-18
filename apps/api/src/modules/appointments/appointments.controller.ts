@@ -52,6 +52,41 @@ export class AppointmentsController {
         return { success: true };
     }
 
+    // ── Service-Staff Assignment ─────────────────────────────────
+
+    @Get(':tenantId/services/:serviceId/staff')
+    @ApiOperation({ summary: 'List staff assigned to a service' })
+    async getServiceStaff(
+        @Param('serviceId') serviceId: string,
+        @CurrentUser() user: any,
+    ) {
+        const data = await this.servicesService.getStaff(user.schemaName, serviceId);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/services/:serviceId/staff')
+    @ApiOperation({ summary: 'Assign staff to a service' })
+    async assignStaff(
+        @Param('serviceId') serviceId: string,
+        @Body() body: { userId: string; isPrimary?: boolean },
+        @CurrentUser() user: any,
+    ) {
+        await this.servicesService.assignStaff(user.schemaName, serviceId, body.userId, body.isPrimary);
+        return { success: true };
+    }
+
+    @Delete(':tenantId/services/:serviceId/staff/:userId')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Remove staff from a service' })
+    async removeStaff(
+        @Param('serviceId') serviceId: string,
+        @Param('userId') userId: string,
+        @CurrentUser() user: any,
+    ) {
+        await this.servicesService.removeStaff(user.schemaName, serviceId, userId);
+        return { success: true };
+    }
+
     // ── Calendar Integrations ────────────────────────────────────
 
     @Get(':tenantId/calendar/integrations')

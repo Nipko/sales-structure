@@ -455,6 +455,14 @@ export const api = {
     deleteService: (tenantId: string, serviceId: string) =>
         apiDelete(`/appointments/${tenantId}/services/${serviceId}`),
 
+    // --- Service-Staff Assignment ---
+    getServiceStaff: (tenantId: string, serviceId: string) =>
+        apiGet(`/appointments/${tenantId}/services/${serviceId}/staff`),
+    assignServiceStaff: (tenantId: string, serviceId: string, userId: string, isPrimary = false) =>
+        apiPost(`/appointments/${tenantId}/services/${serviceId}/staff`, { userId, isPrimary }),
+    removeServiceStaff: (tenantId: string, serviceId: string, userId: string) =>
+        apiDelete(`/appointments/${tenantId}/services/${serviceId}/staff/${userId}`),
+
     // --- Calendar Integrations ---
     getCalendarIntegrations: (tenantId: string) =>
         apiGet(`/appointments/${tenantId}/calendar/integrations`),

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/page-header";
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";

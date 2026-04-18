@@ -6,6 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
+import { TabNav } from "@/components/ui/tab-nav";
 import ConfigTab from "@/components/appointments/ConfigTab";
 import ServicesTab from "@/components/appointments/ServicesTab";
 import CalendarGrid from "@/components/appointments/CalendarGrid";
@@ -638,21 +640,16 @@ export default function AppointmentsPage() {
   return (
     <>
       <div className="max-w-[1400px] mx-auto space-y-6">
-        {/* ── Header ───────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-              {t("title")}
-            </h1>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-              {t("subtitle")}
-            </p>
-          </div>
-          <button onClick={() => openCreateModal()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
-            <Plus size={16} /> {t("newAppointment")}
-          </button>
-        </div>
+        <PageHeader
+          title={t("title")}
+          subtitle={t("subtitle")}
+          action={
+            <button onClick={() => openCreateModal()}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+              <Plus size={16} /> {t("newAppointment")}
+            </button>
+          }
+        />
 
         {/* ── KPI row (compact) ─────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-stagger">
@@ -690,26 +687,7 @@ export default function AppointmentsPage() {
           </div>
         )}
 
-        {/* ── Tab navigation (underline style — Stripe/Cal.com pattern) ─── */}
-        <div className="border-b border-neutral-200 dark:border-neutral-800">
-          <nav className="flex gap-0 -mb-px overflow-x-auto">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap cursor-pointer bg-transparent transition-all duration-150",
-                    isActive
-                      ? "border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100"
-                      : "border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600"
-                  )}>
-                  <Icon size={15} /> {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+        <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as typeof activeTab)} />
 
         {/* ============================================================ */}
         {/*  LOADING STATE                                                */}

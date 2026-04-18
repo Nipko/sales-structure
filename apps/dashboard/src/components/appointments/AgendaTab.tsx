@@ -42,6 +42,15 @@ export default function AgendaTab({
     return list.sort((a, b) => a.startAt.localeCompare(b.startAt));
   }, [appointments, filterStatus, searchQuery, filterStartDate, filterEndDate]);
 
+  // Status counts for badges
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of appointments) {
+      counts[a.status] = (counts[a.status] || 0) + 1;
+    }
+    return counts;
+  }, [appointments]);
+
   return (
     <div className="space-y-4">
       {/* Search & filters */}
@@ -68,21 +77,27 @@ export default function AgendaTab({
             )}
           >
             {t('allStatuses')}
+            <span className="ml-1 text-[10px] opacity-70">{appointments.length}</span>
           </button>
-          {Object.entries(STATUS_CONFIG).map(([key, sc]) => (
-            <button
-              key={key}
-              onClick={() => setFilterStatus(filterStatus === key ? "" : key)}
-              className={cn(
-                "px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
-                filterStatus === key
-                  ? `${sc.twBg} ${sc.twText} border-current`
-                  : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
-              )}
-            >
-              {t(sc.i18nKey)}
-            </button>
-          ))}
+          {Object.entries(STATUS_CONFIG).map(([key, sc]) => {
+            const count = statusCounts[key] || 0;
+            if (count === 0) return null;
+            return (
+              <button
+                key={key}
+                onClick={() => setFilterStatus(filterStatus === key ? "" : key)}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
+                  filterStatus === key
+                    ? `${sc.twBg} ${sc.twText} border-current`
+                    : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                )}
+              >
+                {t(sc.i18nKey)}
+                <span className="ml-1 text-[10px] opacity-70">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

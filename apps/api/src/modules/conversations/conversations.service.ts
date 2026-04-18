@@ -18,6 +18,7 @@ import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { APPOINTMENT_TOOLS, APPOINTMENT_SYSTEM_PROMPT } from './tools/appointment-tools';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -44,6 +45,7 @@ export class ConversationsService {
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
         private complianceService: AnalyticsComplianceService,
+        private analyticsService: AnalyticsService,
     ) {}
 
     /**
@@ -56,6 +58,13 @@ export class ConversationsService {
         // 1. Resolve Contact & Conversation
         const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
+
+        // Track conversation event
+        this.analyticsService.trackEvent({
+            tenantId, eventType: 'conversation_started',
+            conversationId: conversation.id, contactId,
+            data: { channelType },
+        }).catch(() => {});
 
         // Cancel any pending nurturing follow-ups — customer responded
         this.nurturingService.cancelFollowUp(tenantId, conversation.id).catch(e =>
@@ -120,6 +129,11 @@ export class ConversationsService {
         );
         if (handoffReason) {
             this.logger.warn(`HANDOFF TRIGGERED for conversation ${conversation.id}: ${handoffReason}`);
+            this.analyticsService.trackEvent({
+                tenantId, eventType: 'handoff_triggered',
+                conversationId: conversation.id, contactId,
+                data: { reason: handoffReason },
+            }).catch(() => {});
             await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
             const handoffMsg = `Entiendo. Te comunicaré ahora mismo con nuestro equipo de asistencia humana. En un momento te responderán.`;
             await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
@@ -144,6 +158,15 @@ export class ConversationsService {
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
+
+        // Track AI response event
+        if (response) {
+            this.analyticsService.trackEvent({
+                tenantId, eventType: 'message_sent',
+                conversationId: conversation.id, contactId,
+                data: { channelType, responseLength: response.length, source: 'ai' },
+            }).catch(() => {});
+        }
 
         // 7. Send Response via Channel Gateway
         if (response) {

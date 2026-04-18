@@ -419,7 +419,7 @@ export class NurturingService {
         // Create a task for human agent to review
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO tasks (lead_id, title, description, type, status, due_at)
-             VALUES ($1, $2, $3, 'follow_up', 'pending', NOW() + INTERVAL '24 hours')`,
+             VALUES ($1::uuid, $2, $3, 'follow_up', 'pending', NOW() + INTERVAL '24 hours')`,
             [
                 leadId,
                 `Seguimiento manual requerido — sin respuesta`,

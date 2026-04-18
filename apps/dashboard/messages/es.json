@@ -157,10 +157,25 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "welcome": "Bienvenido",
+    "welcome": "Bienvenido, {name} · Vista general de la plataforma",
     "overview": "Vista general",
     "recentActivity": "Actividad reciente",
-    "quickActions": "Acciones rápidas"
+    "quickActions": "Acciones rapidas",
+    "leadsToday": "Leads Hoy",
+    "leadsHot": "Leads Calientes",
+    "messagesProcessed": "Mensajes Procesados",
+    "llmCostToday": "Costo LLM Hoy",
+    "platform": "Plataforma",
+    "tenants": "Tenants",
+    "tenantsDesc": "Gestionar tenants",
+    "users": "Usuarios",
+    "usersDesc": "Gestionar usuarios",
+    "systemHealth": "Salud del sistema",
+    "commercial": "Comercial",
+    "modelUsage": "Uso de modelos",
+    "noActivity": "Sin actividad reciente",
+    "live": "En vivo",
+    "loading": "Cargando..."
   },
   "contacts": {
     "title": "Contactos",

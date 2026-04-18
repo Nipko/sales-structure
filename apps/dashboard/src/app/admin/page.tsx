@@ -14,17 +14,10 @@ import {
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTranslations } from "next-intl";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-// Stat card config (icons + colors only — values come from API)
-const statConfig = [
-    { key: "leadsToday",        label: "Leads Hoy",            icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
-    { key: "leadsHot",          label: "Leads Calientes 🔥",   icon: TrendingUp,    color: "text-emerald-500", bgIcon: "bg-emerald-500/10", suffix: "" },
-    { key: "messagesProcessed", label: "Mensajes Procesados",  icon: Activity,      color: "text-sky-500",     bgIcon: "bg-sky-500/10", suffix: "" },
-    { key: "llmCostToday",      label: "Costo LLM Hoy",        icon: Brain,         color: "text-amber-500",   bgIcon: "bg-amber-500/10", suffix: "$" },
-];
 
 const activityDotColors: Record<string, string> = {
     conversation: "bg-emerald-500",
@@ -42,6 +35,14 @@ const modelBarColors = [
 
 export default function AdminDashboard() {
     const { user } = useAuth();
+    const t = useTranslations("dashboard");
+
+    const statConfig = [
+        { key: "leadsToday",        label: t("leadsToday"),        icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
+        { key: "leadsHot",          label: t("leadsHot"),          icon: TrendingUp,    color: "text-emerald-500", bgIcon: "bg-emerald-500/10", suffix: "" },
+        { key: "messagesProcessed", label: t("messagesProcessed"), icon: Activity,      color: "text-sky-500",     bgIcon: "bg-sky-500/10", suffix: "" },
+        { key: "llmCostToday",      label: t("llmCostToday"),      icon: Brain,         color: "text-amber-500",   bgIcon: "bg-amber-500/10", suffix: "$" },
+    ];
     const [overview, setOverview] = useState<Record<string, number>>({
         leadsToday: 0, leadsHot: 0, messagesProcessed: 0, llmCostToday: 0,
     });
@@ -129,7 +130,7 @@ export default function AdminDashboard() {
                         Dashboard
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        Bienvenido, {user?.firstName || "Admin"} · Vista general de la plataforma
+                        {t("welcome", { name: user?.firstName || "Admin" })}
                     </p>
                 </div>
                 <DataSourceBadge isLive={isLive} />
@@ -138,7 +139,7 @@ export default function AdminDashboard() {
             {/* Platform Section — super_admin only */}
             {user?.role === "super_admin" && (
                 <div className="mb-8">
-                    <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mb-4">Plataforma</h2>
+                    <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mb-4">{t("platform")}</h2>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <Link href="/admin/tenants">
                             <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer">
@@ -209,7 +210,7 @@ export default function AdminDashboard() {
                                         </p>
                                         <p className={cn("mt-2 flex items-center gap-1 text-xs", stat.color)}>
                                             <ArrowUpRight size={14} />
-                                            {isLive ? "En vivo" : "Cargando..."}
+                                            {isLive ? t("live") : t("loading")}
                                         </p>
                                     </div>
                                     <div className={cn("flex h-11 w-11 items-center justify-center rounded-xl", stat.bgIcon)}>
@@ -261,7 +262,7 @@ export default function AdminDashboard() {
                                 </div>
                             )) : (
                                 <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
-                                    No hay actividad reciente disponible
+                                    {t("noActivity")}
                                 </div>
                             )}
                         </div>
@@ -272,7 +273,7 @@ export default function AdminDashboard() {
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
                     <CardHeader>
                         <CardTitle className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                            Distribución de Modelos LLM
+                            {t("modelUsage")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>

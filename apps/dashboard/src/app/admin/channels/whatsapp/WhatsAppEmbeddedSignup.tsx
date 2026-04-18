@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // ============================================
@@ -36,6 +37,7 @@ const META_BUSINESS_ID = process.env.NEXT_PUBLIC_META_BUSINESS_ID || "";
 // Component
 // ============================================
 export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }: EmbeddedSignupProps) {
+    const tc = useTranslations("common");
   const [sdkLoaded, setSdkLoaded] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [processing, setProcessing] = useState(false);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -20,6 +21,7 @@ const defaultConfig = (): PrechatConfig => ({ is_active: false, greeting_message
 const emptyField = (): PrechatField => ({ key: "", label: "", type: "text", required: false, options: "", map_to: "metadata" });
 
 export default function PrechatPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<PrechatConfig>(defaultConfig());
     const [loading, setLoading] = useState(true);
@@ -49,8 +51,8 @@ export default function PrechatPage() {
         try {
             const payload = { is_active: config.is_active, greeting_message: config.greeting_message, fields: config.fields.map(f => ({ key: f.key || toSnakeCase(f.label), label: f.label, type: f.type, required: f.required, options: f.type === "select" ? f.options.split(",").map(o => o.trim()).filter(Boolean) : [], map_to: f.map_to === "metadata" ? `metadata.${f.key || toSnakeCase(f.label)}` : f.map_to })) };
             const res = await api.fetch(`/conversations/prechat-form/${activeTenantId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-            if (res.success) showToast("Configuracion guardada"); else showToast("Error al guardar");
-        } catch { showToast("Error de conexion"); } finally { setSaving(false); }
+            if (res.success) showToast("Configuracion guardada"); else showToast(tc("errorSaving"));
+        } catch { showToast(tc("connectionError")); } finally { setSaving(false); }
     }
 
     if (loading) return <div className="p-8 text-center text-muted-foreground">Cargando...</div>;
@@ -65,7 +67,7 @@ export default function PrechatPage() {
                     <div><h1 className="text-[22px] font-semibold text-foreground m-0">Formulario Pre-Chat</h1><p className="text-[13px] text-muted-foreground m-0">Recopila informacion del cliente antes de la primera respuesta del agente</p></div>
                 </div>
                 <button onClick={handleSave} disabled={saving} className={cn("flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold", saving && "opacity-60 cursor-not-allowed")}>
-                    <Save size={16} /> {saving ? "Guardando..." : "Guardar"}
+                    <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
                 </button>
             </div>
 

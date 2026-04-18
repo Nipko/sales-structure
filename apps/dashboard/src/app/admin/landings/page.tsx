@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 
 export default function LandingsPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const router = useRouter();
 

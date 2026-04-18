@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -32,6 +33,7 @@ const emptyForm = () => ({
 });
 
 export default function SegmentsPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ export default function SegmentsPage() {
             const res = await api.createSegment(activeTenantId, form);
             if (res.success) { showToast("Segmento creado"); setModalOpen(false); loadSegments(); }
             else showToast(res.error || "Error al crear segmento");
-        } catch { showToast("Error de conexion"); }
+        } catch { showToast(tc("connectionError")); }
     }
 
     async function viewSegmentContacts(segment: Segment) {

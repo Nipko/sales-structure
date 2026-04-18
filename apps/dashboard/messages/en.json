@@ -21,7 +21,15 @@
     "pending": "Pending",
     "error": "Error",
     "success": "Success",
-    "poweredBy": "Powered by"
+    "poweredBy": "Powered by",
+    "saving": "Saving...",
+    "saved": "Saved!",
+    "saveChanges": "Save changes",
+    "errorSaving": "Error saving",
+    "connectionError": "Connection error",
+    "noData": "No data available",
+    "deleteConfirm": "Are you sure you want to delete?",
+    "select": "Select..."
   },
   "nav": {
     "sections": {

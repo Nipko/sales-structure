@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -17,6 +18,7 @@ import {
 const BRAND_COLOR = "#0084FF";
 
 export default function MessengerSetupPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
     const [status, setStatus] = useState<any>(null);

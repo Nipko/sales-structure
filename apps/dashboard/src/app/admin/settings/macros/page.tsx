@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -17,6 +18,7 @@ const labelCls = "block text-xs font-semibold text-muted-foreground mb-1";
 const emptyForm = () => ({ name: "", description: "", visibility: "personal", actions: [{ type: "assign", config: {} }] as MacroAction[] });
 
 export default function MacrosPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [macros, setMacros] = useState<Macro[]>([]);
     const [loading, setLoading] = useState(true);
@@ -39,8 +41,8 @@ export default function MacrosPage() {
         if (!activeTenantId || !form.name.trim()) return;
         try {
             const res = editingId ? await api.updateMacro(activeTenantId, editingId, form) : await api.createMacro(activeTenantId, form);
-            if (res.success) { showToast(editingId ? "Macro actualizada" : "Macro creada"); setModalOpen(false); loadMacros(); } else showToast(res.error || "Error al guardar");
-        } catch { showToast("Error de conexion"); }
+            if (res.success) { showToast(editingId ? "Macro actualizada" : "Macro creada"); setModalOpen(false); loadMacros(); } else showToast(res.error || tc("errorSaving"));
+        } catch { showToast(tc("connectionError")); }
     }
     async function handleDelete(id: string) { if (!activeTenantId || !confirm("Eliminar esta macro?")) return; try { await api.fetch(`/agent-console/macros/${activeTenantId}/${id}`, { method: "DELETE" }); showToast("Macro eliminada"); loadMacros(); } catch { showToast("Error al eliminar"); } }
 
@@ -129,7 +131,7 @@ export default function MacrosPage() {
                         </div>
                         <div className="flex justify-end gap-2.5 mt-6">
                             <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-lg bg-transparent border border-border text-muted-foreground cursor-pointer text-sm">Cancelar</button>
-                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? "Guardar" : "Crear"}</span></button>
+                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? tc("saveChanges") : "Crear"}</span></button>
                         </div>
                     </div>
                 </div>

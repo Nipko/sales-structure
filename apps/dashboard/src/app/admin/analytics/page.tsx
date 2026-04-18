@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -17,6 +18,7 @@ const stageColors: Record<string, string> = {
 };
 
 export default function AnalyticsV4Page() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [overview, setOverview] = useState<any>(null);
     const [funnel, setFunnel] = useState<any[]>([]);

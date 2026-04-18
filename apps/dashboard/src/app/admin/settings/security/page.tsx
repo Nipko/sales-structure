@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle } from "lucide-react";
 
 export default function SecurityPage() {
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const isGoogleOnly = !(user as any)?.hasPassword;
 
@@ -52,7 +54,7 @@ export default function SecurityPage() {
                 setError(result.error || "Error al cambiar la contraseña");
             }
         } catch {
-            setError("Error de conexión");
+            setError(tc("connectionError"));
         }
         setSaving(false);
     };

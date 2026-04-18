@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -17,6 +18,7 @@ import {
 const BRAND_COLOR = "#E4405F";
 
 export default function InstagramSetupPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
     const [status, setStatus] = useState<any>(null);

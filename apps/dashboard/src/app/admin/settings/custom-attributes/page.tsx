@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -18,6 +19,7 @@ function toSnakeCase(str: string): string { return str.toLowerCase().normalize("
 const emptyForm = () => ({ entity_type: "contact", attribute_key: "", label: "", data_type: "text", options: "", is_required: false });
 
 export default function CustomAttributesPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [attributes, setAttributes] = useState<CustomAttribute[]>([]);
     const [loading, setLoading] = useState(true);
@@ -40,8 +42,8 @@ export default function CustomAttributesPage() {
         const payload: any = { entity_type: form.entity_type, attribute_key: form.attribute_key || toSnakeCase(form.label), label: form.label, data_type: form.data_type, is_required: form.is_required, options: form.data_type === "list" ? form.options.split(",").map(o => o.trim()).filter(Boolean) : null };
         try {
             const res = editingId ? await api.updateCustomAttribute(activeTenantId, editingId, payload) : await api.createCustomAttribute(activeTenantId, payload);
-            if (res.success) { showToast(editingId ? "Atributo actualizado" : "Atributo creado"); setModalOpen(false); loadAttributes(); } else { showToast(res.error || "Error al guardar"); }
-        } catch { showToast("Error de conexion"); }
+            if (res.success) { showToast(editingId ? "Atributo actualizado" : "Atributo creado"); setModalOpen(false); loadAttributes(); } else { showToast(res.error || tc("errorSaving")); }
+        } catch { showToast(tc("connectionError")); }
     }
 
     async function handleDelete(id: string) { if (!activeTenantId) return; if (!confirm("Eliminar este atributo personalizado?")) return; try { await api.fetch(`/crm/custom-attributes/${activeTenantId}/${id}`, { method: "DELETE" }); showToast("Atributo eliminado"); loadAttributes(); } catch { showToast("Error al eliminar"); } }
@@ -116,7 +118,7 @@ export default function CustomAttributesPage() {
                         </div>
                         <div className="flex justify-end gap-2.5 mt-6">
                             <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-lg bg-transparent border border-border text-muted-foreground cursor-pointer text-sm">Cancelar</button>
-                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? "Guardar" : "Crear"}</span></button>
+                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? tc("saveChanges") : "Crear"}</span></button>
                         </div>
                     </div>
                 </div>

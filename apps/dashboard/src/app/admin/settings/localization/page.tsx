@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -57,6 +58,7 @@ const WEEK_STARTS = [
 ];
 
 export default function LocalizationPage() {
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [form, setForm] = useState({
@@ -112,10 +114,10 @@ export default function LocalizationPage() {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 3000);
             } else {
-                setError(result.error || "Error al guardar");
+                setError(result.error || tc("errorSaving"));
             }
         } catch {
-            setError("Error de conexión");
+            setError(tc("connectionError"));
         }
         setSaving(false);
     };
@@ -210,7 +212,7 @@ export default function LocalizationPage() {
                     )}
                 >
                     {saved ? <CheckCircle size={16} /> : <Save size={16} />}
-                    {saving ? "Guardando..." : saved ? "Guardado" : "Guardar cambios"}
+                    {saving ? tc("saving") : saved ? tc("saved") : tc("saveChanges")}
                 </button>
             </div>
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 
 export default function CoursesPage() {
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [courses, setCourses] = useState<any[]>([]);
     const [showModal, setShowModal] = useState(false);
@@ -154,7 +156,7 @@ export default function CoursesPage() {
                         </div>
                         <div className="flex gap-2.5 mt-5">
                             <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
-                            <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? "Guardando..." : "Crear Curso"}</button>
+                            <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : "Crear Curso"}</button>
                         </div>
                     </div>
                 </div>

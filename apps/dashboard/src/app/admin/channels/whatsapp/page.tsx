@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ import {
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 
 export default function WhatsAppSetupPage() {
+    const tc = useTranslations("common");
     const [status, setStatus] = useState<any>(null);
     const [templates, setTemplates] = useState<any[]>([]);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);

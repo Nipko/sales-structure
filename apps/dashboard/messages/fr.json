@@ -21,7 +21,15 @@
     "pending": "En attente",
     "error": "Erreur",
     "success": "Succès",
-    "poweredBy": "Powered by"
+    "poweredBy": "Powered by",
+    "saving": "Enregistrement...",
+    "saved": "Enregistre!",
+    "saveChanges": "Enregistrer",
+    "errorSaving": "Erreur lors de l'enregistrement",
+    "connectionError": "Erreur de connexion",
+    "noData": "Aucune donnee disponible",
+    "deleteConfirm": "Etes-vous sur de vouloir supprimer?",
+    "select": "Selectionner..."
   },
   "nav": {
     "sections": {

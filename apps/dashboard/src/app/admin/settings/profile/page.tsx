@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -7,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { User, Mail, Phone, Briefcase, Save, CheckCircle, AlertCircle } from "lucide-react";
 
 export default function ProfilePage() {
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const [form, setForm] = useState({
         firstName: "",
@@ -53,10 +55,10 @@ export default function ProfilePage() {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 3000);
             } else {
-                setError(result.error || "Error al guardar");
+                setError(result.error || tc("errorSaving"));
             }
         } catch {
-            setError("Error de conexión");
+            setError(tc("connectionError"));
         }
         setSaving(false);
     };
@@ -194,7 +196,7 @@ export default function ProfilePage() {
                     )}
                 >
                     {saved ? <CheckCircle size={16} /> : <Save size={16} />}
-                    {saving ? "Guardando..." : saved ? "Guardado" : "Guardar cambios"}
+                    {saving ? tc("saving") : saved ? tc("saved") : tc("saveChanges")}
                 </button>
             </div>
         </div>

@@ -42,7 +42,7 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
     return (
         <button onClick={(e) => { e.stopPropagation(); onChange(); }}
             className={cn("w-10 h-[22px] rounded-full relative transition-colors cursor-pointer border-none flex-shrink-0",
-                enabled ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-600")}>
+                enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600")}>
             <span className={cn("absolute top-[3px] w-4 h-4 rounded-full bg-white transition-transform shadow-sm",
                 enabled ? "left-[22px]" : "left-[3px]")} />
         </button>
@@ -156,15 +156,15 @@ export default function ServicesTab({
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             placeholder={t("searchAppointments")}
-                            className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
                     </div>
-                    <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+                    <div className="flex gap-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
                         {(["all", "active", "inactive"] as const).map(f => (
                             <button key={f} onClick={() => setFilterActive(f)}
                                 className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border-none",
                                     filterActive === f
-                                        ? "bg-white dark:bg-gray-900 text-foreground shadow-sm"
+                                        ? "bg-white dark:bg-neutral-900 text-foreground shadow-sm"
                                         : "text-muted-foreground hover:text-foreground bg-transparent")}>
                                 {f === "all" ? t("servicesSection.all") : f === "active" ? t("servicesSection.active") : t("servicesSection.inactive")}
                             </button>
@@ -175,9 +175,9 @@ export default function ServicesTab({
 
             {/* Empty state */}
             {services.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-                    <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-                        <Tag size={28} className="text-gray-400" />
+                <div className="flex flex-col items-center justify-center py-16 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                    <div className="w-16 h-16 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
+                        <Tag size={28} className="text-neutral-400" />
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">{t("servicesSection.noServices")}</p>
                     <button onClick={onCreateService}
@@ -193,7 +193,7 @@ export default function ServicesTab({
                     {filtered.map(svc => (
                         <div key={svc.id}
                             className={cn(
-                                "relative rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-lg transition-all group",
+                                "relative rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg transition-all group",
                                 !svc.active && "opacity-60"
                             )}>
                             {/* Color top bar */}
@@ -216,7 +216,7 @@ export default function ServicesTab({
                                             <CheckCircle2 size={12} /> {t("servicesSection.active")}
                                         </span>
                                     ) : (
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400">
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-400">
                                             <XCircle size={12} /> {t("servicesSection.inactive")}
                                         </span>
                                     )}
@@ -224,32 +224,32 @@ export default function ServicesTab({
 
                                 {/* Info badges */}
                                 <div className="flex flex-wrap gap-2 mb-4">
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-muted-foreground text-xs font-medium">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
                                         <Timer size={12} /> {svc.duration} {t("minutes")}
                                     </span>
                                     {svc.buffer > 0 && (
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-muted-foreground text-xs font-medium">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
                                             <Clock size={12} /> +{svc.buffer} min
                                         </span>
                                     )}
                                     {svc.price > 0 && (
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-muted-foreground text-xs font-medium">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
                                             <DollarSign size={12} /> ${svc.price.toLocaleString(numLocale)}
                                         </span>
                                     )}
                                 </div>
 
                                 {/* Actions */}
-                                <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                                <div className="flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
                                     <button onClick={() => onEditService(svc)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent">
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent">
                                         <Pencil size={13} /> {t("editAppointment").split(" ")[0]}
                                     </button>
                                     <button onClick={() => handleToggleStaff(svc.id)}
                                         className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border-none bg-transparent",
                                             expandedStaff === svc.id
                                                 ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10"
-                                                : "text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800"
                                         )}>
                                         <Users size={13} /> Staff
                                         <ChevronDown size={12} className={cn("transition-transform", expandedStaff === svc.id && "rotate-180")} />
@@ -262,15 +262,15 @@ export default function ServicesTab({
 
                                 {/* Staff panel */}
                                 {expandedStaff === svc.id && (
-                                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                                    <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-2">
                                         {loadingStaff ? (
                                             <div className="text-xs text-muted-foreground text-center py-2">Loading...</div>
                                         ) : (
                                             <>
                                                 {(staffMap[svc.id] || []).map(staff => (
-                                                    <div key={staff.userId} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+                                                    <div key={staff.userId} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800">
                                                         <div className="flex items-center gap-2">
-                                                            <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                                                            <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
                                                                 {(staff.firstName?.[0] || '').toUpperCase()}
                                                             </div>
                                                             <span className="text-xs font-medium text-foreground">
@@ -300,7 +300,7 @@ export default function ServicesTab({
                                                         <select
                                                             onChange={e => { if (e.target.value) { handleAssignStaff(svc.id, e.target.value); e.target.value = ''; } }}
                                                             defaultValue=""
-                                                            className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 text-xs text-muted-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                                                            className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-neutral-900 border border-dashed border-neutral-300 dark:border-neutral-700 text-xs text-muted-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
                                                         >
                                                             <option value="">
                                                                 + Add staff member...

@@ -627,130 +627,89 @@ export default function AppointmentsPage() {
   /*  RENDER                                                           */
   /* ================================================================ */
 
-  const navItems = [
-    { id: "calendar" as const, label: t("calendar"), desc: t("subtitle"), icon: CalendarDays, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
-    { id: "agenda" as const, label: t("agenda"), desc: t("searchAppointments"), icon: List, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
-    { id: "services" as const, label: t("servicesSection.title"), desc: t("servicesSection.subtitle"), icon: Tag, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
-    { id: "config" as const, label: t("configSection.title"), desc: t("configSection.schedule"), icon: Settings, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
-    { id: "analytics" as const, label: t("analyticsTab"), desc: t("analyticsTitle"), icon: BarChart3, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+  const tabs = [
+    { id: "calendar" as const, label: t("calendar"), icon: CalendarDays },
+    { id: "agenda" as const, label: t("agenda"), icon: List },
+    { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
+    { id: "config" as const, label: t("configSection.title"), icon: Settings },
+    { id: "analytics" as const, label: t("analyticsTab"), icon: BarChart3 },
   ];
 
   return (
     <>
-      <div className="max-w-[1400px] mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        {/* ── Header ───────────────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-500/10">
-                <CalendarDays size={24} className="text-indigo-500" />
-              </div>
+            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
               {t("title")}
             </h1>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 ml-[52px]">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
               {t("subtitle")}
             </p>
           </div>
           <button onClick={() => openCreateModal()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-indigo-500 text-white font-semibold text-sm cursor-pointer hover:bg-indigo-600 transition-colors shadow-sm">
-            <Plus size={18} /> {t("newAppointment")}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 active:scale-[0.97] transition-all duration-150">
+            <Plus size={16} /> {t("newAppointment")}
           </button>
         </div>
 
-        {/* Two-column layout: sidebar nav + content */}
-        <div className="flex gap-6">
-          {/* Left sidebar navigation */}
-          <div className="hidden lg:flex flex-col w-[260px] shrink-0 space-y-2">
-            {/* Nav items */}
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button key={item.id} onClick={() => setActiveTab(item.id)}
-                  className={cn(
-                    "group flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-all cursor-pointer border",
-                    isActive
-                      ? "border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 shadow-sm"
-                      : "border-transparent hover:border-neutral-200 dark:hover:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-900 bg-transparent"
-                  )}>
-                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", item.iconBg)}>
-                    <Icon size={18} className={item.iconColor} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className={cn("text-sm font-semibold", isActive ? "text-indigo-700 dark:text-indigo-300" : "text-neutral-700 dark:text-neutral-200")}>
-                      {item.label}
-                    </div>
-                    <div className="text-[11px] text-neutral-400 dark:text-neutral-500 truncate">
-                      {item.desc}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-
-            {/* KPI summary in sidebar */}
-            <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800 space-y-2">
-              {[
-                { label: t("status.pending"), value: kpis.pending, color: "text-amber-500" },
-                { label: t("status.confirmed"), value: kpis.confirmed, color: "text-emerald-500" },
-                { label: t("status.completed"), value: kpis.completed, color: "text-blue-500" },
-              ].map(k => (
-                <div key={k.label} className="flex items-center justify-between px-3 py-1.5">
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">{k.label}</span>
-                  <span className={cn("text-sm font-bold", k.color)}>{k.value}</span>
-                </div>
-              ))}
-              <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800/50">
-                <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{t("total")} {t("thisWeek")}</span>
-                <span className="text-sm font-bold text-neutral-900 dark:text-white">{kpis.total}</span>
-              </div>
+        {/* ── KPI row (compact) ─────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: t("status.pending"), value: kpis.pending, color: "text-amber-500" },
+            { label: t("status.confirmed"), value: kpis.confirmed, color: "text-emerald-500" },
+            { label: t("status.completed"), value: kpis.completed, color: "text-blue-500" },
+            { label: `${t("total")} ${t("thisWeek")}`, value: kpis.total, color: "text-neutral-900 dark:text-neutral-100" },
+          ].map(k => (
+            <div key={k.label} className="flex items-center justify-between px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">{k.label}</span>
+              <span className={cn("text-lg font-semibold tabular-nums", k.color)}>{k.value}</span>
             </div>
+          ))}
+        </div>
 
-            {/* Calendar sync status */}
-            {calendarIntegrations.length > 0 && (
-              <div className="mt-2 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('synced')}</span>
-                </div>
-                {calendarIntegrations.map((cal: any) => (
-                  <span key={cal.id} className="block text-[11px] text-emerald-600 dark:text-emerald-400 truncate">
-                    {cal.provider === 'microsoft' ? 'Outlook' : 'Google'}: {cal.account_email || cal.accountEmail || t('connected')}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {calendarIntegrations.length === 0 && (
-              <div className="mt-2 space-y-1.5">
-                <button onClick={() => handleConnectCalendar("google")} disabled={connectingCalendar}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 bg-transparent text-xs text-neutral-500 dark:text-neutral-400 cursor-pointer hover:border-indigo-400 hover:text-indigo-500 transition-colors disabled:opacity-50">
-                  <GoogleIcon size={14} /> {t('syncCalendar')}
-                </button>
-              </div>
-            )}
+        {/* ── Calendar sync banner (minimal) ──────────────────── */}
+        {calendarIntegrations.length > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-500/5">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs text-emerald-700 dark:text-emerald-400">
+              {calendarIntegrations.map((cal: any) => `${cal.provider === 'microsoft' ? 'Outlook' : 'Google'}: ${cal.account_email || t('connected')}`).join(' · ')}
+            </span>
           </div>
+        )}
 
-          {/* Mobile nav (horizontal) */}
-          <div className="flex lg:hidden gap-1 p-1.5 bg-neutral-100 dark:bg-neutral-800/60 rounded-xl w-full overflow-x-auto mb-4">
-            {navItems.map((item) => {
-              const Icon = item.icon;
+        {calendarIntegrations.length === 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700">
+            <Link2 size={14} className="text-neutral-400" />
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-1">{t('syncCalendarDesc')}</span>
+            <button onClick={() => handleConnectCalendar("google")} disabled={connectingCalendar}
+              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 cursor-pointer bg-transparent border-none hover:underline disabled:opacity-50">
+              {t('syncCalendar')}
+            </button>
+          </div>
+        )}
+
+        {/* ── Tab navigation (underline style — Stripe/Cal.com pattern) ─── */}
+        <div className="border-b border-neutral-200 dark:border-neutral-800">
+          <nav className="flex gap-0 -mb-px overflow-x-auto">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
               return (
-                <button key={item.id} onClick={() => setActiveTab(item.id)}
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer border-none whitespace-nowrap",
-                    activeTab === item.id
-                      ? "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm"
-                      : "text-neutral-500 dark:text-neutral-400 bg-transparent"
+                    "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap cursor-pointer bg-transparent transition-all duration-150",
+                    isActive
+                      ? "border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100"
+                      : "border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600"
                   )}>
-                  <Icon size={14} /> {item.label}
+                  <Icon size={15} /> {tab.label}
                 </button>
               );
             })}
-          </div>
-
-          {/* Main content area */}
-          <div className="flex-1 min-w-0 space-y-4">
+          </nav>
+        </div>
 
         {/* ============================================================ */}
         {/*  LOADING STATE                                                */}
@@ -831,8 +790,6 @@ export default function AppointmentsPage() {
         {activeTab === "analytics" && activeTenantId && (
           <AnalyticsTab activeTenantId={activeTenantId} />
         )}
-          </div>{/* end content area */}
-        </div>{/* end flex two-column */}
       </div>{/* end max-w */}
 
       {/* MODAL: Appointment */}
@@ -864,7 +821,7 @@ export default function AppointmentsPage() {
 
       {/* TOAST */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-4 py-2.5 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle2 size={16} className="text-emerald-400 dark:text-emerald-600" />
           {toast}
         </div>

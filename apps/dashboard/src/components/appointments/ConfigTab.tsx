@@ -53,8 +53,8 @@ function ConfigCard({ icon: Icon, iconColor, title, description, children, badge
     icon: any; iconColor: string; title: string; description: string; children: React.ReactNode; badge?: string;
 }) {
     return (
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-            <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm">
+            <div className="px-6 py-5 border-b border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center gap-3">
                     <div className={cn("p-2.5 rounded-xl", iconColor)}>
                         <Icon size={18} className="text-current" />
@@ -81,7 +81,7 @@ function ConfigCard({ icon: Icon, iconColor, title, description, children, badge
 function Toggle({ enabled, onChange, label }: { enabled: boolean; onChange: (v: boolean) => void; label?: string }) {
     return (
         <button onClick={() => onChange(!enabled)} className="flex items-center gap-3">
-            <div className={cn("w-11 h-6 rounded-full relative transition-colors", enabled ? "bg-indigo-500" : "bg-gray-300 dark:bg-white/20")}>
+            <div className={cn("w-11 h-6 rounded-full relative transition-colors", enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20")}>
                 <div className={cn("absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform", enabled ? "translate-x-[22px]" : "translate-x-0.5")} />
             </div>
             {label && <span className="text-sm text-foreground">{label}</span>}
@@ -125,7 +125,7 @@ export default function ConfigTab({
         setNewBlockedReason("");
     };
 
-    const inputCls = "w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20";
+    const inputCls = "w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20";
 
     return (
         <div className="space-y-6">
@@ -163,12 +163,12 @@ export default function ConfigTab({
                 )}
                 <div className="flex gap-3 mt-4">
                     <button onClick={() => onConnectCalendar("google")}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium hover:shadow-md transition-shadow cursor-pointer">
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-medium hover:shadow-md transition-shadow cursor-pointer">
                         <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                         {t("configSection.connectGoogle")}
                     </button>
                     <button onClick={() => onConnectCalendar("microsoft")}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium hover:shadow-md transition-shadow cursor-pointer">
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-medium hover:shadow-md transition-shadow cursor-pointer">
                         <svg width="16" height="16" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
                         {t("configSection.connectOutlook")}
                     </button>
@@ -193,7 +193,7 @@ export default function ConfigTab({
                         {availabilitySlots.map((slot, i) => (
                             <div key={slot.dayOfWeek} className={cn(
                                 "flex items-center gap-4 p-3 rounded-xl border transition-all",
-                                slot.active ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30"
+                                slot.active ? "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900" : "border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/30"
                             )}>
                                 <Toggle enabled={slot.active} onChange={(v) => {
                                     const updated = [...availabilitySlots];
@@ -235,14 +235,14 @@ export default function ConfigTab({
             <ConfigCard icon={Bell} iconColor="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400"
                 title={t("configSection.reminders")} description={t("configSection.remindersDesc")}>
                 <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                         <div>
                             <p className="text-sm font-medium text-foreground">{t("configSection.reminder24h")}</p>
                             <p className="text-xs text-muted-foreground">WhatsApp</p>
                         </div>
                         <Toggle enabled={reminder24h} onChange={setReminder24h} label={reminder24h ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                         <div>
                             <p className="text-sm font-medium text-foreground">{t("configSection.reminder1h")}</p>
                             <p className="text-xs text-muted-foreground">WhatsApp</p>
@@ -264,7 +264,7 @@ export default function ConfigTab({
                 {blockedDates.length > 0 ? (
                     <div className="space-y-2 mb-4">
                         {blockedDates.map(bd => (
-                            <div key={bd.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <div key={bd.id} className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                                 <div>
                                     <p className="text-sm font-medium text-foreground">{bd.blockedDate}</p>
                                     {bd.reason && <p className="text-xs text-muted-foreground">{bd.reason}</p>}
@@ -292,7 +292,7 @@ export default function ConfigTab({
             {/* ── 5. No-Show Follow-up ── */}
             <ConfigCard icon={AlertTriangle} iconColor="bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400"
                 title={t("configSection.noShow")} description={t("configSection.noShowDesc")}>
-                <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                     <div>
                         <p className="text-sm font-medium text-foreground">{t("configSection.noShowFollowUp")}</p>
                         <p className="text-xs text-muted-foreground">{t("configSection.noShowFollowUpDesc")}</p>
@@ -315,7 +315,7 @@ export default function ConfigTab({
                             <p className="text-xs text-muted-foreground">{t("configSection.singleCalendarDesc")}</p>
                         </div>
                     </label>
-                    <label className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed">
+                    <label className="flex items-center gap-4 p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 opacity-50 cursor-not-allowed">
                         <input type="radio" name="calMode" disabled className="w-4 h-4" />
                         <div className="flex-1">
                             <div className="flex items-center gap-2">

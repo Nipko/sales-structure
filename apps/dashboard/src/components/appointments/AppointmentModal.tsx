@@ -56,22 +56,22 @@ export default function AppointmentModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10 rounded-t-2xl">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-200 dark:border-neutral-800 sticky top-0 bg-white dark:bg-neutral-900 z-10 rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
               <CalendarDays size={18} className="text-primary" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
               {editingAppointment ? t('editAppointmentTitle') : t('newAppointmentTitle')}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600"
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-400 hover:text-neutral-600"
           >
             <X size={18} />
           </button>
@@ -81,7 +81,7 @@ export default function AppointmentModal({
           {/* Service selector */}
           {services.length > 0 && (
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('service')}
               </label>
               <select
@@ -100,7 +100,7 @@ export default function AppointmentModal({
                     onChange(newForm);
                   }
                 }}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="">{t('selectServicePlaceholder')}</option>
                 {services
@@ -116,7 +116,7 @@ export default function AppointmentModal({
 
           {/* Service name (manual) */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('serviceName')}
             </label>
             <input
@@ -124,52 +124,52 @@ export default function AppointmentModal({
               placeholder={t('serviceNamePlaceholder')}
               value={form.serviceName}
               onChange={(e) => onChange({ ...form, serviceName: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('dateRequired')}
             </label>
             <input
               type="date"
               value={form.date}
               onChange={(e) => onChange({ ...form, date: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           {/* Time row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('startTimeRequired')}
               </label>
               <input
                 type="time"
                 value={form.startTime}
                 onChange={(e) => onChange({ ...form, startTime: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('endTimeRequired')}
               </label>
               <input
                 type="time"
                 value={form.endTime}
                 onChange={(e) => onChange({ ...form, endTime: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
 
           {/* Location */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               <MapPin size={14} className="inline mr-1.5 -mt-0.5" />
               {t('location')}
             </label>
@@ -178,13 +178,13 @@ export default function AppointmentModal({
               placeholder={t('locationPlaceholder')}
               value={form.location}
               onChange={(e) => onChange({ ...form, location: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               {t('notes')}
             </label>
@@ -193,13 +193,13 @@ export default function AppointmentModal({
               placeholder={t('additionalNotes')}
               value={form.notes}
               onChange={(e) => onChange({ ...form, notes: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm resize-none placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm resize-none placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
 
           {/* Assigned agent */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               <UserCheck size={14} className="inline mr-1.5 -mt-0.5" />
               {t('assignedAgent')}
             </label>
@@ -208,13 +208,13 @@ export default function AppointmentModal({
               placeholder={t('agentIdPlaceholder')}
               value={form.assignedTo}
               onChange={(e) => onChange({ ...form, assignedTo: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
 
           {/* Contact */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('contact')}
             </label>
             <input
@@ -222,7 +222,7 @@ export default function AppointmentModal({
               placeholder={t('contactIdPlaceholder')}
               value={form.contactId}
               onChange={(e) => onChange({ ...form, contactId: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
         </div>
@@ -234,17 +234,17 @@ export default function AppointmentModal({
               "rounded-xl border p-4 transition-colors",
               recurrence.enabled
                 ? "border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-500/5"
-                : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+                : "border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50"
             )}>
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={recurrence.enabled}
                   onChange={e => setRecurrence({ ...recurrence, enabled: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500/20 cursor-pointer"
+                  className="w-4 h-4 rounded border-neutral-300 text-indigo-500 focus:ring-indigo-500/20 cursor-pointer"
                 />
-                <Repeat size={14} className={recurrence.enabled ? "text-indigo-500" : "text-gray-400"} />
-                <span className={cn("text-sm font-medium", recurrence.enabled ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400")}>
+                <Repeat size={14} className={recurrence.enabled ? "text-indigo-500" : "text-neutral-400"} />
+                <span className={cn("text-sm font-medium", recurrence.enabled ? "text-indigo-700 dark:text-indigo-300" : "text-neutral-600 dark:text-neutral-400")}>
                   {t('recurring')}
                 </span>
               </label>
@@ -254,7 +254,7 @@ export default function AppointmentModal({
                   <select
                     value={recurrence.frequency}
                     onChange={e => setRecurrence({ ...recurrence, frequency: e.target.value as any })}
-                    className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                    className="px-3 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                   >
                     <option value="daily">{t('recurrenceDaily')}</option>
                     <option value="weekly">{t('recurrenceWeekly')}</option>
@@ -266,9 +266,9 @@ export default function AppointmentModal({
                       type="number" min={2} max={52}
                       value={recurrence.count}
                       onChange={e => setRecurrence({ ...recurrence, count: Math.min(52, Math.max(2, Number(e.target.value))) })}
-                      className="w-16 px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm text-center text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="w-16 px-3 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-sm text-center text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     />
-                    <span className="text-xs text-gray-500">{t('recurrenceTimes')}</span>
+                    <span className="text-xs text-neutral-500">{t('recurrenceTimes')}</span>
                   </div>
                 </div>
               )}
@@ -277,10 +277,10 @@ export default function AppointmentModal({
         )}
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800 sticky bottom-0 bg-white dark:bg-gray-900 rounded-b-2xl">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 sticky bottom-0 bg-white dark:bg-neutral-900 rounded-b-2xl">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-700 dark:text-neutral-300 text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           >
             {t('cancel')}
           </button>

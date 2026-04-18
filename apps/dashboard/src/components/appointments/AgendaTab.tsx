@@ -56,13 +56,13 @@ export default function AgendaTab({
       {/* Search & filters */}
       <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
             type="text"
             placeholder={t('searchAppointments')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
           />
         </div>
 
@@ -73,7 +73,7 @@ export default function AgendaTab({
               "px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
               !filterStatus
                 ? "bg-primary text-primary-foreground border-primary"
-                : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800"
             )}
           >
             {t('allStatuses')}
@@ -90,7 +90,7 @@ export default function AgendaTab({
                   "px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
                   filterStatus === key
                     ? `${sc.twBg} ${sc.twText} border-current`
-                    : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                 )}
               >
                 {t(sc.i18nKey)}
@@ -104,21 +104,21 @@ export default function AgendaTab({
       {/* Date range */}
       <div className="flex gap-3 items-center flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('from')}</label>
+          <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t('from')}</label>
           <input
             type="date"
             value={filterStartDate}
             onChange={(e) => setFilterStartDate(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="px-3 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('to')}</label>
+          <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t('to')}</label>
           <input
             type="date"
             value={filterEndDate}
             onChange={(e) => setFilterEndDate(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="px-3 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
         {(filterStartDate || filterEndDate || searchQuery) && (
@@ -137,28 +137,28 @@ export default function AgendaTab({
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+      <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm">
         {filteredAppointments.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4">
-            <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-              <CalendarDays size={28} className="text-gray-400" />
+            <div className="w-16 h-16 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
+              <CalendarDays size={28} className="text-neutral-400" />
             </div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
               {t('noAppointmentsToShow')}
             </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
               {t('adjustFilters')}
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-800">
+              <tr className="border-b border-neutral-200 dark:border-neutral-800">
                 {[t("service"), t("client"), t("dateTime"), t("agent"), t("statusLabel"), t("actionsLabel")].map(
                   (h) => (
                     <th
                       key={h}
-                      className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/50"
+                      className="text-left px-5 py-3.5 text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider bg-neutral-50 dark:bg-neutral-800/50"
                     >
                       {h}
                     </th>
@@ -166,39 +166,39 @@ export default function AgendaTab({
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
+            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
               {filteredAppointments.map((appt) => {
                 const sc = STATUS_CONFIG[appt.status];
                 const svc = services.find((s) => s.name === appt.serviceName);
                 return (
-                  <tr key={appt.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                  <tr key={appt.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2.5">
                         <div
                           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: svc?.color || "#6c5ce7" }}
                         />
-                        <span className="font-medium text-gray-900 dark:text-white">
+                        <span className="font-medium text-neutral-900 dark:text-white">
                           {appt.serviceName}
                         </span>
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-gray-600 dark:text-gray-300">
+                    <td className="px-5 py-4 text-neutral-600 dark:text-neutral-300">
                       {appt.contactName || (
-                        <span className="text-gray-400">{t('unassigned')}</span>
+                        <span className="text-neutral-400">{t('unassigned')}</span>
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <div className="text-gray-900 dark:text-white text-sm">
+                      <div className="text-neutral-900 dark:text-white text-sm">
                         {formatDate(appt.startAt, dateLocale)}
                       </div>
-                      <div className="text-gray-400 text-xs mt-0.5">
+                      <div className="text-neutral-400 text-xs mt-0.5">
                         {formatTime(appt.startAt)} - {formatTime(appt.endAt)}
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-gray-600 dark:text-gray-300">
+                    <td className="px-5 py-4 text-neutral-600 dark:text-neutral-300">
                       {appt.assignedName || (
-                        <span className="text-gray-400">{t('noAgent')}</span>
+                        <span className="text-neutral-400">{t('noAgent')}</span>
                       )}
                     </td>
                     <td className="px-5 py-4">
@@ -216,7 +216,7 @@ export default function AgendaTab({
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => onEditAppointment(appt)}
-                          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                          className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
                           title={t('viewDetails')}
                         >
                           <Eye size={15} />

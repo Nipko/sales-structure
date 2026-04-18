@@ -215,44 +215,44 @@ export default function CalendarGrid({
   };
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+    <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm">
       {/* Navigation bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-2">
           <button onClick={handlePrev}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-600 dark:text-gray-300"
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-600 dark:text-neutral-300"
             title={viewMode === "week" ? t('prevWeek') : t('prevDay')}>
             <ChevronLeft size={20} />
           </button>
           <button onClick={handleToday}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 bg-transparent text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
             {t('today')}
           </button>
           <button onClick={handleNext}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-600 dark:text-gray-300"
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-600 dark:text-neutral-300"
             title={viewMode === "week" ? t('nextWeek') : t('nextDay')}>
             <ChevronRight size={20} />
           </button>
         </div>
 
-        <span className="font-semibold text-sm text-gray-900 dark:text-white capitalize">
+        <span className="font-semibold text-sm text-neutral-900 dark:text-white capitalize">
           {navTitle}
         </span>
 
         {/* View toggle */}
-        <div className="flex gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+        <div className="flex gap-0.5 p-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
           <button onClick={() => setViewMode("week")}
             className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer border-none",
               viewMode === "week"
-                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
-                : "bg-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700")}>
+                ? "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm"
+                : "bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700")}>
             <CalendarDays size={13} /> {t('weekView')}
           </button>
           <button onClick={() => { setViewMode("day"); setSelectedDay(new Date()); }}
             className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer border-none",
               viewMode === "day"
-                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
-                : "bg-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700")}>
+                ? "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm"
+                : "bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700")}>
             <Clock size={13} /> {t('dayView')}
           </button>
         </div>
@@ -261,7 +261,7 @@ export default function CalendarGrid({
       {/* Day headers (week view) */}
       {viewMode === "week" && (
         <div className={`grid ${gridCols}`}>
-          <div className="border-b border-gray-200 dark:border-gray-800" />
+          <div className="border-b border-neutral-200 dark:border-neutral-800" />
           {weekDays.map((day, i) => {
             const isToday = toLocalDate(day) === todayStr;
             return (
@@ -269,14 +269,14 @@ export default function CalendarGrid({
                 key={i}
                 onClick={() => handleDayHeaderClick(day)}
                 className={cn(
-                  "text-center py-3 border-b border-l border-gray-200 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors",
+                  "text-center py-3 border-b border-l border-neutral-200 dark:border-neutral-800 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
                   isToday && "bg-primary/5"
                 )}
               >
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
                   {t(`daysShort.${DAY_KEYS[i]}`)}
                 </div>
-                <div className={cn("text-lg font-bold mt-0.5", isToday ? "text-primary" : "text-gray-900 dark:text-white")}>
+                <div className={cn("text-lg font-semibold mt-0.5", isToday ? "text-primary" : "text-neutral-900 dark:text-white")}>
                   {isToday ? (
                     <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">
                       {day.getDate()}
@@ -293,20 +293,20 @@ export default function CalendarGrid({
 
       {/* Day header (day view) */}
       {viewMode === "day" && (
-        <div className="px-6 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
+        <div className="px-6 py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-3">
           <div className={cn(
-            "w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold",
+            "w-10 h-10 rounded-xl flex items-center justify-center text-lg font-semibold",
             toLocalDate(selectedDay) === todayStr
               ? "bg-primary text-white"
-              : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white"
+              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white"
           )}>
             {selectedDay.getDate()}
           </div>
           <div>
-            <div className="text-sm font-semibold text-gray-900 dark:text-white capitalize">
+            <div className="text-sm font-semibold text-neutral-900 dark:text-white capitalize">
               {selectedDay.toLocaleDateString(dateLocale, { weekday: "long" })}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
               {getAppointmentsForDay(selectedDay).length} {t('total').toLowerCase()}
             </div>
           </div>
@@ -318,7 +318,7 @@ export default function CalendarGrid({
         {HOURS.map((hour) => (
           <div key={`row-${hour}`} className="contents">
             {/* Hour label */}
-            <div className={`border-b border-gray-100 dark:border-gray-800/50 flex items-start justify-end pr-2 pt-1 text-[11px] font-medium text-gray-400 dark:text-gray-500`}
+            <div className={`border-b border-neutral-100 dark:border-neutral-800/50 flex items-start justify-end pr-2 pt-1 text-[11px] font-medium text-neutral-400 dark:text-neutral-500`}
               style={{ height: `${HOUR_HEIGHT}px` }}>
               {fmt2(hour)}:00
             </div>
@@ -331,7 +331,7 @@ export default function CalendarGrid({
                 <div
                   key={`${hour}-${di}`}
                   className={cn(
-                    "border-b border-l border-gray-100 dark:border-gray-800/50 relative cursor-pointer hover:bg-primary/5 transition-colors",
+                    "border-b border-l border-neutral-100 dark:border-neutral-800/50 relative cursor-pointer hover:bg-primary/5 transition-colors",
                     isToday && "bg-primary/[0.02]"
                   )}
                   style={{ height: `${HOUR_HEIGHT}px` }}

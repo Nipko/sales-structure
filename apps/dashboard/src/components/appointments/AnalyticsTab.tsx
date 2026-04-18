@@ -71,12 +71,12 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
       {/* Period selector */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">{t("analyticsTitle")}</h2>
-        <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+        <div className="flex gap-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
           {(["7d", "30d", "90d"] as const).map(p => (
             <button key={p} onClick={() => setPeriod(p)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer border-none transition-all",
                 period === p
-                  ? "bg-white dark:bg-gray-900 text-foreground shadow-sm"
+                  ? "bg-white dark:bg-neutral-900 text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground bg-transparent")}>
               {p === "7d" ? "7 days" : p === "30d" ? "30 days" : "90 days"}
             </button>
@@ -92,7 +92,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
           { label: t("status.cancelled"), value: kpis.cancelled, prev: previousKpis.cancelled, icon: CalendarX, color: "text-red-500 dark:text-red-400", bg: "bg-red-50 dark:bg-red-500/10", rate: `${kpis.cancellationRate}%` },
           { label: t("status.noShow"), value: kpis.noShow, prev: previousKpis.noShow, icon: UserX, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/10", rate: `${kpis.noShowRate}%` },
         ].map(kpi => (
-          <div key={kpi.label} className="p-5 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+          <div key={kpi.label} className="p-5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
             <div className="flex items-center justify-between mb-3">
               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", kpi.bg)}>
                 <kpi.icon size={20} className={kpi.color} />
@@ -102,7 +102,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
                 <span>{changePct(kpi.value, kpi.prev)}</span>
               </div>
             </div>
-            <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
+            <p className="text-2xl font-semibold text-foreground">{kpi.value}</p>
             <div className="flex items-center justify-between mt-1">
               <p className="text-xs text-muted-foreground">{kpi.label}</p>
               {kpi.rate && <span className="text-[10px] font-semibold text-muted-foreground">{kpi.rate}</span>}
@@ -113,7 +113,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Daily Volume Chart */}
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">{t("dailyVolume")}</h3>
           <div className="flex items-end gap-[2px] h-32">
             {daily.map((d: any, i: number) => (
@@ -136,7 +136,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
         </div>
 
         {/* Peak Hours */}
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
             <Clock size={14} /> {t("peakHours")}
           </h3>
@@ -155,7 +155,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
         </div>
 
         {/* By Service */}
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">{t("byService")}</h3>
           {byService.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noAppointments")}</p>
@@ -172,7 +172,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
                       </div>
                       <span className="text-xs text-muted-foreground">{svc.count}</span>
                     </div>
-                    <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${(svc.count / maxSvc) * 100}%`, backgroundColor: svc.color }} />
                     </div>
                   </div>
@@ -183,7 +183,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
         </div>
 
         {/* By Source */}
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4">{t("bySource")}</h3>
           {bySource.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noAppointments")}</p>
@@ -201,12 +201,12 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
                   public_booking: "#3b82f6",
                 };
                 return (
-                  <div key={src.source} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <div key={src.source} className="flex items-center justify-between p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: sourceColors[src.source] || "#999" }} />
                       <span className="text-xs font-medium text-foreground">{sourceLabels[src.source] || src.source}</span>
                     </div>
-                    <span className="text-sm font-bold text-foreground">{src.count}</span>
+                    <span className="text-sm font-semibold text-foreground">{src.count}</span>
                   </div>
                 );
               })}

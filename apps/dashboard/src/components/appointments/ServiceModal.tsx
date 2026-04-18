@@ -38,22 +38,22 @@ export default function ServiceModal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md mx-4 shadow-2xl"
+        className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl w-full max-w-md mx-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg" style={{ backgroundColor: `${form.color}15` }}>
               <Tag size={18} style={{ color: form.color }} />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
               {editingService ? t('editServiceTitle') : t('newServiceTitle')}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600"
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-400 hover:text-neutral-600"
           >
             <X size={18} />
           </button>
@@ -62,7 +62,7 @@ export default function ServiceModal({
         <div className="p-6 space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('serviceName')}
             </label>
             <input
@@ -70,13 +70,13 @@ export default function ServiceModal({
               placeholder={t('serviceNamePlaceholder')}
               value={form.name}
               onChange={(e) => onChange({ ...form, name: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
 
           {/* Duration presets */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('durationRequired')}
             </label>
             <div className="flex gap-2 mb-2">
@@ -88,7 +88,7 @@ export default function ServiceModal({
                     "px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
                     form.duration === d
                       ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      : "bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                   )}
                 >
                   {d} min
@@ -100,7 +100,7 @@ export default function ServiceModal({
               min={5}
               value={form.duration || ""}
               onChange={(e) => onChange({ ...form, duration: e.target.value === "" ? 0 : Number(e.target.value) })}
-              className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder={t('customDuration')}
             />
           </div>
@@ -108,11 +108,11 @@ export default function ServiceModal({
           {/* Buffer + Price */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
                 {t('bufferTime')}
                 <span className="relative group">
-                  <span className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] flex items-center justify-center cursor-help font-bold">?</span>
-                  <span className="absolute bottom-6 left-1/2 -translate-x-1/2 w-48 p-2 rounded-lg bg-gray-900 text-white text-[11px] leading-relaxed hidden group-hover:block z-50 shadow-lg">
+                  <span className="w-4 h-4 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 text-[10px] flex items-center justify-center cursor-help font-semibold">?</span>
+                  <span className="absolute bottom-6 left-1/2 -translate-x-1/2 w-48 p-2 rounded-lg bg-neutral-900 text-white text-[11px] leading-relaxed hidden group-hover:block z-50 shadow-lg">
                     {t('bufferTooltip')}
                   </span>
                 </span>
@@ -120,7 +120,7 @@ export default function ServiceModal({
               <select
                 value={form.buffer}
                 onChange={(e) => onChange({ ...form, buffer: Number(e.target.value) })}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
                 <option value={0}>{t('noBuffer')}</option>
                 <option value={5}>{t('nMinutes', { n: 5 })}</option>
@@ -131,11 +131,11 @@ export default function ServiceModal({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('price')}
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-neutral-400">$</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -145,16 +145,16 @@ export default function ServiceModal({
                     onChange({ ...form, price: raw ? Number(raw) : 0 });
                   }}
                   placeholder="0"
-                  className="w-full px-3 pl-7 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3 pl-7 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{t('currency')}</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">{t('currency')}</span>
               </div>
             </div>
           </div>
 
           {/* Color picker */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('color')}
             </label>
             <div className="flex items-center gap-3">
@@ -166,7 +166,7 @@ export default function ServiceModal({
                     className={cn(
                       "w-7 h-7 rounded-full cursor-pointer border-2 transition-all hover:scale-110",
                       form.color === c
-                        ? "border-gray-900 dark:border-white scale-110 shadow-md"
+                        ? "border-neutral-900 dark:border-white scale-110 shadow-md"
                         : "border-transparent"
                     )}
                     style={{ backgroundColor: c }}
@@ -185,7 +185,7 @@ export default function ServiceModal({
           {/* Category + Max Concurrent */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('category') || 'Category'}
               </label>
               <input
@@ -193,25 +193,25 @@ export default function ServiceModal({
                 value={form.category || ''}
                 onChange={(e) => onChange({ ...form, category: e.target.value })}
                 placeholder={t('categoryPlaceholder') || 'e.g. Consulting'}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('maxConcurrent') || 'Max concurrent'}
               </label>
               <input
                 type="number" min={1} max={50}
                 value={form.maxConcurrent || 1}
                 onChange={(e) => onChange({ ...form, maxConcurrent: Math.max(1, Number(e.target.value)) })}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           </div>
 
           {/* Required Fields */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('requiredFieldsLabel') || 'Required fields (public booking)'}
             </label>
             <div className="flex gap-3">
@@ -229,9 +229,9 @@ export default function ServiceModal({
                           : current.filter(f => f !== field),
                       });
                     }}
-                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 cursor-pointer"
+                    className="w-4 h-4 rounded border-neutral-300 text-primary focus:ring-primary/20 cursor-pointer"
                   />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{field}</span>
+                  <span className="text-sm text-neutral-700 dark:text-neutral-300 capitalize">{field}</span>
                 </label>
               ))}
             </div>
@@ -239,10 +239,10 @@ export default function ServiceModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-800">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-700 dark:text-neutral-300 text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           >
             {t('cancel')}
           </button>

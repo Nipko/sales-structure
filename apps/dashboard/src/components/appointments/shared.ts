@@ -74,8 +74,8 @@ export const STATUS_CONFIG: Record<
     i18nKey: "status.noShow",
     color: "#6b7280",
     bg: "#6b728015",
-    twText: "text-gray-500 dark:text-gray-400",
-    twBg: "bg-gray-50 dark:bg-gray-500/10",
+    twText: "text-neutral-500 dark:text-neutral-400",
+    twBg: "bg-neutral-50 dark:bg-neutral-500/10",
   },
 };
 

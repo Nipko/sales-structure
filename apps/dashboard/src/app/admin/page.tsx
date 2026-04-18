@@ -126,7 +126,7 @@ export default function AdminDashboard() {
             {/* Header */}
             <div className="mb-8 flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-extrabold text-neutral-900 dark:text-neutral-100">
+                    <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
                         Dashboard
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
@@ -147,7 +147,7 @@ export default function AdminDashboard() {
                                     <div className="flex items-start justify-between">
                                         <div>
                                             <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Tenants</p>
-                                            <p className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">{platformStats.totalTenants}</p>
+                                            <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.totalTenants}</p>
                                         </div>
                                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500/10">
                                             <Building2 size={22} className="text-indigo-500" />
@@ -161,7 +161,7 @@ export default function AdminDashboard() {
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Usuarios</p>
-                                        <p className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">{platformStats.totalUsers}</p>
+                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.totalUsers}</p>
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10">
                                         <Users size={22} className="text-sky-500" />
@@ -205,7 +205,7 @@ export default function AdminDashboard() {
                                         <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
                                             {stat.label}
                                         </p>
-                                        <p className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">
+                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">
                                             {displayValue}
                                         </p>
                                         <p className={cn("mt-2 flex items-center gap-1 text-xs", stat.color)}>

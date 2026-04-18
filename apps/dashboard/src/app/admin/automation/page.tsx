@@ -290,19 +290,16 @@ export default function AutomationPage() {
         return (
             <div className="text-foreground">
                 {/* Header */}
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <Workflow size={28} className="text-indigo-600" /> {t('title')}
-                        </h1>
-                        <p className="text-muted-foreground mt-1 mb-0 text-sm">
-                            Reglas automáticas para optimizar tu operación
-                        </p>
-                    </div>
-                    <Button onClick={openNewWizard} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
-                        <Plus size={18} /> Nueva Regla
-                    </Button>
-                </div>
+                <PageHeader
+                    title={t('title')}
+                    subtitle={t('rules')}
+                    icon={Workflow}
+                    action={
+                        <Button onClick={openNewWizard} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:opacity-90 gap-2 press-effect">
+                            <Plus size={18} /> {t('newRule')}
+                        </Button>
+                    }
+                />
 
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-3 mb-6">

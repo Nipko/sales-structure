@@ -88,23 +88,17 @@ export default function BroadcastPage() {
         <>
             <div>
                 {/* Header */}
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <Megaphone size={28} className="text-primary" /> {t('title')}
-                            <DataSourceBadge isLive={false} />
-                        </h1>
-                        <p className="text-muted-foreground mt-1">
-                            {stats.total} campanas · {stats.totalRecipients} destinatarios totales
-                        </p>
-                    </div>
-                    <button
-                        onClick={() => setShowNewCampaign(true)}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer"
-                    >
-                        <Plus size={18} /> Nueva Campana
-                    </button>
-                </div>
+                <PageHeader
+                    title={t('title')}
+                    subtitle={`${stats.total} campaigns · ${stats.totalRecipients} recipients`}
+                    icon={Megaphone}
+                    badge={<DataSourceBadge isLive={false} />}
+                    action={
+                        <button onClick={() => setShowNewCampaign(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                            <Plus size={16} /> {tc("create")}
+                        </button>
+                    }
+                />
 
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-4 mb-6">

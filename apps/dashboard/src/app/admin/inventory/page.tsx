@@ -63,18 +63,16 @@ export default function InventoryPage() {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <div className="flex items-center gap-2.5">
-                        <h1 className="text-[28px] font-semibold m-0">{t('title')}</h1>
-                        <DataSourceBadge isLive={isLive} />
-                    </div>
-                    <p className="text-muted-foreground mt-1">Gestion de productos, stock y movimientos</p>
-                </div>
-                <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">
-                    <Plus size={18} /> Nuevo Producto
-                </button>
-            </div>
+            <PageHeader
+                title={t('title')}
+                subtitle={t('subtitle')}
+                badge={<DataSourceBadge isLive={isLive} />}
+                action={
+                    <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                        <Plus size={16} /> {tc("create")}
+                    </button>
+                }
+            />
 
             <div className="grid grid-cols-5 gap-4 mb-6">
                 {[

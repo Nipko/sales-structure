@@ -63,19 +63,16 @@ export default function KnowledgePage() {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                        <BookOpen size={28} className="text-primary" /> {t('title')}
-                    </h1>
-                    <p className="text-muted-foreground mt-1">Bases de conocimiento, FAQs y documentos comerciales para Carla AI</p>
-                </div>
-                {tab === "library" && (
-                    <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
-                        <Plus size={18} /> Nuevo Recurso
+            <PageHeader
+                title={t('title')}
+                subtitle={t('subtitle')}
+                icon={BookOpen}
+                action={tab === "library" ? (
+                    <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                        <Plus size={16} /> {tc("create")}
                     </button>
-                )}
-            </div>
+                ) : undefined}
+            />
 
             <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-[300px]">
                 <button onClick={() => setTab("library")} className={cn("flex-1 px-3 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>

@@ -90,19 +90,16 @@ export default function CompliancePage() {
         <>
             <div>
                 {/* Header */}
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <Shield size={28} className="text-primary" /> {t('title')}
-                        </h1>
-                        <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
-                    </div>
-                    {(tab === "legal" || tab === "optouts") && (
-                        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
-                            <Plus size={18} /> {tab === "legal" ? "Nuevo Texto Legal" : "Registrar Opt-Out"}
+                <PageHeader
+                    title={t('title')}
+                    subtitle={t('subtitle')}
+                    icon={Shield}
+                    action={(tab === "legal" || tab === "optouts") ? (
+                        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                            <Plus size={16} /> {tc("create")}
                         </button>
-                    )}
-                </div>
+                    ) : undefined}
+                />
 
                 {/* Tabs */}
                 <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border">

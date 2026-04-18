@@ -71,15 +71,7 @@ export default function IdentityPage() {
 
     return (
         <div className="max-w-[1060px] mx-auto">
-            <div className="mb-8">
-                <div className="flex items-center gap-2.5 mb-1">
-                    <div className="bg-primary w-10 h-10 rounded-[10px] flex items-center justify-center">
-                        <Users size={20} color="white" />
-                    </div>
-                    <h1 className="text-[28px] font-semibold m-0 text-foreground">{t('title')}</h1>
-                </div>
-                <p className="text-muted-foreground mt-1 pl-[50px]">Gestiona la identidad de tus clientes entre canales</p>
-            </div>
+            <PageHeader title={t('title')} subtitle={t('subtitle')} icon={Users} iconColor="bg-primary" />
 
             {message.text && (
                 <div className={cn("p-4 rounded-xl mb-6 text-sm border", message.type === "error" ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-[var(--success)]/10 text-[var(--success)] border-[var(--success)]/20")}>

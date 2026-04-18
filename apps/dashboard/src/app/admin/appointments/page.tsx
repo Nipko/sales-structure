@@ -8,46 +8,29 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import ConfigTab from "@/components/appointments/ConfigTab";
 import ServicesTab from "@/components/appointments/ServicesTab";
+import CalendarGrid from "@/components/appointments/CalendarGrid";
+import AgendaTab from "@/components/appointments/AgendaTab";
+import AppointmentModal from "@/components/appointments/AppointmentModal";
+import ServiceModal from "@/components/appointments/ServiceModal";
+import {
+  type Appointment, type Service, DAY_KEYS,
+  toLocalDate, addDays, getMondayOfWeek, fmt2,
+} from "@/components/appointments/shared";
 import {
   CalendarDays,
   List,
   Plus,
-  X,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle2,
   AlertCircle,
   CalendarCheck,
-  UserCheck,
-  MapPin,
-  FileText,
-  Save,
-  Ban,
-  Eye,
   Tag,
   Link2,
-  Search,
   Settings,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-
-interface Appointment {
-  id: string;
-  contactId?: string;
-  contactName?: string;
-  assignedTo?: string;
-  assignedName?: string;
-  serviceName: string;
-  startAt: string;
-  endAt: string;
-  status: "pending" | "confirmed" | "cancelled" | "completed" | "no_show";
-  location?: string;
-  notes?: string;
-  createdAt: string;
-}
 
 interface AvailabilitySlot {
   dayOfWeek: number;
@@ -63,16 +46,6 @@ interface BlockedDate {
   userId?: string;
 }
 
-interface Service {
-  id: string;
-  name: string;
-  duration: number;
-  buffer: number;
-  price: number;
-  color: string;
-  active: boolean;
-}
-
 interface CalendarIntegration {
   id: string;
   provider: "google" | "microsoft";
@@ -80,127 +53,6 @@ interface CalendarIntegration {
   active: boolean;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Constants                                                          */
-/* ------------------------------------------------------------------ */
-
-const STATUS_CONFIG: Record<
-  string,
-  { i18nKey: string; color: string; bg: string; twText: string; twBg: string }
-> = {
-  pending: {
-    i18nKey: "status.pending",
-    color: "#f59e0b",
-    bg: "#f59e0b15",
-    twText: "text-amber-500 dark:text-amber-400",
-    twBg: "bg-amber-50 dark:bg-amber-500/10",
-  },
-  confirmed: {
-    i18nKey: "status.confirmed",
-    color: "#22c55e",
-    bg: "#22c55e15",
-    twText: "text-emerald-600 dark:text-emerald-400",
-    twBg: "bg-emerald-50 dark:bg-emerald-500/10",
-  },
-  cancelled: {
-    i18nKey: "status.cancelled",
-    color: "#ef4444",
-    bg: "#ef444415",
-    twText: "text-red-500 dark:text-red-400",
-    twBg: "bg-red-50 dark:bg-red-500/10",
-  },
-  completed: {
-    i18nKey: "status.completed",
-    color: "#3b82f6",
-    bg: "#3b82f615",
-    twText: "text-blue-600 dark:text-blue-400",
-    twBg: "bg-blue-50 dark:bg-blue-500/10",
-  },
-  no_show: {
-    i18nKey: "status.noShow",
-    color: "#6b7280",
-    bg: "#6b728015",
-    twText: "text-gray-500 dark:text-gray-400",
-    twBg: "bg-gray-50 dark:bg-gray-500/10",
-  },
-};
-
-const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
-
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7-20
-
-const DURATION_PRESETS = [15, 30, 45, 60, 90];
-
-const SERVICE_COLORS = [
-  "#6c5ce7",
-  "#00d68f",
-  "#f59e0b",
-  "#ef4444",
-  "#3b82f6",
-  "#ec4899",
-  "#8b5cf6",
-  "#14b8a6",
-  "#f97316",
-  "#06b6d4",
-];
-
-/* ------------------------------------------------------------------ */
-/*  Utility functions                                                  */
-/* ------------------------------------------------------------------ */
-
-function fmt2(n: number) {
-  return n.toString().padStart(2, "0");
-}
-
-function toLocalDate(d: Date) {
-  return `${d.getFullYear()}-${fmt2(d.getMonth() + 1)}-${fmt2(d.getDate())}`;
-}
-
-function getMondayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  return `${fmt2(d.getHours())}:${fmt2(d.getMinutes())}`;
-}
-
-function formatDate(iso: string, loc: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString(loc, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatDateTime(iso: string, loc: string) {
-  return `${formatDate(iso, loc)} ${formatTime(iso)}`;
-}
-
-function formatWeekRange(start: Date, end: Date, loc: string) {
-  const s = start.toLocaleDateString(loc, {
-    day: "numeric",
-    month: "long",
-  });
-  const e = end.toLocaleDateString(loc, {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  return `${s} - ${e}`;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Reusable sub-components                                            */
@@ -899,400 +751,34 @@ export default function AppointmentsPage() {
           </div>
         )}
 
-        {/* ============================================================ */}
-        {/*  TAB: CALENDARIO                                              */}
-        {/* ============================================================ */}
+        {/* TAB: CALENDAR */}
         {activeTab === "calendar" && !loading && (
-          <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-            {/* Week navigation */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-              <button
-                onClick={() => setWeekStart(addDays(weekStart, -7))}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-600 dark:text-gray-300"
-                title={t('prevWeek')}
-              >
-                <ChevronLeft size={20} />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setWeekStart(getMondayOfWeek(new Date()))}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 bg-transparent text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  {t('today')}
-                </button>
-                <span className="font-semibold text-sm text-gray-900 dark:text-white">
-                  {formatWeekRange(weekDays[0], weekDays[6], dateLocale)}
-                </span>
-              </div>
-
-              <button
-                onClick={() => setWeekStart(addDays(weekStart, 7))}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-600 dark:text-gray-300"
-                title={t('nextWeek')}
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
-
-            {/* Day headers */}
-            <div className="grid grid-cols-[56px_repeat(7,1fr)]">
-              <div className="border-b border-gray-200 dark:border-gray-800" />
-              {weekDays.map((day, i) => {
-                const isToday = toLocalDate(day) === todayStr;
-                return (
-                  <div
-                    key={i}
-                    className={cn(
-                      "text-center py-3 border-b border-l border-gray-200 dark:border-gray-800",
-                      isToday && "bg-primary/5"
-                    )}
-                  >
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                      {t(`businessHoursPage.daysShort.${DAY_KEYS[i]}`)}
-                    </div>
-                    <div
-                      className={cn(
-                        "text-lg font-bold mt-0.5",
-                        isToday
-                          ? "text-primary"
-                          : "text-gray-900 dark:text-white"
-                      )}
-                    >
-                      {isToday ? (
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">
-                          {day.getDate()}
-                        </span>
-                      ) : (
-                        day.getDate()
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Time grid */}
-            <div className="grid grid-cols-[56px_repeat(7,1fr)] max-h-[calc(14*64px)] overflow-y-auto">
-              {HOURS.map((hour) => (
-                <div key={`row-${hour}`} className="contents">
-                  <div className="h-16 flex items-start justify-end pr-2 pt-1 text-[11px] font-medium text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800/50">
-                    {fmt2(hour)}:00
-                  </div>
-                  {weekDays.map((day, di) => {
-                    const isToday = toLocalDate(day) === todayStr;
-                    return (
-                      <div
-                        key={`${hour}-${di}`}
-                        className={cn(
-                          "h-16 border-b border-l border-gray-100 dark:border-gray-800/50 relative cursor-pointer hover:bg-primary/5 transition-colors",
-                          isToday && "bg-primary/[0.02]"
-                        )}
-                        onClick={() => openCreateModal(day, hour)}
-                      >
-                        {hour === 7 && (<>
-                          {/* Internal appointments */}
-                          {getAppointmentsForDay(day).map((appt) => {
-                            const pos = getAppointmentPosition(appt);
-                            const svc = services.find((s) => s.name === appt.serviceName);
-                            const blockColor = svc?.color || STATUS_CONFIG[appt.status]?.color || "#6c5ce7";
-                            return (
-                              <div
-                                key={appt.id}
-                                className="absolute left-1 right-1 rounded-lg px-2 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer z-10 border-l-[3px] shadow-sm"
-                                style={{
-                                  top: `${pos.top}px`,
-                                  height: `${pos.height}px`,
-                                  background: `${blockColor}15`,
-                                  borderLeftColor: blockColor,
-                                  color: blockColor,
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openEditModal(appt);
-                                }}
-                              >
-                                <div className="font-semibold truncate">{appt.serviceName}</div>
-                                {pos.height > 30 && (
-                                  <div className="truncate opacity-80">
-                                    {formatTime(appt.startAt)} - {formatTime(appt.endAt)}
-                                  </div>
-                                )}
-                                {pos.height > 48 && appt.contactName && (
-                                  <div className="truncate opacity-70">{appt.contactName}</div>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {/* External calendar events (Google/Microsoft) */}
-                          {externalEvents
-                            .filter(evt => {
-                              if (evt.allDay) return false;
-                              const evtDate = evt.start ? toLocalDate(new Date(evt.start)) : '';
-                              return evtDate === toLocalDate(day);
-                            })
-                            .map(evt => {
-                              const start = new Date(evt.start);
-                              const end = new Date(evt.end);
-                              const startMin = start.getHours() * 60 + start.getMinutes();
-                              const endMin = end.getHours() * 60 + end.getMinutes();
-                              const topOffset = startMin - 7 * 60;
-                              const height = Math.max((endMin - startMin) / 60 * 64, 20);
-                              const extColor = evt.provider === 'microsoft' ? '#0078d4' : '#4285f4';
-                              return (
-                                <div
-                                  key={`ext-${evt.id}`}
-                                  className="absolute left-1 right-1 rounded-lg px-2 py-1 text-[10px] leading-tight overflow-hidden z-[5] border-l-[3px] opacity-70"
-                                  style={{
-                                    top: `${(topOffset / 60) * 64}px`,
-                                    height: `${height}px`,
-                                    background: `${extColor}12`,
-                                    borderLeftColor: extColor,
-                                    color: extColor,
-                                    borderStyle: 'dashed',
-                                  }}
-                                  title={`${evt.title} (${evt.provider === 'microsoft' ? 'Outlook' : 'Google'})`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (evt.htmlLink) window.open(evt.htmlLink, '_blank');
-                                  }}
-                                >
-                                  <div className="font-medium truncate flex items-center gap-1">
-                                    <span className="opacity-60">{evt.provider === 'microsoft' ? '📅' : '📆'}</span>
-                                    {evt.title}
-                                  </div>
-                                  {height > 30 && (
-                                    <div className="truncate opacity-80">
-                                      {start.getHours()}:{String(start.getMinutes()).padStart(2,'0')} - {end.getHours()}:{String(end.getMinutes()).padStart(2,'0')}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                        </>)}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
+          <CalendarGrid
+            appointments={appointments}
+            services={services}
+            externalEvents={externalEvents}
+            weekStart={weekStart}
+            dateLocale={dateLocale}
+            onWeekChange={setWeekStart}
+            onCreateAppointment={openCreateModal}
+            onEditAppointment={openEditModal}
+          />
         )}
 
-        {/* ============================================================ */}
-        {/*  TAB: AGENDA                                                  */}
-        {/* ============================================================ */}
+
+        {/* TAB: AGENDA */}
         {activeTab === "agenda" && !loading && (
-          <div className="space-y-4">
-            {/* Search & filters */}
-            <div className="flex flex-col md:flex-row gap-3">
-              {/* Search */}
-              <div className="relative flex-1">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder={t('searchAppointments')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                />
-              </div>
-
-              {/* Status filter pills */}
-              <div className="flex gap-2 flex-wrap items-center">
-                <button
-                  onClick={() => setFilterStatus("")}
-                  className={cn(
-                    "px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
-                    !filterStatus
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  )}
-                >
-                  {t('allStatuses')}
-                </button>
-                {Object.entries(STATUS_CONFIG).map(([key, sc]) => (
-                  <button
-                    key={key}
-                    onClick={() => setFilterStatus(filterStatus === key ? "" : key)}
-                    className={cn(
-                      "px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
-                      filterStatus === key
-                        ? `${sc.twBg} ${sc.twText} border-current`
-                        : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
-                    )}
-                  >
-                    {t(sc.i18nKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Date range */}
-            <div className="flex gap-3 items-center flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('from')}</label>
-                <input
-                  type="date"
-                  value={filterStartDate}
-                  onChange={(e) => setFilterStartDate(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('to')}</label>
-                <input
-                  type="date"
-                  value={filterEndDate}
-                  onChange={(e) => setFilterEndDate(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-              {(filterStartDate || filterEndDate || searchQuery) && (
-                <button
-                  onClick={() => {
-                    setFilterStartDate("");
-                    setFilterEndDate("");
-                    setSearchQuery("");
-                    setFilterStatus("");
-                  }}
-                  className="text-xs text-primary hover:underline cursor-pointer bg-transparent border-none"
-                >
-                  {t('clearFilters')}
-                </button>
-              )}
-            </div>
-
-            {/* Table */}
-            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-              {filteredAppointments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 px-4">
-                  <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-                    <CalendarDays size={28} className="text-gray-400" />
-                  </div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {t('noAppointmentsToShow')}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    {t('adjustFilters')}
-                  </p>
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-800">
-                      {[t("service"), t("client"), t("dateTime"), t("agent"), t("statusLabel"), t("actionsLabel")].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="text-left px-5 py-3.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/50"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800/50">
-                    {filteredAppointments.map((appt) => {
-                      const sc = STATUS_CONFIG[appt.status];
-                      const svc = services.find((s) => s.name === appt.serviceName);
-                      return (
-                        <tr
-                          key={appt.id}
-                          className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
-                        >
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-2.5">
-                              <div
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: svc?.color || "#6c5ce7" }}
-                              />
-                              <span className="font-medium text-gray-900 dark:text-white">
-                                {appt.serviceName}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 text-gray-600 dark:text-gray-300">
-                            {appt.contactName || (
-                              <span className="text-gray-400">{t('unassigned')}</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="text-gray-900 dark:text-white text-sm">
-                              {formatDate(appt.startAt, dateLocale)}
-                            </div>
-                            <div className="text-gray-400 text-xs mt-0.5">
-                              {formatTime(appt.startAt)} - {formatTime(appt.endAt)}
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 text-gray-600 dark:text-gray-300">
-                            {appt.assignedName || (
-                              <span className="text-gray-400">{t('noAgent')}</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4">
-                            <span
-                              className={cn(
-                                "inline-flex items-center text-[11px] px-2.5 py-1 rounded-full font-semibold",
-                                sc.twBg,
-                                sc.twText
-                              )}
-                            >
-                              {t(sc.i18nKey)}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => openEditModal(appt)}
-                                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                                title={t('viewDetails')}
-                              >
-                                <Eye size={15} />
-                              </button>
-                              {appt.status === "pending" && (
-                                <button
-                                  onClick={() => handleQuickAction(appt.id, "confirm")}
-                                  className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors cursor-pointer border-none bg-transparent text-emerald-500"
-                                  title={t("actions.confirm")}
-                                >
-                                  <CheckCircle2 size={15} />
-                                </button>
-                              )}
-                              {(appt.status === "pending" || appt.status === "confirmed") && (
-                                <>
-                                  <button
-                                    onClick={() => handleQuickAction(appt.id, "complete")}
-                                    className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer border-none bg-transparent text-blue-500"
-                                    title={t("actions.complete")}
-                                  >
-                                    <CalendarCheck size={15} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleQuickAction(appt.id, "cancel")}
-                                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent text-red-500"
-                                    title={t("actions.cancel")}
-                                  >
-                                    <Ban size={15} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+          <AgendaTab
+            appointments={appointments}
+            services={services}
+            dateLocale={dateLocale}
+            onEditAppointment={openEditModal}
+            onQuickAction={handleQuickAction}
+          />
         )}
 
-        {/* ============================================================ */}
-        {/*  TAB: SERVICIOS (refactored component)                        */}
-        {/* ============================================================ */}
+
+        {/* TAB: SERVICIOS */}
         {activeTab === "services" && (
           <ServicesTab
             services={services}
@@ -1327,385 +813,33 @@ export default function AppointmentsPage() {
         )}
       </div>
 
-      {/* ============================================================== */}
-      {/*  MODAL: Create / Edit Appointment                               */}
-      {/* ============================================================== */}
+      {/* MODAL: Appointment */}
       {showModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10 rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <CalendarDays size={18} className="text-primary" />
-                </div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {editingAppointment ? t('editAppointmentTitle') : t('newAppointmentTitle')}
-                </h2>
-              </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5">
-              {/* Service selector */}
-              {services.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    {t('service')}
-                  </label>
-                  <select
-                    value={services.find((s) => s.name === modalForm.serviceName)?.id || ""}
-                    onChange={(e) => {
-                      const selected = services.find((s) => s.id === e.target.value);
-                      if (selected) {
-                        const newForm = { ...modalForm, serviceName: selected.name };
-                        if (newForm.startTime) {
-                          const [h, m] = newForm.startTime.split(":").map(Number);
-                          const totalMin = h * 60 + m + selected.duration;
-                          const endH = Math.min(Math.floor(totalMin / 60), 23);
-                          const endM = totalMin % 60;
-                          newForm.endTime = `${fmt2(endH)}:${fmt2(endM)}`;
-                        }
-                        setModalForm(newForm);
-                      }
-                    }}
-                    className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  >
-                    <option value="">{t('selectServicePlaceholder')}</option>
-                    {services
-                      .filter((s) => s.active)
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.duration} min)
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Service name (manual fallback) */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  {t('serviceName')}
-                </label>
-                <input
-                  type="text"
-                  placeholder={t('serviceNamePlaceholder')}
-                  value={modalForm.serviceName}
-                  onChange={(e) => setModalForm({ ...modalForm, serviceName: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  {t('dateRequired')}
-                </label>
-                <input
-                  type="date"
-                  value={modalForm.date}
-                  onChange={(e) => setModalForm({ ...modalForm, date: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-              </div>
-
-              {/* Time row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    {t('startTimeRequired')}
-                  </label>
-                  <input
-                    type="time"
-                    value={modalForm.startTime}
-                    onChange={(e) => setModalForm({ ...modalForm, startTime: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    {t('endTimeRequired')}
-                  </label>
-                  <input
-                    type="time"
-                    value={modalForm.endTime}
-                    onChange={(e) => setModalForm({ ...modalForm, endTime: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-
-              {/* Location */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  <MapPin size={14} className="inline mr-1.5 -mt-0.5" />
-                  {t('location')}
-                </label>
-                <input
-                  type="text"
-                  placeholder={t('locationPlaceholder')}
-                  value={modalForm.location}
-                  onChange={(e) => setModalForm({ ...modalForm, location: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  <FileText size={14} className="inline mr-1.5 -mt-0.5" />
-                  {t('notes')}
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder={t('additionalNotes')}
-                  value={modalForm.notes}
-                  onChange={(e) => setModalForm({ ...modalForm, notes: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm resize-none placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-
-              {/* Assigned agent */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  <UserCheck size={14} className="inline mr-1.5 -mt-0.5" />
-                  {t('assignedAgent')}
-                </label>
-                <input
-                  type="text"
-                  placeholder={t('agentIdPlaceholder')}
-                  value={modalForm.assignedTo}
-                  onChange={(e) => setModalForm({ ...modalForm, assignedTo: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-
-              {/* Contact */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  {t('contact')}
-                </label>
-                <input
-                  type="text"
-                  placeholder={t('contactIdPlaceholder')}
-                  value={modalForm.contactId}
-                  onChange={(e) => setModalForm({ ...modalForm, contactId: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-            </div>
-
-            {/* Modal footer */}
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800 sticky bottom-0 bg-white dark:bg-gray-900 rounded-b-2xl">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !modalForm.serviceName || !modalForm.date}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                <Save size={16} />
-                {saving ? t("saving") : editingAppointment ? t("update") : t("createAppointment")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <AppointmentModal
+          form={modalForm}
+          onChange={setModalForm}
+          services={services}
+          editingAppointment={editingAppointment}
+          saving={saving}
+          onSave={handleSave}
+          onClose={() => setShowModal(false)}
+        />
       )}
 
-      {/* ============================================================== */}
-      {/*  MODAL: Create / Edit Service                                   */}
-      {/* ============================================================== */}
+      {/* MODAL: Service */}
       {showServiceModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowServiceModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md mx-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-800">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: `${serviceForm.color}15` }}>
-                  <Tag size={18} style={{ color: serviceForm.color }} />
-                </div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {editingService ? t('editServiceTitle') : t('newServiceTitle')}
-                </h2>
-              </div>
-              <button
-                onClick={() => setShowServiceModal(false)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5">
-              {/* Name */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  {t('serviceName')}
-                </label>
-                <input
-                  type="text"
-                  placeholder={t('serviceNamePlaceholder')}
-                  value={serviceForm.name}
-                  onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-              </div>
-
-              {/* Duration presets */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  {t('durationRequired')}
-                </label>
-                <div className="flex gap-2 mb-2">
-                  {DURATION_PRESETS.map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setServiceForm({ ...serviceForm, duration: d })}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
-                        serviceForm.duration === d
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      )}
-                    >
-                      {d} min
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  min={5}
-                  value={serviceForm.duration || ""}
-                  onChange={(e) => setServiceForm({ ...serviceForm, duration: e.target.value === "" ? 0 : Number(e.target.value) })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  placeholder={t('customDuration')}
-                />
-              </div>
-
-              {/* Buffer + Price row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                    {t('bufferTime')}
-                    <span className="relative group">
-                      <span className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] flex items-center justify-center cursor-help font-bold">?</span>
-                      <span className="absolute bottom-6 left-1/2 -translate-x-1/2 w-48 p-2 rounded-lg bg-gray-900 text-white text-[11px] leading-relaxed hidden group-hover:block z-50 shadow-lg">
-                        {t('bufferTooltip')}
-                      </span>
-                    </span>
-                  </label>
-                  <select
-                    value={serviceForm.buffer}
-                    onChange={(e) => setServiceForm({ ...serviceForm, buffer: Number(e.target.value) })}
-                    className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value={0}>{t('noBuffer')}</option>
-                    <option value={5}>{t('nMinutes', { n: 5 })}</option>
-                    <option value={10}>{t('nMinutes', { n: 10 })}</option>
-                    <option value={15}>{t('nMinutes', { n: 15 })}</option>
-                    <option value={20}>{t('nMinutes', { n: 20 })}</option>
-                    <option value={30}>{t('nMinutes', { n: 30 })}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                    {t('price')}
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={serviceForm.price > 0 ? serviceForm.price.toLocaleString(dateLocale) : ''}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/[^0-9]/g, '');
-                        setServiceForm({ ...serviceForm, price: raw ? Number(raw) : 0 });
-                      }}
-                      placeholder="0"
-                      className="w-full px-3 pl-7 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{t('currency')}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Color picker */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  {t('color')}
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-2 flex-wrap">
-                    {SERVICE_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => setServiceForm({ ...serviceForm, color: c })}
-                        className={cn(
-                          "w-7 h-7 rounded-full cursor-pointer border-2 transition-all hover:scale-110",
-                          serviceForm.color === c
-                            ? "border-gray-900 dark:border-white scale-110 shadow-md"
-                            : "border-transparent"
-                        )}
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                  </div>
-                  <input
-                    type="color"
-                    value={serviceForm.color}
-                    onChange={(e) => setServiceForm({ ...serviceForm, color: e.target.value })}
-                    className="w-8 h-8 rounded-lg cursor-pointer border-none bg-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800">
-              <button
-                onClick={() => setShowServiceModal(false)}
-                className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                onClick={handleSaveService}
-                disabled={savingService || !serviceForm.name}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
-              >
-                <Save size={16} />
-                {savingService ? t("saving") : editingService ? t("updateService") : t("createService")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ServiceModal
+          form={serviceForm}
+          onChange={setServiceForm}
+          editingService={editingService}
+          saving={savingService}
+          onSave={handleSaveService}
+          onClose={() => setShowServiceModal(false)}
+        />
       )}
 
-      {/* ============================================================== */}
-      {/*  TOAST                                                          */}
-      {/* ============================================================== */}
+
+      {/* TOAST */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle2 size={16} className="text-emerald-400 dark:text-emerald-600" />

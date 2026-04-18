@@ -170,51 +170,30 @@ export default function ContactsPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-2.5">
-                        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{t('title')}</h1>
-                        <DataSourceBadge isLive={isLive} />
+            <PageHeader
+                title={t('title')}
+                subtitle={`${contacts.length} contacts · $${totalValue.toLocaleString()}`}
+                badge={<DataSourceBadge isLive={isLive} />}
+                action={
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => router.push("/admin/contacts/segments")}
+                            className="gap-1.5 rounded-lg border-neutral-200 dark:border-neutral-700">
+                            <Users size={16} /> {t('segments')}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setShowImportModal(true)}
+                            className="gap-1.5 rounded-lg border-neutral-200 dark:border-neutral-700">
+                            <Upload size={16} /> {t('import')}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}
+                            className="gap-1.5 rounded-lg border-neutral-200 dark:border-neutral-700">
+                            <Download size={16} /> {t('export')}
+                        </Button>
+                        <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                            <UserPlus size={16} /> {tc("create")}
+                        </button>
                     </div>
-                    <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        {contacts.length} contactos · Valor total: ${totalValue.toLocaleString()} COP
-                    </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => router.push("/admin/contacts/segments")}
-                        className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
-                    >
-                        <Users size={16} /> Segmentos
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowImportModal(true)}
-                        className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
-                    >
-                        <Upload size={16} /> {t('import')} CSV
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleExport}
-                        disabled={exporting}
-                        className="gap-1.5 rounded-lg border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
-                    >
-                        <Download size={16} /> {exporting ? "Exportando..." : `${t('export')} CSV`}
-                    </Button>
-                    <Button
-                        size="sm"
-                        className="gap-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-                    >
-                        <UserPlus size={18} /> Nuevo contacto
-                    </Button>
-                </div>
-            </div>
+                }
+            />
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

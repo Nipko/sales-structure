@@ -347,16 +347,11 @@ export default function AgentAnalyticsPage() {
 
     return (
         <div>
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="m-0 text-[26px] font-semibold">{t('title')}</h1>
-                    <p className="mt-1 mb-0 text-[var(--text-secondary)] text-[13px]">
-                        Rendimiento de agentes y canales
-                    </p>
-                </div>
-                {/* Date Range */}
-                <div className="flex items-center gap-2">
+            <PageHeader
+                title={t('title')}
+                subtitle={t('subtitle')}
+                action={
+                    <div className="flex items-center gap-2">
                     <input
                         type="date"
                         value={startDate}
@@ -371,7 +366,8 @@ export default function AgentAnalyticsPage() {
                         className="px-2.5 py-1.5 rounded-lg border border-border bg-[var(--bg-secondary)] text-foreground text-[13px]"
                     />
                 </div>
-            </div>
+                }
+            />
 
             {/* Tabs */}
             <div className="flex gap-1 mb-6 bg-[var(--bg-secondary)] rounded-xl p-1 border border-border">

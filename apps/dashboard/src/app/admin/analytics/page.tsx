@@ -60,13 +60,7 @@ export default function AnalyticsV4Page() {
 
     return (
         <div>
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                    <BarChart3 size={28} className="text-primary" /> Analytics V4
-                </h1>
-                <p className="text-muted-foreground mt-1">Metricas ejecutivas, funnel de conversion y rendimiento por campana</p>
-            </div>
+            <PageHeader title="Analytics" icon={BarChart3} />
 
             {/* KPI Cards */}
             <div className="grid grid-cols-5 gap-3 mb-6">

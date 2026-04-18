@@ -67,17 +67,11 @@ export default function PipelinePage() {
         <>
             <div>
                 {/* Header */}
-                <div className="flex justify-between items-center mb-4">
-                    <div>
-                        <div className="flex items-center gap-2.5">
-                            <h1 className="text-[28px] font-semibold m-0">{t('title')}</h1>
-                            <DataSourceBadge isLive={isLive} />
-                        </div>
-                        <p className="text-muted-foreground mt-1 mb-0">
-                            Arrastra las oportunidades entre etapas · {forecast.dealCount} oportunidades abiertas
-                        </p>
-                    </div>
-                </div>
+                <PageHeader
+                    title={t('title')}
+                    subtitle={`${forecast.dealCount} ${t('subtitle') || 'deals'}`}
+                    badge={<DataSourceBadge isLive={isLive} />}
+                />
 
                 {/* Forecast Cards */}
                 <div className="grid grid-cols-4 gap-3 mb-5">

@@ -90,7 +90,7 @@ export class AnalyticsService {
 
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO analytics_events (id, event_type, conversation_id, contact_id, data, created_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, $5)`,
+       VALUES (gen_random_uuid(), $1, $2::uuid, $3, $4::jsonb, $5::timestamp)`,
             [eventType, conversationId || null, contactId || null, JSON.stringify(data || {}), timestamp]
         );
     }

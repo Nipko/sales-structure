@@ -169,15 +169,10 @@ export class ConversationsService {
         }
 
         // 7. Send Response via Channel Gateway
+        // NOTE: Never block responses to inbound messages. If a customer writes,
+        // we always respond. Opt-out blocking only applies to proactive outbound
+        // (broadcasts, automations, reminders) — not to conversation replies.
         if (response) {
-            // Check opt-out before sending (non-fatal)
-            try {
-                if (await this.complianceService.isBlocked(tenantId, contactId)) {
-                    this.logger.warn(`[Pipeline] Contact ${contactId} is opted out — skipping response`);
-                    await this.saveAiMessage(tenantId, conversation.id, response);
-                    return;
-                }
-            } catch {}
             this.logger.log(`[Pipeline] Sending response via outbound queue...`);
             await this.sendResponse(tenantId, response, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, response);

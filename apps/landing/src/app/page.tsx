@@ -345,6 +345,16 @@ const icons = {
       />
     </svg>
   ),
+  calendar: (
+    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+    </svg>
+  ),
+  bookOpen: (
+    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.331 0 4.512.645 6.374 1.766l.626.434.626-.434A12.318 12.318 0 0118 18c1.052 0 2.062.18 3 .512V4.262A8.967 8.967 0 0018 3.75a8.967 8.967 0 00-6 2.292z" />
+    </svg>
+  ),
   check: (
     <svg
       className="w-5 h-5 text-[#3897f0]"
@@ -869,6 +879,8 @@ export default function LandingPage() {
     { icon: icons.zap, titleKey: "features.f4Title", descKey: "features.f4Desc" },
     { icon: icons.barChart, titleKey: "features.f5Title", descKey: "features.f5Desc" },
     { icon: icons.shield, titleKey: "features.f6Title", descKey: "features.f6Desc" },
+    { icon: icons.calendar, titleKey: "features.f7Title", descKey: "features.f7Desc" },
+    { icon: icons.bookOpen, titleKey: "features.f8Title", descKey: "features.f8Desc" },
   ];
 
   const featuresSection = (

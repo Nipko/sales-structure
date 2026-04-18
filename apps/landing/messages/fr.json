@@ -59,7 +59,7 @@
     "f1Title": "Un agent IA qui parle comme vous",
     "f1Desc": "Definissez le ton, le style et les regles. Votre IA repond comme si c'etait vous, mais 24/7.",
     "f2Title": "Tous vos chats au meme endroit",
-    "f2Desc": "WhatsApp, Instagram et Messenger dans une boite de reception unifiee. Fini de jongler entre les apps.",
+    "f2Desc": "WhatsApp, Instagram, Messenger, Telegram et SMS dans une boite de reception unifiee. Fini de jongler entre les apps.",
     "f3Title": "Un CRM qui se remplit tout seul",
     "f3Desc": "Chaque conversation cree automatiquement un lead. Pipeline, scoring, suivi... tout est automatique.",
     "f4Title": "Automatisations sans code",
@@ -67,7 +67,11 @@
     "f5Title": "Des metriques qui comptent",
     "f5Desc": "Temps de reponse, conversion par canal, CSAT, performance des agents. Tout en temps reel.",
     "f6Title": "Une vraie securite",
-    "f6Desc": "Chiffrement AES-256, donnees isolees par tenant, roles granulaires. Vos donnees et celles de vos clients sont protegees."
+    "f6Desc": "Chiffrement AES-256, donnees isolees par tenant, roles granulaires. Vos donnees et celles de vos clients sont protegees.",
+    "f7Title": "Prise de rendez-vous intelligente",
+    "f7Desc": "Votre IA prend des rendez-vous par chat. Page publique de reservation, rappels automatiques, detection de no-show, rendez-vous recurrents.",
+    "f8Title": "Base de connaissances en libre-service",
+    "f8Desc": "Centre d'aide public pour vos clients. Articles consultables, categories et reponses IA a partir de votre documentation."
   },
   "comparison": {
     "title": "Pourquoi Parallly ?",

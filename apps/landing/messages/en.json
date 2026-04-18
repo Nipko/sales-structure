@@ -59,7 +59,7 @@
     "f1Title": "An AI agent that sounds like you",
     "f1Desc": "Set the tone, style and rules. Your AI responds as if it were you, but 24/7.",
     "f2Title": "All your chats in one place",
-    "f2Desc": "WhatsApp, Instagram and Messenger in a unified inbox. Never jump between apps again.",
+    "f2Desc": "WhatsApp, Instagram, Messenger, Telegram and SMS in a unified inbox. Never jump between apps again.",
     "f3Title": "A CRM that fills itself",
     "f3Desc": "Every conversation automatically creates a lead. Pipeline, scoring, follow-ups... all automatic.",
     "f4Title": "No-code automations",
@@ -67,7 +67,11 @@
     "f5Title": "Metrics that matter",
     "f5Desc": "Response time, conversion by channel, CSAT, agent performance. All in real time.",
     "f6Title": "Real security",
-    "f6Desc": "AES-256 encryption, per-tenant data isolation, granular roles. Your data and your customers' data are protected."
+    "f6Desc": "AES-256 encryption, per-tenant data isolation, granular roles. Your data and your customers' data are protected.",
+    "f7Title": "Smart appointment booking",
+    "f7Desc": "Your AI books appointments via chat. Public booking page, automatic reminders, no-show detection, recurring appointments.",
+    "f8Title": "Self-service knowledge base",
+    "f8Desc": "Public help center for your customers. Searchable articles, categories, and AI-powered answers from your documentation."
   },
   "comparison": {
     "title": "Why Parallly?",

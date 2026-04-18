@@ -59,7 +59,7 @@
     "f1Title": "Agente IA que suena como tu",
     "f1Desc": "Configura el tono, el estilo y las reglas. Tu IA responde como si fueras tu, pero 24/7.",
     "f2Title": "Todos tus chats en un solo lugar",
-    "f2Desc": "WhatsApp, Instagram y Messenger en una bandeja unificada. Nunca mas saltes entre apps.",
+    "f2Desc": "WhatsApp, Instagram, Messenger, Telegram y SMS en una bandeja unificada. Nunca mas saltes entre apps.",
     "f3Title": "CRM que se llena solo",
     "f3Desc": "Cada conversacion crea un lead automaticamente. Pipeline, scoring, seguimiento... todo automatico.",
     "f4Title": "Automatizaciones sin codigo",
@@ -67,7 +67,11 @@
     "f5Title": "Metricas que importan",
     "f5Desc": "Tiempo de respuesta, conversion por canal, CSAT, rendimiento de agentes. Todo en tiempo real.",
     "f6Title": "Seguridad de verdad",
-    "f6Desc": "Cifrado AES-256, datos por tenant, roles granulares. Tu info y la de tus clientes estan protegidas."
+    "f6Desc": "Cifrado AES-256, datos por tenant, roles granulares. Tu info y la de tus clientes estan protegidas.",
+    "f7Title": "Agendamiento inteligente",
+    "f7Desc": "Tu IA agenda citas por chat. Pagina publica de reservas, recordatorios automaticos, deteccion de no-show, citas recurrentes.",
+    "f8Title": "Base de conocimiento autoservicio",
+    "f8Desc": "Centro de ayuda publico para tus clientes. Articulos buscables, categorias y respuestas con IA desde tu documentacion."
   },
   "comparison": {
     "title": "Por que Parallly?",

@@ -95,7 +95,26 @@ export class AIToolExecutorService {
             ...params,
         );
 
-        if (!slots.length) return { available: false, message: 'No hay disponibilidad para esta fecha', slots: [] };
+        if (!slots.length) {
+            // Distinguish "tenant never configured any hours" from "tenant does not
+            // work this specific weekday". The first case is a misconfiguration that
+            // must surface — otherwise the bot silently tells every customer there
+            // is no availability and the tenant never finds out.
+            const [anyRow] = await this.prisma.$queryRawUnsafe<any[]>(
+                `SELECT COUNT(*)::int AS cnt FROM "${schema}".availability_slots WHERE is_active = true`,
+            );
+            const hasAnySlots = Number(anyRow?.cnt || 0) > 0;
+            if (!hasAnySlots) {
+                this.logger.warn(`[Tool] check_availability for schema=${schema} but no active availability_slots exist — misconfiguration`);
+                return {
+                    available: false,
+                    error: 'appointments_not_configured',
+                    message: 'El sistema de agendamiento aún no está configurado en este negocio. Explícale al cliente que por ahora no puedes tomar turnos automáticamente y ofrécele escalar con un agente humano.',
+                    slots: [],
+                };
+            }
+            return { available: false, message: 'No atendemos ese día de la semana. Sugerí otra fecha al cliente.', slots: [] };
+        }
 
         // Get existing appointments for that date
         const existing: any[] = await this.prisma.$queryRawUnsafe(

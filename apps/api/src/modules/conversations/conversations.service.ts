@@ -59,10 +59,11 @@ export class ConversationsService {
         const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
 
-        // Track conversation event
+        // Track conversation event (contactId here is the normalized external id
+        // like a phone number — analytics needs the internal UUID)
         this.analyticsService.trackEvent({
             tenantId, eventType: 'conversation_started',
-            conversationId: conversation.id, contactId,
+            conversationId: conversation.id, contactId: contact.id,
             data: { channelType },
         }).catch(() => {});
 
@@ -131,7 +132,7 @@ export class ConversationsService {
             this.logger.warn(`HANDOFF TRIGGERED for conversation ${conversation.id}: ${handoffReason}`);
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'handoff_triggered',
-                conversationId: conversation.id, contactId,
+                conversationId: conversation.id, contactId: contact.id,
                 data: { reason: handoffReason },
             }).catch(() => {});
             await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
@@ -163,7 +164,7 @@ export class ConversationsService {
         if (response) {
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'message_sent',
-                conversationId: conversation.id, contactId,
+                conversationId: conversation.id, contactId: contact.id,
                 data: { channelType, responseLength: response.length, source: 'ai' },
             }).catch(() => {});
         }

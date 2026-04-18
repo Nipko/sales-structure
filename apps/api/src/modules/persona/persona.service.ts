@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
@@ -68,6 +68,15 @@ export class PersonaService {
 
         // Validate the config structure
         this.validateConfig(configJson);
+
+        // Prevent activating the appointments tool without prerequisites in the
+        // tenant schema. Without this gate, the AI tool ends up returning
+        // "no hay disponibilidad" forever and the tenant does not realize the
+        // agenda was never set up.
+        const appointmentsEnabled = (configJson as any)?.tools?.appointments?.enabled === true;
+        if (appointmentsEnabled) {
+            await this.assertAppointmentsPrerequisites(tenantId, schemaName);
+        }
 
         // Deactivate previous versions
         await this.prisma.$executeRawUnsafe(
@@ -249,5 +258,29 @@ export class PersonaService {
         if (!config.persona?.name) throw new Error('Persona name is required');
         if (!config.persona?.role) throw new Error('Persona role is required');
         if (!config.behavior?.rules) throw new Error('Behavior rules are required');
+    }
+
+    private async assertAppointmentsPrerequisites(tenantId: string, schemaName: string): Promise<void> {
+        const [servicesRow] = await this.prisma.$queryRawUnsafe<any[]>(
+            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".services WHERE is_active = true`,
+        );
+        const [slotsRow] = await this.prisma.$queryRawUnsafe<any[]>(
+            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".availability_slots WHERE is_active = true`,
+        );
+        const services = Number(servicesRow?.cnt || 0);
+        const slots = Number(slotsRow?.cnt || 0);
+
+        if (services === 0 || slots === 0) {
+            const missing: string[] = [];
+            if (services === 0) missing.push('servicios');
+            if (slots === 0) missing.push('horarios de disponibilidad');
+            const msg = `No se puede activar el agendador de citas sin ${missing.join(' y ')} configurados. Ir a Citas → Config y completar antes de habilitar la herramienta.`;
+            this.logger.warn(`Rejected persona save for tenant ${tenantId}: appointments enabled without prerequisites (services=${services}, slots=${slots})`);
+            throw new BadRequestException({
+                error: 'appointments_prerequisites_missing',
+                message: msg,
+                missing,
+            });
+        }
     }
 }

@@ -425,7 +425,12 @@
       "twoFactor": "Autenticación de dos factores (2FA)",
       "twoFactorDesc": "Protege tu cuenta con un código adicional al iniciar sesión",
       "comingSoon": "Próximamente",
-      "passwordsMatch": "Las contraseñas coinciden"
+      "passwordsMatch": "Las contrasenas coinciden",
+      "val8chars": "Al menos 8 caracteres",
+      "valUppercase": "Al menos 1 letra mayuscula",
+      "valLowercase": "Al menos 1 letra minuscula",
+      "valNumber": "Al menos 1 numero",
+      "valSpecial": "Al menos 1 caracter especial (!@#$%^&*)"
     },
     "notificationsPage": {
       "title": "Notificaciones",

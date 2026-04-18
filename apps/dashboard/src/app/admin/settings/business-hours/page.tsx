@@ -14,15 +14,7 @@ interface DaySchedule {
     close: string;
 }
 
-const DAYS = [
-    { key: "monday", label: "Lunes" },
-    { key: "tuesday", label: "Martes" },
-    { key: "wednesday", label: "Miércoles" },
-    { key: "thursday", label: "Jueves" },
-    { key: "friday", label: "Viernes" },
-    { key: "saturday", label: "Sábado" },
-    { key: "sunday", label: "Domingo" },
-];
+const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 const defaultSchedule: Record<string, DaySchedule> = {
     monday: { enabled: true, open: "08:00", close: "18:00" },
@@ -36,11 +28,12 @@ const defaultSchedule: Record<string, DaySchedule> = {
 
 export default function BusinessHoursPage() {
     const tc = useTranslations("common");
+    const t = useTranslations("settings.businessHoursPage");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(defaultSchedule);
     const [outOfHoursMessage, setOutOfHoursMessage] = useState(
-        "Gracias por tu mensaje. Estamos fuera de nuestro horario de atención. Te responderemos a primera hora del siguiente día hábil."
+        ""
     );
     const [outOfHoursEnabled, setOutOfHoursEnabled] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -99,9 +92,9 @@ export default function BusinessHoursPage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Horarios de negocio</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("title")}</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Define los horarios de atención y el mensaje fuera de horario
+                    {t("subtitle")}
                 </p>
             </div>
 
@@ -114,14 +107,14 @@ export default function BusinessHoursPage() {
             {/* Schedule */}
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                    Horarios por día
+                    {t("scheduleTitle")}
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
-                    Activa los días laborables y define el horario de apertura y cierre
+                    {t("scheduleDesc")}
                 </p>
 
                 <div className="space-y-3">
-                    {DAYS.map(({ key, label }) => {
+                    {DAY_KEYS.map((key) => {
                         const day = schedule[key];
                         return (
                             <div
@@ -149,7 +142,7 @@ export default function BusinessHoursPage() {
 
                                 {/* Day name */}
                                 <span className="w-24 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                                    {label}
+                                    {t(`days.${key}`)}
                                 </span>
 
                                 {/* Time inputs */}
@@ -186,7 +179,7 @@ export default function BusinessHoursPage() {
                             Mensaje fuera de horario
                         </h2>
                         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            Respuesta automática cuando un cliente escribe fuera del horario
+                            {t("outOfHoursDesc")}
                         </p>
                     </div>
                     <button

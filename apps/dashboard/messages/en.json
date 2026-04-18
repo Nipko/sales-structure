@@ -425,7 +425,12 @@
       "twoFactor": "Two-Factor Authentication (2FA)",
       "twoFactorDesc": "Protect your account with an additional code at login",
       "comingSoon": "Coming Soon",
-      "passwordsMatch": "Passwords match"
+      "passwordsMatch": "Passwords match",
+      "val8chars": "At least 8 characters",
+      "valUppercase": "At least 1 uppercase letter",
+      "valLowercase": "At least 1 lowercase letter",
+      "valNumber": "At least 1 number",
+      "valSpecial": "At least 1 special character (!@#$%^&*)"
     },
     "notificationsPage": {
       "title": "Notifications",

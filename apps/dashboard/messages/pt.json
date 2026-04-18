@@ -403,7 +403,12 @@
       "twoFactor": "Autenticação de dois fatores (2FA)",
       "twoFactorDesc": "Proteja sua conta com um código adicional ao fazer login",
       "comingSoon": "Em breve",
-      "passwordsMatch": "As senhas coincidem"
+      "passwordsMatch": "As senhas coincidem",
+      "val8chars": "Pelo menos 8 caracteres",
+      "valUppercase": "Pelo menos 1 letra maiuscula",
+      "valLowercase": "Pelo menos 1 letra minuscula",
+      "valNumber": "Pelo menos 1 numero",
+      "valSpecial": "Pelo menos 1 caractere especial (!@#$%^&*)"
     },
     "notificationsPage": {
       "title": "Notificações",

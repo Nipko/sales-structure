@@ -403,7 +403,12 @@
       "twoFactor": "Authentification à deux facteurs (2FA)",
       "twoFactorDesc": "Protégez votre compte avec un code supplémentaire à la connexion",
       "comingSoon": "Bientôt disponible",
-      "passwordsMatch": "Les mots de passe correspondent"
+      "passwordsMatch": "Les mots de passe correspondent",
+      "val8chars": "Au moins 8 caracteres",
+      "valUppercase": "Au moins 1 lettre majuscule",
+      "valLowercase": "Au moins 1 lettre minuscule",
+      "valNumber": "Au moins 1 chiffre",
+      "valSpecial": "Au moins 1 caractere special (!@#$%^&*)"
     },
     "notificationsPage": {
       "title": "Notifications",

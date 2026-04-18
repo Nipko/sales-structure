@@ -596,6 +596,7 @@
       "confirmDelete": "Delete this service?"
     },
     "configSection": {
+      "title": "Settings",
       "schedule": "Working hours",
       "scheduleDesc": "Set the days and hours your team handles appointments",
       "available247": "Available 24/7",

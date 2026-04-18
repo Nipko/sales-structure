@@ -596,6 +596,7 @@
       "confirmDelete": "¿Eliminar este servicio?"
     },
     "configSection": {
+      "title": "Configuración",
       "schedule": "Horario de atención",
       "scheduleDesc": "Define los días y horarios en que tu equipo atiende citas",
       "available247": "Disponible 24/7",

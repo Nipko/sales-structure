@@ -596,6 +596,7 @@
       "confirmDelete": "Excluir este serviço?"
     },
     "configSection": {
+      "title": "Configurações",
       "schedule": "Horário de atendimento",
       "scheduleDesc": "Defina os dias e horários que sua equipe atende",
       "available247": "Disponível 24/7",

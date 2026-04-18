@@ -596,6 +596,7 @@
       "confirmDelete": "Supprimer ce service ?"
     },
     "configSection": {
+      "title": "Configuration",
       "schedule": "Horaires d'ouverture",
       "scheduleDesc": "Définissez les jours et heures où votre équipe prend des rendez-vous",
       "available247": "Disponible 24/7",

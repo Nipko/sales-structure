@@ -471,6 +471,24 @@
     "nextDay": "Jour suivant",
     "weekView": "Semaine",
     "dayView": "Jour",
+    "days": {
+      "monday": "Lundi",
+      "tuesday": "Mardi",
+      "wednesday": "Mercredi",
+      "thursday": "Jeudi",
+      "friday": "Vendredi",
+      "saturday": "Samedi",
+      "sunday": "Dimanche"
+    },
+    "daysShort": {
+      "monday": "Lun",
+      "tuesday": "Mar",
+      "wednesday": "Mer",
+      "thursday": "Jeu",
+      "friday": "Ven",
+      "saturday": "Sam",
+      "sunday": "Dim"
+    },
     "noAppointments": "Aucun rendez-vous pour cette période",
     "searchAppointments": "Rechercher des rendez-vous...",
     "clearFilters": "Effacer les filtres",

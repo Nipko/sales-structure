@@ -471,6 +471,24 @@
     "nextDay": "Próximo dia",
     "weekView": "Semana",
     "dayView": "Dia",
+    "days": {
+      "monday": "Segunda",
+      "tuesday": "Terça",
+      "wednesday": "Quarta",
+      "thursday": "Quinta",
+      "friday": "Sexta",
+      "saturday": "Sábado",
+      "sunday": "Domingo"
+    },
+    "daysShort": {
+      "monday": "Seg",
+      "tuesday": "Ter",
+      "wednesday": "Qua",
+      "thursday": "Qui",
+      "friday": "Sex",
+      "saturday": "Sáb",
+      "sunday": "Dom"
+    },
     "noAppointments": "Sem agendamentos para este período",
     "searchAppointments": "Buscar agendamentos...",
     "clearFilters": "Limpar filtros",

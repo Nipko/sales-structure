@@ -201,7 +201,7 @@ export default function ConfigTab({
                                     setAvailabilitySlots(updated);
                                 }} />
                                 <span className={cn("w-24 text-sm font-medium", slot.active ? "text-foreground" : "text-muted-foreground")}>
-                                    {t(`businessHoursPage.days.${DAY_KEYS[i]}`)}
+                                    {t(`days.${DAY_KEYS[i]}`)}
                                 </span>
                                 {slot.active ? (
                                     <div className="flex items-center gap-2">

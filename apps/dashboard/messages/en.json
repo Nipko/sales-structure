@@ -471,6 +471,24 @@
     "nextDay": "Next day",
     "weekView": "Week",
     "dayView": "Day",
+    "days": {
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "daysShort": {
+      "monday": "Mon",
+      "tuesday": "Tue",
+      "wednesday": "Wed",
+      "thursday": "Thu",
+      "friday": "Fri",
+      "saturday": "Sat",
+      "sunday": "Sun"
+    },
     "noAppointments": "No appointments for this period",
     "searchAppointments": "Search appointments...",
     "clearFilters": "Clear filters",

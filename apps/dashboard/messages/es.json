@@ -471,6 +471,24 @@
     "nextDay": "Día siguiente",
     "weekView": "Semana",
     "dayView": "Día",
+    "days": {
+      "monday": "Lunes",
+      "tuesday": "Martes",
+      "wednesday": "Miércoles",
+      "thursday": "Jueves",
+      "friday": "Viernes",
+      "saturday": "Sábado",
+      "sunday": "Domingo"
+    },
+    "daysShort": {
+      "monday": "Lun",
+      "tuesday": "Mar",
+      "wednesday": "Mié",
+      "thursday": "Jue",
+      "friday": "Vie",
+      "saturday": "Sáb",
+      "sunday": "Dom"
+    },
     "noAppointments": "No hay citas para este periodo",
     "searchAppointments": "Buscar citas...",
     "clearFilters": "Limpiar filtros",

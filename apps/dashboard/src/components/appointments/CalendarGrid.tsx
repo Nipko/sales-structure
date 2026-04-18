@@ -32,7 +32,7 @@ interface CalendarGridProps {
   onEditAppointment: (appt: Appointment) => void;
 }
 
-const HOUR_HEIGHT = 64; // px per hour row
+const HOUR_HEIGHT = 52; // px per hour row — fits 14 hours (~728px) without scroll on most screens
 
 export default function CalendarGrid({
   appointments, services, externalEvents, weekStart, dateLocale,
@@ -148,15 +148,15 @@ export default function CalendarGrid({
           {appt.recurringGroupId && <Repeat size={isDayView ? 11 : 9} className="shrink-0 opacity-70" />}
           {appt.serviceName}
         </div>
-        {pos.height > 30 && (
+        {pos.height > 24 && (
           <div className="truncate opacity-80">
             {formatTime(appt.startAt)} - {formatTime(appt.endAt)}
           </div>
         )}
-        {pos.height > 48 && appt.contactName && (
+        {pos.height > 38 && appt.contactName && (
           <div className="truncate opacity-70">{appt.contactName}</div>
         )}
-        {isDayView && pos.height > 64 && appt.assignedName && (
+        {isDayView && pos.height > 50 && appt.assignedName && (
           <div className="truncate opacity-60 mt-0.5">{appt.assignedName}</div>
         )}
       </div>
@@ -263,7 +263,7 @@ export default function CalendarGrid({
                 )}
               >
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  {t(`businessHoursPage.daysShort.${DAY_KEYS[i]}`)}
+                  {t(`daysShort.${DAY_KEYS[i]}`)}
                 </div>
                 <div className={cn("text-lg font-bold mt-0.5", isToday ? "text-primary" : "text-gray-900 dark:text-white")}>
                   {isToday ? (
@@ -296,14 +296,14 @@ export default function CalendarGrid({
               {selectedDay.toLocaleDateString(dateLocale, { weekday: "long" })}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              {getAppointmentsForDay(selectedDay).length} {t('noAppointments').includes('appointment') ? 'appointments' : 'citas'}
+              {getAppointmentsForDay(selectedDay).length} {t('total').toLowerCase()}
             </div>
           </div>
         </div>
       )}
 
-      {/* Time grid */}
-      <div ref={gridRef} className={`grid ${gridCols} max-h-[calc(14*${HOUR_HEIGHT}px)] overflow-y-auto`} style={{ maxHeight: `${14 * HOUR_HEIGHT}px` }}>
+      {/* Time grid — fills available viewport, scrolls only when needed */}
+      <div ref={gridRef} className={`grid ${gridCols} overflow-y-auto`} style={{ maxHeight: 'calc(100vh - 340px)' }}>
         {HOURS.map((hour) => (
           <div key={`row-${hour}`} className="contents">
             {/* Hour label */}

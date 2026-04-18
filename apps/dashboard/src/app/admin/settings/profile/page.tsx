@@ -70,7 +70,7 @@ export default function ProfilePage() {
             <div>
                 <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Perfil</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Tu información personal y datos de contacto
+                    Your personal information y datos de contacto
                 </p>
             </div>
 
@@ -150,7 +150,7 @@ export default function ProfilePage() {
                 {/* Phone */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Teléfono
+                        Phone
                     </label>
                     <div className="relative">
                         <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />

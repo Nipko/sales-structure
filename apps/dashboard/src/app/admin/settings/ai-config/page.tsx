@@ -81,7 +81,7 @@ export default function AIConfigPage() {
                         <SlidersHorizontal size={14} className="text-neutral-400" /> Modelo por defecto
                     </label>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                        Usado cuando el router no puede decidir qué modelo utilizar
+                        Used when the router cannot decide which model to use
                     </p>
                     <select
                         value={values["llm.default_model"]}
@@ -117,7 +117,7 @@ export default function AIConfigPage() {
                         Max Tokens
                     </label>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                        Límite de tokens por respuesta del modelo
+                        Token limit per model response
                     </p>
                     <input
                         type="number"

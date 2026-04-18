@@ -44,9 +44,9 @@ const pathLabels: Record<string, string> = {
   inbox: "Inbox",
   contacts: "CRM",
   pipeline: "Pipeline",
-  automation: "Automatización",
+  automation: "Automation",
   agent: "Agente IA",
-  settings: "Configuración",
+  settings: "Settings",
   channels: "Canales",
   analytics: "Analytics",
   "analytics-v2": "Analytics",
@@ -54,10 +54,10 @@ const pathLabels: Record<string, string> = {
   identity: "Identidad",
   knowledge: "Knowledge Base",
   users: "Usuarios",
-  broadcast: "Campañas",
+  broadcast: "Campaigns",
   compliance: "Compliance",
   inventory: "Inventario",
-  orders: "Órdenes",
+  orders: "Orders",
   tenants: "Tenants",
   appointments: "Citas",
   "email-templates": "Plantillas",
@@ -479,7 +479,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
               <Settings size={15} />
-              Configuración
+              Settings
             </Link>
             {/* Logout */}
             <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
@@ -491,7 +491,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
               >
                 <LogOut size={15} />
-                Cerrar sesión
+                Logout
               </button>
             </div>
           </div>

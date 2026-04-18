@@ -304,9 +304,18 @@
     "subtitle": "Manage your account, company, channels and tools",
     "account": "My Account",
     "accountDesc": "Your profile, security and personal preferences",
-    "profile": "Profile",
+    "profile": {
+      "title": "Profile",
+      "subtitle": "Your personal information and contact details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "email": "Email",
+      "emailReadonly": "Email cannot be changed",
+      "phone": "Phone",
+      "jobTitle": "Job Title"
+    },
     "profileDesc": "Name, email, avatar and personal data",
-    "security": "Security",
+    "security": "API keys are stored encrypted and shown masked.",
     "securityDesc": "Password, two-factor authentication",
     "notifications": "Notifications",
     "notificationsDesc": "Configure alerts by category and channel",
@@ -320,7 +329,14 @@
     "localizationDesc": "Timezone, currency, date format and language",
     "businessHours": "Business hours",
     "businessHoursDesc": "Daily schedules, holidays and after-hours message",
-    "tools": "Tools",
+    "tools": {
+      "customAttributes": "Custom Attributes",
+      "macros": "Macros",
+      "prechat": "Pre-Chat Form",
+      "emailTemplates": "Email Templates",
+      "mediaBank": "Media Bank",
+      "changePassword": "Change Password"
+    },
     "toolsDesc": "Attributes, macros, forms and templates",
     "customAttributes": "Custom attributes",
     "customAttributesDesc": "Dynamic fields for contacts and leads",
@@ -400,16 +416,6 @@
       "advanced": "Advanced",
       "advancedDesc": "Platform name, limits and features"
     },
-    "profile": {
-      "title": "Profile",
-      "subtitle": "Your personal information and contact details",
-      "firstName": "First Name",
-      "lastName": "Last Name",
-      "email": "Email",
-      "emailReadonly": "Email cannot be changed",
-      "phone": "Phone",
-      "jobTitle": "Job Title"
-    },
     "securityPage": {
       "title": "Security",
       "subtitle": "Password and security options for your account",
@@ -482,11 +488,18 @@
       "saveChanges": "Save changes",
       "errorSaving": "Error saving",
       "connectionError": "Connection error",
-      "retail": "Retail / Commerce", "education": "Education", "health": "Health",
-      "tourism": "Tourism / Hospitality", "technology": "Technology",
-      "professionalServices": "Professional services", "restaurants": "Restaurants / Gastronomy",
-      "realEstate": "Real estate", "automotive": "Automotive",
-      "finance": "Finance / Banking", "fashionBeauty": "Fashion / Beauty", "other": "Other"
+      "retail": "Retail / Commerce",
+      "education": "Education",
+      "health": "Health",
+      "tourism": "Tourism / Hospitality",
+      "technology": "Technology",
+      "professionalServices": "Professional services",
+      "restaurants": "Restaurants / Gastronomy",
+      "realEstate": "Real estate",
+      "automotive": "Automotive",
+      "finance": "Finance / Banking",
+      "fashionBeauty": "Fashion / Beauty",
+      "other": "Other"
     },
     "localizationPage": {
       "title": "Localization",
@@ -524,16 +537,7 @@
         "saturday": "Sat",
         "sunday": "Sun"
       }
-    },
-    "tools": {
-      "customAttributes": "Custom Attributes",
-      "macros": "Macros",
-      "prechat": "Pre-Chat Form",
-      "emailTemplates": "Email Templates",
-      "mediaBank": "Media Bank",
-      "changePassword": "Change Password"
-    },
-    "security": "API keys are stored encrypted and shown masked."
+    }
   },
   "media": {
     "title": "Media Bank",
@@ -854,7 +858,17 @@
     "stageQualified": "Qualified",
     "stageWarm": "Warm",
     "stageHot": "Hot",
-    "stageReadyToClose": "Ready to close"
+    "stageReadyToClose": "Ready to close",
+    "triggerQuestion": "What event triggers this rule?",
+    "triggerDesc": "Select the event that will trigger execution",
+    "conditionQuestion": "Under what conditions does it execute?",
+    "conditionDesc": "All conditions must be met (AND). If no conditions, it always executes.",
+    "noConditions": "No conditions — the rule executes whenever the trigger fires",
+    "addCondition": "Add condition",
+    "actionQuestion": "What actions to execute?",
+    "actionDesc": "Define the actions to perform when the rule activates",
+    "noActions": "Add at least one action",
+    "addAction": "Add action"
   },
   "broadcast": {
     "title": "Campaigns",

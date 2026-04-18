@@ -42,7 +42,7 @@ export function useApiData<T>(
                 setData(fallback);
                 setIsLive(false);
             } else {
-                setError("Error de conexión");
+                setError("Connection error");
             }
         }
         setLoading(false);

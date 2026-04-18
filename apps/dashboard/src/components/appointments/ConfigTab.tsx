@@ -137,7 +137,7 @@ export default function ConfigTab({
                     <div className="flex-1">
                         <p className="text-sm font-semibold text-red-700 dark:text-red-300">Horarios no guardados</p>
                         <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                            Todavía no configuraste los horarios de atención. Los valores que ves son solo sugerencias, no están en la base de datos. Si tu agente IA tiene la herramienta de agendamiento activada, responderá <em>&quot;no hay disponibilidad&quot;</em> a todos los clientes hasta que guardes esta configuración.
+                            Availability schedule not yet saved. These are default suggestions, not in the database. If your AI agent has the appointment tool enabled, it will respond with no availability until you save.
                         </p>
                     </div>
                 </div>

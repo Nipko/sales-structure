@@ -6,7 +6,7 @@ interface HeatmapProps {
     data: Array<{ day: number; hour: number; count: number }>;
 }
 
-const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function Heatmap({ data }: HeatmapProps) {
     const t = useTranslations("analyticsV2");

@@ -10,15 +10,15 @@ import { Globe, DollarSign, Calendar, Clock, Save, CheckCircle, AlertCircle } fr
 
 const TIMEZONES = [
     { value: "America/Bogota", label: "Colombia (GMT-5)" },
-    { value: "America/Mexico_City", label: "México Central (GMT-6)" },
-    { value: "America/Lima", label: "Perú (GMT-5)" },
+    { value: "America/Mexico_City", label: "Mexico City (GMT-6)" },
+    { value: "America/Lima", label: "Peru (GMT-5)" },
     { value: "America/Santiago", label: "Chile (GMT-4)" },
     { value: "America/Argentina/Buenos_Aires", label: "Argentina (GMT-3)" },
     { value: "America/Sao_Paulo", label: "Brasil (GMT-3)" },
     { value: "America/New_York", label: "US Eastern (GMT-5)" },
     { value: "America/Chicago", label: "US Central (GMT-6)" },
     { value: "America/Los_Angeles", label: "US Pacific (GMT-8)" },
-    { value: "Europe/Madrid", label: "España (GMT+1)" },
+    { value: "Europe/Madrid", label: "Spain (GMT+1)" },
     { value: "Europe/London", label: "UK (GMT+0)" },
 ];
 
@@ -28,8 +28,8 @@ const CURRENCIES = [
     { value: "PEN", label: "PEN - Sol peruano (S/)" },
     { value: "CLP", label: "CLP - Peso chileno ($)" },
     { value: "ARS", label: "ARS - Peso argentino ($)" },
-    { value: "BRL", label: "BRL - Real brasileño (R$)" },
-    { value: "USD", label: "USD - Dólar estadounidense ($)" },
+    { value: "BRL", label: "BRL - Brazilian Real (R$)" },
+    { value: "USD", label: "USD - US Dollar ($)" },
     { value: "EUR", label: "EUR - Euro (\u20ac)" },
 ];
 
@@ -45,9 +45,9 @@ const TIME_FORMATS = [
 ];
 
 const LANGUAGES = [
-    { value: "es-CO", label: "Español (Colombia)" },
-    { value: "es-MX", label: "Español (México)" },
-    { value: "es-ES", label: "Español (España)" },
+    { value: "es-CO", label: "Spanish (Colombia)" },
+    { value: "es-MX", label: "Spanish (Mexico)" },
+    { value: "es-ES", label: "Spanish (Spain)" },
     { value: "en-US", label: "English (US)" },
     { value: "pt-BR", label: "Português (Brasil)" },
 ];

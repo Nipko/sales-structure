@@ -143,7 +143,7 @@ export default function AutomationPage() {
 
     // -- Delete rule --
     async function handleDelete(id: string) {
-        if (!confirm("¿Estás seguro de que deseas eliminar esta regla?")) return;
+        if (!confirm("Are you sure you want to delete this rule?")) return;
         setRules(prev => prev.filter(r => r.id !== id));
         if (activeTenantId) {
             try { await api.deleteRule(activeTenantId, id); } catch {}
@@ -533,10 +533,10 @@ export default function AutomationPage() {
                     {wizardStep === 0 && (
                         <div>
                             <h2 className="text-lg font-semibold mb-1">
-                                ¿Qué evento activa esta regla?
+                                {t("triggerQuestion")}
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
-                                Selecciona el evento que disparará la ejecución
+                                {t("triggerDesc")}
                             </p>
                             <div className="grid grid-cols-3 gap-3">
                                 {TRIGGERS.map(tr => {
@@ -567,15 +567,15 @@ export default function AutomationPage() {
                     {wizardStep === 1 && (
                         <div>
                             <h2 className="text-lg font-semibold mb-1">
-                                ¿Bajo qué condiciones se ejecuta?
+                                {t("conditionQuestion")}
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
-                                Todas las condiciones deben cumplirse (AND). Si no agregas condiciones, se ejecutará siempre.
+                                {t("conditionDesc")}
                             </p>
 
                             {ruleForm.conditions.length === 0 && (
                                 <div className="py-5 text-center text-muted-foreground text-[13px]">
-                                    Sin condiciones — la regla se ejecutará siempre que ocurra el trigger
+                                    {t("noConditions")}
                                 </div>
                             )}
 
@@ -622,7 +622,7 @@ export default function AutomationPage() {
                                 onClick={addCondition}
                                 className="flex items-center gap-1.5 mt-3.5 px-4 py-2 rounded-lg border border-dashed border-border bg-transparent text-indigo-600 text-[13px] font-semibold cursor-pointer"
                             >
-                                <Plus size={14} /> Agregar condición
+                                <Plus size={14} /> {t("addCondition")}
                             </button>
                         </div>
                     )}
@@ -631,15 +631,15 @@ export default function AutomationPage() {
                     {wizardStep === 2 && (
                         <div>
                             <h2 className="text-lg font-semibold mb-1">
-                                ¿Qué acciones ejecutar?
+                                {t("actionQuestion")}
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
-                                Define las acciones que se realizarán cuando se active la regla
+                                {t("actionDesc")}
                             </p>
 
                             {ruleForm.actions.length === 0 && (
                                 <div className="py-5 text-center text-muted-foreground text-[13px]">
-                                    Agrega al menos una acción
+                                    {t("noActions")}
                                 </div>
                             )}
 
@@ -685,7 +685,7 @@ export default function AutomationPage() {
                                                             onChange={e => updateActionConfig(idx, "language", e.target.value)}
                                                             className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                                         >
-                                                            <option value="es">Español</option>
+                                                            <option value="es">Spanish</option>
                                                             <option value="en">English</option>
                                                             <option value="pt">Português</option>
                                                         </select>
@@ -769,7 +769,7 @@ export default function AutomationPage() {
                                 onClick={addAction}
                                 className="flex items-center gap-1.5 mt-3.5 px-4 py-2 rounded-lg border border-dashed border-border bg-transparent text-indigo-600 text-[13px] font-semibold cursor-pointer"
                             >
-                                <Plus size={14} /> Agregar acción
+                                <Plus size={14} /> {t("addAction")}
                             </button>
                         </div>
                     )}

@@ -36,11 +36,11 @@ interface FieldConfig {
 
 const fieldsSchema: Record<string, FieldConfig[]> = {
     whatsapp: [
-        { key: "whatsapp.phone_number_id", label: "Phone Number ID", description: "ID del número en Meta Business", type: "text", placeholder: "1234567890" },
+        { key: "whatsapp.phone_number_id", label: "Phone Number ID", description: "Phone Number ID in Meta Business", type: "text", placeholder: "1234567890" },
         { key: "whatsapp.access_token", label: "Access Token", description: "Token permanente de Meta", type: "password", placeholder: "EAAG..." },
         { key: "whatsapp.business_account_id", label: "Business Account ID (WABA)", description: "ID de tu cuenta WhatsApp Business", type: "text", placeholder: "1234567890" },
         { key: "whatsapp.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks de Meta", type: "password" },
-        { key: "whatsapp.app_secret", label: "App Secret", description: "Secret de la Meta App (verificación de firma)", type: "password" },
+        { key: "whatsapp.app_secret", label: "App Secret", description: "Meta App Secret (signature verification)", type: "password" },
     ],
     instagram: [
         { key: "instagram.ig_user_id", label: "Instagram User ID", description: "ID de tu cuenta de Instagram Business", type: "text", placeholder: "1234567890" },
@@ -50,8 +50,8 @@ const fieldsSchema: Record<string, FieldConfig[]> = {
         { key: "instagram.webhook_url", label: "Webhook URL", description: "URL para configurar en Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/instagram" },
     ],
     messenger: [
-        { key: "messenger.page_id", label: "Facebook Page ID", description: "ID de tu página de Facebook", type: "text", placeholder: "1234567890" },
-        { key: "messenger.page_access_token", label: "Page Access Token", description: "Token permanente de la página", type: "password", placeholder: "EAAG..." },
+        { key: "messenger.page_id", label: "Facebook Page ID", description: "Your Facebook Page ID", type: "text", placeholder: "1234567890" },
+        { key: "messenger.page_access_token", label: "Page Access Token", description: "Permanent page access token", type: "password", placeholder: "EAAG..." },
         { key: "messenger.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks", type: "password" },
         { key: "messenger.app_secret", label: "App Secret", description: "Secret de la Meta App", type: "password" },
         { key: "messenger.webhook_url", label: "Webhook URL", description: "URL para configurar en Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/messenger" },

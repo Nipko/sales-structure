@@ -165,7 +165,7 @@ export default function AppearancePage() {
               <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800">
                 <Lock size={10} className="text-neutral-400 dark:text-neutral-500" />
                 <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-                  Próximamente
+                  Coming soon
                 </span>
               </div>
 
@@ -233,7 +233,7 @@ export default function AppearancePage() {
                 Ejemplo de tarjeta
               </h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Esta es una descripción de ejemplo para mostrar cómo se ven las
+                This is an example description to show how the
                 tarjetas con el tema actual.
               </p>
             </div>

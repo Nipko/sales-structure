@@ -14,7 +14,7 @@ import AnimatedLogo from "@/components/AnimatedLogo";
 const STEP_KEYS = ["step1", "step2", "step3", "step4"];
 
 const INDUSTRY_KEYS = [
-    "turismo", "educación", "salud", "retail", "tecnología",
+    "turismo", "education", "salud", "retail", "technology",
     "servicios_profesionales", "restaurantes", "inmobiliaria",
     "automotriz", "finanzas", "moda_belleza", "otro",
 ];
@@ -165,7 +165,7 @@ export default function OnboardingPage() {
             // router.push would keep the old user state without tenantId
             window.location.href = "/admin";
         } catch {
-            setError("Error de conexión con el servidor");
+            setError("Connection error");
         }
         setIsSubmitting(false);
     };
@@ -221,7 +221,7 @@ export default function OnboardingPage() {
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">Tu empresa</h2>
                             <p className="text-muted-foreground text-sm mb-6">
-                                Cuéntanos sobre tu negocio
+                                Tell us about your business
                             </p>
 
                             {/* Company Name */}
@@ -358,13 +358,13 @@ export default function OnboardingPage() {
                                     className={cn(selectClasses, "pr-8")}
                                     style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
-                                    <option value="America/Bogota">Bogotá, Lima, Quito (UTC-5)</option>
-                                    <option value="America/Mexico_City">Ciudad de México (UTC-6)</option>
+                                    <option value="America/Bogota">Bogota, Lima, Quito (UTC-5)</option>
+                                    <option value="America/Mexico_City">Mexico City (UTC-6)</option>
                                     <option value="America/Santiago">Santiago (UTC-3)</option>
                                     <option value="America/Argentina/Buenos_Aires">Buenos Aires (UTC-3)</option>
                                     <option value="America/Sao_Paulo">São Paulo (UTC-3)</option>
                                     <option value="America/Caracas">Caracas (UTC-4)</option>
-                                    <option value="America/Panama">Panamá (UTC-5)</option>
+                                    <option value="America/Panama">Panama (UTC-5)</option>
                                     <option value="America/Guayaquil">Guayaquil (UTC-5)</option>
                                     <option value="America/Costa_Rica">Costa Rica (UTC-6)</option>
                                     <option value="America/New_York">New York (UTC-5/4)</option>

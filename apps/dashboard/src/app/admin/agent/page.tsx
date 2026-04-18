@@ -699,7 +699,7 @@ export default function AgentConfigPage() {
         const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
         const missingItems: string[] = [];
         if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push('servicios');
-        if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push('horarios de atención');
+        if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push('availability schedule');
         const toggleBlocked = !canEnableAppointments && !apt.enabled;
 
         return (
@@ -724,7 +724,7 @@ export default function AgentConfigPage() {
                         <button
                             onClick={() => { if (!toggleBlocked) updateTools({ enabled: !apt.enabled }); }}
                             disabled={toggleBlocked}
-                            title={toggleBlocked ? `Configurá ${missingItems.join(' y ')} antes de activar` : undefined}
+                            title={toggleBlocked ? `Configure ${missingItems.join(' y ')} before activating` : undefined}
                             className={cn(
                                 "relative w-11 h-6 rounded-full transition-colors",
                                 apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20",
@@ -752,8 +752,8 @@ export default function AgentConfigPage() {
                             <div className="flex-1">
                                 <p className={cn("text-xs font-medium", apt.enabled ? "text-red-700 dark:text-red-300" : "text-foreground")}>
                                     {apt.enabled
-                                        ? `Esta herramienta está activa pero le faltan ${missingItems.join(' y ')}. El bot responderá "no hay disponibilidad" a todos los clientes hasta que completes la configuración.`
-                                        : `Primero configurá ${missingItems.join(' y ')} en Citas.`}
+                                        ? `This tool is active but missing ${missingItems.join(' y ')}. The bot will respond with "no availability" until you complete the configuration.`
+                                        : `First configure ${missingItems.join(' y ')} in Appointments.`}
                                 </p>
                                 <Link href="/admin/appointments" className="inline-block mt-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
                                     Ir a Citas →

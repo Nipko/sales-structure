@@ -205,7 +205,7 @@ export default function MediaBankPage() {
   }
 
   async function handleDelete(fileId: string) {
-    if (!tenantId || !confirm("¿Eliminar esta imagen?")) return;
+    if (!tenantId || !confirm("Delete this image?")) return;
     try {
       const res = await api.deleteMedia(tenantId, fileId);
       if (res.success) { showToast(t('imageDeleted')); setFiles(prev => prev.filter(f => f.id !== fileId)); }

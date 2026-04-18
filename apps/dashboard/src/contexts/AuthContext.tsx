@@ -216,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const data = await res.json();
 
             if (!res.ok || !data.success) {
-                return { success: false, error: data.message || "Credenciales inválidas" };
+                return { success: false, error: data.message || "Invalid credentials" };
             }
 
             localStorage.setItem("accessToken", data.data.accessToken);
@@ -226,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(data.data.user);
             return { success: true, redirect: getRedirectPath(data.data.user) };
         } catch {
-            return { success: false, error: "Error de conexión con el servidor" };
+            return { success: false, error: "Connection error con el servidor" };
         }
     }, [getRedirectPath]);
 
@@ -241,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const data = await res.json();
 
             if (!res.ok || !data.success) {
-                return { success: false, error: data.message || "Error al iniciar sesión con Google" };
+                return { success: false, error: data.message || "Error logging in with Google" };
             }
 
             localStorage.setItem("accessToken", data.data.accessToken);
@@ -251,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(data.data.user);
             return { success: true, redirect: getRedirectPath(data.data.user) };
         } catch {
-            return { success: false, error: "Error de conexión con el servidor" };
+            return { success: false, error: "Connection error con el servidor" };
         }
     }, [getRedirectPath]);
 

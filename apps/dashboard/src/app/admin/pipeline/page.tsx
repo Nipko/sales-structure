@@ -232,7 +232,7 @@ export default function PipelinePage() {
 
                                     {(!stage.deals || stage.deals.length === 0) && (
                                         <div className="p-5 text-center text-muted-foreground text-xs opacity-60">
-                                            Arrastra oportunidades aquí
+                                            Drag opportunities here
                                         </div>
                                     )}
                                 </div>

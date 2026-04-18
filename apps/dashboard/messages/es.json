@@ -304,9 +304,18 @@
     "subtitle": "Gestiona tu cuenta, empresa, canales y herramientas",
     "account": "Mi Cuenta",
     "accountDesc": "Tu perfil, seguridad y preferencias personales",
-    "profile": "Perfil",
+    "profile": {
+      "title": "Perfil",
+      "subtitle": "Tu información personal y datos de contacto",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "email": "Email",
+      "emailReadonly": "El email no se puede cambiar",
+      "phone": "Teléfono",
+      "jobTitle": "Cargo"
+    },
     "profileDesc": "Nombre, email, avatar y datos personales",
-    "security": "Seguridad",
+    "security": "Las API keys se almacenan encriptadas y se muestran enmascaradas.",
     "securityDesc": "Contrasena, autenticacion de dos factores",
     "notifications": "Notificaciones",
     "notificationsDesc": "Configura alertas por categoria y canal",
@@ -320,7 +329,14 @@
     "localizationDesc": "Zona horaria, moneda, formato de fecha e idioma",
     "businessHours": "Horarios de negocio",
     "businessHoursDesc": "Horarios por dia, festivos y mensaje fuera de horario",
-    "tools": "Herramientas",
+    "tools": {
+      "customAttributes": "Atributos Personalizados",
+      "macros": "Macros",
+      "prechat": "Formulario Pre-Chat",
+      "emailTemplates": "Plantillas de Correo",
+      "mediaBank": "Banco de Imágenes",
+      "changePassword": "Cambiar Contraseña"
+    },
     "toolsDesc": "Atributos, macros, formularios y plantillas",
     "customAttributes": "Atributos personalizados",
     "customAttributesDesc": "Campos dinamicos para contactos y leads",
@@ -400,16 +416,6 @@
       "advanced": "Avanzado",
       "advancedDesc": "Nombre de plataforma, límites y features"
     },
-    "profile": {
-      "title": "Perfil",
-      "subtitle": "Tu información personal y datos de contacto",
-      "firstName": "Nombre",
-      "lastName": "Apellido",
-      "email": "Email",
-      "emailReadonly": "El email no se puede cambiar",
-      "phone": "Teléfono",
-      "jobTitle": "Cargo"
-    },
     "securityPage": {
       "title": "Seguridad",
       "subtitle": "Contraseña y opciones de seguridad de tu cuenta",
@@ -464,18 +470,36 @@
       }
     },
     "companyPage": {
-      "title": "Empresa", "subtitle": "Informacion general de tu organizacion",
-      "companyName": "Nombre de la empresa", "website": "Sitio web", "industry": "Industria",
-      "companySize": "Tamano", "supportEmail": "Email de soporte", "phone": "Telefono de contacto",
-      "logoNote": "Para cambiar el logo de la empresa, ve a", "mediaBank": "Banco de medios",
-      "select": "Seleccionar...", "people": "personas", "moreThan1000": "Mas de 1000",
-      "saving": "Guardando...", "saved": "Guardado", "saveChanges": "Guardar cambios",
-      "errorSaving": "Error al guardar", "connectionError": "Error de conexion",
-      "retail": "Retail / Comercio", "education": "Educacion", "health": "Salud",
-      "tourism": "Turismo / Hospitalidad", "technology": "Tecnologia",
-      "professionalServices": "Servicios profesionales", "restaurants": "Restaurantes / Gastronomia",
-      "realEstate": "Inmobiliaria", "automotive": "Automotriz",
-      "finance": "Finanzas / Banca", "fashionBeauty": "Moda / Belleza", "other": "Otro"
+      "title": "Empresa",
+      "subtitle": "Informacion general de tu organizacion",
+      "companyName": "Nombre de la empresa",
+      "website": "Sitio web",
+      "industry": "Industria",
+      "companySize": "Tamano",
+      "supportEmail": "Email de soporte",
+      "phone": "Telefono de contacto",
+      "logoNote": "Para cambiar el logo de la empresa, ve a",
+      "mediaBank": "Banco de medios",
+      "select": "Seleccionar...",
+      "people": "personas",
+      "moreThan1000": "Mas de 1000",
+      "saving": "Guardando...",
+      "saved": "Guardado",
+      "saveChanges": "Guardar cambios",
+      "errorSaving": "Error al guardar",
+      "connectionError": "Error de conexion",
+      "retail": "Retail / Comercio",
+      "education": "Educacion",
+      "health": "Salud",
+      "tourism": "Turismo / Hospitalidad",
+      "technology": "Tecnologia",
+      "professionalServices": "Servicios profesionales",
+      "restaurants": "Restaurantes / Gastronomia",
+      "realEstate": "Inmobiliaria",
+      "automotive": "Automotriz",
+      "finance": "Finanzas / Banca",
+      "fashionBeauty": "Moda / Belleza",
+      "other": "Otro"
     },
     "localizationPage": {
       "title": "Localización",
@@ -513,16 +537,7 @@
         "saturday": "Sáb",
         "sunday": "Dom"
       }
-    },
-    "tools": {
-      "customAttributes": "Atributos Personalizados",
-      "macros": "Macros",
-      "prechat": "Formulario Pre-Chat",
-      "emailTemplates": "Plantillas de Correo",
-      "mediaBank": "Banco de Imágenes",
-      "changePassword": "Cambiar Contraseña"
-    },
-    "security": "Las API keys se almacenan encriptadas y se muestran enmascaradas."
+    }
   },
   "media": {
     "title": "Banco de Imágenes",
@@ -843,7 +858,17 @@
     "stageQualified": "Calificado",
     "stageWarm": "Tibio",
     "stageHot": "Caliente",
-    "stageReadyToClose": "Listo para cierre"
+    "stageReadyToClose": "Listo para cierre",
+    "triggerQuestion": "Que evento activa esta regla?",
+    "triggerDesc": "Selecciona el evento que disparara la ejecucion",
+    "conditionQuestion": "Bajo que condiciones se ejecuta?",
+    "conditionDesc": "Todas las condiciones deben cumplirse (AND). Si no agregas condiciones, se ejecutara siempre.",
+    "noConditions": "Sin condiciones — la regla se ejecutara siempre que ocurra el trigger",
+    "addCondition": "Agregar condicion",
+    "actionQuestion": "Que acciones ejecutar?",
+    "actionDesc": "Define las acciones que se realizaran cuando se active la regla",
+    "noActions": "Agrega al menos una accion",
+    "addAction": "Agregar accion"
   },
   "broadcast": {
     "title": "Campañas",

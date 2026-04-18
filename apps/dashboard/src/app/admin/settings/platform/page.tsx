@@ -118,8 +118,8 @@ export default function PlatformPage() {
 
                 {/* Boolean toggles */}
                 {[
-                    { key: "general.enable_analytics", label: "Analytics habilitado", desc: "Tracking de eventos y métricas" },
-                    { key: "general.enable_rag", label: "RAG habilitado", desc: "Búsqueda por Knowledge Base" },
+                    { key: "general.enable_analytics", label: "Analytics enabled", desc: "Event and metrics tracking" },
+                    { key: "general.enable_rag", label: "RAG enabled", desc: "Knowledge Base search" },
                 ].map(item => (
                     <div key={item.key} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-800/50">
                         <div>

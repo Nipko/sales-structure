@@ -77,7 +77,7 @@ export default function ContactsPage() {
                        return {
                            id: l.id,
                            name: `${l.first_name || 'Desconocido'} ${l.last_name || ''}`.trim(),
-                           phone: l.phone || 'Sin número',
+                           phone: l.phone || tc('noData'),
                            email: l.email || '',
                            tags: l.tags?.map((t:any) => t.name) || [],
                            segment: segmentType,
@@ -342,7 +342,7 @@ export default function ContactsPage() {
                         <textarea
                             value={csvContent}
                             onChange={e => setCsvContent(e.target.value)}
-                            placeholder={"Pega aquí el contenido CSV...\nnombre,telefono,email\nJuan,+573001234567,juan@email.com"}
+                            placeholder={"Paste CSV content here...\nnombre,telefono,email\nJuan,+573001234567,juan@email.com"}
                             rows={8}
                             className="w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 p-3 font-mono text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
                         />

@@ -23,11 +23,11 @@ interface NotificationCategory {
 }
 
 const defaultCategories: NotificationCategory[] = [
-    { id: "chat", label: "Nuevos mensajes", description: "Cuando un cliente envía un mensaje nuevo", icon: MessageSquare, iconColor: "text-green-500", enabled: true },
-    { id: "handoff", label: "Transferencias", description: "Cuando una conversación se escala a un agente", icon: UserCheck, iconColor: "text-blue-500", enabled: true },
+    { id: "chat", label: "New messages", description: "When a client sends a new message", icon: MessageSquare, iconColor: "text-green-500", enabled: true },
+    { id: "handoff", label: "Transfers", description: "When a conversation is escalated to an agent", icon: UserCheck, iconColor: "text-blue-500", enabled: true },
     { id: "compliance", label: "Compliance", description: "Solicitudes de opt-out y consentimiento", icon: Shield, iconColor: "text-amber-500", enabled: true },
     { id: "appointments", label: "Citas", description: "Nuevas citas, cancelaciones y recordatorios", icon: CalendarDays, iconColor: "text-purple-500", enabled: true },
-    { id: "automation", label: "Automatización", description: "Reglas ejecutadas, errores en flujos", icon: Workflow, iconColor: "text-indigo-500", enabled: false },
+    { id: "automation", label: "Automation", description: "Rules executed, flow errors", icon: Workflow, iconColor: "text-indigo-500", enabled: false },
     { id: "orders", label: "Pedidos", description: "Nuevos pedidos y cambios de estado", icon: ShoppingCart, iconColor: "text-emerald-500", enabled: false },
     { id: "system", label: "Sistema", description: "Actualizaciones, mantenimiento y alertas", icon: Settings, iconColor: "text-neutral-500", enabled: true },
 ];
@@ -48,7 +48,7 @@ export default function NotificationsPage() {
             <div>
                 <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Notificaciones</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Configura qué notificaciones recibes y cómo
+                    Configure which notifications you receive
                 </p>
             </div>
 
@@ -97,10 +97,10 @@ export default function NotificationsPage() {
             {/* Categories */}
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                    Categorías
+                    Categories
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
-                    Activa o desactiva notificaciones por categoría
+                    Toggle notifications by category
                 </p>
 
                 <div className="space-y-3">
@@ -139,7 +139,7 @@ export default function NotificationsPage() {
             {/* Coming soon note */}
             <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
                 <Bell size={14} className="text-indigo-500 shrink-0" />
-                Las preferencias se guardan localmente por ahora. La persistencia en servidor se habilitará próximamente.
+                Preferences are saved locally for now. Server persistence coming soon.
             </div>
         </div>
     );

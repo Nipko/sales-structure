@@ -148,7 +148,7 @@ export default function AIRouterPage() {
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="bg-card">
-                            {["Prioridad", "Nombre", "Condición", "Modelo Asignado"].map(h => (
+                            {["Priority", "Name", "Condition", "Assigned Model"].map(h => (
                                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
                             ))}
                         </tr>

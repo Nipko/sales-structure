@@ -116,7 +116,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
 
         if (!response.authResponse?.code) {
           console.error("[EmbeddedSignup] No auth code received. Full response:", response);
-          onError("No se recibió código de autorización de Meta. El usuario canceló el flujo o hubo un error.");
+          onError("Authorization code not received from Meta. The user cancelled or an error occurred.");
           setLaunching(false);
           return;
         }
@@ -144,7 +144,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
 
         setLaunching(false);
         setProcessing(true);
-        setStep("Intercambiando código con Meta...");
+        setStep("Exchanging code with Meta...");
 
         try {
           // Get fresh token from API (refresh if needed)
@@ -207,7 +207,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
           }
 
           const result = JSON.parse(responseText);
-          setStep("¡Conexión exitosa!");
+          setStep("Connection successful!");
           console.log("[EmbeddedSignup] Onboarding complete:", result);
           onSuccess(result);
         } catch (err: any) {
@@ -330,7 +330,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         {!sdkLoaded
           ? tc("loading")
           : launching
-            ? "Esperando autorización..."
+            ? "Waiting for authorization..."
             : processing
               ? step || "Procesando..."
               : "Conectar con WhatsApp Embedded Signup"}
@@ -358,7 +358,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
           opacity: processing ? 0.5 : 1,
         }}
       >
-        Método alternativo (si el botón anterior no funciona)
+        Alternative method (if the button above does not work)
       </button>
 
       {/* Subtle info text */}
@@ -371,7 +371,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
           lineHeight: 1.5,
         }}
       >
-        Se abrirá una ventana de Meta para que autorices tu cuenta de WhatsApp Business.
+        A Meta window will open for you to authorize your WhatsApp Business account.
         <br />
         Tus credenciales son cifradas con AES-256 y nunca se almacenan en texto plano.
       </p>

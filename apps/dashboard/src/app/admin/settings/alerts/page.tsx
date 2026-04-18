@@ -29,6 +29,7 @@ const OPERATORS = [
 
 export default function AlertsSettingsPage() {
     const t = useTranslations("settings");
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const tenantId = user?.tenantId;
 
@@ -136,7 +137,7 @@ export default function AlertsSettingsPage() {
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
-                    Recibe notificaciones cuando una métrica supera un umbral. Se evalúan cada 15 minutos.
+                    Receive notifications when a metric exceeds a threshold. Evaluated every 15 minutes.
                 </p>
 
                 {/* Create form */}
@@ -231,7 +232,7 @@ export default function AlertsSettingsPage() {
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
-                    Recibe un resumen de KPIs por email de forma automática.
+                    Receive an automatic KPI summary by email.
                 </p>
 
                 <div className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-4">
@@ -243,7 +244,7 @@ export default function AlertsSettingsPage() {
                             className={inputCls}
                         >
                             <option value="weekly">Semanal (lunes 8 AM)</option>
-                            <option value="monthly">Mensual (día 1, 8 AM)</option>
+                            <option value="monthly">Monthly (1st, 8 AM)</option>
                         </select>
                     </div>
 
@@ -275,7 +276,7 @@ export default function AlertsSettingsPage() {
 
                     {reportConfig?.last_sent_at && (
                         <p className="text-[12px] text-muted-foreground">
-                            Último envío: {new Date(reportConfig.last_sent_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            Last sent: {new Date(reportConfig.last_sent_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </p>
                     )}
 
@@ -284,7 +285,7 @@ export default function AlertsSettingsPage() {
                             onClick={handleSaveReport} disabled={saving}
                             className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                         >
-                            <Save size={14} /> Guardar configuración
+                            <Save size={14} /> {tc("saveChanges")}
                         </button>
                     </div>
                 </div>

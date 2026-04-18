@@ -14,6 +14,7 @@ interface TenantUser { id: string; email: string; firstName: string; lastName: s
 
 export default function TenantsPage() {
     const t = useTranslations('tenants');
+    const tc = useTranslations('common');
     const [tenants, setTenants] = useState<Tenant[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -61,10 +62,10 @@ export default function TenantsPage() {
                     setTenants(reloadResult.data.map((t: any) => ({ id: t.id, name: t.name, slug: t.slug, industry: t.industry || "N/A", language: t.language || "es-CO", plan: t.plan || "starter", isActive: t.isActive ?? true, createdAt: t.createdAt?.split("T")[0] || "\u2014", channels: t._count?.channelAccounts || 0, conversations: 0, users: t._count?.users || 0 })));
                 }
             } else {
-                showToast(result.error || "Error al crear tenant", "error");
+                showToast(result.error || tc("errorSaving"), "error");
             }
         } catch {
-            showToast("Error de conexión al crear tenant", "error");
+            showToast(tc("connectionError"), "error");
         }
     };
 
@@ -197,7 +198,7 @@ export default function TenantsPage() {
 
             <div className="mb-6 max-w-[400px] relative">
                 <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input placeholder="Buscar por nombre o slug..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-[42px]" />
+                <input placeholder={tc("search") + "..."} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-[42px]" />
             </div>
 
             <div className="glass-card p-0 overflow-hidden">

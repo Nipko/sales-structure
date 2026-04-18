@@ -25,6 +25,7 @@ const BRAND = "#0088cc";
 export default function TelegramSetupPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("channels");
+    const tc = useTranslations("common");
 
     const [status, setStatus] = useState<any>(null);
     const [botToken, setBotToken] = useState("");
@@ -61,7 +62,7 @@ export default function TelegramSetupPage() {
             setStep(3);
             setBotToken("");
         } catch (err: any) {
-            const msg = err?.message || err?.data?.message || "Error al conectar";
+            const msg = err?.message || err?.data?.message || tc("connectionError");
             setError(msg);
         } finally {
             setConnecting(false);

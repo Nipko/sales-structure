@@ -162,7 +162,7 @@ export default function EmailTemplatesPage() {
         });
       }
     } catch {
-      showToast("Error al cargar la plantilla", true);
+      showToast(t("errorLoading"), true);
     }
   }
 

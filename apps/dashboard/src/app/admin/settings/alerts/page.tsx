@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";

@@ -429,16 +429,18 @@
       }
     },
     "companyPage": {
-      "title": "Entreprise",
-      "subtitle": "Informations générales sur votre organisation",
-      "companyName": "Nom de l'entreprise",
-      "website": "Site web",
-      "industry": "Secteur",
-      "companySize": "Taille",
-      "supportEmail": "Email de support",
-      "phone": "Téléphone de contact",
-      "logoNote": "Pour changer le logo de l'entreprise, allez à",
-      "mediaBank": "Banque de médias"
+      "title": "Entreprise", "subtitle": "Informations generales sur votre organisation",
+      "companyName": "Nom de l'entreprise", "website": "Site web", "industry": "Secteur",
+      "companySize": "Taille", "supportEmail": "Email de support", "phone": "Telephone de contact",
+      "logoNote": "Pour changer le logo de l'entreprise, allez a", "mediaBank": "Banque de medias",
+      "select": "Selectionner...", "people": "personnes", "moreThan1000": "Plus de 1000",
+      "saving": "Enregistrement...", "saved": "Enregistre", "saveChanges": "Enregistrer les modifications",
+      "errorSaving": "Erreur lors de l'enregistrement", "connectionError": "Erreur de connexion",
+      "retail": "Commerce / Retail", "education": "Education", "health": "Sante",
+      "tourism": "Tourisme / Hotellerie", "technology": "Technologie",
+      "professionalServices": "Services professionnels", "restaurants": "Restaurants / Gastronomie",
+      "realEstate": "Immobilier", "automotive": "Automobile",
+      "finance": "Finance / Banque", "fashionBeauty": "Mode / Beaute", "other": "Autre"
     },
     "localizationPage": {
       "title": "Localisation",

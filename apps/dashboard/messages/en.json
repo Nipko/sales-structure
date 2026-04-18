@@ -460,7 +460,20 @@
       "supportEmail": "Support Email",
       "phone": "Contact Phone",
       "logoNote": "To change the company logo, go to",
-      "mediaBank": "Media Bank"
+      "mediaBank": "Media Bank",
+      "select": "Select...",
+      "people": "people",
+      "moreThan1000": "More than 1000",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "saveChanges": "Save changes",
+      "errorSaving": "Error saving",
+      "connectionError": "Connection error",
+      "retail": "Retail / Commerce", "education": "Education", "health": "Health",
+      "tourism": "Tourism / Hospitality", "technology": "Technology",
+      "professionalServices": "Professional services", "restaurants": "Restaurants / Gastronomy",
+      "realEstate": "Real estate", "automotive": "Automotive",
+      "finance": "Finance / Banking", "fashionBeauty": "Fashion / Beauty", "other": "Other"
     },
     "localizationPage": {
       "title": "Localization",

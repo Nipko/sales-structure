@@ -274,6 +274,15 @@ export class ConversationsService {
         // If schedule is empty, agent is always available
         if (Object.keys(schedule).length === 0) return true;
 
+        // Detect 24/7 pattern: all 7 days with 00:00-23:59
+        const values = Object.values(schedule);
+        if (values.length >= 7) {
+            const all247 = values.every(v =>
+                v && typeof v === 'object' && (v as any).start === '00:00' && (v as any).end === '23:59'
+            );
+            if (all247) return true;
+        }
+
         const now = new Date();
         const timezone = config.hours.timezone || 'America/Bogota';
 
@@ -299,6 +308,8 @@ export class ConversationsService {
         // Try both Spanish key and English key (backward compat)
         const todaySchedule = schedule[dayKey] || schedule[dayPartEn];
 
+        this.logger.debug(`[BusinessHours] day=${dayPartEn} key=${dayKey} time=${hourPart}:${minutePart} schedule=${JSON.stringify(todaySchedule)} keys=${Object.keys(schedule).join(',')}`);
+
         // No schedule for today or explicitly closed (null or string like "cerrado")
         if (!todaySchedule || typeof todaySchedule === 'string') return false;
 
@@ -307,7 +318,7 @@ export class ConversationsService {
         const startMinutes = startH * 60 + startM;
         const endMinutes = endH * 60 + endM;
 
-        return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
     }
 
     private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig) {

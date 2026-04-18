@@ -537,7 +537,10 @@
         "saturday": "Sáb",
         "sunday": "Dom"
       }
-    }
+    },
+    "navProfile": "Perfil",
+    "navSecurity": "Segurança",
+    "navTools": "Ferramentas"
   },
   "media": {
     "title": "Banco de Imagens",

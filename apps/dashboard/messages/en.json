@@ -537,7 +537,10 @@
         "saturday": "Sat",
         "sunday": "Sun"
       }
-    }
+    },
+    "navProfile": "Profile",
+    "navSecurity": "Security",
+    "navTools": "Tools"
   },
   "media": {
     "title": "Media Bank",

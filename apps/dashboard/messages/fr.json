@@ -537,7 +537,10 @@
         "saturday": "Sam",
         "sunday": "Dim"
       }
-    }
+    },
+    "navProfile": "Profil",
+    "navSecurity": "Sécurité",
+    "navTools": "Outils"
   },
   "media": {
     "title": "Banque d'images",

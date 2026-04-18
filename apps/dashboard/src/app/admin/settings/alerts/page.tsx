@@ -275,7 +275,7 @@ export default function AlertsSettingsPage() {
 
                     {reportConfig?.last_sent_at && (
                         <p className="text-[12px] text-muted-foreground">
-                            Último envío: {new Date(reportConfig.last_sent_at).toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            Último envío: {new Date(reportConfig.last_sent_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </p>
                     )}
 

@@ -63,9 +63,15 @@ export class PublicBookingController {
         const svc = await this.servicesService.getById(schemaName, serviceId);
         if (!svc.isActive) throw new BadRequestException('Service not available');
 
-        const slots = await this.appointmentsService.getBookableSlots(
+        const rawSlots = await this.appointmentsService.getBookableSlots(
             schemaName, date, svc.durationMinutes, svc.bufferMinutes,
         );
+        // Transform to public-friendly format
+        const slots = rawSlots.map(s => ({
+            start: s.time,
+            end: s.endTime,
+            display: s.time,
+        }));
         return { success: true, data: { service: svc, date, slots } };
     }
 

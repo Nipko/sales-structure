@@ -783,6 +783,7 @@ export default function AppointmentsPage() {
           <ServicesTab
             services={services}
             loading={loadingServices}
+            activeTenantId={activeTenantId}
             onCreateService={openCreateServiceModal}
             onEditService={openEditServiceModal}
             onDeleteService={handleDeleteService}

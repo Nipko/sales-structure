@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
     Plus, Pencil, Trash2, Timer, DollarSign, Clock, Search,
-    CheckCircle2, XCircle, Tag, Users,
+    CheckCircle2, XCircle, Tag, Users, ChevronDown, X, UserPlus,
 } from "lucide-react";
 
 interface Service {
@@ -18,9 +19,19 @@ interface Service {
     active: boolean;
 }
 
+interface StaffMember {
+    id: string;
+    userId: string;
+    isPrimary: boolean;
+    firstName: string;
+    lastName: string;
+    email: string;
+}
+
 interface ServicesTabProps {
     services: Service[];
     loading: boolean;
+    activeTenantId: string | null;
     onCreateService: () => void;
     onEditService: (svc: Service) => void;
     onDeleteService: (id: string) => void;
@@ -39,13 +50,59 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
 }
 
 export default function ServicesTab({
-    services, loading, onCreateService, onEditService, onDeleteService, onToggleActive,
+    services, loading, activeTenantId, onCreateService, onEditService, onDeleteService, onToggleActive,
 }: ServicesTabProps) {
     const t = useTranslations("appointments");
     const locale = useLocale();
     const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-CO";
     const [searchQuery, setSearchQuery] = useState("");
     const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("all");
+    const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
+    const [staffMap, setStaffMap] = useState<Record<string, StaffMember[]>>({});
+    const [allUsers, setAllUsers] = useState<any[]>([]);
+    const [loadingStaff, setLoadingStaff] = useState(false);
+
+    // Load all users once for assignment dropdown
+    useEffect(() => {
+        api.getUsers().then(res => {
+            if (res.success && Array.isArray(res.data)) {
+                setAllUsers(res.data.filter((u: any) => u.isActive));
+            }
+        }).catch(() => {});
+    }, []);
+
+    const loadStaff = useCallback(async (serviceId: string) => {
+        if (!activeTenantId) return;
+        setLoadingStaff(true);
+        try {
+            const res = await api.getServiceStaff(activeTenantId, serviceId);
+            if (res.success) {
+                setStaffMap(prev => ({ ...prev, [serviceId]: res.data || [] }));
+            }
+        } catch {}
+        setLoadingStaff(false);
+    }, [activeTenantId]);
+
+    const handleToggleStaff = (serviceId: string) => {
+        if (expandedStaff === serviceId) {
+            setExpandedStaff(null);
+        } else {
+            setExpandedStaff(serviceId);
+            if (!staffMap[serviceId]) loadStaff(serviceId);
+        }
+    };
+
+    const handleAssignStaff = async (serviceId: string, userId: string) => {
+        if (!activeTenantId) return;
+        await api.assignServiceStaff(activeTenantId, serviceId, userId);
+        await loadStaff(serviceId);
+    };
+
+    const handleRemoveStaff = async (serviceId: string, userId: string) => {
+        if (!activeTenantId) return;
+        await api.removeServiceStaff(activeTenantId, serviceId, userId);
+        await loadStaff(serviceId);
+    };
 
     const filtered = useMemo(() => {
         let list = [...services];
@@ -188,11 +245,78 @@ export default function ServicesTab({
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent">
                                         <Pencil size={13} /> {t("editAppointment").split(" ")[0]}
                                     </button>
+                                    <button onClick={() => handleToggleStaff(svc.id)}
+                                        className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border-none bg-transparent",
+                                            expandedStaff === svc.id
+                                                ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800"
+                                        )}>
+                                        <Users size={13} /> Staff
+                                        <ChevronDown size={12} className={cn("transition-transform", expandedStaff === svc.id && "rotate-180")} />
+                                    </button>
                                     <button onClick={() => { if (confirm(t('servicesSection.confirmDelete'))) onDeleteService(svc.id); }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent">
-                                        <Trash2 size={13} /> {t("actions.cancel").split(" ")[0]}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent ml-auto">
+                                        <Trash2 size={13} />
                                     </button>
                                 </div>
+
+                                {/* Staff panel */}
+                                {expandedStaff === svc.id && (
+                                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                                        {loadingStaff ? (
+                                            <div className="text-xs text-muted-foreground text-center py-2">Loading...</div>
+                                        ) : (
+                                            <>
+                                                {(staffMap[svc.id] || []).map(staff => (
+                                                    <div key={staff.userId} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                                                                {(staff.firstName?.[0] || '').toUpperCase()}
+                                                            </div>
+                                                            <span className="text-xs font-medium text-foreground">
+                                                                {staff.firstName} {staff.lastName}
+                                                            </span>
+                                                            {staff.isPrimary && (
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-semibold">
+                                                                    Primary
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleRemoveStaff(svc.id, staff.userId)}
+                                                            className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-500/10 text-red-400 hover:text-red-500 cursor-pointer border-none bg-transparent"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+
+                                                {/* Add staff dropdown */}
+                                                {(() => {
+                                                    const assignedIds = new Set((staffMap[svc.id] || []).map(s => s.userId));
+                                                    const available = allUsers.filter(u => !assignedIds.has(u.id));
+                                                    if (available.length === 0) return null;
+                                                    return (
+                                                        <select
+                                                            onChange={e => { if (e.target.value) { handleAssignStaff(svc.id, e.target.value); e.target.value = ''; } }}
+                                                            defaultValue=""
+                                                            className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 text-xs text-muted-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                                                        >
+                                                            <option value="">
+                                                                + Add staff member...
+                                                            </option>
+                                                            {available.map(u => (
+                                                                <option key={u.id} value={u.id}>
+                                                                    {u.firstName || u.email} {u.lastName || ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    );
+                                                })()}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}

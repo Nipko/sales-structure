@@ -738,7 +738,139 @@ export class DashboardAnalyticsService {
         return { cohorts };
     }
 
-    // ── 12. BI API Data Export ─────────────────────────────────────
+    // ── 12. Appointment Analytics ───────────────────────────────────
+
+    async getAppointmentMetrics(tenantId: string, start: string, end: string): Promise<{
+        kpis: { total: number; completed: number; cancelled: number; noShow: number; pending: number; completionRate: number; noShowRate: number; cancellationRate: number };
+        previousKpis: { total: number; completed: number; cancelled: number; noShow: number };
+        daily: { date: string; total: number; completed: number; cancelled: number; noShow: number }[];
+        byService: { serviceName: string; count: number; completed: number; cancelled: number; noShow: number; color: string }[];
+        bySource: { source: string; count: number }[];
+        peakHours: { hour: number; count: number }[];
+    }> {
+        const schema = await this.getSchemaName(tenantId);
+        const prev = this.computePreviousPeriod(start, end);
+
+        // Current period KPIs
+        const [currentRows] = await Promise.all([
+            this.prisma.executeInTenantSchema(schema,
+                `SELECT
+                    COUNT(*)::int as total,
+                    COUNT(*) FILTER (WHERE status = 'completed')::int as completed,
+                    COUNT(*) FILTER (WHERE status = 'cancelled')::int as cancelled,
+                    COUNT(*) FILTER (WHERE status = 'no_show')::int as no_show,
+                    COUNT(*) FILTER (WHERE status IN ('pending', 'confirmed'))::int as pending
+                 FROM appointments
+                 WHERE start_at >= $1::date AND start_at < ($2::date + interval '1 day')`,
+                [start, end],
+            ),
+        ]);
+
+        const cur = (currentRows as any[])?.[0] || { total: 0, completed: 0, cancelled: 0, no_show: 0, pending: 0 };
+
+        // Previous period
+        const prevRows = await this.prisma.executeInTenantSchema(schema,
+            `SELECT
+                COUNT(*)::int as total,
+                COUNT(*) FILTER (WHERE status = 'completed')::int as completed,
+                COUNT(*) FILTER (WHERE status = 'cancelled')::int as cancelled,
+                COUNT(*) FILTER (WHERE status = 'no_show')::int as no_show
+             FROM appointments
+             WHERE start_at >= $1::date AND start_at < ($2::date + interval '1 day')`,
+            [prev.start, prev.end],
+        );
+        const prevData = (prevRows as any[])?.[0] || { total: 0, completed: 0, cancelled: 0, no_show: 0 };
+
+        // Daily breakdown
+        const dailyRows = await this.prisma.executeInTenantSchema(schema,
+            `SELECT
+                start_at::date::text as date,
+                COUNT(*)::int as total,
+                COUNT(*) FILTER (WHERE status = 'completed')::int as completed,
+                COUNT(*) FILTER (WHERE status = 'cancelled')::int as cancelled,
+                COUNT(*) FILTER (WHERE status = 'no_show')::int as no_show
+             FROM appointments
+             WHERE start_at >= $1::date AND start_at < ($2::date + interval '1 day')
+             GROUP BY start_at::date
+             ORDER BY date`,
+            [start, end],
+        );
+
+        // By service
+        const serviceRows = await this.prisma.executeInTenantSchema(schema,
+            `SELECT
+                a.service_name,
+                COALESCE(s.color, '#6c5ce7') as color,
+                COUNT(*)::int as count,
+                COUNT(*) FILTER (WHERE a.status = 'completed')::int as completed,
+                COUNT(*) FILTER (WHERE a.status = 'cancelled')::int as cancelled,
+                COUNT(*) FILTER (WHERE a.status = 'no_show')::int as no_show
+             FROM appointments a
+             LEFT JOIN services s ON s.name = a.service_name
+             WHERE a.start_at >= $1::date AND a.start_at < ($2::date + interval '1 day')
+             GROUP BY a.service_name, s.color
+             ORDER BY count DESC`,
+            [start, end],
+        );
+
+        // By source
+        const sourceRows = await this.prisma.executeInTenantSchema(schema,
+            `SELECT COALESCE(source, 'manual') as source, COUNT(*)::int as count
+             FROM appointments
+             WHERE start_at >= $1::date AND start_at < ($2::date + interval '1 day')
+             GROUP BY source ORDER BY count DESC`,
+            [start, end],
+        );
+
+        // Peak hours
+        const hourRows = await this.prisma.executeInTenantSchema(schema,
+            `SELECT EXTRACT(HOUR FROM start_at)::int as hour, COUNT(*)::int as count
+             FROM appointments
+             WHERE start_at >= $1::date AND start_at < ($2::date + interval '1 day')
+               AND status NOT IN ('cancelled')
+             GROUP BY hour ORDER BY hour`,
+            [start, end],
+        );
+
+        const total = Number(cur.total);
+        return {
+            kpis: {
+                total,
+                completed: Number(cur.completed),
+                cancelled: Number(cur.cancelled),
+                noShow: Number(cur.no_show),
+                pending: Number(cur.pending),
+                completionRate: total > 0 ? Math.round((Number(cur.completed) / total) * 100) : 0,
+                noShowRate: total > 0 ? Math.round((Number(cur.no_show) / total) * 100) : 0,
+                cancellationRate: total > 0 ? Math.round((Number(cur.cancelled) / total) * 100) : 0,
+            },
+            previousKpis: {
+                total: Number(prevData.total),
+                completed: Number(prevData.completed),
+                cancelled: Number(prevData.cancelled),
+                noShow: Number(prevData.no_show),
+            },
+            daily: (dailyRows as any[]).map(r => ({
+                date: r.date,
+                total: Number(r.total),
+                completed: Number(r.completed),
+                cancelled: Number(r.cancelled),
+                noShow: Number(r.no_show),
+            })),
+            byService: (serviceRows as any[]).map(r => ({
+                serviceName: r.service_name,
+                color: r.color,
+                count: Number(r.count),
+                completed: Number(r.completed),
+                cancelled: Number(r.cancelled),
+                noShow: Number(r.no_show),
+            })),
+            bySource: (sourceRows as any[]).map(r => ({ source: r.source, count: Number(r.count) })),
+            peakHours: (hourRows as any[]).map(r => ({ hour: r.hour, count: Number(r.count) })),
+        };
+    }
+
+    // ── 13. BI API Data Export ─────────────────────────────────────
 
     async getBIData(tenantId: string, start: string, end: string): Promise<{
         kpis: any;

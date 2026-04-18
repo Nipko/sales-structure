@@ -12,6 +12,7 @@ import CalendarGrid from "@/components/appointments/CalendarGrid";
 import AgendaTab from "@/components/appointments/AgendaTab";
 import AppointmentModal from "@/components/appointments/AppointmentModal";
 import ServiceModal from "@/components/appointments/ServiceModal";
+import AnalyticsTab from "@/components/appointments/AnalyticsTab";
 import {
   type Appointment, type Service, DAY_KEYS,
   toLocalDate, addDays, getMondayOfWeek, fmt2,
@@ -26,6 +27,7 @@ import {
   Tag,
   Link2,
   Settings,
+  BarChart3,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -109,7 +111,7 @@ export default function AppointmentsPage() {
   const [externalEvents, setExternalEvents] = useState<any[]>([]);
 
   // ---- UI state ----
-  const [activeTab, setActiveTab] = useState<"calendar" | "agenda" | "services" | "config">("calendar");
+  const [activeTab, setActiveTab] = useState<"calendar" | "agenda" | "services" | "config" | "analytics">("calendar");
   const [weekStart, setWeekStart] = useState<Date>(getMondayOfWeek(new Date()));
   const [toast, setToast] = useState<string | null>(null);
 
@@ -610,6 +612,7 @@ export default function AppointmentsPage() {
     { id: "agenda" as const, label: t("agenda"), icon: List },
     { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
     { id: "config" as const, label: t("configSection.title"), icon: Settings },
+    { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
   ];
 
   return (
@@ -839,6 +842,11 @@ export default function AppointmentsPage() {
             onRefresh={() => { loadCalendarIntegrations(); loadBlockedDates(); loadAvailability(); }}
             showToast={showToast}
           />
+        )}
+
+        {/* TAB: ANALYTICS */}
+        {activeTab === "analytics" && activeTenantId && (
+          <AnalyticsTab activeTenantId={activeTenantId} />
         )}
       </div>
 

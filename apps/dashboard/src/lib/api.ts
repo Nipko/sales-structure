@@ -471,6 +471,10 @@ export const api = {
     cancelRecurringSeries: (tenantId: string, groupId: string, reason?: string) =>
         apiPut(`/appointments/${tenantId}/recurring/${groupId}/cancel`, { reason }),
 
+    // --- Appointment Analytics ---
+    getAppointmentAnalytics: (tenantId: string, start: string, end: string) =>
+        apiGet(`/dashboard-analytics/appointments/${tenantId}?start=${start}&end=${end}`),
+
     // --- Calendar Integrations ---
     getCalendarIntegrations: (tenantId: string) =>
         apiGet(`/appointments/${tenantId}/calendar/integrations`),

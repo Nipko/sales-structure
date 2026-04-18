@@ -127,4 +127,15 @@ export class DashboardAnalyticsController {
         const result = await this.dashboardAnalytics.getCohortAnalysis(tenantId, Number(months) || 6);
         return { success: true, data: result };
     }
+
+    @Get('appointments/:tenantId')
+    @ApiOperation({ summary: 'Appointment analytics (KPIs, daily volume, by service, by source, peak hours)' })
+    async getAppointmentMetrics(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+    ) {
+        const result = await this.dashboardAnalytics.getAppointmentMetrics(tenantId, start, end);
+        return { success: true, data: result };
+    }
 }

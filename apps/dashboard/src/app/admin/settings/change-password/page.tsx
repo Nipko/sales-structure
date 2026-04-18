@@ -27,11 +27,11 @@ interface PasswordRequirement {
 }
 
 const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
-    { label: "Minimo 8 caracteres", test: (pw) => pw.length >= 8 },
-    { label: "Al menos 1 mayuscula", test: (pw) => /[A-Z]/.test(pw) },
-    { label: "Al menos 1 minuscula", test: (pw) => /[a-z]/.test(pw) },
-    { label: "Al menos 1 numero", test: (pw) => /[0-9]/.test(pw) },
-    { label: "Al menos 1 caracter especial", test: (pw) => /[^A-Za-z0-9]/.test(pw) },
+    { label: "Minimum 8 characters", test: (pw) => pw.length >= 8 },
+    { label: "At least 1 uppercase letter", test: (pw) => /[A-Z]/.test(pw) },
+    { label: "At least 1 lowercase letter", test: (pw) => /[a-z]/.test(pw) },
+    { label: "At least 1 number", test: (pw) => /[0-9]/.test(pw) },
+    { label: "At least 1 special character", test: (pw) => /[^A-Za-z0-9]/.test(pw) },
 ];
 
 export default function ChangePasswordPage() {
@@ -89,7 +89,7 @@ export default function ChangePasswordPage() {
                 showToast("error", res.error || tc("errorSaving"));
             }
         } catch {
-            showToast("error", "Error de conexion. Intenta de nuevo.");
+            showToast("error", "Connection error. Please try again.");
         } finally {
             setSaving(false);
         }
@@ -123,7 +123,7 @@ export default function ChangePasswordPage() {
                         {t('title')}
                     </h1>
                     <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
-                        Actualiza la contrasena de tu cuenta
+                        Update your account password
                     </p>
                 </div>
             </div>
@@ -133,8 +133,8 @@ export default function ChangePasswordPage() {
                 <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 dark:border-blue-500/20 dark:bg-blue-500/10">
                     <Info size={18} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
                     <p className="text-sm text-blue-800 dark:text-blue-300">
-                        Tu cuenta usa Google Sign-In. Puedes establecer una contrasena adicional para
-                        acceder tambien con email y contrasena.
+                        Your account uses Google Sign-In. You can set an additional password to
+                        also access with email and password.
                     </p>
                 </div>
             )}
@@ -144,7 +144,7 @@ export default function ChangePasswordPage() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg text-neutral-900 dark:text-neutral-100">
                         <Lock size={18} className="text-amber-500" />
-                        {isGoogleOnly ? "Establecer contrasena" : "Actualizar contrasena"}
+                        {isGoogleOnly ? "Set password" : "Update password"}
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -153,14 +153,14 @@ export default function ChangePasswordPage() {
                         {!isGoogleOnly && (
                             <div className="flex flex-col gap-1.5">
                                 <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                    Contrasena actual
+                                    Current password
                                 </Label>
                                 <div className="relative">
                                     <Input
                                         type={showCurrent ? "text" : "password"}
                                         value={currentPassword}
                                         onChange={(e) => setCurrentPassword(e.target.value)}
-                                        placeholder="Ingresa tu contrasena actual"
+                                        placeholder="Enter your current password"
                                         className="h-10 rounded-lg border-neutral-200 bg-neutral-50 pr-11 text-sm dark:border-neutral-700 dark:bg-neutral-800"
                                     />
                                     <button
@@ -177,14 +177,14 @@ export default function ChangePasswordPage() {
                         {/* New Password */}
                         <div className="flex flex-col gap-1.5">
                             <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                Nueva contrasena
+                                New password
                             </Label>
                             <div className="relative">
                                 <Input
                                     type={showNew ? "text" : "password"}
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
-                                    placeholder="Ingresa tu nueva contrasena"
+                                    placeholder="Enter your new password"
                                     className="h-10 rounded-lg border-neutral-200 bg-neutral-50 pr-11 text-sm dark:border-neutral-700 dark:bg-neutral-800"
                                 />
                                 <button
@@ -200,14 +200,14 @@ export default function ChangePasswordPage() {
                         {/* Confirm Password */}
                         <div className="flex flex-col gap-1.5">
                             <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                Confirmar nueva contrasena
+                                Confirm new password
                             </Label>
                             <div className="relative">
                                 <Input
                                     type={showConfirm ? "text" : "password"}
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    placeholder="Repite tu nueva contrasena"
+                                    placeholder="Repeat your new password"
                                     className={cn(
                                         "h-10 rounded-lg border-neutral-200 bg-neutral-50 pr-11 text-sm dark:border-neutral-700 dark:bg-neutral-800",
                                         mismatch && "border-red-400 dark:border-red-500",
@@ -223,7 +223,7 @@ export default function ChangePasswordPage() {
                             </div>
                             {mismatch && (
                                 <p className="mt-1 text-xs font-medium text-red-500">
-                                    Las contrasenas no coinciden
+                                    Passwords do not match
                                 </p>
                             )}
                         </div>
@@ -232,7 +232,7 @@ export default function ChangePasswordPage() {
                         {newPassword.length > 0 && (
                             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/50">
                                 <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                                    Requisitos de contrasena
+                                    Password requirements
                                 </p>
                                 <div className="flex flex-col gap-1.5">
                                     {requirementResults.map((req) => (
@@ -272,7 +272,7 @@ export default function ChangePasswordPage() {
                             ) : (
                                 <Lock size={18} />
                             )}
-                            {saving ? t("saving") || "..." : "Cambiar contrasena"}
+                            {saving ? tc("saving") : tc("saveChanges")}
                         </Button>
                     </form>
                 </CardContent>

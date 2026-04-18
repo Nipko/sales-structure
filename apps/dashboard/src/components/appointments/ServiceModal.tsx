@@ -30,7 +30,7 @@ export default function ServiceModal({
 }: ServiceModalProps) {
   const t = useTranslations("appointments");
   const locale = useLocale();
-  const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-CO";
+  const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
 
   return (
     <div

@@ -254,7 +254,7 @@ export default function Lead360Page() {
                                                 <div className="text-[13px]">{event.description}</div>
                                                 <div className="text-[11px] text-muted-foreground mt-0.5">
                                                     {event.actor && <span className="mr-1.5">{event.actor}</span>}
-                                                    {new Date(event.created_at).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                                    {new Date(event.created_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                                                 </div>
                                             </div>
                                         </div>
@@ -290,7 +290,7 @@ export default function Lead360Page() {
                                         <p className="m-0 mb-1 text-sm leading-relaxed">{note.content}</p>
                                         <span className="text-[11px] text-muted-foreground">
                                             {note.created_by && `${note.created_by} · `}
-                                            {new Date(note.created_at).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                            {new Date(note.created_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                                         </span>
                                     </div>
                                 ))}
@@ -357,7 +357,7 @@ export default function Lead360Page() {
                                                 <span className="text-[11px] text-muted-foreground">{task.type}</span>
                                                 {task.due_at && (
                                                     <span className={cn("text-[11px] flex items-center gap-0.5", new Date(task.due_at) < new Date() && task.status !== "done" ? "text-red-500" : "text-muted-foreground")}>
-                                                        <Calendar size={10} /> {new Date(task.due_at).toLocaleDateString("es-CO")}
+                                                        <Calendar size={10} /> {new Date(task.due_at).toLocaleDateString(undefined)}
                                                     </span>
                                                 )}
                                             </div>

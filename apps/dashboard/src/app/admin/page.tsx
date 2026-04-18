@@ -97,9 +97,9 @@ export default function AdminDashboard() {
                 if (dashResult.success && dashResult.data) {
                     if (Array.isArray(dashResult.data.recentActivity)) {
                         setActivity(dashResult.data.recentActivity.map((a: any) => ({
-                            tenant: a.tenant_name || a.tenant || 'Sistema',
+                            tenant: a.tenant_name || a.tenant || 'System',
                             event: a.event || a.description || a.event_type || '',
-                            time: a.created_at ? new Date(a.created_at).toLocaleString('es-CO', { hour: '2-digit', minute: '2-digit' }) : a.time || '',
+                            time: a.created_at ? new Date(a.created_at).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' }) : a.time || '',
                             type: a.type || a.event_type || 'conversation',
                         })));
                     }
@@ -160,7 +160,7 @@ export default function AdminDashboard() {
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Usuarios</p>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Users</p>
                                         <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.totalUsers}</p>
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10">
@@ -173,7 +173,7 @@ export default function AdminDashboard() {
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Estado del Sistema</p>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">System Status</p>
                                         <div className="mt-2 flex items-center gap-2">
                                             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
                                             <span className="text-sm font-semibold text-emerald-500">Online</span>
@@ -196,7 +196,7 @@ export default function AdminDashboard() {
                     const rawValue = overview[stat.key] ?? 0;
                     const displayValue = stat.suffix === "$"
                         ? `$${rawValue.toFixed(2)}`
-                        : rawValue.toLocaleString("es-CO");
+                        : rawValue.toLocaleString();
                     return (
                         <Card key={stat.key} className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
@@ -229,7 +229,7 @@ export default function AdminDashboard() {
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                     <CardHeader>
                         <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-                            Actividad Reciente
+                            Recent Activity
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -300,14 +300,14 @@ export default function AdminDashboard() {
                                 </div>
                             )) : (
                                 <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
-                                    Sin datos de uso de modelos disponibles
+                                    No model usage data available
                                 </div>
                             )}
                         </div>
                         <div className="mt-5 flex items-center justify-between rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">
                             <span className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                                 <TrendingUp size={14} />
-                                El Router ahorra ~42% en costos usando Tier 3-4 para mensajes simples
+                                Router saves ~42% on costs by using Tier 3-4 for simple messages
                             </span>
                         </div>
                     </CardContent>

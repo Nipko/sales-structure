@@ -67,7 +67,7 @@ const defaultConfig: PersonaConfig = {
     persona: {
         name: "",
         role: "",
-        personality: { tone: "amigable", formality: "casual-professional", emojiUsage: "minimal", humor: "" },
+        personality: { tone: "friendly", formality: "casual-professional", emojiUsage: "minimal", humor: "" },
         greeting: "",
         fallbackMessage: "",
     },
@@ -318,67 +318,67 @@ export default function AgentConfigPage() {
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
                     <div>
-                        <label className={labelCls}>Nombre del agente</label>
+                        <label className={labelCls}>Agent name</label>
                         <input
                             className={inputCls}
-                            placeholder="Ej: Sofia Henao"
+                            placeholder="E.g.: Sofia Henao"
                             value={config.persona.name}
                             onChange={e => updatePersona("name", e.target.value)}
                         />
                     </div>
                     <div>
-                        <label className={labelCls}>Rol</label>
+                        <label className={labelCls}>Role</label>
                         <input
                             className={inputCls}
-                            placeholder="Ej: Asesora de ventas"
+                            placeholder="E.g.: Sales advisor"
                             value={config.persona.role}
                             onChange={e => updatePersona("role", e.target.value)}
                         />
                     </div>
                     <div className="col-span-2">
-                        <label className={labelCls}>Mensaje de bienvenida</label>
+                        <label className={labelCls}>Welcome message</label>
                         <textarea
                             className={cn(inputCls, "min-h-20 resize-y")}
-                            placeholder="Escribe el saludo que enviara el agente al iniciar una conversacion..."
+                            placeholder="Write the greeting the agent will send when starting a conversation..."
                             value={config.persona.greeting}
                             onChange={e => updatePersona("greeting", e.target.value)}
                         />
                     </div>
                     <div className="col-span-2">
-                        <label className={labelCls}>Mensaje cuando no puede responder</label>
+                        <label className={labelCls}>Message when unable to respond</label>
                         <textarea
                             className={cn(inputCls, "min-h-20 resize-y")}
-                            placeholder="Mensaje de fallback cuando el agente no sabe que responder..."
+                            placeholder="Fallback message when the agent doesn't know how to respond..."
                             value={config.persona.fallbackMessage}
                             onChange={e => updatePersona("fallbackMessage", e.target.value)}
                         />
                     </div>
                     <div>
-                        <label className={labelCls}>Idioma</label>
+                        <label className={labelCls}>Language</label>
                         <select
                             className={selectCls}
                             value={config.language}
                             onChange={e => setConfig(prev => ({ ...prev, language: e.target.value }))}
                         >
-                            <option value="es-CO">Espanol (Colombia)</option>
-                            <option value="es-MX">Espanol (Mexico)</option>
+                            <option value="es-CO">Spanish (Colombia)</option>
+                            <option value="es-MX">Spanish (Mexico)</option>
                             <option value="en-US">English (US)</option>
-                            <option value="pt-BR">Portugues (Brasil)</option>
+                            <option value="pt-BR">Portuguese (Brazil)</option>
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>Industria</label>
+                        <label className={labelCls}>Industry</label>
                         <select
                             className={selectCls}
                             value={config.industry}
                             onChange={e => setConfig(prev => ({ ...prev, industry: e.target.value }))}
                         >
                             <option value="general">General</option>
-                            <option value="tourism">Turismo</option>
-                            <option value="education">Educacion</option>
+                            <option value="tourism">Tourism</option>
+                            <option value="education">Education</option>
                             <option value="ecommerce">E-commerce</option>
-                            <option value="health">Salud</option>
-                            <option value="services">Servicios</option>
+                            <option value="health">Health</option>
+                            <option value="services">Services</option>
                         </select>
                     </div>
                 </div>
@@ -394,21 +394,21 @@ export default function AgentConfigPage() {
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
                     <div>
-                        <label className={labelCls}>Tono</label>
+                        <label className={labelCls}>Tone</label>
                         <select
                             className={selectCls}
                             value={config.persona.personality.tone}
                             onChange={e => updatePersonality("tone", e.target.value)}
                         >
-                            <option value="amigable">Friendly</option>
+                            <option value="friendly">Friendly</option>
                             <option value="profesional">Profesional</option>
                             <option value="formal">Formal</option>
                             <option value="casual">Casual</option>
-                            <option value="empatico">Empatico</option>
+                            <option value="empatico">Empathetic</option>
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>Formalidad</label>
+                        <label className={labelCls}>Formality</label>
                         <select
                             className={selectCls}
                             value={config.persona.personality.formality}
@@ -420,7 +420,7 @@ export default function AgentConfigPage() {
                         </select>
                     </div>
                     <div>
-                        <label className={labelCls}>Uso de emojis</label>
+                        <label className={labelCls}>Emoji usage</label>
                         <select
                             className={selectCls}
                             value={config.persona.personality.emojiUsage}
@@ -436,7 +436,7 @@ export default function AgentConfigPage() {
                         <label className={labelCls}>Humor</label>
                         <input
                             className={inputCls}
-                            placeholder="Ej: ligero, tematica de aventura"
+                            placeholder="E.g.: light, adventure themed"
                             value={config.persona.personality.humor}
                             onChange={e => updatePersonality("humor", e.target.value)}
                         />
@@ -481,7 +481,7 @@ export default function AgentConfigPage() {
                                 onClick={() => addBehaviorItem(section.key)}
                                 className="px-4 py-2 rounded-lg border border-dashed border-border bg-transparent text-primary cursor-pointer text-[13px] font-semibold flex items-center gap-1.5 self-start"
                             >
-                                <Plus size={14} /> Agregar
+                                <Plus size={14} /> Add
                             </button>
                         </div>
                     </div>
@@ -540,7 +540,7 @@ export default function AgentConfigPage() {
 
                 {/* Timezone */}
                 <div className="mb-5">
-                    <label className={labelCls}>Zona horaria</label>
+                    <label className={labelCls}>Timezone</label>
                     <select
                         className={cn(selectCls, "max-w-80")}
                         value={config.hours.timezone}
@@ -555,7 +555,7 @@ export default function AgentConfigPage() {
                 {/* 24/7 Toggle */}
                 <div className="flex items-center justify-between p-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 mb-5">
                     <div>
-                        <p className="text-sm font-semibold text-foreground">Disponible 24/7</p>
+                        <p className="text-sm font-semibold text-foreground">Available 24/7</p>
                         <p className="text-xs text-muted-foreground mt-0.5">The agent is available 24/7</p>
                     </div>
                     <button
@@ -607,7 +607,7 @@ export default function AgentConfigPage() {
                                                     value={(daySchedule as any).start}
                                                     onChange={e => updateScheduleTime(key, "start", e.target.value)}
                                                 />
-                                                <span className="text-[var(--text-secondary)] text-[13px]">a</span>
+                                                <span className="text-[var(--text-secondary)] text-[13px]">to</span>
                                                 <input
                                                     type="time"
                                                     className={cn(inputCls, "w-[130px]")}
@@ -616,17 +616,17 @@ export default function AgentConfigPage() {
                                                 />
                                             </div>
                                         ) : (
-                                            <span className="text-[13px] text-[var(--text-secondary)] italic">Cerrado</span>
+                                            <span className="text-[13px] text-[var(--text-secondary)] italic">Closed</span>
                                         )}
                                     </div>
                                 );
                             })}
                         </div>
                         <div>
-                            <label className={labelCls}>Mensaje fuera de horario</label>
+                            <label className={labelCls}>After-hours message</label>
                             <textarea
                                 className={cn(inputCls, "min-h-[70px] resize-y")}
-                                placeholder="Mensaje que se envia fuera del horario comercial..."
+                                placeholder="Message sent outside business hours..."
                                 value={config.hours.afterHoursMessage}
                                 onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, afterHoursMessage: e.target.value } }))}
                             />
@@ -641,11 +641,11 @@ export default function AgentConfigPage() {
         return (
             <div className={cardCls}>
                 <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <Cpu size={20} className="text-primary" /> Modelo de IA
+                    <Cpu size={20} className="text-primary" /> AI Model
                 </h3>
                 <div className="grid grid-cols-2 gap-6">
                     <div>
-                        <label className={labelCls}>Temperatura: {config.llm.temperature}</label>
+                        <label className={labelCls}>Temperature: {config.llm.temperature}</label>
                         <input
                             type="range"
                             min={0} max={1} step={0.1}
@@ -654,8 +654,8 @@ export default function AgentConfigPage() {
                             className="w-full accent-primary"
                         />
                         <div className="flex justify-between text-[11px] text-[var(--text-secondary)] mt-1">
-                            <span>Preciso (0)</span>
-                            <span>Creativo (1)</span>
+                            <span>Precise (0)</span>
+                            <span>Creative (1)</span>
                         </div>
                     </div>
                     <div>
@@ -673,11 +673,11 @@ export default function AgentConfigPage() {
                     <div className="flex items-start gap-2.5">
                         <Sparkles size={18} className="text-primary mt-0.5 shrink-0" />
                         <div className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-                            <strong className="text-foreground">Temperatura</strong> controla la creatividad de las respuestas.
-                            Valores bajos (0-0.3) producen respuestas consistentes y predecibles.
-                            Valores altos (0.7-1) generan respuestas mas variadas y creativas.<br />
-                            <strong className="text-foreground">Max tokens</strong> limita la longitud maxima de cada respuesta.
-                            800 tokens equivalen aproximadamente a 2-3 parrafos.
+                            <strong className="text-foreground">Temperature</strong> controls the creativity of responses.
+                            Low values (0-0.3) produce consistent and predictable responses.
+                            High values (0.7-1) generate more varied and creative responses.<br />
+                            <strong className="text-foreground">Max tokens</strong> limits the maximum length of each response.
+                            800 tokens approximately equal 2-3 paragraphs.
                         </div>
                     </div>
                 </div>
@@ -698,7 +698,7 @@ export default function AgentConfigPage() {
 
         const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
         const missingItems: string[] = [];
-        if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push('servicios');
+        if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push('services');
         if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push('availability schedule');
         const toggleBlocked = !canEnableAppointments && !apt.enabled;
 
@@ -717,14 +717,14 @@ export default function AgentConfigPage() {
                                 <Calendar size={20} className="text-indigo-500" />
                             </div>
                             <div>
-                                <h4 className="text-sm font-semibold">Agendamiento de Citas</h4>
-                                <p className="text-xs text-muted-foreground">Permite al agente consultar disponibilidad, agendar y cancelar citas</p>
+                                <h4 className="text-sm font-semibold">Appointment Scheduling</h4>
+                                <p className="text-xs text-muted-foreground">Allows the agent to check availability, schedule and cancel appointments</p>
                             </div>
                         </div>
                         <button
                             onClick={() => { if (!toggleBlocked) updateTools({ enabled: !apt.enabled }); }}
                             disabled={toggleBlocked}
-                            title={toggleBlocked ? `Configure ${missingItems.join(' y ')} before activating` : undefined}
+                            title={toggleBlocked ? `Configure ${missingItems.join(' and ')} before activating` : undefined}
                             className={cn(
                                 "relative w-11 h-6 rounded-full transition-colors",
                                 apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20",
@@ -752,11 +752,11 @@ export default function AgentConfigPage() {
                             <div className="flex-1">
                                 <p className={cn("text-xs font-medium", apt.enabled ? "text-red-700 dark:text-red-300" : "text-foreground")}>
                                     {apt.enabled
-                                        ? `This tool is active but missing ${missingItems.join(' y ')}. The bot will respond with "no availability" until you complete the configuration.`
-                                        : `First configure ${missingItems.join(' y ')} in Appointments.`}
+                                        ? `This tool is active but missing ${missingItems.join(' and ')}. The bot will respond with "no availability" until you complete the configuration.`
+                                        : `First configure ${missingItems.join(' and ')} in Appointments.`}
                                 </p>
                                 <Link href="/admin/appointments" className="inline-block mt-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
-                                    Ir a Citas →
+                                    Go to Appointments →
                                 </Link>
                             </div>
                         </div>
@@ -768,7 +768,7 @@ export default function AgentConfigPage() {
                                 <input type="checkbox" checked={apt.canBook} onChange={(e) => updateTools({ canBook: e.target.checked })}
                                     className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
                                 <div>
-                                    <span className="text-sm font-medium">Crear citas</span>
+                                    <span className="text-sm font-medium">Create appointments</span>
                                     <p className="text-xs text-muted-foreground">The agent can schedule new appointments with customer confirmation</p>
                                 </div>
                             </label>
@@ -776,8 +776,8 @@ export default function AgentConfigPage() {
                                 <input type="checkbox" checked={apt.canCancel} onChange={(e) => updateTools({ canCancel: e.target.checked })}
                                     className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
                                 <div>
-                                    <span className="text-sm font-medium">Cancelar citas</span>
-                                    <p className="text-xs text-muted-foreground">El agente puede cancelar citas del mismo cliente que lo solicita</p>
+                                    <span className="text-sm font-medium">Cancel appointments</span>
+                                    <p className="text-xs text-muted-foreground">The agent can cancel appointments for the same customer who requests it</p>
                                 </div>
                             </label>
                         </div>
@@ -828,17 +828,17 @@ export default function AgentConfigPage() {
 
         return (
             <div>
-                {summarySection("Identidad", <User size={16} className="text-primary" />, [
+                {summarySection("Identity", <User size={16} className="text-primary" />, [
                     { label: "Name", value: config.persona.name },
-                    { label: "Rol", value: config.persona.role },
-                    { label: "Idioma", value: config.language },
-                    { label: "Industria", value: config.industry },
-                    { label: "Saludo", value: config.persona.greeting },
+                    { label: "Role", value: config.persona.role },
+                    { label: "Language", value: config.language },
+                    { label: "Industry", value: config.industry },
+                    { label: "Greeting", value: config.persona.greeting },
                     { label: "Fallback", value: config.persona.fallbackMessage },
                 ])}
-                {summarySection("Personalidad", <Smile size={16} className="text-primary" />, [
-                    { label: "Tono", value: config.persona.personality.tone },
-                    { label: "Formalidad", value: config.persona.personality.formality },
+                {summarySection("Personality", <Smile size={16} className="text-primary" />, [
+                    { label: "Tone", value: config.persona.personality.tone },
+                    { label: "Formality", value: config.persona.personality.formality },
                     { label: "Emojis", value: config.persona.personality.emojiUsage },
                     { label: "Humor", value: config.persona.personality.humor },
                 ])}
@@ -852,8 +852,8 @@ export default function AgentConfigPage() {
                     { label: "Active days", value: activeDays },
                     { label: "After hours message", value: config.hours.afterHoursMessage },
                 ])}
-                {summarySection("Modelo IA", <Cpu size={16} className="text-primary" />, [
-                    { label: "Temperatura", value: String(config.llm.temperature) },
+                {summarySection("AI Model", <Cpu size={16} className="text-primary" />, [
+                    { label: "Temperature", value: String(config.llm.temperature) },
                     { label: "Max tokens", value: String(config.llm.maxTokens) },
                 ])}
                 <button
@@ -865,7 +865,7 @@ export default function AgentConfigPage() {
                     )}
                 >
                     <Save size={18} />
-                    {saving ? t("saving") || "..." : tc("saveChanges")}
+                    {saving ? tc("saving") : tc("saveChanges")}
                 </button>
             </div>
         );
@@ -894,7 +894,7 @@ export default function AgentConfigPage() {
                     <Bot size={28} className="text-primary" /> {t('title')}
                 </h1>
                 <p className="text-[var(--text-secondary)] mt-1 text-sm">
-                    Configura el comportamiento de tu agente conversacional
+                    Configure your conversational agent's behavior
                 </p>
             </div>
 
@@ -909,7 +909,7 @@ export default function AgentConfigPage() {
                             : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
                     )}
                 >
-                    <Sparkles size={16} /> Wizard guiado
+                    <Sparkles size={16} /> Guided Wizard
                 </button>
                 <button
                     onClick={() => setMode("prompt")}
@@ -920,7 +920,7 @@ export default function AgentConfigPage() {
                             : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
                     )}
                 >
-                    <Brain size={16} /> Prompt personalizado
+                    <Brain size={16} /> Custom Prompt
                 </button>
             </div>
 
@@ -929,21 +929,21 @@ export default function AgentConfigPage() {
                 <>
                     <div className={cn(cardCls, "mb-6")}>
                         <h3 className="text-lg font-semibold mt-0 mb-2 flex items-center gap-2">
-                            <Brain size={20} className="text-primary" /> System Prompt personalizado
+                            <Brain size={20} className="text-primary" /> Custom System Prompt
                         </h3>
                         <p className="text-[var(--text-secondary)] text-[13px] mb-4">
-                            Escribe el prompt completo que recibira el modelo de IA como instruccion del sistema.
-                            Este prompt reemplaza toda la configuracion del wizard.
+                            Write the complete prompt the AI model will receive as system instruction.
+                            This prompt replaces the entire wizard configuration.
                         </p>
                         <textarea
                             value={customPrompt}
                             onChange={e => setCustomPrompt(e.target.value)}
-                            placeholder={`Eres Sofia Henao, asesora de ventas de Gecko Aventura Extrema.\n\nTu personalidad:\n- Tono amigable y entusiasta\n- Uso moderado de emojis\n- Siempre respondes en espanol colombiano\n\nReglas:\n1. Nunca inventes precios\n2. Si no puedes resolver en 3 mensajes, ofrece hablar con un humano\n3. Siempre confirma fecha y numero de personas antes de cotizar\n\nHorario: Lunes a Viernes 8am-6pm, Sabados 8am-2pm (Colombia)`}
+                            placeholder={`You are Sofia Henao, a sales advisor at Gecko Extreme Adventure.\n\nYour personality:\n- Friendly and enthusiastic tone\n- Moderate emoji usage\n- Always respond in Colombian Spanish\n\nRules:\n1. Never make up prices\n2. If you can't resolve in 3 messages, offer to speak with a human\n3. Always confirm date and number of people before quoting\n\nSchedule: Monday to Friday 8am-6pm, Saturdays 8am-2pm (Colombia)`}
                             className="w-full min-h-[400px] p-4 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm leading-relaxed font-mono outline-none resize-y"
                         />
                         <div className="flex justify-between items-center mt-3">
                             <span className="text-[var(--text-secondary)] text-xs">
-                                {customPrompt.length} caracteres
+                                {customPrompt.length} characters
                             </span>
                             <button
                                 onClick={handleSave}
@@ -955,7 +955,7 @@ export default function AgentConfigPage() {
                                         : "bg-primary"
                                 )}
                             >
-                                <Save size={16} /> {saving ? t("saving") || "..." : tc("saveChanges")}
+                                <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
                             </button>
                         </div>
                     </div>
@@ -1005,14 +1005,14 @@ export default function AgentConfigPage() {
                                     : "text-foreground cursor-pointer"
                             )}
                         >
-                            <ChevronLeft size={16} /> Anterior
+                            <ChevronLeft size={16} /> Previous
                         </button>
                         {step < 5 ? (
                             <button
                                 onClick={() => setStep(prev => prev + 1)}
                                 className="px-5 py-2.5 rounded-[10px] border-none bg-primary text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 hover:bg-[var(--accent-hover)]"
                             >
-                                Siguiente <ChevronRight size={16} />
+                                Next <ChevronRight size={16} />
                             </button>
                         ) : (
                             <button
@@ -1023,7 +1023,7 @@ export default function AgentConfigPage() {
                                     saving ? "bg-border cursor-not-allowed" : "bg-primary cursor-pointer"
                                 )}
                             >
-                                <Save size={16} /> {saving ? t("saving") : tc("saveChanges")}
+                                <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
                             </button>
                         )}
                     </div>

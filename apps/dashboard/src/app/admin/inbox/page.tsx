@@ -455,7 +455,7 @@ export default function InboxPage() {
                             id: n.id,
                             content: n.content || n.content_text || '',
                             agentName: n.created_by || n.agent_name || t('agent'),
-                            createdAt: n.created_at ? new Date(n.created_at).toLocaleDateString('es-CO') : '',
+                            createdAt: n.created_at ? new Date(n.created_at).toLocaleDateString(undefined) : '',
                         })));
                     }
                     // Scroll to bottom instantly on load
@@ -504,7 +504,7 @@ export default function InboxPage() {
                 direction: isInbound ? 'inbound' : 'outbound',
                 senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                 senderName: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
-                timestamp: (message.timestamp || message.created_at) ? formatTime(message.timestamp || message.created_at) : new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+                timestamp: (message.timestamp || message.created_at) ? formatTime(message.timestamp || message.created_at) : new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
                 rawDate: message.timestamp || message.created_at || new Date().toISOString(),
                 type: message.content_type || 'text',
             };
@@ -696,7 +696,7 @@ export default function InboxPage() {
             content,
             senderLabel: t('agent'),
             senderName: user?.firstName || t('agent'),
-            timestamp: now.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+            timestamp: now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
             rawDate: now.toISOString(),
             type: 'text',
         }]);

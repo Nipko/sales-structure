@@ -163,7 +163,7 @@ export default function EmailTemplatesPage() {
         });
       }
     } catch {
-      showToast(t("errorLoading"), true);
+      showToast("Error loading template", true);
     }
   }
 
@@ -265,10 +265,10 @@ export default function EmailTemplatesPage() {
           setIsCreating(false);
         }
       } else {
-        showToast(res?.error || t("errorSaving") || "Error", true);
+        showToast(res?.error || tc("errorSaving"), true);
       }
     } catch {
-      showToast(t("connectionError") || "Error", true);
+      showToast(tc("connectionError"), true);
     } finally {
       setSaving(false);
     }
@@ -304,7 +304,7 @@ export default function EmailTemplatesPage() {
         showToast(res?.error || tc("errorSaving"), true);
       }
     } catch {
-      showToast(t("connectionError") || "Error", true);
+      showToast(tc("connectionError"), true);
     } finally {
       setSendingTest(false);
     }
@@ -458,7 +458,7 @@ export default function EmailTemplatesPage() {
                   <input
                     value={form.slug}
                     onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
-                    placeholder="bienvenida-cliente"
+                    placeholder="welcome-customer"
                     className={cn(inputCls, "font-mono text-[13px]")}
                   />
                 </div>
@@ -476,7 +476,7 @@ export default function EmailTemplatesPage() {
                   ref={subjectRef}
                   value={form.subject}
                   onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
-                  placeholder='Ej: Hola {{customer_name}}, tu pedido {{order_id}} esta listo'
+                  placeholder='E.g.: Hello {{customer_name}}, your order {{order_id}} is ready'
                   className={inputCls}
                 />
               </div>
@@ -517,7 +517,7 @@ export default function EmailTemplatesPage() {
                   ref={bodyRef}
                   value={form.bodyHtml}
                   onChange={(e) => setForm((prev) => ({ ...prev, bodyHtml: e.target.value }))}
-                  placeholder="<h1>Hola {{customer_name}}</h1><p>Gracias por tu compra...</p>"
+                  placeholder="<h1>Hello {{customer_name}}</h1><p>Thank you for your purchase...</p>"
                   rows={14}
                   className={cn(inputCls, "font-mono text-[13px] leading-relaxed resize-y min-h-[200px]")}
                 />
@@ -548,7 +548,7 @@ export default function EmailTemplatesPage() {
                   className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   <Save size={16} />
-                  {saving ? t("saving") : tc("saveChanges")}
+                  {saving ? tc("saving") : tc("saveChanges")}
                 </button>
                 {selectedId && !isCreating && (
                   <button

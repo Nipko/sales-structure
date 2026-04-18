@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
     { key: "overview", label: "Overview" },
-    { key: "agentes", label: "Agentes" },
-    { key: "canales", label: "Canales" },
+    { key: "agents", label: "Agents" },
+    { key: "channels", label: "Channels" },
     { key: "csat", label: "CSAT" },
 ];
 
@@ -120,10 +120,10 @@ export default function AgentAnalyticsPage() {
             {/* KPI Cards */}
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { title: "Conversaciones", value: totals.conversations ?? 0, color: "#3498db" },
-                    { title: "Tiempo Resp. Promedio", value: totals.avgFirstResponse ?? "0s", color: "#f39c12" },
-                    { title: "Tasa Resolucion", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
-                    { title: "CSAT Promedio", value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
+                    { title: "Conversations", value: totals.conversations ?? 0, color: "#3498db" },
+                    { title: "Avg Response Time", value: totals.avgFirstResponse ?? "0s", color: "#f39c12" },
+                    { title: "Resolution Rate", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
+                    { title: "Average CSAT", value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
                 ].map((card) => (
                     <div key={card.title} className="rounded-xl border border-border bg-[var(--bg-secondary)] px-5 py-[18px] flex flex-col gap-2">
                         <span className="text-xs text-[var(--text-secondary)] font-semibold uppercase tracking-wide">{card.title}</span>
@@ -134,9 +134,9 @@ export default function AgentAnalyticsPage() {
 
             {/* Daily Bar Chart */}
             <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5">
-                <h3 className="m-0 mb-4 text-[15px] font-semibold">Volumen Diario de Conversaciones</h3>
+                <h3 className="m-0 mb-4 text-[15px] font-semibold">Daily Conversation Volume</h3>
                 {series.length === 0 ? (
-                    <div className="text-center py-10 text-[var(--text-secondary)]">Sin datos para el rango seleccionado</div>
+                    <div className="text-center py-10 text-[var(--text-secondary)]">No data for the selected range</div>
                 ) : (
                     <div className="flex items-end gap-0.5 h-[180px] px-1">
                         {series.map((s: any, i: number) => {
@@ -162,12 +162,12 @@ export default function AgentAnalyticsPage() {
         </div>
     );
 
-    const renderAgentes = () => {
+    const renderAgents = () => {
         const columns: { key: string; label: string }[] = [
-            { key: "agentName", label: "Agente" },
-            { key: "totalConversations", label: "Conversaciones" },
-            { key: "resolvedConversations", label: "Resueltas" },
-            { key: "avgFirstResponseSecs", label: "Tiempo Resp." },
+            { key: "agentName", label: "Agent" },
+            { key: "totalConversations", label: "Conversations" },
+            { key: "resolvedConversations", label: "Resolved" },
+            { key: "avgFirstResponseSecs", label: "Response Time" },
             { key: "csatAvg", label: "CSAT" },
         ];
 
@@ -192,7 +192,7 @@ export default function AgentAnalyticsPage() {
                     </thead>
                     <tbody>
                         {sortedAgents.length === 0 ? (
-                            <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">Sin datos de agentes</td></tr>
+                            <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">No agent data</td></tr>
                         ) : sortedAgents.map((agent: any) => (
                             <tr key={agent.agentId} className="border-b border-border">
                                 <td className="px-4 py-2.5 font-semibold">{agent.agentName}</td>
@@ -221,10 +221,10 @@ export default function AgentAnalyticsPage() {
         );
     };
 
-    const renderCanales = () => (
+    const renderChannels = () => (
         <div className="grid grid-cols-3 gap-4">
             {channelsData.length === 0 ? (
-                <div className="col-span-full text-center py-10 text-[var(--text-secondary)]">Sin datos de canales</div>
+                <div className="col-span-full text-center py-10 text-[var(--text-secondary)]">No channel data</div>
             ) : channelsData.map((ch: any) => {
                 const color = CHANNEL_COLORS[ch.channel] || "#95a5a6";
                 const label = CHANNEL_LABELS[ch.channel] || ch.channel;
@@ -243,7 +243,7 @@ export default function AgentAnalyticsPage() {
                             </div>
                         </div>
                         <div className="text-[32px] font-semibold" style={{ color }}>{ch.count}</div>
-                        <div className="text-xs text-[var(--text-secondary)]">conversaciones</div>
+                        <div className="text-xs text-[var(--text-secondary)]">conversations</div>
                         {/* Percentage bar */}
                         <div className="h-1.5 rounded-full bg-[var(--bg-tertiary)]">
                             <div className="h-full rounded-full" style={{ width: `${ch.percentage}%`, background: color }} />
@@ -267,7 +267,7 @@ export default function AgentAnalyticsPage() {
                 {/* Big Average */}
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] px-6 py-8 text-center mb-6">
                     <div className="text-sm text-[var(--text-secondary)] font-semibold uppercase tracking-wide mb-2">
-                        Promedio CSAT
+                        Average CSAT
                     </div>
                     <div
                         className="text-[56px] font-semibold"
@@ -276,13 +276,13 @@ export default function AgentAnalyticsPage() {
                         {avg ? avg.toFixed(1) : "\u2014"}
                     </div>
                     <div className="text-[13px] text-[var(--text-secondary)] mt-1">
-                        {total} {total === 1 ? "respuesta" : "respuestas"}
+                        {total} {total === 1 ? "response" : "responses"}
                     </div>
                 </div>
 
                 {/* Rating Bars */}
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5 mb-6">
-                    <h3 className="m-0 mb-4 text-[15px] font-semibold">Distribucion por Estrellas</h3>
+                    <h3 className="m-0 mb-4 text-[15px] font-semibold">Distribution by Stars</h3>
                     {[5, 4, 3, 2, 1].map((rating) => {
                         const count = dist[rating] || 0;
                         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -302,7 +302,7 @@ export default function AgentAnalyticsPage() {
                 {/* Recent Feedback */}
                 {feedback.length > 0 && (
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5">
-                        <h3 className="m-0 mb-4 text-[15px] font-semibold">Feedback Reciente</h3>
+                        <h3 className="m-0 mb-4 text-[15px] font-semibold">Recent Feedback</h3>
                         <div className="flex flex-col gap-3">
                             {feedback.map((f: any) => (
                                 <div key={f.id} className="p-3 rounded-lg border border-border bg-[var(--bg-primary)]">
@@ -324,7 +324,7 @@ export default function AgentAnalyticsPage() {
                                         </p>
                                     )}
                                     <div className="text-[11px] text-[var(--text-secondary)] mt-1.5">
-                                        {new Date(f.createdAt).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                        {new Date(f.createdAt).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                                     </div>
                                 </div>
                             ))}
@@ -338,8 +338,8 @@ export default function AgentAnalyticsPage() {
     const renderTab = () => {
         switch (activeTab) {
             case "overview": return renderOverview();
-            case "agentes": return renderAgentes();
-            case "canales": return renderCanales();
+            case "agents": return renderAgents();
+            case "channels": return renderChannels();
             case "csat": return renderCSAT();
             default: return null;
         }
@@ -358,7 +358,7 @@ export default function AgentAnalyticsPage() {
                         onChange={(e) => setStartDate(e.target.value)}
                         className="px-2.5 py-1.5 rounded-lg border border-border bg-[var(--bg-secondary)] text-foreground text-[13px]"
                     />
-                    <span className="text-[var(--text-secondary)] text-[13px]">a</span>
+                    <span className="text-[var(--text-secondary)] text-[13px]">to</span>
                     <input
                         type="date"
                         value={endDate}
@@ -391,7 +391,7 @@ export default function AgentAnalyticsPage() {
             {loading ? (
                 <div className="flex items-center justify-center h-[300px] gap-3 text-[var(--text-secondary)]">
                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Cargando datos...
+                    Loading data...
                 </div>
             ) : renderTab()}
         </div>

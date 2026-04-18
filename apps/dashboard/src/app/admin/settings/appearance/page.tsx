@@ -1,15 +1,16 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Palette, Sun, Moon, Monitor, Check, Lock } from "lucide-react";
 
-const themes = [
+const themeConfigs = [
   {
     key: "light",
-    label: "Claro",
+    labelKey: "lightLabel",
     icon: Sun,
-    description: "Fondo blanco con texto oscuro",
+    descKey: "lightDesc",
     preview: {
       bg: "bg-white",
       card: "bg-neutral-100",
@@ -19,9 +20,9 @@ const themes = [
   },
   {
     key: "dark",
-    label: "Oscuro",
+    labelKey: "darkLabel",
     icon: Moon,
-    description: "Fondo oscuro con texto claro",
+    descKey: "darkDesc",
     preview: {
       bg: "bg-neutral-900",
       card: "bg-neutral-800",
@@ -31,9 +32,9 @@ const themes = [
   },
   {
     key: "system",
-    label: "Sistema",
+    labelKey: "systemLabel",
     icon: Monitor,
-    description: "Sigue la preferencia del sistema operativo",
+    descKey: "systemDesc",
     preview: {
       bg: "bg-gradient-to-br from-white to-neutral-900",
       card: "bg-neutral-500",
@@ -43,11 +44,11 @@ const themes = [
   },
 ] as const;
 
-const futureThemes = [
+const futureThemeConfigs = [
   {
     key: "graphite",
-    label: "Graphite",
-    description: "Tonos neutros con acento azul acero",
+    labelKey: "graphiteLabel",
+    descKey: "graphiteDesc",
     preview: {
       bg: "bg-neutral-700",
       card: "bg-neutral-600",
@@ -57,8 +58,8 @@ const futureThemes = [
   },
   {
     key: "midnight",
-    label: "Midnight",
-    description: "Azul profundo con acentos violeta",
+    labelKey: "midnightLabel",
+    descKey: "midnightDesc",
     preview: {
       bg: "bg-indigo-950",
       card: "bg-indigo-900",
@@ -69,6 +70,7 @@ const futureThemes = [
 ] as const;
 
 export default function AppearancePage() {
+  const t = useTranslations("settings.appearancePage");
   const { theme, setTheme } = useTheme();
 
   return (
@@ -80,10 +82,10 @@ export default function AppearancePage() {
         </div>
         <div>
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-            Apariencia
+            {t("title")}
           </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Personaliza el aspecto visual de la plataforma
+            {t("subtitle")}
           </p>
         </div>
       </div>
@@ -91,16 +93,16 @@ export default function AppearancePage() {
       {/* Theme selector cards */}
       <div>
         <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
-          Tema
+          {t("themeTitle")}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {themes.map((t) => {
-            const Icon = t.icon;
-            const selected = theme === t.key;
+          {themeConfigs.map((tc) => {
+            const Icon = tc.icon;
+            const selected = theme === tc.key;
             return (
               <button
-                key={t.key}
-                onClick={() => setTheme(t.key)}
+                key={tc.key}
+                onClick={() => setTheme(tc.key)}
                 className={cn(
                   "relative rounded-xl border-2 p-4 text-left transition-all",
                   selected
@@ -119,12 +121,12 @@ export default function AppearancePage() {
                 <div
                   className={cn(
                     "w-full h-20 rounded-lg mb-3 p-2 flex flex-col gap-1.5",
-                    t.preview.bg
+                    tc.preview.bg
                   )}
                 >
-                  <div className={cn("h-2 w-16 rounded-full", t.preview.accent)} />
-                  <div className={cn("h-1.5 w-24 rounded-full", t.preview.text)} />
-                  <div className={cn("flex-1 rounded", t.preview.card)} />
+                  <div className={cn("h-2 w-16 rounded-full", tc.preview.accent)} />
+                  <div className={cn("h-1.5 w-24 rounded-full", tc.preview.text)} />
+                  <div className={cn("flex-1 rounded", tc.preview.card)} />
                 </div>
 
                 {/* Label */}
@@ -145,27 +147,27 @@ export default function AppearancePage() {
                         : "text-neutral-700 dark:text-neutral-300"
                     )}
                   >
-                    {t.label}
+                    {t(tc.labelKey)}
                   </span>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                  {t.description}
+                  {t(tc.descKey)}
                 </p>
               </button>
             );
           })}
 
           {/* Future themes (disabled) */}
-          {futureThemes.map((t) => (
+          {futureThemeConfigs.map((ft) => (
             <div
-              key={t.key}
+              key={ft.key}
               className="relative rounded-xl border-2 border-neutral-200 dark:border-neutral-800 p-4 text-left opacity-50 cursor-not-allowed"
             >
               {/* Coming soon badge */}
               <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800">
                 <Lock size={10} className="text-neutral-400 dark:text-neutral-500" />
                 <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-                  Coming soon
+                  {t("comingSoon")}
                 </span>
               </div>
 
@@ -173,12 +175,12 @@ export default function AppearancePage() {
               <div
                 className={cn(
                   "w-full h-20 rounded-lg mb-3 p-2 flex flex-col gap-1.5",
-                  t.preview.bg
+                  ft.preview.bg
                 )}
               >
-                <div className={cn("h-2 w-16 rounded-full", t.preview.accent)} />
-                <div className={cn("h-1.5 w-24 rounded-full", t.preview.text)} />
-                <div className={cn("flex-1 rounded", t.preview.card)} />
+                <div className={cn("h-2 w-16 rounded-full", ft.preview.accent)} />
+                <div className={cn("h-1.5 w-24 rounded-full", ft.preview.text)} />
+                <div className={cn("flex-1 rounded", ft.preview.card)} />
               </div>
 
               {/* Label */}
@@ -188,11 +190,11 @@ export default function AppearancePage() {
                   className="text-neutral-400 dark:text-neutral-500"
                 />
                 <span className="text-sm font-medium text-neutral-400 dark:text-neutral-500">
-                  {t.label}
+                  {t(ft.labelKey)}
                 </span>
               </div>
               <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                {t.description}
+                {t(ft.descKey)}
               </p>
             </div>
           ))}
@@ -202,13 +204,13 @@ export default function AppearancePage() {
       {/* Component preview */}
       <div>
         <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
-          Vista previa de componentes
+          {t("componentPreview")}
         </h2>
         <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-6 space-y-6 bg-white dark:bg-neutral-950">
           {/* Buttons */}
           <div>
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wider">
-              Botones
+              {t("buttons")}
             </p>
             <div className="flex flex-wrap gap-3">
               <button className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
@@ -226,15 +228,14 @@ export default function AppearancePage() {
           {/* Card */}
           <div>
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wider">
-              Tarjeta
+              {t("card")}
             </p>
             <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 max-w-sm">
               <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                Ejemplo de tarjeta
+                {t("cardTitle")}
               </h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                This is an example description to show how the
-                tarjetas con el tema actual.
+                {t("cardDescription")}
               </p>
             </div>
           </div>
@@ -257,11 +258,11 @@ export default function AppearancePage() {
           {/* Input */}
           <div>
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wider">
-              Campo de texto
+              {t("textInput")}
             </p>
             <input
               type="text"
-              placeholder="Escribe algo aqui..."
+              placeholder={t("textInputPlaceholder")}
               className="w-full max-w-sm h-9 px-3 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>

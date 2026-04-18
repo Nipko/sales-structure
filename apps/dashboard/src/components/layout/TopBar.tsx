@@ -102,7 +102,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const unreadByType: Partial<Record<NotifType, number>> = {};
   notifications.filter(n => !n.read).forEach(n => { unreadByType[n.type] = (unreadByType[n.type] || 0) + 1; });
 
-  const now = () => new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  const now = () => new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
   function addNotif(type: NotifType, title: string, body: string) {
     setNotifications(prev => [{ id: `${type}-${Date.now()}-${Math.random()}`, type, title, body, time: now(), read: false }, ...prev].slice(0, 100));

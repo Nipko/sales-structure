@@ -86,10 +86,10 @@ export default function WhatsAppSetupPage() {
         setSyncing(true);
         try {
             await api.fetch("/channels/whatsapp/templates/sync", { method: "POST" });
-            setMessage({ type: "success", text: "Plantillas sincronizadas." });
+            setMessage({ type: "success", text: "Templates synced." });
             await loadData();
         } catch (err: any) {
-            setMessage({ type: "error", text: "Error sincronizando plantillas." });
+            setMessage({ type: "error", text: "Error syncing templates." });
         } finally {
             setSyncing(false);
         }
@@ -363,9 +363,9 @@ export default function WhatsAppSetupPage() {
                     <div className="px-6 py-5 border-b border-border flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
                             <MessageSquare size={18} className="text-primary" />
-                            <h2 className="text-base font-semibold m-0">Plantillas Aprobadas (HSM)</h2>
+                            <h2 className="text-base font-semibold m-0">Approved Templates (HSM)</h2>
                             <span className="text-xs text-[var(--text-secondary)]">
-                                {templates.length} plantilla{templates.length !== 1 ? "s" : ""}
+                                {templates.length} template{templates.length !== 1 ? "s" : ""}
                             </span>
                         </div>
                         <button
@@ -377,13 +377,13 @@ export default function WhatsAppSetupPage() {
                             )}
                         >
                             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-                            {syncing ? "Sincronizando..." : "Sincronizar desde Meta"}
+                            {syncing ? "Syncing..." : "Sync from Meta"}
                         </button>
                     </div>
                     <div>
                         {templates.length === 0 ? (
                             <div className="py-10 text-center text-[var(--text-secondary)]">
-                                No hay plantillas sincronizadas. Haz clic en &quot;Sincronizar desde Meta&quot; para descargarlas.
+                                No synced templates. Click &quot;Sync from Meta&quot; to download them.
                             </div>
                         ) : (
                             <table className="w-full border-collapse text-[13px]">

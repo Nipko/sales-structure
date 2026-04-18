@@ -209,7 +209,7 @@ export default function CompliancePage() {
                                             <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">{o.channel}</span>
                                             <span className="text-[11px] px-2 py-0.5 rounded-md bg-neutral-500/10 text-muted-foreground">{o.detected_from || "keyword"}</span>
                                         </div>
-                                        <span className="text-xs text-muted-foreground shrink-0">{new Date(o.created_at).toLocaleString("es-CO")}</span>
+                                        <span className="text-xs text-muted-foreground shrink-0">{new Date(o.created_at).toLocaleString(undefined)}</span>
                                     </div>
 
                                     {/* Contact info */}
@@ -227,7 +227,7 @@ export default function CompliancePage() {
                                     {/* Review info if reviewed */}
                                     {o.reviewed_at && (
                                         <div className="text-xs text-muted-foreground mb-2">
-                                            Reviewed by <span className="font-semibold">{o.reviewer_first} {o.reviewer_last}</span> el {new Date(o.reviewed_at).toLocaleString("es-CO")}
+                                            Reviewed by <span className="font-semibold">{o.reviewer_first} {o.reviewer_last}</span> el {new Date(o.reviewed_at).toLocaleString(undefined)}
                                             {o.review_notes && <span className="ml-2">— &ldquo;{o.review_notes}&rdquo;</span>}
                                         </div>
                                     )}
@@ -316,7 +316,7 @@ export default function CompliancePage() {
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
                                     <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
-                                    <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? t("saving") || "..." : tc("create")}</button>
+                                    <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                                 </div>
                             </>
                         )}
@@ -341,7 +341,7 @@ export default function CompliancePage() {
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
                                     <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
-                                    <button onClick={handleCreateOptOut} disabled={saving || !optOutForm.lead_id} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-red-500 cursor-pointer")}>{saving ? t("saving") || "..." : "Register Opt-Out"}</button>
+                                    <button onClick={handleCreateOptOut} disabled={saving || !optOutForm.lead_id} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-red-500 cursor-pointer")}>{saving ? tc("saving") : "Register Opt-Out"}</button>
                                 </div>
                             </>
                         )}

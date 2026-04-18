@@ -538,7 +538,31 @@
         "friday": "Sex",
         "saturday": "Sáb",
         "sunday": "Dom"
-      }
+      },
+      "timeSeparator": "até"
+    },
+    "appearancePage": {
+      "title": "Aparência",
+      "subtitle": "Personalize a aparência visual da plataforma",
+      "themeTitle": "Tema",
+      "lightLabel": "Claro",
+      "lightDesc": "Fundo branco com texto escuro",
+      "darkLabel": "Escuro",
+      "darkDesc": "Fundo escuro com texto claro",
+      "systemLabel": "Sistema",
+      "systemDesc": "Segue a preferência do sistema operacional",
+      "graphiteLabel": "Graphite",
+      "graphiteDesc": "Tons neutros com acento azul aço",
+      "midnightLabel": "Midnight",
+      "midnightDesc": "Azul profundo com acentos violeta",
+      "comingSoon": "Em breve",
+      "componentPreview": "Pré-visualização de componentes",
+      "buttons": "Botões",
+      "card": "Cartão",
+      "cardTitle": "Exemplo de cartão",
+      "cardDescription": "Esta é uma descrição de exemplo para mostrar como os cartões ficam com o tema atual.",
+      "textInput": "Campo de texto",
+      "textInputPlaceholder": "Digite algo aqui..."
     },
     "navProfile": "Perfil",
     "navSecurity": "Segurança",

@@ -16,8 +16,8 @@ interface Category { id: string; name: string; color: string; productCount: numb
 interface StockMovement { id: string; productId: string; productName: string; type: "in" | "out" | "adjustment"; quantity: number; previousStock: number; newStock: number; reason: string; createdAt: string; createdBy: string; }
 interface InventoryOverview { totalProducts: number; activeProducts: number; totalValue: number; lowStockAlerts: number; outOfStockCount: number; categories: Category[]; products: Product[]; recentMovements: StockMovement[]; }
 
-const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
-const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString("es-CO", { day: "2-digit", month: "short" }); } catch { return s; } };
+const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(n);
+const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short" }); } catch { return s; } };
 const getStockStatus = (p: Product) => {
     if (p.stock === 0) return { label: "Out of stock", color: "#ff4757", bg: "rgba(255,71,87,0.12)" };
     if (p.stock <= p.minStock) return { label: "Low stock", color: "#ffa502", bg: "rgba(255,165,2,0.12)" };

@@ -154,7 +154,7 @@ export default function BusinessHoursPage() {
                                             onChange={(e) => updateDay(key, "open", e.target.value)}
                                             className={timeClasses}
                                         />
-                                        <span className="text-xs text-neutral-400">a</span>
+                                        <span className="text-xs text-neutral-400">{t("timeSeparator")}</span>
                                         <input
                                             type="time"
                                             value={day.close}
@@ -163,7 +163,7 @@ export default function BusinessHoursPage() {
                                         />
                                     </div>
                                 ) : (
-                                    <span className="text-xs text-neutral-400">Cerrado</span>
+                                    <span className="text-xs text-neutral-400">{t("closed")}</span>
                                 )}
                             </div>
                         );
@@ -176,7 +176,7 @@ export default function BusinessHoursPage() {
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-                            Mensaje fuera de horario
+                            {t("outOfHoursTitle")}
                         </h2>
                         <p className="text-xs text-neutral-500 dark:text-neutral-400">
                             {t("outOfHoursDesc")}

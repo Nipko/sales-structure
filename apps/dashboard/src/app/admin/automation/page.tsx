@@ -438,10 +438,10 @@ export default function AutomationPage() {
                                                                 {exec.status || "queued"}
                                                             </span>
                                                             <span className="text-muted-foreground text-xs">
-                                                                {exec.started_at ? new Date(exec.started_at).toLocaleString("es-CO") : "\u2014"}
+                                                                {exec.started_at ? new Date(exec.started_at).toLocaleString(undefined) : "\u2014"}
                                                             </span>
                                                             <span className="text-muted-foreground text-xs">
-                                                                → {exec.finished_at ? new Date(exec.finished_at).toLocaleString("es-CO") : "\u2014"}
+                                                                → {exec.finished_at ? new Date(exec.finished_at).toLocaleString(undefined) : "\u2014"}
                                                             </span>
                                                             {exec.result && (
                                                                 <span className="text-muted-foreground text-[11px] ml-auto max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">

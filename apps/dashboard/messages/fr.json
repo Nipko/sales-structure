@@ -538,7 +538,31 @@
         "friday": "Ven",
         "saturday": "Sam",
         "sunday": "Dim"
-      }
+      },
+      "timeSeparator": "à"
+    },
+    "appearancePage": {
+      "title": "Apparence",
+      "subtitle": "Personnalisez l'apparence visuelle de la plateforme",
+      "themeTitle": "Thème",
+      "lightLabel": "Clair",
+      "lightDesc": "Fond blanc avec texte sombre",
+      "darkLabel": "Sombre",
+      "darkDesc": "Fond sombre avec texte clair",
+      "systemLabel": "Système",
+      "systemDesc": "Suit la préférence du système d'exploitation",
+      "graphiteLabel": "Graphite",
+      "graphiteDesc": "Tons neutres avec accent bleu acier",
+      "midnightLabel": "Midnight",
+      "midnightDesc": "Bleu profond avec accents violets",
+      "comingSoon": "Bientôt disponible",
+      "componentPreview": "Aperçu des composants",
+      "buttons": "Boutons",
+      "card": "Carte",
+      "cardTitle": "Exemple de carte",
+      "cardDescription": "Ceci est une description d'exemple pour montrer l'apparence des cartes avec le thème actuel.",
+      "textInput": "Champ de texte",
+      "textInputPlaceholder": "Tapez quelque chose ici..."
     },
     "navProfile": "Profil",
     "navSecurity": "Sécurité",

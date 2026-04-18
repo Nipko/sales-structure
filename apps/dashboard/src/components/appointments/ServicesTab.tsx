@@ -54,7 +54,7 @@ export default function ServicesTab({
 }: ServicesTabProps) {
     const t = useTranslations("appointments");
     const locale = useLocale();
-    const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-CO";
+    const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
     const [searchQuery, setSearchQuery] = useState("");
     const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("all");
     const [expandedStaff, setExpandedStaff] = useState<string | null>(null);

@@ -66,7 +66,7 @@ export default function AnalyticsV4Page() {
             <div className="grid grid-cols-5 gap-3 mb-6">
                 {[
                     { icon: Users, color: "#3498db", label: "Total Leads", value: totalLeads },
-                    { icon: Target, color: "#2ecc71", label: "Ganados", value: wonLeads },
+                    { icon: Target, color: "#2ecc71", label: "Won", value: wonLeads },
                     { icon: TrendingUp, color: "#f39c12", label: "Conversion", value: `${globalConversion}%` },
                     { icon: Zap, color: "#e74c3c", label: "Lost", value: lostLeads },
                     { icon: Megaphone, color: "#9b59b6", label: "Campaigns", value: campaigns.length },
@@ -88,7 +88,7 @@ export default function AnalyticsV4Page() {
 
             {/* Funnel */}
             <div className="p-5 rounded-xl border border-border bg-card mb-6">
-                <h2 className="text-base font-semibold mb-4">📊 Funnel de Conversion</h2>
+                <h2 className="text-base font-semibold mb-4">📊 Conversion Funnel</h2>
                 <div className="flex flex-col gap-2">
                     {funnel.filter(f => f.stage !== "perdido").map((f, i) => {
                         const pct = maxFunnel > 0 ? (f.count / maxFunnel) * 100 : 0;
@@ -120,7 +120,7 @@ export default function AnalyticsV4Page() {
 
             {/* Campaign Analytics Table */}
             <div className="p-5 rounded-xl border border-border bg-card">
-                <h2 className="text-base font-semibold mb-4">📈 Rendimiento por Campana</h2>
+                <h2 className="text-base font-semibold mb-4">📈 Campaign Performance</h2>
                 {campaigns.length > 0 ? (
                     <table className="w-full border-collapse text-[13px]">
                         <thead>
@@ -164,11 +164,11 @@ export default function AnalyticsV4Page() {
             {crmStats && (
                 <div className="mt-6 grid grid-cols-3 gap-3">
                     <div className="p-4 rounded-[14px] border border-border bg-card">
-                        <div className="text-xs text-muted-foreground mb-1">Oportunidades Totales</div>
+                        <div className="text-xs text-muted-foreground mb-1">Total Opportunities</div>
                         <div className="text-[22px] font-semibold">{crmStats.opportunities?.total || 0}</div>
                     </div>
                     <div className="p-4 rounded-[14px] border border-border bg-card">
-                        <div className="text-xs text-muted-foreground mb-1">Valor Total Pipeline</div>
+                        <div className="text-xs text-muted-foreground mb-1">Total Pipeline Value</div>
                         <div className="text-[22px] font-semibold">${(crmStats.opportunities?.totalValue || 0).toLocaleString()}</div>
                     </div>
                     <div className="p-4 rounded-[14px] border border-border bg-card">

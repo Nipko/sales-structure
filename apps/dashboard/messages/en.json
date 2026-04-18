@@ -538,7 +538,31 @@
         "friday": "Fri",
         "saturday": "Sat",
         "sunday": "Sun"
-      }
+      },
+      "timeSeparator": "to"
+    },
+    "appearancePage": {
+      "title": "Appearance",
+      "subtitle": "Customize the visual appearance of the platform",
+      "themeTitle": "Theme",
+      "lightLabel": "Light",
+      "lightDesc": "White background with dark text",
+      "darkLabel": "Dark",
+      "darkDesc": "Dark background with light text",
+      "systemLabel": "System",
+      "systemDesc": "Follows the operating system preference",
+      "graphiteLabel": "Graphite",
+      "graphiteDesc": "Neutral tones with steel blue accent",
+      "midnightLabel": "Midnight",
+      "midnightDesc": "Deep blue with violet accents",
+      "comingSoon": "Coming soon",
+      "componentPreview": "Component Preview",
+      "buttons": "Buttons",
+      "card": "Card",
+      "cardTitle": "Example card",
+      "cardDescription": "This is an example description to show how cards look with the current theme.",
+      "textInput": "Text Input",
+      "textInputPlaceholder": "Type something here..."
     },
     "navProfile": "Profile",
     "navSecurity": "Security",

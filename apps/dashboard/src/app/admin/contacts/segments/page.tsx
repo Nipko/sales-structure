@@ -91,7 +91,7 @@ export default function SegmentsPage() {
     }
 
     function formatDate(d: string) {
-        try { return new Date(d).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }); }
+        try { return new Date(d).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }); }
         catch { return d; }
     }
 

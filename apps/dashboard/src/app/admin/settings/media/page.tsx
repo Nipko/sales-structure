@@ -51,7 +51,7 @@ function fmtBytes(b: number): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 // Entity options labels are resolved via t() inside the component
@@ -198,9 +198,9 @@ export default function MediaBankPage() {
       const res = await api.updateMedia(tenantId, editingId, { label: editLabel, description: editDesc, tags: editTags });
       if (res.success) {
         setFiles(prev => prev.map(f => f.id === editingId ? { ...f, label: editLabel, description: editDesc, tags: editTags } : f));
-        showToast(t("saved") || "OK"); setEditingId(null); loadTags();
+        showToast(tc("saved")); setEditingId(null); loadTags();
       } else showToast(`Error: ${res.error}`);
-    } catch { showToast(t("errorSaving") || "Error"); }
+    } catch { showToast(tc("errorSaving")); }
     finally { setSaving(false); }
   }
 

@@ -760,14 +760,24 @@
     "dragToMove": "Glissez pour déplacer"
   },
   "automation": {
-    "title": "Automatisation",
-    "rules": "Règles",
-    "newRule": "Nouvelle règle",
-    "trigger": "Déclencheur",
-    "conditions": "Conditions",
-    "actions": "Actions",
-    "active": "Active",
-    "inactive": "Inactive"
+    "title": "Automatisation", "rules": "Regles", "newRule": "Nouvelle regle", "editRule": "Modifier la regle",
+    "saveRule": "Enregistrer la regle", "updateRule": "Mettre a jour la regle", "trigger": "Declencheur",
+    "conditions": "Conditions", "actions": "Actions", "active": "Active", "inactive": "Inactive",
+    "errorSaving": "Erreur lors de l'enregistrement de la regle",
+    "triggerLeadCaptured": "Lead capture", "triggerLeadCapturedDesc": "Quand un nouveau lead entre dans le systeme",
+    "triggerNewMessage": "Nouveau message", "triggerNewMessageDesc": "Quand un message est recu du client",
+    "triggerConversationAssigned": "Conversation attribuee", "triggerConversationAssignedDesc": "Quand une conversation est attribuee a un agent",
+    "triggerSlaTimeout": "SLA expire", "triggerSlaTimeoutDesc": "Quand le temps de reponse est depasse",
+    "triggerInactivity": "Inactivite", "triggerInactivityDesc": "Quand le client arrete de repondre",
+    "triggerStageChanged": "Changement d'etape", "triggerStageChangedDesc": "Quand un lead change d'etape",
+    "fieldChannel": "Canal", "fieldStage": "Etape", "fieldScore": "Score", "fieldTag": "Etiquette",
+    "fieldSource": "Source", "fieldCampaignId": "ID de campagne",
+    "opEquals": "egal a", "opNotEquals": "different de", "opGreaterThan": "superieur a",
+    "opLessThan": "inferieur a", "opContains": "contient",
+    "actionSendTemplate": "Envoyer template WhatsApp", "actionCreateTask": "Creer tache de suivi",
+    "actionChangeStage": "Changer etape du pipeline", "actionAddTag": "Ajouter etiquette", "actionAssignAgent": "Attribuer a un agent",
+    "stageNew": "Nouveau", "stageContacted": "Contacte", "stageResponded": "A repondu",
+    "stageQualified": "Qualifie", "stageWarm": "Tiede", "stageHot": "Chaud", "stageReadyToClose": "Pret a conclure"
   },
   "broadcast": {
     "title": "Campagnes",

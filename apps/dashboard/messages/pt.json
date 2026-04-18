@@ -760,14 +760,24 @@
     "dragToMove": "Arraste para mover"
   },
   "automation": {
-    "title": "Automação",
-    "rules": "Regras",
-    "newRule": "Nova regra",
-    "trigger": "Gatilho",
-    "conditions": "Condições",
-    "actions": "Ações",
-    "active": "Ativa",
-    "inactive": "Inativa"
+    "title": "Automacao", "rules": "Regras", "newRule": "Nova regra", "editRule": "Editar Regra",
+    "saveRule": "Salvar Regra", "updateRule": "Atualizar Regra", "trigger": "Gatilho",
+    "conditions": "Condicoes", "actions": "Acoes", "active": "Ativa", "inactive": "Inativa",
+    "errorSaving": "Erro ao salvar regra",
+    "triggerLeadCaptured": "Lead capturado", "triggerLeadCapturedDesc": "Quando um novo lead entra no sistema",
+    "triggerNewMessage": "Nova mensagem", "triggerNewMessageDesc": "Quando uma mensagem e recebida do cliente",
+    "triggerConversationAssigned": "Conversa atribuida", "triggerConversationAssignedDesc": "Quando uma conversa e atribuida a um agente",
+    "triggerSlaTimeout": "SLA expirado", "triggerSlaTimeoutDesc": "Quando o tempo de resposta e excedido",
+    "triggerInactivity": "Inatividade", "triggerInactivityDesc": "Quando o cliente para de responder",
+    "triggerStageChanged": "Mudanca de etapa", "triggerStageChangedDesc": "Quando um lead muda de etapa",
+    "fieldChannel": "Canal", "fieldStage": "Etapa", "fieldScore": "Score", "fieldTag": "Tag",
+    "fieldSource": "Origem", "fieldCampaignId": "ID da campanha",
+    "opEquals": "igual a", "opNotEquals": "diferente de", "opGreaterThan": "maior que",
+    "opLessThan": "menor que", "opContains": "contem",
+    "actionSendTemplate": "Enviar template WhatsApp", "actionCreateTask": "Criar tarefa de acompanhamento",
+    "actionChangeStage": "Mudar etapa do pipeline", "actionAddTag": "Adicionar tag", "actionAssignAgent": "Atribuir a agente",
+    "stageNew": "Novo", "stageContacted": "Contatado", "stageResponded": "Respondeu",
+    "stageQualified": "Qualificado", "stageWarm": "Morno", "stageHot": "Quente", "stageReadyToClose": "Pronto para fechar"
   },
   "broadcast": {
     "title": "Campanhas",

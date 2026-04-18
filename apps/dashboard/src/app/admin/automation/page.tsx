@@ -31,52 +31,53 @@ import {
     Shield,
 } from "lucide-react";
 
-// -- Trigger definitions --
+// Trigger/condition/action definitions
+// Labels are in Spanish as reference data — displayed via i18n lookup in component
 const TRIGGERS = [
-    { value: "lead.captured", icon: UserPlus, label: "Lead capturado", desc: "Cuando un nuevo lead ingresa al sistema" },
-    { value: "new_message", icon: MessageSquare, label: "Mensaje nuevo", desc: "Cuando se recibe un mensaje del cliente" },
-    { value: "conversation_assigned", icon: UserCheck, label: "Conversación asignada", desc: "Cuando una conversación se asigna a un agente" },
-    { value: "sla_timeout", icon: Clock, label: "SLA vencido", desc: "Cuando se excede el tiempo de respuesta" },
-    { value: "inactivity", icon: Timer, label: "Inactividad", desc: "Cuando el cliente no responde" },
-    { value: "stage_changed", icon: ArrowRight, label: "Cambio de etapa", desc: "Cuando un lead cambia de etapa" },
+    { value: "lead.captured", icon: UserPlus, i18n: "triggerLeadCaptured" },
+    { value: "new_message", icon: MessageSquare, i18n: "triggerNewMessage" },
+    { value: "conversation_assigned", icon: UserCheck, i18n: "triggerConversationAssigned" },
+    { value: "sla_timeout", icon: Clock, i18n: "triggerSlaTimeout" },
+    { value: "inactivity", icon: Timer, i18n: "triggerInactivity" },
+    { value: "stage_changed", icon: ArrowRight, i18n: "triggerStageChanged" },
 ];
 
 const CONDITION_FIELDS = [
-    { value: "channel", label: "Canal" },
-    { value: "stage", label: "Etapa" },
-    { value: "score", label: "Score" },
-    { value: "tag", label: "Etiqueta" },
-    { value: "source", label: "Fuente" },
-    { value: "campaign_id", label: "ID de campaña" },
+    { value: "channel", i18n: "fieldChannel" },
+    { value: "stage", i18n: "fieldStage" },
+    { value: "score", i18n: "fieldScore" },
+    { value: "tag", i18n: "fieldTag" },
+    { value: "source", i18n: "fieldSource" },
+    { value: "campaign_id", i18n: "fieldCampaignId" },
 ];
 
 const OPERATORS = [
-    { value: "equals", label: "es igual a" },
-    { value: "not_equals", label: "no es igual a" },
-    { value: "greater_than", label: "mayor que" },
-    { value: "less_than", label: "menor que" },
-    { value: "contains", label: "contiene" },
+    { value: "equals", i18n: "opEquals" },
+    { value: "not_equals", i18n: "opNotEquals" },
+    { value: "greater_than", i18n: "opGreaterThan" },
+    { value: "less_than", i18n: "opLessThan" },
+    { value: "contains", i18n: "opContains" },
 ];
 
 const ACTION_TYPES = [
-    { value: "send_template", label: "Enviar plantilla WhatsApp" },
-    { value: "create_task", label: "Crear tarea de seguimiento" },
-    { value: "change_stage", label: "Cambiar etapa del pipeline" },
-    { value: "add_tag", label: "Agregar etiqueta" },
-    { value: "assign_agent", label: "Asignar a agente" },
+    { value: "send_template", i18n: "actionSendTemplate" },
+    { value: "create_task", i18n: "actionCreateTask" },
+    { value: "change_stage", i18n: "actionChangeStage" },
+    { value: "add_tag", i18n: "actionAddTag" },
+    { value: "assign_agent", i18n: "actionAssignAgent" },
 ];
 
 const STAGES = [
-    { value: "nuevo", label: "Nuevo" },
-    { value: "contactado", label: "Contactado" },
-    { value: "respondio", label: "Respondió" },
-    { value: "calificado", label: "Calificado" },
-    { value: "tibio", label: "Tibio" },
-    { value: "caliente", label: "Caliente" },
-    { value: "listo_para_cierre", label: "Listo para cierre" },
+    { value: "nuevo", i18n: "stageNew" },
+    { value: "contactado", i18n: "stageContacted" },
+    { value: "respondio", i18n: "stageResponded" },
+    { value: "calificado", i18n: "stageQualified" },
+    { value: "tibio", i18n: "stageWarm" },
+    { value: "caliente", i18n: "stageHot" },
+    { value: "listo_para_cierre", i18n: "stageReadyToClose" },
 ];
 
-const STEP_LABELS = ["Trigger", "Condiciones", "Acciones", "Resumen"];
+const STEP_LABELS = ["Trigger", "Conditions", "Actions", "Summary"];
 
 const emptyRuleForm = () => ({
     name: "", trigger_type: "",
@@ -215,7 +216,7 @@ export default function AutomationPage() {
             loadRules();
         } catch (err) {
             console.error(err);
-            showToast("Error al guardar la regla");
+            showToast(t("errorSaving"));
         }
     }
 
@@ -271,7 +272,7 @@ export default function AutomationPage() {
     const activeCount = rules.filter(r => r.active).length;
     const totalExecs = rules.reduce((sum, r) => sum + Number(r.execution_count || 0), 0);
 
-    const triggerLabel = (tt: string) => TRIGGERS.find(t => t.value === tt)?.label || tt;
+    const triggerLabel = (tt: string) => { const tr = TRIGGERS.find(x => x.value === tt); return tr ? t(tr.i18n) : tt; };
 
     // -- Can advance step? --
     const canNext = (step: number) => {
@@ -487,7 +488,7 @@ export default function AutomationPage() {
                     <ChevronLeft size={20} />
                 </button>
                 <h1 className="text-[22px] font-semibold m-0">
-                    {editingRuleId ? "Editar Regla" : "Nueva Regla"}
+                    {editingRuleId ? t("editRule") : t("newRule")}
                 </h1>
             </div>
 
@@ -540,13 +541,13 @@ export default function AutomationPage() {
                                 Selecciona el evento que disparará la ejecución
                             </p>
                             <div className="grid grid-cols-3 gap-3">
-                                {TRIGGERS.map(t => {
-                                    const Icon = t.icon;
-                                    const selected = ruleForm.trigger_type === t.value;
+                                {TRIGGERS.map(tr => {
+                                    const Icon = tr.icon;
+                                    const selected = ruleForm.trigger_type === tr.value;
                                     return (
                                         <div
-                                            key={t.value}
-                                            onClick={() => setRuleForm(prev => ({ ...prev, trigger_type: t.value }))}
+                                            key={tr.value}
+                                            onClick={() => setRuleForm(prev => ({ ...prev, trigger_type: tr.value }))}
                                             className={cn(
                                                 "p-[18px] rounded-xl cursor-pointer transition-all duration-150",
                                                 selected
@@ -555,8 +556,8 @@ export default function AutomationPage() {
                                             )}
                                         >
                                             <Icon size={24} className={cn("mb-2.5", selected ? "text-indigo-600" : "text-muted-foreground")} />
-                                            <div className="font-semibold text-sm mb-1">{t.label}</div>
-                                            <div className="text-xs text-muted-foreground leading-relaxed">{t.desc}</div>
+                                            <div className="font-semibold text-sm mb-1">{t(tr.i18n)}</div>
+                                            <div className="text-xs text-muted-foreground leading-relaxed">{t(tr.i18n + "Desc")}</div>
                                         </div>
                                     );
                                 })}
@@ -590,7 +591,7 @@ export default function AutomationPage() {
                                                 onChange={e => updateCondition(idx, "field", e.target.value)}
                                                 className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                             >
-                                                {CONDITION_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                                {CONDITION_FIELDS.map(f => <option key={f.value} value={f.value}>{t(f.i18n)}</option>)}
                                             </select>
                                         </div>
                                         <div className="flex-1">
@@ -600,7 +601,7 @@ export default function AutomationPage() {
                                                 onChange={e => updateCondition(idx, "operator", e.target.value)}
                                                 className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                             >
-                                                {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                {OPERATORS.map(o => <option key={o.value} value={o.value}>{t(o.i18n)}</option>)}
                                             </select>
                                         </div>
                                         <div className="flex-1">
@@ -658,7 +659,7 @@ export default function AutomationPage() {
                                                     }}
                                                     className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                                 >
-                                                    {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                                                    {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{t(a.i18n)}</option>)}
                                                 </select>
                                             </div>
                                             <button onClick={() => removeAction(idx)} className="bg-transparent border-none text-red-500 cursor-pointer p-1 mt-[18px]">
@@ -724,7 +725,7 @@ export default function AutomationPage() {
                                                         className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                                     >
                                                         <option value="" disabled>Seleccionar etapa</option>
-                                                        {STAGES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                                        {STAGES.map(s => <option key={s.value} value={s.value}>{t(s.i18n)}</option>)}
                                                     </select>
                                                 </div>
                                             )}
@@ -838,7 +839,7 @@ export default function AutomationPage() {
                                         : "bg-neutral-200 dark:bg-neutral-700 text-muted-foreground cursor-not-allowed"
                                 )}
                             >
-                                {editingRuleId ? "Actualizar Regla" : "Guardar Regla"}
+                                {editingRuleId ? t("updateRule") : t("saveRule")}
                             </Button>
                         </div>
                     )}

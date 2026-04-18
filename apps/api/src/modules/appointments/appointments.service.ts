@@ -476,6 +476,7 @@ export class AppointmentsService {
         bufferMinutes: number = 0,
         userId?: string,
         calendarBusySlots: { start: string; end: string }[] = [],
+        maxConcurrent: number = 1,
     ): Promise<{ time: string; endTime: string; agentId: string; agentName: string }[]> {
         const dayOfWeek = new Date(date).getDay();
         const dateStr = date.split('T')[0]; // YYYY-MM-DD
@@ -526,8 +527,17 @@ export class AppointmentsService {
                 const slotStartISO = `${dateStr}T${slotStart}:00`;
                 const slotEndISO = `${dateStr}T${slotEnd}:00`;
 
-                // Check conflict with existing appointments
-                const hasConflict = (existing || []).some(e => {
+                // Check concurrent bookings at this time slot
+                const concurrentCount = (existing || []).filter(e => {
+                    const eStart = new Date(e.start_at).getTime();
+                    const eEnd = new Date(e.end_at).getTime();
+                    const sStart = new Date(slotStartISO).getTime();
+                    const sEnd = new Date(slotEndISO).getTime();
+                    return sStart < eEnd && sEnd > eStart;
+                }).length;
+
+                // Check per-agent conflict
+                const agentConflict = (existing || []).some(e => {
                     if (e.assigned_to !== win.user_id) return false;
                     const eStart = new Date(e.start_at).getTime();
                     const eEnd = new Date(e.end_at).getTime();
@@ -535,7 +545,8 @@ export class AppointmentsService {
                     const sEnd = new Date(slotEndISO).getTime();
                     return sStart < eEnd && sEnd > eStart;
                 });
-                if (hasConflict) continue;
+                if (agentConflict) continue;
+                if (concurrentCount >= maxConcurrent) continue;
 
                 // Check conflict with calendar busy times
                 const calBusy = calendarBusySlots.some(b => {

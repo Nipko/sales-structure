@@ -25,6 +25,9 @@ export interface Service {
   price: number;
   color: string;
   active: boolean;
+  category?: string | null;
+  maxConcurrent?: number;
+  requiredFields?: string[];
 }
 
 export interface ExternalEvent {

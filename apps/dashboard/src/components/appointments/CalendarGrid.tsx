@@ -30,18 +30,20 @@ interface CalendarGridProps {
   onWeekChange: (newStart: Date) => void;
   onCreateAppointment: (date?: Date, hour?: number) => void;
   onEditAppointment: (appt: Appointment) => void;
+  onReschedule?: (apptId: string, newDate: string, newStartTime: string, newEndTime: string) => void;
 }
 
 const HOUR_HEIGHT = 52; // px per hour row — fits 14 hours (~728px) without scroll on most screens
 
 export default function CalendarGrid({
   appointments, services, externalEvents, weekStart, dateLocale,
-  onWeekChange, onCreateAppointment, onEditAppointment,
+  onWeekChange, onCreateAppointment, onEditAppointment, onReschedule,
 }: CalendarGridProps) {
   const t = useTranslations("appointments");
   const todayStr = toLocalDate(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
+  const [dragApptId, setDragApptId] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to current hour on mount
@@ -131,9 +133,18 @@ export default function CalendarGrid({
     return (
       <div
         key={appt.id}
+        draggable={!!onReschedule}
+        onDragStart={(e) => {
+          setDragApptId(appt.id);
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', appt.id);
+        }}
+        onDragEnd={() => setDragApptId(null)}
         className={cn(
           "absolute rounded-lg px-2.5 py-1.5 overflow-hidden cursor-pointer z-10 border-l-[3px] shadow-sm hover:shadow-md transition-shadow",
-          isDayView ? "left-2 right-2 text-xs" : "left-1 right-1 text-[10px]"
+          isDayView ? "left-2 right-2 text-xs" : "left-1 right-1 text-[10px]",
+          dragApptId === appt.id && "opacity-50",
+          onReschedule && "cursor-grab active:cursor-grabbing"
         )}
         style={{
           top: `${pos.top}px`,
@@ -325,6 +336,26 @@ export default function CalendarGrid({
                   )}
                   style={{ height: `${HOUR_HEIGHT}px` }}
                   onClick={() => onCreateAppointment(day, hour)}
+                  onDragOver={(e) => { if (dragApptId) { e.preventDefault(); e.currentTarget.classList.add('bg-primary/10'); } }}
+                  onDragLeave={(e) => { e.currentTarget.classList.remove('bg-primary/10'); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('bg-primary/10');
+                    const apptId = e.dataTransfer.getData('text/plain');
+                    if (!apptId || !onReschedule) return;
+                    const appt = appointments.find(a => a.id === apptId);
+                    if (!appt) return;
+                    const start = new Date(appt.startAt);
+                    const end = new Date(appt.endAt);
+                    const durationMs = end.getTime() - start.getTime();
+                    const newDate = toLocalDate(day);
+                    const newStart = `${fmt2(hour)}:00`;
+                    const newEndMs = new Date(`${newDate}T${newStart}:00`).getTime() + durationMs;
+                    const newEndD = new Date(newEndMs);
+                    const newEnd = `${fmt2(newEndD.getHours())}:${fmt2(newEndD.getMinutes())}`;
+                    onReschedule(apptId, newDate, newStart, newEnd);
+                    setDragApptId(null);
+                  }}
                 >
                   {/* Render appointments + external events only in first hour row (positioned absolutely) */}
                   {hour === 7 && (<>

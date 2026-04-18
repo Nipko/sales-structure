@@ -151,6 +151,9 @@ export default function AppointmentsPage() {
     buffer: 0,
     price: 0,
     color: "#6c5ce7",
+    category: "",
+    maxConcurrent: 1,
+    requiredFields: [] as string[],
   });
   const [savingService, setSavingService] = useState(false);
 
@@ -423,6 +426,20 @@ export default function AppointmentsPage() {
     setSaving(false);
   };
 
+  const handleReschedule = async (apptId: string, newDate: string, newStart: string, newEnd: string) => {
+    if (!activeTenantId) return;
+    try {
+      await api.updateAppointment(activeTenantId, apptId, {
+        startAt: `${newDate}T${newStart}:00`,
+        endAt: `${newDate}T${newEnd}:00`,
+      });
+      showToast(t("update") + " ✓");
+      loadAppointments();
+    } catch {
+      showToast(t("errors.updateAppointment"));
+    }
+  };
+
   const handleQuickAction = async (apptId: string, action: "confirm" | "cancel" | "complete") => {
     if (!activeTenantId) return;
     try {
@@ -494,7 +511,7 @@ export default function AppointmentsPage() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: "", duration: 30, buffer: 0, price: 0, color: "#6c5ce7" });
+    setServiceForm({ name: "", duration: 30, buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, requiredFields: [] });
     setShowServiceModal(true);
   };
 
@@ -506,6 +523,9 @@ export default function AppointmentsPage() {
       buffer: svc.buffer,
       price: svc.price,
       color: svc.color,
+      category: svc.category || "",
+      maxConcurrent: svc.maxConcurrent || 1,
+      requiredFields: svc.requiredFields || [],
     });
     setShowServiceModal(true);
   };
@@ -793,6 +813,7 @@ export default function AppointmentsPage() {
             onWeekChange={setWeekStart}
             onCreateAppointment={openCreateModal}
             onEditAppointment={openEditModal}
+            onReschedule={handleReschedule}
           />
         )}
 

@@ -11,6 +11,9 @@ interface ServiceForm {
   buffer: number;
   price: number;
   color: string;
+  category: string;
+  maxConcurrent: number;
+  requiredFields: string[];
 }
 
 interface ServiceModalProps {
@@ -176,6 +179,61 @@ export default function ServiceModal({
                 onChange={(e) => onChange({ ...form, color: e.target.value })}
                 className="w-8 h-8 rounded-lg cursor-pointer border-none bg-transparent"
               />
+            </div>
+          </div>
+
+          {/* Category + Max Concurrent */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                {t('category') || 'Category'}
+              </label>
+              <input
+                type="text"
+                value={form.category || ''}
+                onChange={(e) => onChange({ ...form, category: e.target.value })}
+                placeholder={t('categoryPlaceholder') || 'e.g. Consulting'}
+                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                {t('maxConcurrent') || 'Max concurrent'}
+              </label>
+              <input
+                type="number" min={1} max={50}
+                value={form.maxConcurrent || 1}
+                onChange={(e) => onChange({ ...form, maxConcurrent: Math.max(1, Number(e.target.value)) })}
+                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+
+          {/* Required Fields */}
+          <div>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              {t('requiredFieldsLabel') || 'Required fields (public booking)'}
+            </label>
+            <div className="flex gap-3">
+              {['email', 'notes'].map(field => (
+                <label key={field} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(form.requiredFields || []).includes(field)}
+                    onChange={(e) => {
+                      const current = form.requiredFields || [];
+                      onChange({
+                        ...form,
+                        requiredFields: e.target.checked
+                          ? [...current, field]
+                          : current.filter(f => f !== field),
+                      });
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 cursor-pointer"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{field}</span>
+                </label>
+              ))}
             </div>
           </div>
         </div>

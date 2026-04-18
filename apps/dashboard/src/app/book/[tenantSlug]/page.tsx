@@ -91,6 +91,7 @@ export default function PublicBookingPage() {
   const dateLocale = lang === "pt" ? "pt-BR" : lang === "fr" ? "fr-FR" : lang === "en" ? "en-US" : "es-MX";
   const dayHeaders = ["dayMon", "dayTue", "dayWed", "dayThu", "dayFri", "daySat", "daySun"];
 
+  const [tenantInfo, setTenantInfo] = useState<{ name: string; logo: string | null; color: string | null }>({ name: "", logo: null, color: null });
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -114,10 +115,15 @@ export default function PublicBookingPage() {
   useEffect(() => {
     if (!tenantSlug) return;
     setLoading(true);
-    fetch(`${API_URL}/booking/${tenantSlug}/services`)
-      .then(r => r.json())
-      .then(res => { if (res.success) setServices(res.data || []); else setError(t("loadError")); })
-      .catch(() => setError(t("connectionError")))
+    // Fetch tenant branding + services in parallel
+    Promise.all([
+      fetch(`${API_URL}/booking/${tenantSlug}/info`).then(r => r.json()).catch(() => null),
+      fetch(`${API_URL}/booking/${tenantSlug}/services`).then(r => r.json()),
+    ]).then(([infoRes, svcRes]) => {
+      if (infoRes?.success) setTenantInfo(infoRes.data);
+      if (svcRes?.success) setServices(svcRes.data || []);
+      else setError(t("loadError"));
+    }).catch(() => setError(t("connectionError")))
       .finally(() => setLoading(false));
   }, [tenantSlug]);
 
@@ -191,9 +197,15 @@ export default function PublicBookingPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50/30">
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-5 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center"><Calendar size={20} className="text-white" /></div>
+          {tenantInfo.logo ? (
+            <img src={tenantInfo.logo} alt="" className="w-10 h-10 rounded-xl object-cover" />
+          ) : (
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: tenantInfo.color || '#6366f1' }}>
+              <Calendar size={20} className="text-white" />
+            </div>
+          )}
           <div>
-            <h1 className="text-lg font-bold text-gray-900">{t("title")}</h1>
+            <h1 className="text-lg font-bold text-gray-900">{tenantInfo.name || t("title")}</h1>
             <p className="text-xs text-gray-500">{t("subtitle")}</p>
           </div>
         </div>

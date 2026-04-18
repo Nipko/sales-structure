@@ -81,6 +81,72 @@ export class AppointmentRemindersService {
         }
     }
 
+    /**
+     * Every hour: send CSAT survey for appointments completed 1-2 hours ago.
+     */
+    @Cron('10 * * * *')
+    async sendPostAppointmentCSAT() {
+        try {
+            const tenants = await this.prisma.$queryRaw<any[]>`
+                SELECT id, schema_name FROM tenants WHERE is_active = true
+            `;
+            if (!tenants?.length) return;
+
+            for (const tenant of tenants) {
+                await this.processCSAT(tenant.id, tenant.schema_name);
+            }
+        } catch (err) {
+            this.logger.error('Error in CSAT cron', err);
+        }
+    }
+
+    private async processCSAT(tenantId: string, schemaName: string) {
+        // Find completed appointments from 1-2 hours ago that haven't been rated
+        const appointments = await this.prisma.executeInTenantSchema(schemaName,
+            `SELECT a.id, a.service_name, a.contact_id,
+                    c.name as contact_name, c.phone as contact_phone, c.channel_type as contact_channel
+             FROM appointments a
+             LEFT JOIN contacts c ON c.id = a.contact_id
+             WHERE a.status = 'completed'
+               AND a.rating IS NULL
+               AND a.end_at > NOW() - interval '2 hours'
+               AND a.end_at <= NOW() - interval '1 hour'
+               AND c.phone IS NOT NULL`,
+            [],
+        );
+
+        if (!(appointments as any[])?.length) return;
+
+        for (const appt of (appointments as any[])) {
+            try {
+                const channelType = (appt.contact_channel || 'whatsapp') as 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms';
+                let credentials: { accessToken: string; accountId: string };
+                try {
+                    const creds = await this.channelToken.getChannelToken(tenantId, channelType);
+                    credentials = { accessToken: creds.accessToken, accountId: creds.accountId };
+                } catch { continue; }
+
+                const text = `Hola ${appt.contact_name || ''}! Gracias por tu cita de *${appt.service_name}*.\n\n` +
+                    `Nos encantaria saber tu opinion. Del 1 al 5, como calificarias tu experiencia?\n\n` +
+                    `1 - Muy mala\n2 - Mala\n3 - Regular\n4 - Buena\n5 - Excelente`;
+
+                const outbound = {
+                    tenantId,
+                    to: appt.contact_phone,
+                    channelType,
+                    channelAccountId: credentials.accountId,
+                    content: { type: 'text' as const, text },
+                    metadata: { source: 'appointment_csat', appointmentId: appt.id },
+                };
+
+                await this.outboundQueue.enqueue(outbound, credentials.accessToken);
+                this.logger.log(`Sent CSAT survey for appointment ${appt.id}`);
+            } catch (err) {
+                this.logger.error(`Failed CSAT for appointment ${appt.id}: ${err.message}`);
+            }
+        }
+    }
+
     private async processReminders(tenantId: string, schemaName: string, type: '24h' | '1h') {
         const flagColumn = type === '24h' ? 'reminder_24h_sent' : 'reminder_1h_sent';
         const minHours = type === '24h' ? 23 : 0.75;
@@ -151,10 +217,18 @@ export class AppointmentRemindersService {
             hour12: true,
         });
 
+        // Get tenant slug for reschedule link
+        const tenantRows = await this.prisma.$queryRaw<any[]>`
+            SELECT slug FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1
+        `;
+        const tenantSlug = tenantRows?.[0]?.slug;
+        const dashboardUrl = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
+        const rescheduleLink = tenantSlug ? `${dashboardUrl}/book/${tenantSlug}` : '';
+
         // Build the reminder message
         const reminderText = type === '24h'
-            ? `📅 *Recordatorio de cita*\n\nHola ${appt.contact_name || ''}! Te recordamos que tienes una cita mañana:\n\n📋 *${appt.service_name}*\n🗓️ ${dateStr}\n⏰ ${timeStr}${appt.location ? `\n📍 ${appt.location}` : ''}\n\nSi necesitas cancelar o reprogramar, avísanos con anticipación.`
-            : `⏰ *Tu cita es en 1 hora*\n\nHola ${appt.contact_name || ''}! Tu cita está por comenzar:\n\n📋 *${appt.service_name}*\n⏰ ${timeStr}${appt.location ? `\n📍 ${appt.location}` : ''}\n\n¡Te esperamos!`;
+            ? `📅 *Recordatorio de cita*\n\nHola ${appt.contact_name || ''}! Te recordamos que tienes una cita mañana:\n\n📋 *${appt.service_name}*\n🗓️ ${dateStr}\n⏰ ${timeStr}${appt.location ? `\n📍 ${appt.location}` : ''}\n\n${rescheduleLink ? `🔄 Reprogramar: ${rescheduleLink}\n\n` : ''}Si necesitas cancelar, avisanos con anticipacion.`
+            : `⏰ *Tu cita es en 1 hora*\n\nHola ${appt.contact_name || ''}! Tu cita esta por comenzar:\n\n📋 *${appt.service_name}*\n⏰ ${timeStr}${appt.location ? `\n📍 ${appt.location}` : ''}\n\nTe esperamos!`;
 
         const outbound: OutboundMessage = {
             tenantId,

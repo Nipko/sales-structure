@@ -13,6 +13,9 @@ export interface BookableService {
     color: string;
     isActive: boolean;
     sortOrder: number;
+    category: string | null;
+    maxConcurrent: number;
+    requiredFields: string[];
 }
 
 @Injectable()
@@ -43,10 +46,12 @@ export class ServicesService {
         const duration = data.durationMinutes || data.duration || 30;
         const buffer = data.bufferMinutes || data.buffer || 0;
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, created_at, updated_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+            `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, created_at, updated_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, NOW(), NOW())`,
             [id, data.name, data.description || null, duration,
-             buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7'],
+             buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7',
+             data.category || null, data.maxConcurrent || 1,
+             JSON.stringify(data.requiredFields || [])],
         );
         return this.getById(schemaName, id);
     }
@@ -68,6 +73,9 @@ export class ServicesService {
         const active = data.isActive ?? data.active;
         if (active !== undefined) { sets.push(`is_active = $${idx++}`); params.push(active); }
         if (data.sortOrder !== undefined) { sets.push(`sort_order = $${idx++}`); params.push(data.sortOrder); }
+        if (data.category !== undefined) { sets.push(`category = $${idx++}`); params.push(data.category || null); }
+        if (data.maxConcurrent !== undefined) { sets.push(`max_concurrent = $${idx++}`); params.push(data.maxConcurrent); }
+        if (data.requiredFields !== undefined) { sets.push(`required_fields = $${idx++}::jsonb`); params.push(JSON.stringify(data.requiredFields)); }
         sets.push(`updated_at = NOW()`);
 
         params.push(serviceId);
@@ -145,6 +153,9 @@ export class ServicesService {
             color: row.color,
             isActive: row.is_active,
             sortOrder: row.sort_order,
+            category: row.category || null,
+            maxConcurrent: row.max_concurrent || 1,
+            requiredFields: row.required_fields || [],
         };
     }
 }

@@ -27,6 +27,7 @@ const movementTypeColor = (t: string) => t === "in" ? "#2ecc71" : t === "out" ? 
 
 export default function InventoryPage() {
     const t = useTranslations('inventory');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [data, setData] = useState<InventoryOverview | null>(null);
     const [isLive, setIsLive] = useState(false);
@@ -79,7 +80,7 @@ export default function InventoryPage() {
                     { label: "Total Productos", value: data.totalProducts, icon: Package, color: "#6c5ce7", sub: `${data.activeProducts} activos` },
                     { label: "Valor del Inventario", value: formatCurrency(data.totalValue), icon: BarChart3, color: "#00b4d8", sub: `Margen ~${margin}%` },
                     { label: "Stock Bajo", value: data.lowStockAlerts, icon: AlertTriangle, color: "#ffa502", sub: "Requieren reabastecimiento" },
-                    { label: "Agotados", value: data.outOfStockCount, icon: Box, color: "#ff4757", sub: "Sin disponibilidad" },
+                    { label: "Agotados", value: data.outOfStockCount, icon: Box, color: "#ff4757", sub: tc("noData") },
                     { label: "Categorias", value: data.categories.length, icon: Tag, color: "#2ecc71", sub: `${data.products.length} SKUs` },
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
@@ -111,7 +112,7 @@ export default function InventoryPage() {
                 </div>
                 <div className="relative w-[280px]">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar producto o SKU..." className="w-full py-2.5 pl-9 pr-3.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-3.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                 </div>
             </div>
 
@@ -182,6 +183,7 @@ export default function InventoryPage() {
 }
 
 function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onClose: () => void; categories: Category[]; tenantId: string; onCreated: () => void }) {
+    const tc = useTranslations("common");
     const [form, setForm] = useState({ name: "", sku: "", description: "", categoryId: "", price: "", cost: "", stock: "", unit: "unidad" });
     const [saving, setSaving] = useState(false);
 
@@ -232,7 +234,7 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                     </div>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || !form.name || !form.sku || !form.price} className={cn("w-full mt-5 py-3 px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer", (saving || !form.name || !form.sku || !form.price) && "opacity-50")}>
-                    {saving ? "Guardando..." : "Crear Producto"}
+                    {saving ? "Guardando..." : tc("create")}
                 </button>
             </div>
         </div>

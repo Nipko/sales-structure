@@ -44,7 +44,7 @@ export default function MacrosPage() {
             if (res.success) { showToast(editingId ? "Macro actualizada" : "Macro creada"); setModalOpen(false); loadMacros(); } else showToast(res.error || tc("errorSaving"));
         } catch { showToast(tc("connectionError")); }
     }
-    async function handleDelete(id: string) { if (!activeTenantId || !confirm("Eliminar esta macro?")) return; try { await api.fetch(`/agent-console/macros/${activeTenantId}/${id}`, { method: "DELETE" }); showToast("Macro eliminada"); loadMacros(); } catch { showToast("Error al eliminar"); } }
+    async function handleDelete(id: string) { if (!activeTenantId || !confirm(tc("deleteConfirm"))) return; try { await api.fetch(`/agent-console/macros/${activeTenantId}/${id}`, { method: "DELETE" }); showToast(tc("success")); loadMacros(); } catch { showToast(tc("errorSaving")); } }
 
     function renderActionConfig(action: MacroAction, idx: number) {
         switch (action.type) {
@@ -82,7 +82,7 @@ export default function MacrosPage() {
                                 <div className="w-[38px] h-[38px] rounded-[10px] bg-primary/10 flex items-center justify-center"><Zap size={18} className="text-primary" /></div>
                                 <div>
                                     <div className="text-[15px] font-semibold text-foreground">{macro.name}</div>
-                                    <div className="text-xs text-muted-foreground mt-0.5">{macro.description || "Sin descripcion"}</div>
+                                    <div className="text-xs text-muted-foreground mt-0.5">{macro.description || tc("noData")}</div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5">
@@ -101,7 +101,7 @@ export default function MacrosPage() {
                 <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center" onClick={() => setModalOpen(false)}>
                     <div className="bg-secondary rounded-xl border border-border p-7 w-[540px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-lg font-semibold text-foreground m-0">{editingId ? "Editar Macro" : "Nueva Macro"}</h2>
+                            <h2 className="text-lg font-semibold text-foreground m-0">{editingId ? tc("edit") : tc("create")}</h2>
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">

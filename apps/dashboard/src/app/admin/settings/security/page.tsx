@@ -51,7 +51,7 @@ export default function SecurityPage() {
                 setConfirmPassword("");
                 setTimeout(() => setSaved(false), 3000);
             } else {
-                setError(result.error || "Error al cambiar la contraseña");
+                setError(result.error || tc("errorSaving"));
             }
         } catch {
             setError(tc("connectionError"));

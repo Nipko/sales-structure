@@ -46,7 +46,7 @@ export default function CustomAttributesPage() {
         } catch { showToast(tc("connectionError")); }
     }
 
-    async function handleDelete(id: string) { if (!activeTenantId) return; if (!confirm("Eliminar este atributo personalizado?")) return; try { await api.fetch(`/crm/custom-attributes/${activeTenantId}/${id}`, { method: "DELETE" }); showToast("Atributo eliminado"); loadAttributes(); } catch { showToast("Error al eliminar"); } }
+    async function handleDelete(id: string) { if (!activeTenantId) return; if (!confirm(tc("deleteConfirm"))) return; try { await api.fetch(`/crm/custom-attributes/${activeTenantId}/${id}`, { method: "DELETE" }); showToast(tc("success")); loadAttributes(); } catch { showToast(tc("errorSaving")); } }
 
     return (
         <div className="p-8 max-w-[1100px] mx-auto">
@@ -100,7 +100,7 @@ export default function CustomAttributesPage() {
                 <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center" onClick={() => setModalOpen(false)}>
                     <div className="bg-secondary rounded-xl border border-border p-7 w-[480px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-lg font-semibold text-foreground m-0">{editingId ? "Editar Atributo" : "Nuevo Atributo"}</h2>
+                            <h2 className="text-lg font-semibold text-foreground m-0">{editingId ? tc("edit") : tc("create")}</h2>
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">

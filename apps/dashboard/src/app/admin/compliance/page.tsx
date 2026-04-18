@@ -13,6 +13,7 @@ type Tab = "legal" | "consents" | "optouts" | "deletions";
 
 export default function CompliancePage() {
     const t = useTranslations('compliance');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("legal");
     const [legalTexts, setLegalTexts] = useState<any[]>([]);
@@ -216,7 +217,7 @@ export default function CompliancePage() {
                                     {/* Contact info */}
                                     <div className="text-sm mb-2">
                                         <span className="font-semibold text-foreground">{o.first_name || ""} {o.last_name || ""}</span>
-                                        <span className="text-muted-foreground ml-2">{o.phone || o.lead_phone || "Sin telefono"}</span>
+                                        <span className="text-muted-foreground ml-2">{o.phone || o.lead_phone || tc("noData")}</span>
                                     </div>
 
                                     {/* Trigger message */}
@@ -317,7 +318,7 @@ export default function CompliancePage() {
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
                                     <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
-                                    <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? t("saving") || "..." : "Crear Texto"}</button>
+                                    <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? t("saving") || "..." : tc("create")}</button>
                                 </div>
                             </>
                         )}

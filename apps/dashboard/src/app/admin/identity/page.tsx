@@ -33,6 +33,7 @@ function ChannelBadge({ channel }: { channel: string }) {
 
 export default function IdentityPage() {
     const t = useTranslations('identity');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -57,7 +58,7 @@ export default function IdentityPage() {
             await api.fetch(`/identity/${activeTenantId}/suggestions/${id}/${action}`, { method: "POST" });
             setMessage({ type: "success", text: action === "approve" ? "Contactos fusionados correctamente." : "Sugerencia rechazada." });
             await loadSuggestions();
-        } catch (err: any) { setMessage({ type: "error", text: err.message || "Error al procesar la sugerencia." }); }
+        } catch (err: any) { setMessage({ type: "error", text: err.message || tc("errorSaving") }); }
         finally { setActionLoading(null); }
     };
 

@@ -160,7 +160,7 @@ export default function AnalyticsV4Page() {
                     </table>
                 ) : (
                     <div className="text-center py-10 text-muted-foreground">
-                        {loading ? "Cargando metricas..." : "No hay datos de campanas aun."}
+                        {loading ? tc("loading") : tc("noData")}
                     </div>
                 )}
             </div>

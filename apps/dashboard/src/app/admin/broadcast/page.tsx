@@ -23,6 +23,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: any }> 
 
 export default function BroadcastPage() {
     const t = useTranslations('broadcast');
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -70,7 +71,7 @@ export default function BroadcastPage() {
             setTimeout(() => setToast(null), 2000);
         } else {
             setCreating(false);
-            setToast("Error al crear campana");
+            setToast(tc("errorSaving"));
             setTimeout(() => setToast(null), 2000);
         }
     };

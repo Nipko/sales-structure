@@ -40,6 +40,7 @@ const segmentStyles: Record<string, string> = {
 
 export default function ContactsPage() {
     const t = useTranslations('contacts');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [contacts, setContacts] = useState<any[]>([]);
@@ -126,7 +127,7 @@ export default function ContactsPage() {
             });
             setImportResult(result);
         } catch (err) {
-            setImportResult({ success: false, error: "Error al importar" });
+            setImportResult({ success: false, error: tc("errorSaving") });
         } finally {
             setImporting(false);
         }
@@ -380,7 +381,7 @@ export default function ContactsPage() {
                                         Errores: {importResult.errors ?? 0}
                                     </div>
                                 ) : (
-                                    <div>{importResult.error || "Error al importar"}</div>
+                                    <div>{importResult.error || tc("errorSaving")}</div>
                                 )}
                             </div>
                         )}

@@ -147,6 +147,7 @@ const cardCls = "p-6 rounded-[14px] bg-[var(--bg-secondary)] border border-borde
 
 export default function AgentConfigPage() {
     const t = useTranslations('agent');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [mode, setMode] = useState<"wizard" | "prompt">("wizard");
     const [step, setStep] = useState(0);
@@ -275,10 +276,10 @@ export default function AgentConfigPage() {
             if (res?.success) {
                 setToast("Configuracion guardada exitosamente");
             } else {
-                setToast("Error al guardar la configuracion");
+                setToast(tc("errorSaving"));
             }
         } catch {
-            setToast("Error al guardar la configuracion");
+            setToast(tc("errorSaving"));
         } finally {
             setSaving(false);
         }
@@ -814,7 +815,7 @@ export default function AgentConfigPage() {
                     )}
                 >
                     <Save size={18} />
-                    {saving ? t("saving") || "..." : "Guardar Configuracion"}
+                    {saving ? t("saving") || "..." : tc("saveChanges")}
                 </button>
             </div>
         );
@@ -904,7 +905,7 @@ export default function AgentConfigPage() {
                                         : "bg-primary"
                                 )}
                             >
-                                <Save size={16} /> {saving ? t("saving") || "..." : "Guardar Prompt"}
+                                <Save size={16} /> {saving ? t("saving") || "..." : tc("saveChanges")}
                             </button>
                         </div>
                     </div>
@@ -972,7 +973,7 @@ export default function AgentConfigPage() {
                                     saving ? "bg-border cursor-not-allowed" : "bg-primary cursor-pointer"
                                 )}
                             >
-                                <Save size={16} /> {saving ? t("saving") || "..." : "Guardar"}
+                                <Save size={16} /> {saving ? t("saving") : tc("saveChanges")}
                             </button>
                         )}
                     </div>

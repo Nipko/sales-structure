@@ -103,7 +103,7 @@ export default function CoursesPage() {
                                         {course.is_active ? "Activo" : "Inactivo"}
                                     </span>
                                 </div>
-                                <div className="text-[13px] text-muted-foreground mt-1">{course.description || "Sin descripcion"}</div>
+                                <div className="text-[13px] text-muted-foreground mt-1">{course.description || tc("noData")}</div>
                                 <div className="flex gap-4 mt-1.5 text-xs text-muted-foreground">
                                     <span className="flex items-center gap-1"><DollarSign size={12} /> ${parseFloat(course.price || 0).toLocaleString()} {course.currency}</span>
                                     <span className="flex items-center gap-1"><Globe size={12} /> {modalityLabel[course.modality] || course.modality}</span>
@@ -156,7 +156,7 @@ export default function CoursesPage() {
                         </div>
                         <div className="flex gap-2.5 mt-5">
                             <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
-                            <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : "Crear Curso"}</button>
+                            <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>
                 </div>

@@ -19,6 +19,7 @@ const roleConfig: Record<string, { label: string; color: string; icon: string }>
 
 export default function UsersPage() {
     const t = useTranslations('users');
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [users, setUsers] = useState<any[]>([]);
@@ -61,7 +62,7 @@ export default function UsersPage() {
             setShowNewUser(false);
             setNewUser({ email: "", password: "", firstName: "", lastName: "", role: "tenant_agent", tenantId: "" });
             setToast("Usuario creado exitosamente"); setTimeout(() => setToast(null), 2000);
-        } catch { setToast("Error al crear usuario"); setTimeout(() => setToast(null), 2000); }
+        } catch { setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000); }
         finally { setSaving(false); }
     }
 
@@ -105,7 +106,7 @@ export default function UsersPage() {
                 <div className="flex gap-3 mb-5">
                     <div className="relative flex-1 max-w-[340px]">
                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                        <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar por nombre o email..." className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
+                        <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                     </div>
                     <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
                         <option value="all">Todos los roles</option>
@@ -201,7 +202,7 @@ export default function UsersPage() {
                         <div className="flex gap-2.5 mt-5">
                             <button onClick={() => setShowNewUser(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
                             <button onClick={handleCreateUser} disabled={saving || !newUser.email || !newUser.password || !newUser.firstName} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
-                                {saving ? "Creando..." : "Crear Usuario"}
+                                {saving ? tc("saving") : tc("create")}
                             </button>
                         </div>
                     </div>

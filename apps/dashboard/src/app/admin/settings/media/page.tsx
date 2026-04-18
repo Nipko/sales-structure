@@ -67,6 +67,7 @@ const ENTITY_KEYS = [
 
 export default function MediaBankPage() {
   const t = useTranslations('media');
+    const tc = useTranslations("common");
   const { user } = useAuth();
   const { activeTenantId } = useTenant();
   const tenantId = activeTenantId || user?.tenantId || "";
@@ -209,7 +210,7 @@ export default function MediaBankPage() {
       const res = await api.deleteMedia(tenantId, fileId);
       if (res.success) { showToast(t('imageDeleted')); setFiles(prev => prev.filter(f => f.id !== fileId)); }
       else showToast(`Error: ${res.error}`);
-    } catch { showToast("Error al eliminar"); }
+    } catch { showToast(tc("errorSaving")); }
   }
 
   function copyUrl(f: MediaFile) {
@@ -361,7 +362,7 @@ export default function MediaBankPage() {
         ) : files.length === 0 ? (
           <div className="p-12 text-center">
             <ImageIcon size={40} className="text-muted-foreground opacity-30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">{filterTag || filterType ? "No hay imagenes con estos filtros." : "No hay imagenes. Sube tu primera imagen arriba."}</p>
+            <p className="text-sm text-muted-foreground">{filterTag || filterType ? tc("noResults") : tc("noData")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

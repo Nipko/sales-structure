@@ -76,7 +76,7 @@ export default function WhatsAppSetupPage() {
             setAccessToken("");
             await loadData();
         } catch (err: any) {
-            setMessage({ type: "error", text: err.message || "Error al conectar." });
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
         } finally {
             setSaving(false);
         }

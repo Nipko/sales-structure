@@ -75,7 +75,7 @@ export default function MessengerSetupPage() {
             setAccessToken("");
             await loadData();
         } catch (err: any) {
-            setMessage({ type: "error", text: err.message || "Error al conectar Messenger." });
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
         } finally {
             setSaving(false);
         }

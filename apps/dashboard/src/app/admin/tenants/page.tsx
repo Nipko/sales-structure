@@ -84,7 +84,7 @@ export default function TenantsPage() {
         try {
             const result = await api.adminResetPassword(resetUser.id, newPassword);
             if (result.success) { showToast(`Contrase\u00f1a restablecida para ${resetUser.email}`, "success"); setResetUser(null); setNewPassword(""); }
-            else showToast(result.error || "Error al restablecer contrase\u00f1a", "error");
+            else showToast(result.error || tc("errorSaving"));
         } catch { showToast("Error de conexi\u00f3n", "error"); }
         setResettingPassword(false);
     };

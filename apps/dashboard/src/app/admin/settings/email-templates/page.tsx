@@ -96,6 +96,7 @@ const emptyTemplate = (): Omit<EmailTemplate, "id" | "createdAt" | "updatedAt"> 
 
 export default function EmailTemplatesPage() {
   const t = useTranslations('emailTemplates');
+    const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
 
   // State
@@ -275,7 +276,7 @@ export default function EmailTemplatesPage() {
 
   // Delete
   async function handleDelete(id: string) {
-    if (!activeTenantId || !confirm("Eliminar esta plantilla? Esta accion no se puede deshacer.")) return;
+    if (!activeTenantId || !confirm(tc("deleteConfirm"))) return;
     setDeleting(id);
     try {
       await api.deleteEmailTemplate(activeTenantId, id);
@@ -283,7 +284,7 @@ export default function EmailTemplatesPage() {
       if (selectedId === id) closeEditor();
       await loadTemplates();
     } catch {
-      showToast("Error al eliminar", true);
+      showToast(tc("errorSaving"), true);
     } finally {
       setDeleting(null);
     }
@@ -300,7 +301,7 @@ export default function EmailTemplatesPage() {
         setTestModalOpen(false);
         setTestEmail("");
       } else {
-        showToast(res?.error || "Error al enviar prueba", true);
+        showToast(res?.error || tc("errorSaving"), true);
       }
     } catch {
       showToast(t("connectionError") || "Error", true);
@@ -431,7 +432,7 @@ export default function EmailTemplatesPage() {
             <div className="bg-card rounded-[14px] border border-border p-6">
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-lg font-semibold text-foreground m-0">
-                  {isCreating ? "Nueva plantilla" : "Editar plantilla"}
+                  {isCreating ? tc("create") : tc("edit")}
                 </h2>
                 <button
                   onClick={closeEditor}
@@ -547,7 +548,7 @@ export default function EmailTemplatesPage() {
                   className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   <Save size={16} />
-                  {saving ? t("saving") || "..." : "Guardar"}
+                  {saving ? t("saving") : tc("saveChanges")}
                 </button>
                 {selectedId && !isCreating && (
                   <button
@@ -602,7 +603,7 @@ export default function EmailTemplatesPage() {
                 </div>
               ) : (
                 <pre className="p-5 text-[12px] font-mono text-muted-foreground bg-background overflow-x-auto whitespace-pre-wrap break-words max-h-[400px] overflow-y-auto m-0">
-                  {form.bodyHtml || "Sin contenido HTML"}
+                  {form.bodyHtml || tc("noData")}
                 </pre>
               )}
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -26,6 +27,7 @@ const sentimentConfig: Record<string, { label: string; emoji: string }> = {
 };
 
 export default function ConversationsPage() {
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [conversations, setConversations] = useState<any[]>([]);
@@ -98,7 +100,7 @@ export default function ConversationsPage() {
             <div className="flex gap-3 mb-5 items-center">
                 <div className="relative flex-1 max-w-[360px]">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar contacto, telefono o mensaje..." className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
+                    <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                 </div>
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
                     <option value="all">Todos</option>

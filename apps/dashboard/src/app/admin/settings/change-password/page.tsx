@@ -36,6 +36,7 @@ const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
 
 export default function ChangePasswordPage() {
     const t = useTranslations('changePassword');
+    const tc = useTranslations("common");
     const router = useRouter();
     const { user } = useAuth();
 
@@ -85,7 +86,7 @@ export default function ChangePasswordPage() {
                 setNewPassword("");
                 setConfirmPassword("");
             } else {
-                showToast("error", res.error || "Error al cambiar la contrasena");
+                showToast("error", res.error || tc("errorSaving"));
             }
         } catch {
             showToast("error", "Error de conexion. Intenta de nuevo.");

@@ -18,6 +18,7 @@ const statusLabels: Record<string, string> = { draft: "Borrador", approved: "Apr
 
 export default function KnowledgePage() {
     const t = useTranslations('knowledge');
+    const tc = useTranslations("common");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("library");
@@ -163,7 +164,7 @@ export default function KnowledgePage() {
                         </div>
                         <div className="flex gap-2.5 mt-6">
                             <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">Cancelar</button>
-                            <button onClick={handleCreate} disabled={saving || !form.title || !form.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? "Procesando Chunks..." : "Crear e Indexar"}</button>
+                            <button onClick={handleCreate} disabled={saving || !form.title || !form.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>
                 </div>

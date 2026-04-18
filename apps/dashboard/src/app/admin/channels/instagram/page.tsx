@@ -78,7 +78,7 @@ export default function InstagramSetupPage() {
             setAccessToken("");
             await loadData();
         } catch (err: any) {
-            setMessage({ type: "error", text: err.message || "Error al conectar Instagram." });
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
         } finally {
             setSaving(false);
         }

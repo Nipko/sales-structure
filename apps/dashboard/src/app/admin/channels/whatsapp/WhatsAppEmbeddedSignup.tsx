@@ -212,7 +212,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
           onSuccess(result);
         } catch (err: any) {
           console.error("[EmbeddedSignup] Error:", err);
-          onError(err.message || "Error al procesar el onboarding");
+          onError(err.message || tc("errorSaving"));
         } finally {
           setProcessing(false);
           setStep("");
@@ -328,7 +328,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
         </svg>
 
         {!sdkLoaded
-          ? "Cargando SDK de Meta..."
+          ? tc("loading")
           : launching
             ? "Esperando autorización..."
             : processing

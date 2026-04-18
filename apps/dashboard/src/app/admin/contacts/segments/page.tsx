@@ -68,7 +68,7 @@ export default function SegmentsPage() {
         try {
             const res = await api.createSegment(activeTenantId, { ...form, preview: true });
             if (res.success && res.data) setPreviewCount((res.data as any).count ?? 0);
-        } catch { showToast("Error al obtener vista previa"); }
+        } catch { showToast(tc("errorSaving")); }
     }
 
     async function handleSave() {
@@ -76,7 +76,7 @@ export default function SegmentsPage() {
         try {
             const res = await api.createSegment(activeTenantId, form);
             if (res.success) { showToast("Segmento creado"); setModalOpen(false); loadSegments(); }
-            else showToast(res.error || "Error al crear segmento");
+            else showToast(res.error || tc("errorSaving"));
         } catch { showToast(tc("connectionError")); }
     }
 
@@ -86,7 +86,7 @@ export default function SegmentsPage() {
         try {
             const res = await api.getSegmentContacts(activeTenantId, segment.id);
             if (res.success && Array.isArray(res.data)) setContacts(res.data);
-        } catch { showToast("Error al cargar contactos"); }
+        } catch { showToast(tc("errorSaving")); }
         finally { setContactsLoading(false); }
     }
 
@@ -113,7 +113,7 @@ export default function SegmentsPage() {
                     </div>
                     <div>
                         <h1 className="text-[22px] font-semibold text-foreground m-0">{viewingSegment.name}</h1>
-                        <p className="text-[13px] text-muted-foreground m-0">{viewingSegment.description || "Sin descripcion"}</p>
+                        <p className="text-[13px] text-muted-foreground m-0">{viewingSegment.description || tc("noData")}</p>
                     </div>
                     <span className="ml-auto px-3.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] text-[13px] font-semibold">
                         {contacts.length} contactos
@@ -197,7 +197,7 @@ export default function SegmentsPage() {
                                 </div>
                                 <div>
                                     <div className="text-[15px] font-semibold text-foreground">{seg.name}</div>
-                                    <div className="text-xs text-muted-foreground mt-0.5">{seg.description || "Sin descripcion"}</div>
+                                    <div className="text-xs text-muted-foreground mt-0.5">{seg.description || tc("noData")}</div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">

@@ -28,6 +28,7 @@ const statusConfig = {
 
 export default function OrdersPage() {
     const t = useTranslations('orders');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [data, setData] = useState<OrdersOverview | null>(null);
     const [isLive, setIsLive] = useState(false);
@@ -132,7 +133,7 @@ export default function OrdersPage() {
                 </div>
                 <div className="relative w-[280px]">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente u orden..." className="w-full py-2.5 pl-9 pr-3.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-3.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                 </div>
             </div>
 
@@ -199,6 +200,7 @@ export default function OrdersPage() {
 }
 
 function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; contacts: Contact[]; onCreated: () => void }) {
+    const tc = useTranslations("common");
     const [status, setStatus] = useState("pending");
     const [paymentMethod, setPaymentMethod] = useState("transfer");
     const [notes, setNotes] = useState("");
@@ -289,7 +291,7 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
                     <span className="text-2xl font-semibold text-primary">{formatCurrency(total)}</span>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || selectedItems.length === 0} className={cn("w-full py-3.5 rounded-xl border-none bg-primary text-white font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2", (saving || selectedItems.length === 0) && "opacity-50")}>
-                    {saving ? "Creando..." : <><Check size={18} /> Crear Orden</>}
+                    {saving ? tc("saving") : <><Check size={18} /> Crear Orden</>}
                 </button>
             </div>
         </div>

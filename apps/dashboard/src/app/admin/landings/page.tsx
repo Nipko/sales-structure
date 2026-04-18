@@ -58,7 +58,7 @@ export default function LandingsPage() {
             }
         } catch (error) {
             console.error("Error creating landing:", error);
-            alert("Error al crear la landing");
+            alert(tc("errorSaving"));
         }
     };
 
@@ -92,7 +92,7 @@ export default function LandingsPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                         <input
                             type="text"
-                            placeholder="Buscar por titulo o slug..."
+                            placeholder={tc("search") + "..."}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full rounded-xl border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground focus:border-primary focus:outline-none transition-colors"

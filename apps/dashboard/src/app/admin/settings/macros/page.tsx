@@ -10,8 +10,8 @@ import { Zap, Plus, Pencil, Trash2, X, Check, UserPlus, Tag, RefreshCw, FileText
 interface Macro { id: string; name: string; description: string; actions: MacroAction[]; visibility: string; }
 interface MacroAction { type: string; config: Record<string, any>; }
 
-const ACTION_TYPES = [{ value: "assign", label: "Asignar a agente", icon: UserPlus }, { value: "tag", label: "Agregar etiqueta", icon: Tag }, { value: "change_status", label: "Cambiar estado", icon: RefreshCw }, { value: "add_note", label: "Agregar nota", icon: FileText }, { value: "send_canned", label: "Enviar respuesta predefinida", icon: Send }];
-const STATUS_OPTIONS = [{ value: "active", label: "Activa" }, { value: "resolved", label: "Resuelta" }, { value: "waiting_human", label: "Esperando agente" }];
+const ACTION_TYPES = [{ value: "assign", label: "Assign to agent", icon: UserPlus }, { value: "tag", label: "Add tag", icon: Tag }, { value: "change_status", label: "Change status", icon: RefreshCw }, { value: "add_note", label: "Add note", icon: FileText }, { value: "send_canned", label: "Send canned response", icon: Send }];
+const STATUS_OPTIONS = [{ value: "active", label: "Active" }, { value: "resolved", label: "Resolved" }, { value: "waiting_human", label: "Waiting for agent" }];
 
 const inputCls = "w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border";
 const labelCls = "block text-xs font-semibold text-muted-foreground mb-1";
@@ -41,18 +41,18 @@ export default function MacrosPage() {
         if (!activeTenantId || !form.name.trim()) return;
         try {
             const res = editingId ? await api.updateMacro(activeTenantId, editingId, form) : await api.createMacro(activeTenantId, form);
-            if (res.success) { showToast(editingId ? "Macro actualizada" : "Macro creada"); setModalOpen(false); loadMacros(); } else showToast(res.error || tc("errorSaving"));
+            if (res.success) { showToast(editingId ? "Macro updated" : "Macro created"); setModalOpen(false); loadMacros(); } else showToast(res.error || tc("errorSaving"));
         } catch { showToast(tc("connectionError")); }
     }
     async function handleDelete(id: string) { if (!activeTenantId || !confirm(tc("deleteConfirm"))) return; try { await api.fetch(`/agent-console/macros/${activeTenantId}/${id}`, { method: "DELETE" }); showToast(tc("success")); loadMacros(); } catch { showToast(tc("errorSaving")); } }
 
     function renderActionConfig(action: MacroAction, idx: number) {
         switch (action.type) {
-            case "assign": return <div><label className={labelCls}>ID o nombre del agente</label><input value={action.config.agentId || ""} onChange={e => updateActionConfig(idx, "agentId", e.target.value)} placeholder="agente@empresa.com" className={inputCls} /></div>;
-            case "tag": return <div><label className={labelCls}>Nombre de la etiqueta</label><input value={action.config.tagName || ""} onChange={e => updateActionConfig(idx, "tagName", e.target.value)} placeholder="vip, urgente, etc." className={inputCls} /></div>;
-            case "change_status": return <div><label className={labelCls}>Nuevo estado</label><select value={action.config.status || "active"} onChange={e => updateActionConfig(idx, "status", e.target.value)} className={inputCls}>{STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select></div>;
-            case "add_note": return <div><label className={labelCls}>Contenido de la nota</label><textarea value={action.config.content || ""} onChange={e => updateActionConfig(idx, "content", e.target.value)} placeholder="Nota interna..." rows={2} className={cn(inputCls, "resize-y")} /></div>;
-            case "send_canned": return <div><label className={labelCls}>Shortcode de respuesta predefinida</label><input value={action.config.shortcode || ""} onChange={e => updateActionConfig(idx, "shortcode", e.target.value)} placeholder="/saludo" className={inputCls} /></div>;
+            case "assign": return <div><label className={labelCls}>Agent ID or name</label><input value={action.config.agentId || ""} onChange={e => updateActionConfig(idx, "agentId", e.target.value)} placeholder="agent@company.com" className={inputCls} /></div>;
+            case "tag": return <div><label className={labelCls}>Tag name</label><input value={action.config.tagName || ""} onChange={e => updateActionConfig(idx, "tagName", e.target.value)} placeholder="vip, urgent, etc." className={inputCls} /></div>;
+            case "change_status": return <div><label className={labelCls}>New status</label><select value={action.config.status || "active"} onChange={e => updateActionConfig(idx, "status", e.target.value)} className={inputCls}>{STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}</select></div>;
+            case "add_note": return <div><label className={labelCls}>Note content</label><textarea value={action.config.content || ""} onChange={e => updateActionConfig(idx, "content", e.target.value)} placeholder="Internal note..." rows={2} className={cn(inputCls, "resize-y")} /></div>;
+            case "send_canned": return <div><label className={labelCls}>Canned response shortcode</label><input value={action.config.shortcode || ""} onChange={e => updateActionConfig(idx, "shortcode", e.target.value)} placeholder="/greeting" className={inputCls} /></div>;
             default: return null;
         }
     }
@@ -64,17 +64,17 @@ export default function MacrosPage() {
             <div className="flex justify-between items-center mb-7">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center"><Zap size={22} className="text-primary" /></div>
-                    <div><h1 className="text-[22px] font-semibold text-foreground m-0">Macros</h1><p className="text-[13px] text-muted-foreground m-0">Automatiza acciones repetitivas con un solo clic</p></div>
+                    <div><h1 className="text-[22px] font-semibold text-foreground m-0">Macros</h1><p className="text-[13px] text-muted-foreground m-0">Automate repetitive actions with one click</p></div>
                 </div>
-                <button onClick={openCreate} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"><Plus size={16} /> Nueva Macro</button>
+                <button onClick={openCreate} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"><Plus size={16} /> New Macro</button>
             </div>
 
             <div className="flex flex-col gap-3">
-                {loading ? <div className="p-10 text-center text-muted-foreground">Cargando...</div>
+                {loading ? <div className="p-10 text-center text-muted-foreground">Loading...</div>
                     : macros.length === 0 ? (
                         <div className="p-12 text-center bg-card rounded-[14px] border border-border">
                             <Zap size={36} className="text-muted-foreground opacity-40 mb-3" />
-                            <p className="text-muted-foreground text-sm">No hay macros creadas</p>
+                            <p className="text-muted-foreground text-sm">No macros created</p>
                         </div>
                     ) : macros.map(macro => (
                         <div key={macro.id} className="bg-card rounded-[14px] border border-border px-[22px] py-[18px] flex items-center justify-between">
@@ -86,9 +86,9 @@ export default function MacrosPage() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5">
-                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">{macro.actions?.length || 0} acciones</span>
+                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">{macro.actions?.length || 0} actions</span>
                                 <span className={cn("px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1", macro.visibility === "team" ? "bg-[var(--success)]/10 text-[var(--success)]" : "bg-muted text-muted-foreground")}>
-                                    {macro.visibility === "team" ? <Eye size={12} /> : <EyeOff size={12} />} {macro.visibility === "team" ? "Equipo" : "Personal"}
+                                    {macro.visibility === "team" ? <Eye size={12} /> : <EyeOff size={12} />} {macro.visibility === "team" ? "Team" : "Personal"}
                                 </span>
                                 <button onClick={() => openEdit(macro)} className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary cursor-pointer flex items-center justify-center"><Pencil size={14} /></button>
                                 <button onClick={() => handleDelete(macro.id)} className="w-8 h-8 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive cursor-pointer flex items-center justify-center"><Trash2 size={14} /></button>
@@ -105,11 +105,11 @@ export default function MacrosPage() {
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">
-                            <div><label className={labelCls}>Nombre *</label><input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Ej: Escalar a supervisor" className={inputCls} /></div>
-                            <div><label className={labelCls}>Descripcion</label><input value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder="Descripcion opcional" className={inputCls} /></div>
-                            <div><label className={labelCls}>Visibilidad</label><select value={form.visibility} onChange={e => setForm(prev => ({ ...prev, visibility: e.target.value }))} className={inputCls}><option value="personal">Personal</option><option value="team">Equipo</option></select></div>
+                            <div><label className={labelCls}>Name *</label><input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g.: Escalate to supervisor" className={inputCls} /></div>
+                            <div><label className={labelCls}>Description</label><input value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder="Optional description" className={inputCls} /></div>
+                            <div><label className={labelCls}>Visibility</label><select value={form.visibility} onChange={e => setForm(prev => ({ ...prev, visibility: e.target.value }))} className={inputCls}><option value="personal">Personal</option><option value="team">Team</option></select></div>
                             <div>
-                                <label className={labelCls}>Acciones</label>
+                                <label className={labelCls}>Actions</label>
                                 <div className="flex flex-col gap-3">
                                     {form.actions.map((action, idx) => {
                                         const actionDef = ACTION_TYPES.find(a => a.value === action.type);
@@ -117,21 +117,21 @@ export default function MacrosPage() {
                                         return (
                                             <div key={idx} className="bg-background rounded-xl border border-border p-3.5">
                                                 <div className="flex items-center justify-between mb-2.5">
-                                                    <div className="flex items-center gap-2"><Icon size={14} className="text-primary" /><span className="text-xs text-muted-foreground font-semibold">Accion {idx + 1}</span></div>
+                                                    <div className="flex items-center gap-2"><Icon size={14} className="text-primary" /><span className="text-xs text-muted-foreground font-semibold">Action {idx + 1}</span></div>
                                                     <button onClick={() => removeAction(idx)} className="w-[26px] h-[26px] rounded-md bg-destructive/10 border border-destructive/20 text-destructive cursor-pointer flex items-center justify-center"><X size={12} /></button>
                                                 </div>
-                                                <div className="mb-2.5"><label className={labelCls}>Tipo</label><select value={action.type} onChange={e => updateActionType(idx, e.target.value)} className={inputCls}>{ACTION_TYPES.map(at => <option key={at.value} value={at.value}>{at.label}</option>)}</select></div>
+                                                <div className="mb-2.5"><label className={labelCls}>Type</label><select value={action.type} onChange={e => updateActionType(idx, e.target.value)} className={inputCls}>{ACTION_TYPES.map(at => <option key={at.value} value={at.value}>{at.label}</option>)}</select></div>
                                                 {renderActionConfig(action, idx)}
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <button onClick={addAction} className="flex items-center gap-1.5 mt-2.5 px-3.5 py-2 rounded-lg bg-transparent border border-dashed border-border text-primary cursor-pointer text-[13px] font-semibold"><Plus size={14} /> Agregar accion</button>
+                                <button onClick={addAction} className="flex items-center gap-1.5 mt-2.5 px-3.5 py-2 rounded-lg bg-transparent border border-dashed border-border text-primary cursor-pointer text-[13px] font-semibold"><Plus size={14} /> Add action</button>
                             </div>
                         </div>
                         <div className="flex justify-end gap-2.5 mt-6">
-                            <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-lg bg-transparent border border-border text-muted-foreground cursor-pointer text-sm">Cancelar</button>
-                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? tc("saveChanges") : "Crear"}</span></button>
+                            <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-lg bg-transparent border border-border text-muted-foreground cursor-pointer text-sm">Cancel</button>
+                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? tc("saveChanges") : "Create"}</span></button>
                         </div>
                     </div>
                 </div>

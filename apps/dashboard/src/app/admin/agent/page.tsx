@@ -118,23 +118,23 @@ const defaultConfig: PersonaConfig = {
 // ── Steps ──────────────────────────────────────────────────────
 
 const STEPS = [
-    { label: "Identidad", icon: User },
-    { label: "Personalidad", icon: Smile },
-    { label: "Comportamiento", icon: Shield },
-    { label: "Horario", icon: Calendar },
-    { label: "Modelo IA", icon: Cpu },
-    { label: "Herramientas", icon: Wrench },
-    { label: "Resumen", icon: CheckCircle },
+    { label: "Identity", icon: User },
+    { label: "Personality", icon: Smile },
+    { label: "Behavior", icon: Shield },
+    { label: "Schedule", icon: Calendar },
+    { label: "AI Model", icon: Cpu },
+    { label: "Tools", icon: Wrench },
+    { label: "Summary", icon: CheckCircle },
 ];
 
 const DAY_LABELS: Record<string, string> = {
-    lun: "Lunes",
-    mar: "Martes",
-    mie: "Miercoles",
-    jue: "Jueves",
-    vie: "Viernes",
-    sab: "Sabado",
-    dom: "Domingo",
+    lun: "Monday",
+    mar: "Tuesday",
+    mie: "Wednesday",
+    jue: "Thursday",
+    vie: "Friday",
+    sab: "Saturday",
+    dom: "Sunday",
 };
 
 // ── Shared class constants ────────────────────────────────────
@@ -295,7 +295,7 @@ export default function AgentConfigPage() {
             }
             const res = await api.savePersonaConfig(activeTenantId, payload);
             if (res?.success) {
-                setToast("Configuracion guardada exitosamente");
+                setToast("Configuration saved successfully");
             } else {
                 // Surface backend validation messages (e.g. missing appointments
                 // prerequisites) instead of a generic "error saving".
@@ -314,7 +314,7 @@ export default function AgentConfigPage() {
         return (
             <div className={cardCls}>
                 <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <User size={20} className="text-primary" /> Identidad del Agente
+                    <User size={20} className="text-primary" /> Agent Identity
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
                     <div>
@@ -390,7 +390,7 @@ export default function AgentConfigPage() {
         return (
             <div className={cardCls}>
                 <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <Smile size={20} className="text-primary" /> Personalidad
+                    <Smile size={20} className="text-primary" /> Personality
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
                     <div>
@@ -400,7 +400,7 @@ export default function AgentConfigPage() {
                             value={config.persona.personality.tone}
                             onChange={e => updatePersonality("tone", e.target.value)}
                         >
-                            <option value="amigable">Amigable</option>
+                            <option value="amigable">Friendly</option>
                             <option value="profesional">Profesional</option>
                             <option value="formal">Formal</option>
                             <option value="casual">Casual</option>
@@ -415,7 +415,7 @@ export default function AgentConfigPage() {
                             onChange={e => updatePersonality("formality", e.target.value)}
                         >
                             <option value="formal">Formal</option>
-                            <option value="casual-professional">Casual-Profesional</option>
+                            <option value="casual-professional">Casual-Professional</option>
                             <option value="casual">Casual</option>
                         </select>
                     </div>
@@ -426,10 +426,10 @@ export default function AgentConfigPage() {
                             value={config.persona.personality.emojiUsage}
                             onChange={e => updatePersonality("emojiUsage", e.target.value)}
                         >
-                            <option value="none">Ninguno</option>
-                            <option value="minimal">Minimo</option>
-                            <option value="moderate">Moderado</option>
-                            <option value="heavy">Abundante</option>
+                            <option value="none">None</option>
+                            <option value="minimal">Minimal</option>
+                            <option value="moderate">Moderate</option>
+                            <option value="heavy">Heavy</option>
                         </select>
                     </div>
                     <div>
@@ -448,9 +448,9 @@ export default function AgentConfigPage() {
 
     function renderStep2() {
         const sections: { key: "rules" | "forbiddenTopics" | "handoffTriggers"; title: string; placeholder: string; icon: any }[] = [
-            { key: "rules", title: "Reglas estrictas", placeholder: "Ej: Siempre confirmar disponibilidad antes de cotizar", icon: Shield },
-            { key: "forbiddenTopics", title: "Temas prohibidos", placeholder: "Ej: Competencia, precios de terceros", icon: AlertTriangle },
-            { key: "handoffTriggers", title: "Triggers de handoff", placeholder: "Ej: Cliente solicita hablar con un humano", icon: MessageSquare },
+            { key: "rules", title: "Strict rules", placeholder: "e.g.: Always confirm availability before quoting", icon: Shield },
+            { key: "forbiddenTopics", title: "Forbidden topics", placeholder: "e.g.: Competition, third-party pricing", icon: AlertTriangle },
+            { key: "handoffTriggers", title: "Handoff triggers", placeholder: "e.g.: Customer requests to speak with a human", icon: MessageSquare },
         ];
 
         return (
@@ -535,7 +535,7 @@ export default function AgentConfigPage() {
         return (
             <div className={cardCls}>
                 <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <Calendar size={20} className="text-primary" /> Horario del Agente
+                    <Calendar size={20} className="text-primary" /> Agent Schedule
                 </h3>
 
                 {/* Timezone */}
@@ -556,7 +556,7 @@ export default function AgentConfigPage() {
                 <div className="flex items-center justify-between p-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 mb-5">
                     <div>
                         <p className="text-sm font-semibold text-foreground">Disponible 24/7</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">El agente atiende todos los días, las 24 horas</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">The agent is available 24/7</p>
                     </div>
                     <button
                         onClick={() => toggle247(!is247)}
@@ -704,9 +704,9 @@ export default function AgentConfigPage() {
 
         return (
             <div>
-                <h3 className="text-lg font-semibold mb-1">Herramientas del Agente</h3>
+                <h3 className="text-lg font-semibold mb-1">Agent Tools</h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                    Activa las herramientas que tu agente IA puede usar durante las conversaciones.
+                    Activate the tools your AI agent can use during conversations.
                 </p>
 
                 {/* Appointments Tool */}
@@ -769,7 +769,7 @@ export default function AgentConfigPage() {
                                     className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
                                 <div>
                                     <span className="text-sm font-medium">Crear citas</span>
-                                    <p className="text-xs text-muted-foreground">El agente puede agendar citas nuevas con confirmación del cliente</p>
+                                    <p className="text-xs text-muted-foreground">The agent can schedule new appointments with customer confirmation</p>
                                 </div>
                             </label>
                             <label className="flex items-center gap-3 cursor-pointer">
@@ -791,8 +791,8 @@ export default function AgentConfigPage() {
                             <Wrench size={20} className="text-muted-foreground" />
                         </div>
                         <div>
-                            <h4 className="text-sm font-semibold text-muted-foreground">Más herramientas próximamente</h4>
-                            <p className="text-xs text-muted-foreground">Catálogo, CRM, pagos y más</p>
+                            <h4 className="text-sm font-semibold text-muted-foreground">More tools coming soon</h4>
+                            <p className="text-xs text-muted-foreground">Catalog, CRM, payments and more</p>
                         </div>
                     </div>
                 </div>
@@ -842,15 +842,15 @@ export default function AgentConfigPage() {
                     { label: "Emojis", value: config.persona.personality.emojiUsage },
                     { label: "Humor", value: config.persona.personality.humor },
                 ])}
-                {summarySection("Comportamiento", <Shield size={16} className="text-primary" />, [
-                    { label: "Reglas", value: config.behavior.rules.filter(Boolean).join("; ") },
-                    { label: "Temas prohibidos", value: config.behavior.forbiddenTopics.filter(Boolean).join("; ") },
-                    { label: "Triggers handoff", value: config.behavior.handoffTriggers.filter(Boolean).join("; ") },
+                {summarySection("Behavior", <Shield size={16} className="text-primary" />, [
+                    { label: "Rules", value: config.behavior.rules.filter(Boolean).join("; ") },
+                    { label: "Forbidden topics", value: config.behavior.forbiddenTopics.filter(Boolean).join("; ") },
+                    { label: "Handoff triggers", value: config.behavior.handoffTriggers.filter(Boolean).join("; ") },
                 ])}
-                {summarySection("Horario", <Calendar size={16} className="text-primary" />, [
-                    { label: "Zona horaria", value: config.hours.timezone },
-                    { label: "Dias activos", value: activeDays },
-                    { label: "Mensaje fuera de horario", value: config.hours.afterHoursMessage },
+                {summarySection("Schedule", <Calendar size={16} className="text-primary" />, [
+                    { label: "Timezone", value: config.hours.timezone },
+                    { label: "Active days", value: activeDays },
+                    { label: "After hours message", value: config.hours.afterHoursMessage },
                 ])}
                 {summarySection("Modelo IA", <Cpu size={16} className="text-primary" />, [
                     { label: "Temperatura", value: String(config.llm.temperature) },
@@ -878,7 +878,7 @@ export default function AgentConfigPage() {
             <div className="flex items-center justify-center h-[60vh]">
                 <div className="text-center">
                     <Bot size={40} className="text-primary mb-3" />
-                    <div className="text-[var(--text-secondary)] text-sm">Cargando configuracion del agente...</div>
+                    <div className="text-[var(--text-secondary)] text-sm">Loading agent configuration...</div>
                 </div>
             </div>
         );

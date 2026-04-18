@@ -149,7 +149,7 @@ export default function AutomationPage() {
         if (activeTenantId) {
             try { await api.deleteRule(activeTenantId, id); } catch {}
         }
-        showToast("Regla eliminada");
+        showToast("Rule deleted");
     }
 
     // -- Load executions --
@@ -207,10 +207,10 @@ export default function AutomationPage() {
         try {
             if (editingRuleId) {
                 await api.updateRule(activeTenantId, editingRuleId, payload);
-                showToast("Regla actualizada");
+                showToast("Rule updated");
             } else {
                 await api.createRule(activeTenantId, payload);
-                showToast("Regla creada exitosamente");
+                showToast("Rule created successfully");
             }
             setWizardOpen(false);
             setEditingRuleId(null);
@@ -305,9 +305,9 @@ export default function AutomationPage() {
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-3 mb-6">
                     {[
-                        { label: "Total reglas", value: rules.length, icon: Shield, color: "#6c5ce7", bg: "bg-indigo-600/10" },
-                        { label: "Reglas activas", value: activeCount, icon: Zap, color: "#00d68f", bg: "bg-emerald-500/10" },
-                        { label: "Ejecuciones totales", value: totalExecs, icon: BarChart3, color: "#ffaa00", bg: "bg-amber-500/10" },
+                        { label: "Total rules", value: rules.length, icon: Shield, color: "#6c5ce7", bg: "bg-indigo-600/10" },
+                        { label: "Active rules", value: activeCount, icon: Zap, color: "#00d68f", bg: "bg-emerald-500/10" },
+                        { label: "Total executions", value: totalExecs, icon: BarChart3, color: "#ffaa00", bg: "bg-amber-500/10" },
                     ].map(stat => {
                         const Icon = stat.icon;
                         return (
@@ -328,12 +328,12 @@ export default function AutomationPage() {
 
                 {/* Rules list */}
                 {loading ? (
-                    <div className="text-center p-10 text-muted-foreground">Cargando reglas...</div>
+                    <div className="text-center p-10 text-muted-foreground">Loading rules...</div>
                 ) : rules.length === 0 ? (
                     <div className="text-center py-[60px] px-4 rounded-[14px] border border-dashed border-border bg-card text-muted-foreground">
                         <Workflow size={40} className="mb-3 opacity-40 mx-auto" />
-                        <div className="text-base font-semibold mb-1">Sin reglas de automatización</div>
-                        <div className="text-[13px]">Crea tu primera regla para empezar a automatizar</div>
+                        <div className="text-base font-semibold mb-1">No automation rules</div>
+                        <div className="text-[13px]">Create your first rule to start automating</div>
                     </div>
                 ) : (
                     <div className="flex flex-col gap-2.5">
@@ -411,18 +411,18 @@ export default function AutomationPage() {
                                     <div className="mx-2 px-4 py-3.5 rounded-b-xl border border-border border-t-0 bg-neutral-100 dark:bg-neutral-800">
                                         <div className="flex justify-between items-center mb-2.5">
                                             <span className="text-[13px] font-semibold text-foreground">
-                                                Historial de ejecuciones
+                                                Execution history
                                             </span>
                                             <button
                                                 onClick={() => { setSelectedRuleExecs(null); setExecRuleId(null); }}
                                                 className="bg-transparent border-none text-muted-foreground cursor-pointer text-xs underline"
                                             >
-                                                Cerrar
+                                                Close
                                             </button>
                                         </div>
                                         {selectedRuleExecs.length === 0 ? (
                                             <div className="text-[13px] text-muted-foreground py-2">
-                                                Sin ejecuciones registradas
+                                                No executions recorded
                                             </div>
                                         ) : (
                                             <div className="flex flex-col gap-1.5">
@@ -464,7 +464,7 @@ export default function AutomationPage() {
                 {toast && (
                     <div className={cn(
                         "fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold text-white shadow-[0_4px_20px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom-2 fade-in duration-300",
-                        toast.includes("eliminada") || toast.includes("Error") ? "bg-red-500" : "bg-emerald-500"
+                        toast.includes("deleted") || toast.includes("Error") ? "bg-red-500" : "bg-emerald-500"
                     )}>
                         {toast}
                     </div>
@@ -649,7 +649,7 @@ export default function AutomationPage() {
                                     <div key={idx} className="p-4 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-border">
                                         <div className="flex justify-between items-start mb-3">
                                             <div className="flex-1 mr-3">
-                                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Tipo de acción</Label>
+                                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Action type</Label>
                                                 <select
                                                     value={action.type}
                                                     onChange={e => {
@@ -696,16 +696,16 @@ export default function AutomationPage() {
                                             {action.type === "create_task" && (
                                                 <>
                                                     <div className="flex-1 min-w-[200px]">
-                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Descripción de la tarea</Label>
+                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Task description</Label>
                                                         <Input
                                                             value={action.config.task_description || ""}
                                                             onChange={e => updateActionConfig(idx, "task_description", e.target.value)}
-                                                            placeholder="Dar seguimiento al lead"
+                                                            placeholder="Follow up with lead"
                                                             className="bg-background border-border"
                                                         />
                                                     </div>
                                                     <div className="min-w-[120px]">
-                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Horas límite</Label>
+                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Hours limit</Label>
                                                         <Input
                                                             type="number"
                                                             value={action.config.task_due_hours ?? 24}
@@ -779,15 +779,15 @@ export default function AutomationPage() {
                     {wizardStep === 3 && (
                         <div>
                             <h2 className="text-lg font-semibold mb-1">
-                                Revisa y guarda tu regla
+                                Review and save your rule
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
-                                Confirma los detalles antes de guardar
+                                Confirm the details before saving
                             </p>
 
                             {/* Rule name */}
                             <div className="mb-[18px]">
-                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Nombre de la regla *</Label>
+                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Rule name *</Label>
                                 <Input
                                     value={ruleForm.name}
                                     onChange={e => setRuleForm(prev => ({ ...prev, name: e.target.value }))}
@@ -810,15 +810,15 @@ export default function AutomationPage() {
                                         ruleForm.active ? "left-[23px]" : "left-[3px]"
                                     )} />
                                 </button>
-                                <span className="text-sm">Activar regla inmediatamente</span>
+                                <span className="text-sm">Activate rule immediately</span>
                             </div>
 
                             {/* Summary cards */}
                             <div className="grid grid-cols-3 gap-3 mb-6">
                                 {[
                                     { label: "Trigger", value: triggerLabel(ruleForm.trigger_type) },
-                                    { label: "Condiciones", value: String(ruleForm.conditions.length) },
-                                    { label: "Acciones", value: String(ruleForm.actions.length) },
+                                    { label: "Conditions", value: String(ruleForm.conditions.length) },
+                                    { label: "Actions", value: String(ruleForm.actions.length) },
                                 ].map(item => (
                                     <div key={item.label} className="p-4 rounded-[10px] bg-neutral-100 dark:bg-neutral-800 border border-border text-center">
                                         <div className="text-xs text-muted-foreground mb-1">{item.label}</div>
@@ -874,7 +874,7 @@ export default function AutomationPage() {
                                 : "bg-neutral-200 dark:bg-neutral-700 text-muted-foreground cursor-not-allowed"
                         )}
                     >
-                        Siguiente <ChevronRight size={16} />
+                            Next <ChevronRight size={16} />
                     </Button>
                 )}
             </div>
@@ -883,7 +883,7 @@ export default function AutomationPage() {
             {toast && (
                 <div className={cn(
                     "fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold text-white shadow-[0_4px_20px_rgba(0,0,0,0.3)] animate-in slide-in-from-bottom-2 fade-in duration-300",
-                    toast.includes("eliminada") || toast.includes("Error") ? "bg-red-500" : "bg-emerald-500"
+                    toast.includes("deleted") || toast.includes("Error") ? "bg-red-500" : "bg-emerald-500"
                 )}>
                     {toast}
                 </div>

@@ -58,7 +58,7 @@ export default function PipelinePage() {
         return (
             <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
                 <Loader2 size={24} className="animate-spin" />
-                Cargando pipeline...
+                Loading pipeline...
             </div>
         );
     }
@@ -76,10 +76,10 @@ export default function PipelinePage() {
                 {/* Forecast Cards */}
                 <div className="grid grid-cols-4 gap-3 mb-5">
                     {[
-                        { icon: DollarSign, label: "Valor total", value: formatCurrency(forecast.total), color: "#3498db", bg: "bg-blue-500/10" },
-                        { icon: TrendingUp, label: "Ponderado", value: formatCurrency(Math.round(forecast.weighted)), color: "#2ecc71", bg: "bg-emerald-500/10" },
-                        { icon: Target, label: "Oportunidades", value: String(forecast.dealCount), color: "#e67e22", bg: "bg-orange-500/10" },
-                        { icon: Users, label: "Promedio", value: formatCurrency(Math.round(forecast.avgDealValue)), color: "#9b59b6", bg: "bg-purple-500/10" },
+                        { icon: DollarSign, label: "Total value", value: formatCurrency(forecast.total), color: "#3498db", bg: "bg-blue-500/10" },
+                        { icon: TrendingUp, label: "Weighted", value: formatCurrency(Math.round(forecast.weighted)), color: "#2ecc71", bg: "bg-emerald-500/10" },
+                        { icon: Target, label: "Opportunities", value: String(forecast.dealCount), color: "#e67e22", bg: "bg-orange-500/10" },
+                        { icon: Users, label: "Average", value: formatCurrency(Math.round(forecast.avgDealValue)), color: "#9b59b6", bg: "bg-purple-500/10" },
                     ].map(card => (
                         <Card key={card.label} className="border-border bg-card">
                             <CardContent className="flex items-center gap-3 p-3.5">
@@ -132,7 +132,7 @@ export default function PipelinePage() {
                                                 method: "PUT",
                                                 body: JSON.stringify({ stage: stage.id }),
                                             });
-                                            setToast(`Oportunidad movida a ${stage.name}`);
+                                            setToast(`Opportunity moved to ${stage.name}`);
                                             setTimeout(() => setToast(null), 2000);
                                         } catch (err) {
                                             console.error("Failed to move opportunity:", err);

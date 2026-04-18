@@ -10,14 +10,14 @@ import { MessageSquare, Plus, Trash2, X, Check, Save, GripVertical, Eye, Smartph
 interface PrechatField { key: string; label: string; type: string; required: boolean; options: string; map_to: string; }
 interface PrechatConfig { is_active: boolean; greeting_message: string; fields: PrechatField[]; }
 
-const FIELD_TYPES = [{ value: "text", label: "Texto" }, { value: "email", label: "Email" }, { value: "phone", label: "Phone" }, { value: "select", label: "Seleccion" }];
-const MAP_TO_OPTIONS = [{ value: "contact.name", label: "Nombre del contacto" }, { value: "contact.email", label: "Email del contacto" }, { value: "contact.phone", label: "Telefono del contacto" }, { value: "lead.stage", label: "Etapa del lead" }, { value: "metadata", label: "Metadata personalizada" }];
+const FIELD_TYPES = [{ value: "text", label: "Text" }, { value: "email", label: "Email" }, { value: "phone", label: "Phone" }, { value: "select", label: "Selection" }];
+const MAP_TO_OPTIONS = [{ value: "contact.name", label: "Contact name" }, { value: "contact.email", label: "Contact email" }, { value: "contact.phone", label: "Contact phone" }, { value: "lead.stage", label: "Lead stage" }, { value: "metadata", label: "Custom metadata" }];
 
 const inputCls = "w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border";
 const labelCls = "block text-xs font-semibold text-muted-foreground mb-1";
 
 function toSnakeCase(str: string): string { return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""); }
-const defaultConfig = (): PrechatConfig => ({ is_active: false, greeting_message: "Hola! Antes de comenzar, necesitamos algunos datos.", fields: [] });
+const defaultConfig = (): PrechatConfig => ({ is_active: false, greeting_message: "Hello! Before we begin, we need some information.", fields: [] });
 const emptyField = (): PrechatField => ({ key: "", label: "", type: "text", required: false, options: "", map_to: "metadata" });
 
 export default function PrechatPage() {
@@ -51,11 +51,11 @@ export default function PrechatPage() {
         try {
             const payload = { is_active: config.is_active, greeting_message: config.greeting_message, fields: config.fields.map(f => ({ key: f.key || toSnakeCase(f.label), label: f.label, type: f.type, required: f.required, options: f.type === "select" ? f.options.split(",").map(o => o.trim()).filter(Boolean) : [], map_to: f.map_to === "metadata" ? `metadata.${f.key || toSnakeCase(f.label)}` : f.map_to })) };
             const res = await api.fetch(`/conversations/prechat-form/${activeTenantId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-            if (res.success) showToast("Configuracion guardada"); else showToast(tc("errorSaving"));
+            if (res.success) showToast("Configuration saved"); else showToast(tc("errorSaving"));
         } catch { showToast(tc("connectionError")); } finally { setSaving(false); }
     }
 
-    if (loading) return <div className="p-8 text-center text-muted-foreground">Cargando...</div>;
+    if (loading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
 
     return (
         <div className="p-8 max-w-[1100px] mx-auto">
@@ -64,7 +64,7 @@ export default function PrechatPage() {
             <div className="flex justify-between items-center mb-7">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center"><MessageSquare size={22} className="text-primary" /></div>
-                    <div><h1 className="text-[22px] font-semibold text-foreground m-0">Formulario Pre-Chat</h1><p className="text-[13px] text-muted-foreground m-0">Recopila informacion del cliente antes de la primera respuesta del agente</p></div>
+                    <div><h1 className="text-[22px] font-semibold text-foreground m-0">Pre-Chat Form</h1><p className="text-[13px] text-muted-foreground m-0">Collect client information before the agent's first response</p></div>
                 </div>
                 <button onClick={handleSave} disabled={saving} className={cn("flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold", saving && "opacity-60 cursor-not-allowed")}>
                     <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
@@ -76,8 +76,8 @@ export default function PrechatPage() {
                     {/* Active toggle */}
                     <div className="bg-card rounded-[14px] border border-border px-[22px] py-[18px] flex items-center justify-between">
                         <div>
-                            <div className="text-[15px] font-semibold text-foreground">Formulario activo</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">Activa para recopilar datos antes de la conversacion</div>
+                            <div className="text-[15px] font-semibold text-foreground">Form active</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">Enable to collect data before conversation</div>
                         </div>
                         <button onClick={() => setConfig(prev => ({ ...prev, is_active: !prev.is_active }))} className="w-12 h-[26px] rounded-[13px] border-none cursor-pointer relative transition-colors duration-200" style={{ background: config.is_active ? "var(--accent-hex)" : "var(--border)" }}>
                             <div className="w-5 h-5 rounded-full bg-white absolute top-[3px] transition-[left] duration-200" style={{ left: config.is_active ? 25 : 3 }} />
@@ -86,15 +86,15 @@ export default function PrechatPage() {
 
                     {/* Greeting */}
                     <div className="bg-card rounded-[14px] border border-border px-[22px] py-[18px]">
-                        <label className={labelCls}>Mensaje de bienvenida</label>
+                        <label className={labelCls}>Welcome message</label>
                         <textarea value={config.greeting_message} onChange={e => setConfig(prev => ({ ...prev, greeting_message: e.target.value }))} placeholder="Hola! Antes de comenzar..." rows={3} className={cn(inputCls, "resize-y")} />
                     </div>
 
                     {/* Fields builder */}
                     <div className="bg-card rounded-[14px] border border-border px-[22px] py-[18px]">
                         <div className="flex justify-between items-center mb-4">
-                            <label className={cn(labelCls, "mb-0 text-sm")}>Campos del formulario</label>
-                            <span className="text-xs text-muted-foreground">{config.fields.length} campos</span>
+                            <label className={cn(labelCls, "mb-0 text-sm")}>Form fields</label>
+                            <span className="text-xs text-muted-foreground">{config.fields.length} fields</span>
                         </div>
                         <div className="flex flex-col gap-3.5">
                             {config.fields.map((field, idx) => (
@@ -102,30 +102,30 @@ export default function PrechatPage() {
                                     <div className="flex items-center justify-between mb-3">
                                         <div className="flex items-center gap-2">
                                             <GripVertical size={14} className="text-muted-foreground opacity-50" />
-                                            <span className="text-xs text-muted-foreground font-semibold">Campo {idx + 1}</span>
+                                            <span className="text-xs text-muted-foreground font-semibold">Field {idx + 1}</span>
                                             {field.key && <span className="text-[11px] text-primary font-mono bg-primary/[0.08] px-2 py-0.5 rounded">{field.key}</span>}
                                         </div>
                                         <button onClick={() => removeField(idx)} className="w-[26px] h-[26px] rounded-md bg-destructive/10 border border-destructive/20 text-destructive cursor-pointer flex items-center justify-center"><X size={12} /></button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2.5 mb-2.5">
-                                        <div><label className={labelCls}>Etiqueta *</label><input value={field.label} onChange={e => updateField(idx, "label", e.target.value)} placeholder="Ej: Nombre completo" className={inputCls} /></div>
-                                        <div><label className={labelCls}>Tipo</label><select value={field.type} onChange={e => updateField(idx, "type", e.target.value)} className={inputCls}>{FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}</select></div>
+                                        <div><label className={labelCls}>Label *</label><input value={field.label} onChange={e => updateField(idx, "label", e.target.value)} placeholder="e.g.: Full name" className={inputCls} /></div>
+                                        <div><label className={labelCls}>Type</label><select value={field.type} onChange={e => updateField(idx, "type", e.target.value)} className={inputCls}>{FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}</select></div>
                                     </div>
-                                    {field.type === "select" && <div className="mb-2.5"><label className={labelCls}>Opciones (separadas por coma)</label><input value={field.options} onChange={e => updateField(idx, "options", e.target.value)} placeholder="opcion1, opcion2, opcion3" className={inputCls} /></div>}
+                                    {field.type === "select" && <div className="mb-2.5"><label className={labelCls}>Options (comma separated)</label><input value={field.options} onChange={e => updateField(idx, "options", e.target.value)} placeholder="option1, option2, option3" className={inputCls} /></div>}
                                     <div className="grid grid-cols-[1fr_auto] gap-2.5 items-end">
-                                        <div><label className={labelCls}>Mapear a</label><select value={field.map_to.startsWith("metadata") ? "metadata" : field.map_to} onChange={e => updateField(idx, "map_to", e.target.value)} className={inputCls}>{MAP_TO_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
+                                        <div><label className={labelCls}>Map to</label><select value={field.map_to.startsWith("metadata") ? "metadata" : field.map_to} onChange={e => updateField(idx, "map_to", e.target.value)} className={inputCls}>{MAP_TO_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
                                         <div className="flex items-center gap-2 pb-1">
                                             <button onClick={() => updateField(idx, "required", !field.required)} className="w-10 h-[22px] rounded-[11px] border-none cursor-pointer relative transition-colors duration-200" style={{ background: field.required ? "var(--accent-hex)" : "var(--border)" }}>
                                                 <div className="w-4 h-4 rounded-full bg-white absolute top-[3px] transition-[left] duration-200" style={{ left: field.required ? 21 : 3 }} />
                                             </button>
-                                            <span className="text-xs text-muted-foreground whitespace-nowrap">Requerido</span>
+                                            <span className="text-xs text-muted-foreground whitespace-nowrap">Required</span>
                                         </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
                         <button onClick={addField} className="flex items-center gap-1.5 mt-3.5 px-4 py-2.5 rounded-lg bg-transparent border border-dashed border-border text-primary cursor-pointer text-[13px] font-semibold w-full justify-center">
-                            <Plus size={14} /> Agregar campo
+                            <Plus size={14} /> Add field
                         </button>
                     </div>
                 </div>
@@ -135,7 +135,7 @@ export default function PrechatPage() {
                     <div className="bg-card rounded-[14px] border border-border px-[22px] py-[18px]">
                         <div className="flex items-center gap-2 mb-4">
                             <Smartphone size={16} className="text-primary" />
-                            <span className="text-sm font-semibold text-foreground">Vista previa WhatsApp</span>
+                            <span className="text-sm font-semibold text-foreground">WhatsApp Preview</span>
                         </div>
                         <div className="bg-[#0b141a] rounded-xl p-3.5 min-h-[300px]">
                             {config.greeting_message && (
@@ -147,7 +147,7 @@ export default function PrechatPage() {
                             {config.fields.length > 0 ? config.fields.map((field, idx) => (
                                 <div key={idx} className="mb-2">
                                     <div className="bg-[#005c4b] rounded-[10px_10px_10px_0] px-3 py-2 max-w-[85%] mb-1">
-                                        <p className="text-[13px] text-[#e9edef] m-0">{field.label || `Pregunta ${idx + 1}`}{field.required && <span className="text-red-400"> *</span>}</p>
+                                        <p className="text-[13px] text-[#e9edef] m-0">{field.label || `Question ${idx + 1}`}{field.required && <span className="text-red-400"> *</span>}</p>
                                         {field.type === "select" && field.options && (
                                             <div className="mt-1.5">{field.options.split(",").map((opt, oi) => <div key={oi} className="text-xs text-[#e9edef]/70 py-0.5">{oi + 1}. {opt.trim()}</div>)}</div>
                                         )}
@@ -155,16 +155,16 @@ export default function PrechatPage() {
                                     </div>
                                     <div className="bg-[#1d282f] rounded-[10px_10px_0_10px] px-3 py-2 max-w-[70%] ml-auto">
                                         <p className="text-[13px] text-[#e9edef]/40 m-0 italic">
-                                            {field.type === "email" ? "cliente@email.com" : field.type === "phone" ? "+57 300 123 4567" : field.type === "select" ? (field.options.split(",")[0]?.trim() || "...") : "Respuesta del cliente..."}
+                                            {field.type === "email" ? "client@email.com" : field.type === "phone" ? "+57 300 123 4567" : field.type === "select" ? (field.options.split(",")[0]?.trim() || "...") : "Client response..."}
                                         </p>
                                     </div>
                                 </div>
                             )) : (
-                                <div className="text-center py-10 px-5 text-[#e9edef]/30 text-[13px]">Agrega campos para ver la vista previa</div>
+                                <div className="text-center py-10 px-5 text-[#e9edef]/30 text-[13px]">Add fields to see the preview</div>
                             )}
                         </div>
                         {!config.is_active && (
-                            <div className="mt-3 px-3 py-2 rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/20 text-xs text-[var(--warning)] text-center">Formulario desactivado</div>
+                            <div className="mt-3 px-3 py-2 rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/20 text-xs text-[var(--warning)] text-center">Form disabled</div>
                         )}
                     </div>
                 </div>

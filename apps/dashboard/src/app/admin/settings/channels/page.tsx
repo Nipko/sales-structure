@@ -37,29 +37,29 @@ interface FieldConfig {
 const fieldsSchema: Record<string, FieldConfig[]> = {
     whatsapp: [
         { key: "whatsapp.phone_number_id", label: "Phone Number ID", description: "Phone Number ID in Meta Business", type: "text", placeholder: "1234567890" },
-        { key: "whatsapp.access_token", label: "Access Token", description: "Token permanente de Meta", type: "password", placeholder: "EAAG..." },
-        { key: "whatsapp.business_account_id", label: "Business Account ID (WABA)", description: "ID de tu cuenta WhatsApp Business", type: "text", placeholder: "1234567890" },
-        { key: "whatsapp.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks de Meta", type: "password" },
+        { key: "whatsapp.access_token", label: "Access Token", description: "Meta permanent token", type: "password", placeholder: "EAAG..." },
+        { key: "whatsapp.business_account_id", label: "Business Account ID (WABA)", description: "Your WhatsApp Business account ID", type: "text", placeholder: "1234567890" },
+        { key: "whatsapp.verify_token", label: "Webhook Verify Token", description: "Token to verify Meta webhooks", type: "password" },
         { key: "whatsapp.app_secret", label: "App Secret", description: "Meta App Secret (signature verification)", type: "password" },
     ],
     instagram: [
-        { key: "instagram.ig_user_id", label: "Instagram User ID", description: "ID de tu cuenta de Instagram Business", type: "text", placeholder: "1234567890" },
-        { key: "instagram.access_token", label: "Page Access Token", description: "Token de la Facebook Page vinculada", type: "password", placeholder: "EAAG..." },
-        { key: "instagram.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks de Meta", type: "password" },
-        { key: "instagram.app_secret", label: "App Secret", description: "Secret de la Meta App", type: "password" },
-        { key: "instagram.webhook_url", label: "Webhook URL", description: "URL para configurar en Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/instagram" },
+        { key: "instagram.ig_user_id", label: "Instagram User ID", description: "Your Instagram Business account ID", type: "text", placeholder: "1234567890" },
+        { key: "instagram.access_token", label: "Page Access Token", description: "Linked Facebook Page token", type: "password", placeholder: "EAAG..." },
+        { key: "instagram.verify_token", label: "Webhook Verify Token", description: "Token to verify Meta webhooks", type: "password" },
+        { key: "instagram.app_secret", label: "App Secret", description: "Meta App Secret", type: "password" },
+        { key: "instagram.webhook_url", label: "Webhook URL", description: "URL to configure in Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/instagram" },
     ],
     messenger: [
         { key: "messenger.page_id", label: "Facebook Page ID", description: "Your Facebook Page ID", type: "text", placeholder: "1234567890" },
         { key: "messenger.page_access_token", label: "Page Access Token", description: "Permanent page access token", type: "password", placeholder: "EAAG..." },
-        { key: "messenger.verify_token", label: "Webhook Verify Token", description: "Token para verificar webhooks", type: "password" },
-        { key: "messenger.app_secret", label: "App Secret", description: "Secret de la Meta App", type: "password" },
-        { key: "messenger.webhook_url", label: "Webhook URL", description: "URL para configurar en Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/messenger" },
+        { key: "messenger.verify_token", label: "Webhook Verify Token", description: "Token to verify Meta webhooks", type: "password" },
+        { key: "messenger.app_secret", label: "App Secret", description: "Meta App Secret", type: "password" },
+        { key: "messenger.webhook_url", label: "Webhook URL", description: "URL to configure in Meta Developer", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/messenger" },
     ],
     telegram: [
-        { key: "telegram.bot_token", label: "Bot Token", description: "Token del bot (obtenido de @BotFather)", type: "password", placeholder: "1234567890:AAHfiqksKZ8WmR2zMn..." },
-        { key: "telegram.bot_username", label: "Bot Username", description: "Username del bot (sin @)", type: "text", placeholder: "mi_bot" },
-        { key: "telegram.webhook_url", label: "Webhook URL", description: "URL para setWebhook", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/telegram" },
+        { key: "telegram.bot_token", label: "Bot Token", description: "Bot token (from @BotFather)", type: "password", placeholder: "1234567890:AAHfiqksKZ8WmR2zMn..." },
+        { key: "telegram.bot_username", label: "Bot Username", description: "Bot username (without @)", type: "text", placeholder: "my_bot" },
+        { key: "telegram.webhook_url", label: "Webhook URL", description: "Webhook URL", type: "text", placeholder: "https://api.parallly-chat.cloud/api/v1/channels/webhook/telegram" },
     ],
 };
 

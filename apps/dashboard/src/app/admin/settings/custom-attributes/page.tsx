@@ -9,8 +9,8 @@ import { Database, Plus, Pencil, Trash2, X, Check, AlertCircle } from "lucide-re
 
 interface CustomAttribute { id: string; entity_type: string; attribute_key: string; label: string; data_type: string; is_required: boolean; options: string[] | null; }
 
-const ENTITY_TYPES = [{ value: "contact", label: "Contacto" }, { value: "lead", label: "Lead" }, { value: "company", label: "Empresa" }, { value: "conversation", label: "Conversacion" }];
-const DATA_TYPES = [{ value: "text", label: "Texto" }, { value: "number", label: "Numero" }, { value: "date", label: "Date" }, { value: "boolean", label: "Booleano" }, { value: "list", label: "Lista" }, { value: "url", label: "URL" }];
+const ENTITY_TYPES = [{ value: "contact", label: "Contact" }, { value: "lead", label: "Lead" }, { value: "company", label: "Company" }, { value: "conversation", label: "Conversation" }];
+const DATA_TYPES = [{ value: "text", label: "Text" }, { value: "number", label: "Number" }, { value: "date", label: "Date" }, { value: "boolean", label: "Boolean" }, { value: "list", label: "List" }, { value: "url", label: "URL" }];
 
 const inputCls = "w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border";
 const labelCls = "block text-xs font-semibold text-muted-foreground mb-1";
@@ -42,7 +42,7 @@ export default function CustomAttributesPage() {
         const payload: any = { entity_type: form.entity_type, attribute_key: form.attribute_key || toSnakeCase(form.label), label: form.label, data_type: form.data_type, is_required: form.is_required, options: form.data_type === "list" ? form.options.split(",").map(o => o.trim()).filter(Boolean) : null };
         try {
             const res = editingId ? await api.updateCustomAttribute(activeTenantId, editingId, payload) : await api.createCustomAttribute(activeTenantId, payload);
-            if (res.success) { showToast(editingId ? "Atributo actualizado" : "Atributo creado"); setModalOpen(false); loadAttributes(); } else { showToast(res.error || tc("errorSaving")); }
+            if (res.success) { showToast(editingId ? "Attribute updated" : "Attribute created"); setModalOpen(false); loadAttributes(); } else { showToast(res.error || tc("errorSaving")); }
         } catch { showToast(tc("connectionError")); }
     }
 
@@ -56,11 +56,11 @@ export default function CustomAttributesPage() {
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center"><Database size={22} className="text-primary" /></div>
                     <div>
-                        <h1 className="text-[22px] font-semibold text-foreground m-0">Atributos Personalizados</h1>
-                        <p className="text-[13px] text-muted-foreground m-0">Define campos adicionales para tus entidades</p>
+                        <h1 className="text-[22px] font-semibold text-foreground m-0">Custom Attributes</h1>
+                        <p className="text-[13px] text-muted-foreground m-0">Define additional fields for your entities</p>
                     </div>
                 </div>
-                <button onClick={openCreate} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"><Plus size={16} /> Nuevo Atributo</button>
+                <button onClick={openCreate} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"><Plus size={16} /> New Attribute</button>
             </div>
 
             <div className="flex gap-2 mb-6">
@@ -70,18 +70,18 @@ export default function CustomAttributesPage() {
             </div>
 
             <div className="bg-card rounded-[14px] border border-border overflow-hidden">
-                {loading ? <div className="p-10 text-center text-muted-foreground">Cargando...</div>
-                    : attributes.length === 0 ? <div className="p-10 text-center text-muted-foreground"><Database size={32} className="mb-2 opacity-40" /><p>No hay atributos para esta entidad</p></div>
+                {loading ? <div className="p-10 text-center text-muted-foreground">Loading...</div>
+                    : attributes.length === 0 ? <div className="p-10 text-center text-muted-foreground"><Database size={32} className="mb-2 opacity-40" /><p>No attributes for this entity</p></div>
                         : (
                             <table className="w-full border-collapse">
-                                <thead><tr className="border-b border-border">{["Clave", "Etiqueta", "Tipo", "Requerido", "Opciones", "Acciones"].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>)}</tr></thead>
+                                <thead><tr className="border-b border-border">{["Key", "Label", "Type", "Required", "Options", "Actions"].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>)}</tr></thead>
                                 <tbody>
                                     {attributes.map(attr => (
                                         <tr key={attr.id} className="border-b border-border">
                                             <td className="px-4 py-3 text-[13px] text-foreground font-mono">{attr.attribute_key}</td>
                                             <td className="px-4 py-3 text-[13px] text-foreground font-semibold">{attr.label}</td>
                                             <td className="px-4 py-3"><span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-semibold">{DATA_TYPES.find(d => d.value === attr.data_type)?.label || attr.data_type}</span></td>
-                                            <td className="px-4 py-3">{attr.is_required ? <span className="px-2.5 py-0.5 rounded-md bg-[var(--success)]/10 text-[var(--success)] text-xs font-semibold">Si</span> : <span className="text-xs text-muted-foreground">No</span>}</td>
+                                            <td className="px-4 py-3">{attr.is_required ? <span className="px-2.5 py-0.5 rounded-md bg-[var(--success)]/10 text-[var(--success)] text-xs font-semibold">Yes</span> : <span className="text-xs text-muted-foreground">No</span>}</td>
                                             <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">{attr.options && attr.options.length > 0 ? attr.options.join(", ") : "—"}</td>
                                             <td className="px-4 py-3">
                                                 <div className="flex gap-1.5">
@@ -104,21 +104,21 @@ export default function CustomAttributesPage() {
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">
-                            <div><label className={labelCls}>Tipo de entidad</label><select value={form.entity_type} onChange={e => setForm(prev => ({ ...prev, entity_type: e.target.value }))} className={inputCls}>{ENTITY_TYPES.map(et => <option key={et.value} value={et.value}>{et.label}</option>)}</select></div>
-                            <div><label className={labelCls}>Etiqueta *</label><input value={form.label} onChange={e => handleLabelChange(e.target.value)} placeholder="Ej: Fecha de cumpleanos" className={inputCls} /></div>
-                            <div><label className={labelCls}>Clave (auto-generada)</label><input value={form.attribute_key} onChange={e => setForm(prev => ({ ...prev, attribute_key: e.target.value }))} placeholder="fecha_de_cumpleanos" className={cn(inputCls, "font-mono text-muted-foreground")} /></div>
-                            <div><label className={labelCls}>Tipo de dato</label><select value={form.data_type} onChange={e => setForm(prev => ({ ...prev, data_type: e.target.value }))} className={inputCls}>{DATA_TYPES.map(dt => <option key={dt.value} value={dt.value}>{dt.label}</option>)}</select></div>
-                            {form.data_type === "list" && <div><label className={labelCls}>Opciones (separadas por coma)</label><textarea value={form.options} onChange={e => setForm(prev => ({ ...prev, options: e.target.value }))} placeholder="opcion1, opcion2, opcion3" rows={3} className={cn(inputCls, "resize-y")} /></div>}
+                            <div><label className={labelCls}>Entity type</label><select value={form.entity_type} onChange={e => setForm(prev => ({ ...prev, entity_type: e.target.value }))} className={inputCls}>{ENTITY_TYPES.map(et => <option key={et.value} value={et.value}>{et.label}</option>)}</select></div>
+                            <div><label className={labelCls}>Label *</label><input value={form.label} onChange={e => handleLabelChange(e.target.value)} placeholder="e.g.: Birthday" className={inputCls} /></div>
+                            <div><label className={labelCls}>Key (auto-generated)</label><input value={form.attribute_key} onChange={e => setForm(prev => ({ ...prev, attribute_key: e.target.value }))} placeholder="fecha_de_cumpleanos" className={cn(inputCls, "font-mono text-muted-foreground")} /></div>
+                            <div><label className={labelCls}>Data type</label><select value={form.data_type} onChange={e => setForm(prev => ({ ...prev, data_type: e.target.value }))} className={inputCls}>{DATA_TYPES.map(dt => <option key={dt.value} value={dt.value}>{dt.label}</option>)}</select></div>
+                            {form.data_type === "list" && <div><label className={labelCls}>Options (comma separated)</label><textarea value={form.options} onChange={e => setForm(prev => ({ ...prev, options: e.target.value }))} placeholder="option1, option2, option3" rows={3} className={cn(inputCls, "resize-y")} /></div>}
                             <div className="flex items-center gap-3">
                                 <button onClick={() => setForm(prev => ({ ...prev, is_required: !prev.is_required }))} className="w-11 h-6 rounded-xl border-none cursor-pointer relative transition-colors duration-200" style={{ background: form.is_required ? "var(--accent-hex)" : "var(--border)" }}>
                                     <div className="w-[18px] h-[18px] rounded-full bg-white absolute top-[3px] transition-[left] duration-200" style={{ left: form.is_required ? 23 : 3 }} />
                                 </button>
-                                <span className="text-[13px] text-foreground">Campo requerido</span>
+                                <span className="text-[13px] text-foreground">Required field</span>
                             </div>
                         </div>
                         <div className="flex justify-end gap-2.5 mt-6">
-                            <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-lg bg-transparent border border-border text-muted-foreground cursor-pointer text-sm">Cancelar</button>
-                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? tc("saveChanges") : "Crear"}</span></button>
+                            <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-lg bg-transparent border border-border text-muted-foreground cursor-pointer text-sm">Cancel</button>
+                            <button onClick={handleSave} className="px-5 py-2.5 rounded-lg bg-primary border-none text-white cursor-pointer text-sm font-semibold"><span className="flex items-center gap-1.5"><Check size={16} /> {editingId ? tc("saveChanges") : "Create"}</span></button>
                         </div>
                     </div>
                 </div>

@@ -15,7 +15,7 @@ type Tab = "library" | "search";
 
 const iconMap: Record<string, any> = { manual: FileText, pdf: File, url: Globe };
 const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ecc71", archived: "#95a5a6" };
-const statusLabels: Record<string, string> = { draft: "Borrador", approved: "Aprobado", archived: "Archivado" };
+const statusLabels: Record<string, string> = { draft: "Draft", approved: "Approved", archived: "Archived" };
 
 export default function KnowledgePage() {
     const t = useTranslations('knowledge');
@@ -76,10 +76,10 @@ export default function KnowledgePage() {
 
             <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-[300px]">
                 <button onClick={() => setTab("library")} className={cn("flex-1 px-3 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <BookOpen size={16} /> Biblioteca
+                    <BookOpen size={16} /> Library
                 </button>
                 <button onClick={() => setTab("search")} className={cn("flex-1 px-3 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "search" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <Search size={16} /> Buscar en Contexto
+                    <Search size={16} /> Search in Context
                 </button>
             </div>
 
@@ -110,14 +110,14 @@ export default function KnowledgePage() {
                                     </span>
                                     {r.status === "draft" && (
                                         <button onClick={() => handleApprove(r.id)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border-none bg-emerald-500 text-white font-semibold text-xs cursor-pointer">
-                                            <CheckCircle size={14} /> Aprobar
+                                            <CheckCircle size={14} /> Approve
                                         </button>
                                     )}
                                 </div>
                             </div>
                         );
                     })}
-                    {resources.length === 0 && <div className="text-center py-10 text-muted-foreground">No hay recursos en la base de conocimiento.</div>}
+                    {resources.length === 0 && <div className="text-center py-10 text-muted-foreground">No resources in the knowledge base.</div>}
                 </div>
             )}
 
@@ -126,9 +126,9 @@ export default function KnowledgePage() {
                     <div className="flex gap-2.5 mb-5">
                         <div className="flex-1 relative">
                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="Busca conocimiento tal como lo haria Carla AI (ej. 'medios de pago')..." className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border" />
+                            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="Search knowledge as the AI would..." className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border" />
                         </div>
-                        <button onClick={handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">Buscar</button>
+                        <button onClick={handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">Search</button>
                     </div>
                     <div className="flex flex-col gap-2.5">
                         {searchResults.map(s => (
@@ -140,7 +140,7 @@ export default function KnowledgePage() {
                                 <p className="text-sm text-foreground m-0 leading-relaxed">"{s.content}"</p>
                             </div>
                         ))}
-                        {searchResults.length === 0 && searchQuery && <div className="text-center py-10 text-muted-foreground">No se encontraron coincidencias.</div>}
+                        {searchResults.length === 0 && searchQuery && <div className="text-center py-10 text-muted-foreground">No matches found.</div>}
                     </div>
                 </div>
             )}
@@ -149,19 +149,19 @@ export default function KnowledgePage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">Nuevo Recurso de Conocimiento</h2>
+                            <h2 className="text-xl font-semibold m-0">New Knowledge Resource</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Titulo del Recurso</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Resource Title</label>
                             <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="FAQ Curso React Native..." className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Contenido Texto</label>
-                            <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={10} placeholder="Pega el contenido del documento o la respuesta a la FAQ aqui. Se dividira automaticamente en chunks..." className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Text Content</label>
+                            <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={10} placeholder="Paste document content..." className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
                         </div>
                         <div className="flex gap-2.5 mt-6">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">Cancelar</button>
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">Cancel</button>
                             <button onClick={handleCreate} disabled={saving || !form.title || !form.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>

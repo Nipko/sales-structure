@@ -57,7 +57,7 @@ export default function IdentityPage() {
         setActionLoading(id); setMessage({ type: "", text: "" });
         try {
             await api.fetch(`/identity/${activeTenantId}/suggestions/${id}/${action}`, { method: "POST" });
-            setMessage({ type: "success", text: action === "approve" ? "Contactos fusionados correctamente." : "Sugerencia rechazada." });
+            setMessage({ type: "success", text: action === "approve" ? "Contacts merged successfully." : "Suggestion rejected." });
             await loadSuggestions();
         } catch (err: any) { setMessage({ type: "error", text: err.message || tc("errorSaving") }); }
         finally { setActionLoading(null); }
@@ -67,7 +67,7 @@ export default function IdentityPage() {
     const approved = suggestions.filter(s => s.status === "approved");
     const rejected = suggestions.filter(s => s.status === "rejected");
 
-    if (loading) return <div className="p-8 text-center text-muted-foreground">Cargando sugerencias de identidad...</div>;
+    if (loading) return <div className="p-8 text-center text-muted-foreground">Loading identity suggestions...</div>;
 
     return (
         <div className="max-w-[1060px] mx-auto">
@@ -81,9 +81,9 @@ export default function IdentityPage() {
 
             <div className="grid grid-cols-3 gap-5 mb-8">
                 {[
-                    { label: "Pendientes", count: pending.length, color: "var(--warning, #ffaa00)", Icon: Clock },
-                    { label: "Aprobadas", count: approved.length, color: "var(--success, #00d68f)", Icon: CheckCircle },
-                    { label: "Rechazadas", count: rejected.length, color: "var(--danger, #ff4757)", Icon: XCircle },
+                    { label: "Pending", count: pending.length, color: "var(--warning, #ffaa00)", Icon: Clock },
+                    { label: "Approved", count: approved.length, color: "var(--success, #00d68f)", Icon: CheckCircle },
+                    { label: "Rejected", count: rejected.length, color: "var(--danger, #ff4757)", Icon: XCircle },
                 ].map(stat => (
                     <div key={stat.label} className="bg-card border border-border rounded-xl overflow-hidden p-6 flex items-center gap-4">
                         <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
@@ -100,15 +100,15 @@ export default function IdentityPage() {
             <div className="bg-card border border-border rounded-xl overflow-hidden">
                 <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                     <Users size={18} className="text-primary" />
-                    <h2 className="text-base font-semibold m-0 text-foreground">Sugerencias Pendientes</h2>
-                    <span className="text-xs text-muted-foreground ml-auto">{pending.length} sugerencia{pending.length !== 1 ? "s" : ""}</span>
+                    <h2 className="text-base font-semibold m-0 text-foreground">Pending Suggestions</h2>
+                    <span className="text-xs text-muted-foreground ml-auto">{pending.length} suggestion{pending.length !== 1 ? "s" : ""}</span>
                 </div>
 
                 {pending.length === 0 ? (
                     <div className="py-[60px] text-center text-muted-foreground">
                         <Users size={40} className="opacity-30 mb-4" />
-                        <p className="text-[15px] font-medium m-0 mb-1">No hay sugerencias pendientes</p>
-                        <p className="text-[13px] m-0">Cuando el sistema detecte contactos duplicados entre canales, apareceran aqui.</p>
+                        <p className="text-[15px] font-medium m-0 mb-1">No pending suggestions</p>
+                        <p className="text-[13px] m-0">When the system detects duplicate contacts across channels, they will appear here.</p>
                     </div>
                 ) : (
                     <div>
@@ -118,7 +118,7 @@ export default function IdentityPage() {
                             return (
                                 <div key={s.id} className="px-6 py-5 border-b border-border flex items-center gap-4">
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold m-0 mb-1.5 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{s.contact_a?.name || s.contact_a_name || "Contacto A"}</p>
+                                        <p className="text-sm font-semibold m-0 mb-1.5 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{s.contact_a?.name || s.contact_a_name || "Contact A"}</p>
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <ChannelBadge channel={s.contact_a?.channel || s.contact_a_channel || "whatsapp"} />
                                             <span className="text-[11px] text-muted-foreground font-mono">{s.contact_a?.external_id || s.contact_a_external_id || "—"}</span>
@@ -132,7 +132,7 @@ export default function IdentityPage() {
                                         </div>
                                     </div>
                                     <div className="flex-1 min-w-0 text-right">
-                                        <p className="text-sm font-semibold m-0 mb-1.5 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{s.contact_b?.name || s.contact_b_name || "Contacto B"}</p>
+                                        <p className="text-sm font-semibold m-0 mb-1.5 text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{s.contact_b?.name || s.contact_b_name || "Contact B"}</p>
                                         <div className="flex items-center gap-2 justify-end flex-wrap">
                                             <span className="text-[11px] text-muted-foreground font-mono">{s.contact_b?.external_id || s.contact_b_external_id || "—"}</span>
                                             <ChannelBadge channel={s.contact_b?.channel || s.contact_b_channel || "whatsapp"} />
@@ -140,10 +140,10 @@ export default function IdentityPage() {
                                     </div>
                                     <div className="flex gap-2 shrink-0 ml-2">
                                         <button onClick={() => handleAction(s.id, "approve")} disabled={isActioning} className={cn("px-4 py-2 rounded-lg border-none bg-[var(--success)]/15 text-[var(--success)] text-xs font-semibold cursor-pointer flex items-center gap-1", isActioning && "opacity-60")}>
-                                            {isActioning ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Aprobar
+                                            {isActioning ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Approve
                                         </button>
                                         <button onClick={() => handleAction(s.id, "reject")} disabled={isActioning} className={cn("px-4 py-2 rounded-lg border-none bg-destructive/15 text-destructive text-xs font-semibold cursor-pointer flex items-center gap-1", isActioning && "opacity-60")}>
-                                            {isActioning ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />} Rechazar
+                                            {isActioning ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />} Reject
                                         </button>
                                     </div>
                                 </div>

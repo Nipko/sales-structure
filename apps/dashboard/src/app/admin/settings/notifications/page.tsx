@@ -25,11 +25,11 @@ interface NotificationCategory {
 const defaultCategories: NotificationCategory[] = [
     { id: "chat", label: "New messages", description: "When a client sends a new message", icon: MessageSquare, iconColor: "text-green-500", enabled: true },
     { id: "handoff", label: "Transfers", description: "When a conversation is escalated to an agent", icon: UserCheck, iconColor: "text-blue-500", enabled: true },
-    { id: "compliance", label: "Compliance", description: "Solicitudes de opt-out y consentimiento", icon: Shield, iconColor: "text-amber-500", enabled: true },
-    { id: "appointments", label: "Citas", description: "Nuevas citas, cancelaciones y recordatorios", icon: CalendarDays, iconColor: "text-purple-500", enabled: true },
+    { id: "compliance", label: "Compliance", description: "Opt-out and consent requests", icon: Shield, iconColor: "text-amber-500", enabled: true },
+    { id: "appointments", label: "Appointments", description: "New appointments, cancellations and reminders", icon: CalendarDays, iconColor: "text-purple-500", enabled: true },
     { id: "automation", label: "Automation", description: "Rules executed, flow errors", icon: Workflow, iconColor: "text-indigo-500", enabled: false },
-    { id: "orders", label: "Pedidos", description: "Nuevos pedidos y cambios de estado", icon: ShoppingCart, iconColor: "text-emerald-500", enabled: false },
-    { id: "system", label: "Sistema", description: "Actualizaciones, mantenimiento y alertas", icon: Settings, iconColor: "text-neutral-500", enabled: true },
+    { id: "orders", label: "Orders", description: "New orders and status changes", icon: ShoppingCart, iconColor: "text-emerald-500", enabled: false },
+    { id: "system", label: "System", description: "Updates, maintenance and alerts", icon: Settings, iconColor: "text-neutral-500", enabled: true },
 ];
 
 export default function NotificationsPage() {
@@ -46,7 +46,7 @@ export default function NotificationsPage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Notificaciones</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Notifications</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     Configure which notifications you receive
                 </p>
@@ -54,30 +54,30 @@ export default function NotificationsPage() {
 
             {/* General preferences */}
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900 space-y-5">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">Preferencias generales</h2>
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">General preferences</h2>
 
                 {/* Email digest */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Resumen por email
+                        Email digest
                     </label>
                     <select
                         value={emailDigest}
                         onChange={(e) => setEmailDigest(e.target.value)}
                         className="h-10 w-full max-w-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 cursor-pointer"
                     >
-                        <option value="realtime">Tiempo real</option>
-                        <option value="hourly">Cada hora</option>
-                        <option value="daily">Resumen diario (9:00 AM)</option>
-                        <option value="off">Desactivado</option>
+                        <option value="realtime">Real-time</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily digest (9:00 AM)</option>
+                        <option value="off">Disabled</option>
                     </select>
                 </div>
 
                 {/* Sound */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Sonido de notificación</div>
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400">Reproducir sonido al recibir notificaciones</div>
+                        <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Notification sound</div>
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400">Play sound when receiving notifications</div>
                     </div>
                     <button
                         onClick={() => setSoundEnabled(!soundEnabled)}

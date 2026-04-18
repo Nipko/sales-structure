@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 
 const stageLabels: Record<string, string> = {
-    nuevo: "Nuevo", contactado: "Contactado", calificado: "Calificado",
-    caliente: "Caliente", listo_cierre: "Listo p/ Cierre", ganado: "Ganado", perdido: "Perdido"
+    nuevo: "New", contactado: "Contacted", calificado: "Qualified",
+    caliente: "Hot", listo_cierre: "Ready to close", ganado: "Won", perdido: "Lost"
 };
 const stageColors: Record<string, string> = {
     nuevo: "#3498db", contactado: "#2ecc71", calificado: "#f39c12",
@@ -68,8 +68,8 @@ export default function AnalyticsV4Page() {
                     { icon: Users, color: "#3498db", label: "Total Leads", value: totalLeads },
                     { icon: Target, color: "#2ecc71", label: "Ganados", value: wonLeads },
                     { icon: TrendingUp, color: "#f39c12", label: "Conversion", value: `${globalConversion}%` },
-                    { icon: Zap, color: "#e74c3c", label: "Perdidos", value: lostLeads },
-                    { icon: Megaphone, color: "#9b59b6", label: "Campanas", value: campaigns.length },
+                    { icon: Zap, color: "#e74c3c", label: "Lost", value: lostLeads },
+                    { icon: Megaphone, color: "#9b59b6", label: "Campaigns", value: campaigns.length },
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
@@ -125,7 +125,7 @@ export default function AnalyticsV4Page() {
                     <table className="w-full border-collapse text-[13px]">
                         <thead>
                             <tr className="border-b border-border">
-                                {["Campana", "Status", "Canal", "Leads", "Calificados", "Calientes", "Convertidos", "Score Prom.", "Conversion"].map(h => (
+                                {["Campaign", "Status", "Channel", "Leads", "Qualified", "Hot", "Converted", "Avg Score", "Conversion"].map(h => (
                                     <th key={h} className="px-2.5 py-2 text-left font-semibold text-muted-foreground text-[11px] uppercase">{h}</th>
                                 ))}
                             </tr>

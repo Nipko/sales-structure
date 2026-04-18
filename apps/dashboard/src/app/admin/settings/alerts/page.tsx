@@ -11,20 +11,20 @@ import {
 } from "lucide-react";
 
 const METRICS = [
-    { value: "active_conversations", label: "Conversaciones activas" },
-    { value: "queue_depth", label: "Cola de espera" },
-    { value: "agents_online", label: "Agentes online" },
-    { value: "messages_today", label: "Mensajes hoy" },
-    { value: "handoffs_today", label: "Escalaciones hoy" },
-    { value: "llm_cost_today", label: "Costo LLM hoy" },
+    { value: "active_conversations", label: "Active conversations" },
+    { value: "queue_depth", label: "Queue depth" },
+    { value: "agents_online", label: "Agents online" },
+    { value: "messages_today", label: "Messages today" },
+    { value: "handoffs_today", label: "Escalations today" },
+    { value: "llm_cost_today", label: "LLM cost today" },
 ];
 
 const OPERATORS = [
-    { value: ">", label: "Mayor que (>)" },
-    { value: ">=", label: "Mayor o igual (>=)" },
-    { value: "<", label: "Menor que (<)" },
-    { value: "<=", label: "Menor o igual (<=)" },
-    { value: "=", label: "Igual a (=)" },
+    { value: ">", label: "Greater than (>)" },
+    { value: ">=", label: "Greater or equal (>=)" },
+    { value: "<", label: "Less than (<)" },
+    { value: "<=", label: "Less or equal (<=)" },
+    { value: "=", label: "Equals (=)" },
 ];
 
 export default function AlertsSettingsPage() {
@@ -112,7 +112,7 @@ export default function AlertsSettingsPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
-                <Loader2 size={20} className="animate-spin" /> Cargando...
+                <Loader2 size={20} className="animate-spin" /> Loading...
             </div>
         );
     }
@@ -126,13 +126,13 @@ export default function AlertsSettingsPage() {
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                         <Bell size={20} className="text-amber-400" />
-                        <h2 className="text-lg font-semibold text-foreground">Alertas</h2>
+                        <h2 className="text-lg font-semibold text-foreground">Alerts</h2>
                     </div>
                     <button
                         onClick={() => setShowForm(!showForm)}
                         className="px-3 py-1.5 rounded-lg text-[13px] font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors inline-flex items-center gap-1.5"
                     >
-                        <Plus size={14} /> Nueva alerta
+                        <Plus size={14} /> New alert
                     </button>
                 </div>
 
@@ -144,7 +144,7 @@ export default function AlertsSettingsPage() {
                 {showForm && (
                     <div className="p-5 mb-4 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-3">
                         <input
-                            type="text" placeholder="Nombre de la alerta"
+                            type="text" placeholder="Alert name"
                             value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                             className={inputCls}
                         />
@@ -156,13 +156,13 @@ export default function AlertsSettingsPage() {
                                 {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                             <input
-                                type="number" placeholder="Umbral"
+                                type="number" placeholder="Threshold"
                                 value={form.threshold} onChange={e => setForm({ ...form, threshold: Number(e.target.value) })}
                                 className={inputCls}
                             />
                         </div>
                         <input
-                            type="text" placeholder="Emails (separados por coma)"
+                            type="text" placeholder="Emails (comma separated)"
                             value={form.notifyEmails} onChange={e => setForm({ ...form, notifyEmails: e.target.value })}
                             className={inputCls}
                         />
@@ -181,7 +181,7 @@ export default function AlertsSettingsPage() {
                                 onClick={handleCreateAlert} disabled={saving || !form.name}
                                 className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                             >
-                                <Save size={14} /> Crear
+                                <Save size={14} /> Create
                             </button>
                         </div>
                     </div>
@@ -190,7 +190,7 @@ export default function AlertsSettingsPage() {
                 {/* Rules list */}
                 <div className="space-y-2">
                     {rules.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-6 text-center">No hay alertas configuradas.</p>
+                        <p className="text-sm text-muted-foreground py-6 text-center">No alerts configured.</p>
                     ) : (
                         rules.map((rule: any) => (
                             <div key={rule.id} className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
@@ -210,7 +210,7 @@ export default function AlertsSettingsPage() {
                                             : "border-neutral-300 dark:border-white/10 text-muted-foreground"
                                     }`}
                                 >
-                                    {rule.is_active ? "Activa" : "Inactiva"}
+                                    {rule.is_active ? "Active" : "Inactive"}
                                 </button>
                                 <button
                                     onClick={() => handleDeleteRule(rule.id)}
@@ -228,7 +228,7 @@ export default function AlertsSettingsPage() {
             <div>
                 <div className="flex items-center gap-2 mb-4">
                     <Calendar size={20} className="text-blue-400" />
-                    <h2 className="text-lg font-semibold text-foreground">Informes Programados</h2>
+                    <h2 className="text-lg font-semibold text-foreground">Scheduled Reports</h2>
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
@@ -237,22 +237,22 @@ export default function AlertsSettingsPage() {
 
                 <div className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-4">
                     <div className="flex items-center gap-3">
-                        <label className="text-sm text-muted-foreground w-24 shrink-0">Frecuencia</label>
+                        <label className="text-sm text-muted-foreground w-24 shrink-0">Frequency</label>
                         <select
                             value={reportForm.frequency}
                             onChange={e => setReportForm({ ...reportForm, frequency: e.target.value })}
                             className={inputCls}
                         >
-                            <option value="weekly">Semanal (lunes 8 AM)</option>
+                            <option value="weekly">Weekly (Monday 8 AM)</option>
                             <option value="monthly">Monthly (1st, 8 AM)</option>
                         </select>
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <label className="text-sm text-muted-foreground w-24 shrink-0">Destinatarios</label>
+                        <label className="text-sm text-muted-foreground w-24 shrink-0">Recipients</label>
                         <input
                             type="text"
-                            placeholder="email1@empresa.com, email2@empresa.com"
+                            placeholder="email1@company.com, email2@company.com"
                             value={reportForm.recipients}
                             onChange={e => setReportForm({ ...reportForm, recipients: e.target.value })}
                             className={inputCls}
@@ -260,7 +260,7 @@ export default function AlertsSettingsPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <label className="text-sm text-muted-foreground w-24 shrink-0">Activo</label>
+                        <label className="text-sm text-muted-foreground w-24 shrink-0">Active</label>
                         <label className="flex items-center gap-2 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -269,7 +269,7 @@ export default function AlertsSettingsPage() {
                                 className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30"
                             />
                             <span className="text-sm text-foreground">
-                                {reportForm.isActive ? "Habilitado" : "Deshabilitado"}
+                                {reportForm.isActive ? "Enabled" : "Disabled"}
                             </span>
                         </label>
                     </div>

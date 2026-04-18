@@ -17,14 +17,14 @@ interface OrdersOverview { totalRevenue: number; pendingRevenue: number; orderCo
 interface Contact { id: string; name: string; phone: string; }
 interface Product { id: string; name: string; price: number; stock: number; unit: string; }
 
-const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
-const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
+const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
+const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
 
 const statusConfig = {
     pending: { label: "Pending", color: "#ffa502", bg: "rgba(255,165,2,0.12)", icon: Clock },
-    confirmed: { label: "Confirmada", color: "#1f93ff", bg: "rgba(31,147,255,0.12)", icon: Package },
-    paid: { label: "Pagada", color: "#2ecc71", bg: "rgba(46,204,113,0.12)", icon: CheckCircle },
-    cancelled: { label: "Cancelada", color: "#ff4757", bg: "rgba(255,71,87,0.12)", icon: XCircle },
+    confirmed: { label: "Confirmed", color: "#1f93ff", bg: "rgba(31,147,255,0.12)", icon: Package },
+    paid: { label: "Paid", color: "#2ecc71", bg: "rgba(46,204,113,0.12)", icon: CheckCircle },
+    cancelled: { label: "Cancelled", color: "#ff4757", bg: "rgba(255,71,87,0.12)", icon: XCircle },
 };
 
 export default function OrdersPage() {
@@ -100,10 +100,10 @@ export default function OrdersPage() {
 
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { label: "Ingresos Totales (Pagado)", value: formatCurrency(data.totalRevenue), icon: DollarSign, color: "#2ecc71", sub: `${data.orders.filter(o => o.status === "paid").length} ordenes completadas` },
-                    { label: "Cuentas por Cobrar", value: formatCurrency(data.pendingRevenue), icon: Clock, color: "#ffa502", sub: `${data.pendingCount} ordenes pendientes` },
-                    { label: "Total Ordenes", value: data.orderCount, icon: ShoppingCart, color: "#6c5ce7", sub: "Historico general" },
-                    { label: "Ticket Promedio", value: formatCurrency(data.orderCount ? (data.totalRevenue + data.pendingRevenue) / data.orderCount : 0), icon: CreditCard, color: "#00b4d8", sub: "Por transaccion" },
+                    { label: "Total Revenue (Paid)", value: formatCurrency(data.totalRevenue), icon: DollarSign, color: "#2ecc71", sub: `${data.orders.filter(o => o.status === "paid").length} completed orders` },
+                    { label: "Accounts Receivable", value: formatCurrency(data.pendingRevenue), icon: Clock, color: "#ffa502", sub: `${data.pendingCount} pending orders` },
+                    { label: "Total Orders", value: data.orderCount, icon: ShoppingCart, color: "#6c5ce7", sub: "Overall history" },
+                    { label: "Average Ticket", value: formatCurrency(data.orderCount ? (data.totalRevenue + data.pendingRevenue) / data.orderCount : 0), icon: CreditCard, color: "#00b4d8", sub: "Per transaction" },
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
@@ -123,7 +123,7 @@ export default function OrdersPage() {
 
             <div className="flex gap-4 mb-5 justify-between">
                 <div className="flex gap-2 flex-wrap">
-                    <button onClick={() => setStatusFilter(null)} className={cn("px-4 py-2 rounded-[10px] font-semibold text-[13px] cursor-pointer", statusFilter === null ? "border border-primary bg-primary/10 text-primary" : "border border-border bg-transparent text-muted-foreground")}>Todas ({data.orderCount})</button>
+                    <button onClick={() => setStatusFilter(null)} className={cn("px-4 py-2 rounded-[10px] font-semibold text-[13px] cursor-pointer", statusFilter === null ? "border border-primary bg-primary/10 text-primary" : "border border-border bg-transparent text-muted-foreground")}>All ({data.orderCount})</button>
                     {Object.entries(statusConfig).map(([key, config]) => (
                         <button key={key} onClick={() => setStatusFilter(key)} className="px-4 py-2 rounded-[10px] font-medium text-[13px] cursor-pointer flex items-center gap-1.5" style={{ border: statusFilter === key ? `1px solid ${config.color}` : "1px solid var(--border)", background: statusFilter === key ? config.bg : "transparent", color: statusFilter === key ? config.color : undefined }}>
                             <config.icon size={14} /> {config.label} ({data.orders.filter(o => o.status === key).length})
@@ -140,7 +140,7 @@ export default function OrdersPage() {
                 <table className="w-full border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-border">
-                            {["Detalle de Orden", "Cliente", "Date", "Monto", "Status", "Accion rapida"].map(h => (
+                            {["Order Detail", "Client", "Date", "Amount", "Status", "Quick action"].map(h => (
                                 <th key={h} className="px-5 py-3.5 text-left font-semibold text-muted-foreground text-xs uppercase">{h}</th>
                             ))}
                         </tr>
@@ -175,20 +175,20 @@ export default function OrdersPage() {
                                     <td className="px-5 py-4">
                                         <div className="flex gap-2 items-center">
                                             <select value={order.status} onChange={(e) => handleUpdateStatus(order.id, e.target.value)} className="px-3 py-1.5 rounded-lg border border-border bg-muted text-foreground text-[13px] cursor-pointer outline-none">
-                                                <option value="pending">Pendiente</option>
-                                                <option value="confirmed">Confirmada</option>
-                                                <option value="paid">Pagada</option>
-                                                <option value="cancelled">Cancelada</option>
+                                                <option value="pending">Pending</option>
+                                                <option value="confirmed">Confirmed</option>
+                                                <option value="paid">Paid</option>
+                                                <option value="cancelled">Cancelled</option>
                                             </select>
                                             <button onClick={() => handleOpenInvoice(order.id)} className="px-3 py-1.5 rounded-lg border border-primary bg-primary/10 text-primary text-[13px] font-semibold cursor-pointer flex items-center gap-1.5">
-                                                <FileText size={14} /> Ver Recibo
+                                                <FileText size={14} /> View Receipt
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                             );
                         })}
-                        {filteredOrders.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-muted-foreground">No se encontraron ordenes</td></tr>}
+                        {filteredOrders.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-muted-foreground">No orders found</td></tr>}
                     </tbody>
                 </table>
             </div>
@@ -224,55 +224,55 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
     };
 
     const total = selectedItems.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0);
-    const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
+    const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
 
     return (
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[560px] max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-semibold m-0">Nueva Orden</h2>
+                    <h2 className="text-xl font-semibold m-0">New Order</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="grid grid-cols-2 gap-4 mb-5">
                     <div>
-                        <label className="text-[13px] font-semibold block mb-1">Cliente</label>
+                        <label className="text-[13px] font-semibold block mb-1">Client</label>
                         <select value={contactId} onChange={e => setContactId(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
-                            <option value="">Consumidor final</option>
+                            <option value="">End consumer</option>
                             {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ""}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="text-[13px] font-semibold block mb-1">Estado</label>
+                        <label className="text-[13px] font-semibold block mb-1">Status</label>
                         <select value={status} onChange={e => setStatus(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
-                            <option value="pending">Pendiente de pago</option>
-                            <option value="confirmed">Confirmada</option>
-                            <option value="paid">Pagada / Completada</option>
+                            <option value="pending">Pending payment</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="paid">Paid / Completed</option>
                         </select>
                     </div>
                     <div className="col-span-2">
-                        <label className="text-[13px] font-semibold block mb-1">Metodo de pago</label>
+                        <label className="text-[13px] font-semibold block mb-1">Payment method</label>
                         <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
-                            <option value="cash">Efectivo / Contraentrega</option>
-                            <option value="transfer">Transferencia / Nequi</option>
-                            <option value="credit_card">Tarjeta de Credito</option>
-                            <option value="link">Link de Pago</option>
+                            <option value="cash">Cash / COD</option>
+                            <option value="transfer">Bank transfer</option>
+                            <option value="credit_card">Credit Card</option>
+                            <option value="link">Payment Link</option>
                         </select>
                     </div>
                 </div>
                 <div className="mb-5">
-                    <label className="text-[13px] font-semibold block mb-1">Agregar Productos del Inventario</label>
+                    <label className="text-[13px] font-semibold block mb-1">Add Products from Inventory</label>
                     <select onChange={handleAddItem} value="" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
-                        <option value="" disabled>Selecciona un producto...</option>
+                        <option value="" disabled>Select a product...</option>
                         {products.filter(p => p.stock > 0).map(p => <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price)} (Stock: {p.stock} {p.unit})</option>)}
                     </select>
                 </div>
                 {selectedItems.length > 0 && (
                     <div className="mb-5">
-                        <div className="text-[13px] font-semibold mb-2">Items agregados:</div>
+                        <div className="text-[13px] font-semibold mb-2">Added items:</div>
                         <div className="flex flex-col gap-2">
                             {selectedItems.map(item => (
                                 <div key={item.productId} className="flex items-center gap-3 bg-muted px-3.5 py-2.5 rounded-[10px] border border-border">
-                                    <div className="flex-1"><div className="font-semibold text-sm">{item.productName}</div><div className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</div></div>
+                                    <div className="flex-1"><div className="font-semibold text-sm">{item.productName}</div><div className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} ea.</div></div>
                                     <input type="number" value={item.quantity} min={1} max={item.maxStock} onChange={e => updateQuantity(item.productId, e.target.value)} className="w-[60px] px-2 py-1.5 rounded-lg border border-border bg-card text-foreground text-center" />
                                     <div className="font-semibold w-[90px] text-right text-primary">{formatCurrency(item.quantity * item.unitPrice)}</div>
                                     <button onClick={() => removeItem(item.productId)} className="bg-transparent border-none cursor-pointer text-destructive p-1"><X size={16} /></button>
@@ -282,15 +282,15 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
                     </div>
                 )}
                 <div className="mb-5">
-                    <label className="text-[13px] font-semibold block mb-1">Notas adicionales</label>
-                    <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Requisitos especiales, observaciones..." className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border resize-none" />
+                    <label className="text-[13px] font-semibold block mb-1">Additional notes</label>
+                    <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Special requirements, notes..." className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border resize-none" />
                 </div>
                 <div className="flex items-center justify-between px-5 py-4 bg-primary/10 rounded-xl mb-5">
-                    <span className="font-semibold text-muted-foreground">Total de la Orden:</span>
+                    <span className="font-semibold text-muted-foreground">Order Total:</span>
                     <span className="text-2xl font-semibold text-primary">{formatCurrency(total)}</span>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || selectedItems.length === 0} className={cn("w-full py-3.5 rounded-xl border-none bg-primary text-white font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2", (saving || selectedItems.length === 0) && "opacity-50")}>
-                    {saving ? tc("saving") : <><Check size={18} /> Crear Orden</>}
+                    {saving ? tc("saving") : <><Check size={18} /> Create Order</>}
                 </button>
             </div>
         </div>

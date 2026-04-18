@@ -34,7 +34,7 @@ export function useApiData<T>(
                     setData(fallback);
                     setIsLive(false);
                 } else {
-                    setError(result.error || "Error al cargar datos");
+                    setError(result.error || "Error loading data");
                 }
             }
         } catch {

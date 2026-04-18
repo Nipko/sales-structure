@@ -148,7 +148,7 @@ export default function OnboardingPage() {
         try {
             const result = await api.completeOnboarding(data);
             if (!result.success) {
-                setError(result.error || "Error al completar el registro");
+                setError(result.error || "Error completing registration");
                 setIsSubmitting(false);
                 return;
             }
@@ -235,7 +235,7 @@ export default function OnboardingPage() {
                                         type="text"
                                         value={companyName}
                                         onChange={(e) => setCompanyName(e.target.value)}
-                                        placeholder="Mi Empresa SAS"
+                                        placeholder="My Company LLC"
                                         className={inputWithIconClasses}
                                     />
                                 </div>
@@ -507,7 +507,7 @@ export default function OnboardingPage() {
                                 onClick={() => setStep(step - 1)}
                                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-transparent text-sm font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                             >
-                                <ChevronLeft size={16} /> Anterior
+                                <ChevronLeft size={16} /> Back
                             </button>
                         ) : (
                             <div />
@@ -527,13 +527,13 @@ export default function OnboardingPage() {
                             {isSubmitting ? (
                                 <>
                                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    Creando...
+                                    Creating...
                                 </>
                             ) : step === 3 ? (
-                                "Crear mi cuenta"
+                                "Create my account"
                             ) : (
                                 <>
-                                    Siguiente <ChevronRight size={16} />
+                                    Next <ChevronRight size={16} />
                                 </>
                             )}
                         </button>

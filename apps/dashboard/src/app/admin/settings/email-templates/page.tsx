@@ -60,20 +60,20 @@ const AVAILABLE_VARIABLES = [
 ];
 
 const SAMPLE_DATA: Record<string, string> = {
-  customer_name: "Maria Garcia",
-  customer_email: "maria@ejemplo.com",
+  customer_name: "Jane Smith",
+  customer_email: "jane@example.com",
   company_name: "Parallly",
   company_logo: "https://placehold.co/120x40/6c5ce7/ffffff?text=Logo",
   service_name: "Plan Pro",
-  appointment_date: "15 de abril, 2026",
+  appointment_date: "April 15, 2026",
   appointment_time: "10:30 AM",
-  location: "Av. Reforma 123, CDMX",
-  agent_name: "Carlos Lopez",
+  location: "123 Main St",
+  agent_name: "John Doe",
   order_id: "ORD-20260412-0042",
   order_items_html:
     '<table style="width:100%;border-collapse:collapse"><tr><td style="padding:4px 8px;border-bottom:1px solid #eee">Plan Pro x1</td><td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eee">$49.00</td></tr></table>',
   order_total: "$49.00 USD",
-  payment_method: "Tarjeta Visa ****4242",
+  payment_method: "Visa ****4242",
 };
 
 const inputCls =
@@ -233,11 +233,11 @@ export default function EmailTemplatesPage() {
   async function handleSave() {
     if (!activeTenantId) return;
     if (!form.name.trim()) {
-      showToast("El nombre es obligatorio", true);
+      showToast("Name is required", true);
       return;
     }
     if (!form.subject.trim()) {
-      showToast("El asunto es obligatorio", true);
+      showToast("Subject is required", true);
       return;
     }
 
@@ -258,7 +258,7 @@ export default function EmailTemplatesPage() {
         res = await api.saveEmailTemplate(activeTenantId, selectedId, payload);
       }
       if (res?.success) {
-        showToast(isCreating ? "Plantilla creada" : "Plantilla guardada");
+        showToast(isCreating ? "Template created" : "Template saved");
         await loadTemplates();
         if (isCreating && res.data?.id) {
           setSelectedId(res.data.id);
@@ -280,7 +280,7 @@ export default function EmailTemplatesPage() {
     setDeleting(id);
     try {
       await api.deleteEmailTemplate(activeTenantId, id);
-      showToast("Plantilla eliminada");
+      showToast("Template deleted");
       if (selectedId === id) closeEditor();
       await loadTemplates();
     } catch {
@@ -297,7 +297,7 @@ export default function EmailTemplatesPage() {
     try {
       const res = await api.testEmailTemplate(activeTenantId, selectedId, testEmail.trim());
       if (res?.success) {
-        showToast(`Correo de prueba enviado a ${testEmail}`);
+        showToast(`Test email sent to ${testEmail}`);
         setTestModalOpen(false);
         setTestEmail("");
       } else {
@@ -343,7 +343,7 @@ export default function EmailTemplatesPage() {
           <div>
             <h1 className="text-[22px] font-semibold text-foreground m-0">{t('title')}</h1>
             <p className="text-[13px] text-muted-foreground m-0">
-              Disena y gestiona los correos transaccionales de tu plataforma
+              Design and manage transactional emails
             </p>
           </div>
         </div>
@@ -351,7 +351,7 @@ export default function EmailTemplatesPage() {
           onClick={startCreate}
           className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
         >
-          <Plus size={16} /> Crear plantilla
+          <Plus size={16} /> Create template
         </button>
       </div>
 
@@ -365,16 +365,16 @@ export default function EmailTemplatesPage() {
           )}
         >
           {loading ? (
-            <div className="p-10 text-center text-muted-foreground">Cargando...</div>
+            <div className="p-10 text-center text-muted-foreground">Loading...</div>
           ) : templates.length === 0 ? (
             <div className="p-12 text-center bg-card rounded-[14px] border border-border">
               <Mail size={36} className="text-muted-foreground opacity-40 mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm mb-4">No hay plantillas creadas</p>
+              <p className="text-muted-foreground text-sm mb-4">No templates created</p>
               <button
                 onClick={startCreate}
                 className="px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"
               >
-                Crear primera plantilla
+                Create first template
               </button>
             </div>
           ) : (
@@ -402,7 +402,7 @@ export default function EmailTemplatesPage() {
                             : "bg-muted text-muted-foreground"
                         )}
                       >
-                        {t.isActive ? "Activa" : "Inactiva"}
+                        {t.isActive ? "Active" : "Inactive"}
                       </span>
                     </div>
                     {!editorOpen && (
@@ -445,16 +445,16 @@ export default function EmailTemplatesPage() {
               {/* Name & Slug */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className={labelCls}>Nombre</label>
+                  <label className={labelCls}>Name</label>
                   <input
                     value={form.name}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="Ej: Bienvenida al cliente"
+                    placeholder="e.g.: Customer welcome"
                     className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Slug (identificador unico)</label>
+                  <label className={labelCls}>Slug (unique identifier)</label>
                   <input
                     value={form.slug}
                     onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
@@ -467,9 +467,9 @@ export default function EmailTemplatesPage() {
               {/* Subject */}
               <div className="mb-4">
                 <label className={labelCls}>
-                  Asunto{" "}
+                  Subject{" "}
                   <span className="font-normal text-muted-foreground/70">
-                    — Usa {"{{variable}}"} para datos dinamicos
+                    — Use {"{{variable}}"} for dynamic data
                   </span>
                 </label>
                 <input
@@ -483,9 +483,9 @@ export default function EmailTemplatesPage() {
 
               {/* Variables */}
               <div className="mb-4">
-                <label className={labelCls}>Variables disponibles</label>
+                <label className={labelCls}>Available variables</label>
                 <p className="text-[11px] text-muted-foreground mb-2">
-                  Haz clic para insertar en el asunto o en el cuerpo (segun donde este el cursor)
+                  Click to insert in subject or body (depending on cursor position)
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {AVAILABLE_VARIABLES.map((v) => (
@@ -512,7 +512,7 @@ export default function EmailTemplatesPage() {
 
               {/* HTML body */}
               <div className="mb-4">
-                <label className={labelCls}>Cuerpo HTML</label>
+                <label className={labelCls}>HTML Body</label>
                 <textarea
                   ref={bodyRef}
                   value={form.bodyHtml}
@@ -536,7 +536,7 @@ export default function EmailTemplatesPage() {
                   )}
                 >
                   {form.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                  {form.isActive ? "Activa" : "Inactiva"}
+                  {form.isActive ? "Active" : "Inactive"}
                 </button>
               </div>
 
@@ -556,7 +556,7 @@ export default function EmailTemplatesPage() {
                     className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-card border border-border text-foreground cursor-pointer text-sm font-semibold hover:bg-muted transition-colors"
                   >
                     <Send size={16} />
-                    Enviar prueba
+                    Send test
                   </button>
                 )}
               </div>
@@ -565,7 +565,7 @@ export default function EmailTemplatesPage() {
             {/* Preview */}
             <div className="bg-card rounded-[14px] border border-border overflow-hidden">
               <div className="flex items-center border-b border-border px-5 py-3">
-                <h3 className="text-sm font-semibold text-foreground m-0 flex-1">Vista previa</h3>
+                <h3 className="text-sm font-semibold text-foreground m-0 flex-1">Preview</h3>
                 <div className="flex rounded-lg bg-muted p-0.5">
                   <button
                     onClick={() => setPreviewTab("preview")}
@@ -576,7 +576,7 @@ export default function EmailTemplatesPage() {
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    <Eye size={13} /> Renderizado
+                    <Eye size={13} /> Rendered
                   </button>
                   <button
                     onClick={() => setPreviewTab("code")}
@@ -596,7 +596,7 @@ export default function EmailTemplatesPage() {
                 <div className="bg-white">
                   <iframe
                     srcDoc={renderPreviewHtml()}
-                    title="Vista previa del correo"
+                    title="Email preview"
                     className="w-full border-none min-h-[400px]"
                     sandbox="allow-same-origin"
                   />
@@ -624,7 +624,7 @@ export default function EmailTemplatesPage() {
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold text-foreground m-0 flex items-center gap-2">
                 <Send size={18} className="text-primary" />
-                Enviar correo de prueba
+                Send test email
               </h3>
               <button
                 onClick={() => setTestModalOpen(false)}
@@ -634,14 +634,14 @@ export default function EmailTemplatesPage() {
               </button>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Se enviara un correo con datos de ejemplo a la direccion indicada.
+              A test email with sample data will be sent.
             </p>
-            <label className={labelCls}>Correo electronico de destino</label>
+            <label className={labelCls}>Destination email</label>
             <input
               type="email"
               value={testEmail}
               onChange={(e) => setTestEmail(e.target.value)}
-              placeholder="tu@correo.com"
+              placeholder="you@email.com"
               className={cn(inputCls, "mb-5")}
               onKeyDown={(e) => e.key === "Enter" && handleSendTest()}
               autoFocus
@@ -651,7 +651,7 @@ export default function EmailTemplatesPage() {
                 onClick={() => setTestModalOpen(false)}
                 className="px-4 py-2.5 rounded-[10px] bg-muted border border-border text-foreground text-sm font-semibold cursor-pointer hover:bg-muted/80 transition-colors"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={handleSendTest}
@@ -659,7 +659,7 @@ export default function EmailTemplatesPage() {
                 className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 <Send size={14} />
-                {sendingTest ? "Enviando..." :  tc("save")}
+                {sendingTest ? "Sending..." :  tc("save")}
               </button>
             </div>
           </div>

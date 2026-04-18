@@ -10,10 +10,10 @@ import {
 } from "lucide-react";
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
-    draft: { bg: "#95a5a622", text: "#95a5a6", label: "Borrador" },
-    active: { bg: "#2ecc7122", text: "#2ecc71", label: "Activa" },
-    paused: { bg: "#f39c1222", text: "#f39c12", label: "Pausada" },
-    finished: { bg: "#e74c3c22", text: "#e74c3c", label: "Finalizada" },
+    draft: { bg: "#95a5a622", text: "#95a5a6", label: "Draft" },
+    active: { bg: "#2ecc7122", text: "#2ecc71", label: "Active" },
+    paused: { bg: "#f39c1222", text: "#f39c12", label: "Paused" },
+    finished: { bg: "#e74c3c22", text: "#e74c3c", label: "Finished" },
 };
 
 export default function CampaignsPage() {
@@ -53,7 +53,7 @@ export default function CampaignsPage() {
                 setCampaigns(prev => [created, ...prev]);
                 setShowModal(false);
                 setForm({ name: "", course_id: "", channel: "whatsapp", wa_template_name: "", source_type: "landing", fallback_email: false });
-                setToast("Campana creada exitosamente");
+                setToast("Campaign created successfully");
                 setTimeout(() => setToast(null), 2500);
             }
         } catch (err) { console.error(err); } finally { setSaving(false); }
@@ -67,12 +67,12 @@ export default function CampaignsPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <Megaphone size={28} className="text-primary" /> Campanas
+                            <Megaphone size={28} className="text-primary" /> Campaigns
                         </h1>
-                        <p className="text-muted-foreground mt-1">{activeCount} activas · {campaigns.length} total</p>
+                        <p className="text-muted-foreground mt-1">{activeCount} active · {campaigns.length} total</p>
                     </div>
                     <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
-                        <Plus size={18} /> Nueva Campana
+                        <Plus size={18} /> New Campaign
                     </button>
                 </div>
 
@@ -106,10 +106,10 @@ export default function CampaignsPage() {
                                         <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold" style={{ background: s.bg, color: s.text }}>{s.label}</span>
                                     </div>
                                     <div className="flex gap-4 mt-1.5 text-xs text-muted-foreground">
-                                        <span>Canal: {camp.channel}</span>
-                                        {camp.course_name && <span>Curso: {camp.course_name}</span>}
+                                        <span>Channel: {camp.channel}</span>
+                                        {camp.course_name && <span>Course: {camp.course_name}</span>}
                                         {camp.wa_template_name && <span>Template: {camp.wa_template_name}</span>}
-                                        <span>Fuente: {camp.source_type || "landing"}</span>
+                                        <span>Source: {camp.source_type || "landing"}</span>
                                     </div>
                                 </div>
                                 <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1"><Edit2 size={16} /></button>
@@ -118,7 +118,7 @@ export default function CampaignsPage() {
                     })}
                     {campaigns.length === 0 && (
                         <div className="text-center py-10 text-muted-foreground">
-                            No hay campanas registradas. Crea la primera.
+                            No campaigns registered.
                         </div>
                     )}
                 </div>
@@ -129,15 +129,15 @@ export default function CampaignsPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">Nueva Campana</h2>
+                            <h2 className="text-xl font-semibold m-0">New Campaign</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[
                             { label: "Name", key: "name", el: "input" },
-                            { label: "Curso Principal", key: "course_id", el: "select", options: [{ value: "", label: "— Sin curso —" }, ...courses.map(c => ({ value: c.id, label: c.name }))] },
-                            { label: "Canal", key: "channel", el: "select", options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "mixed", label: "Mixto" }] },
-                            { label: "Template WhatsApp", key: "wa_template_name", el: "input" },
-                            { label: "Fuente de Entrada", key: "source_type", el: "select", options: [{ value: "landing", label: "Landing Page" }, { value: "csv", label: "Importacion CSV" }, { value: "api", label: "API Externa" }, { value: "meta_ads", label: "Meta Lead Ads" }] },
+                            { label: "Main Course", key: "course_id", el: "select", options: [{ value: "", label: "— No course —" }, ...courses.map(c => ({ value: c.id, label: c.name }))] },
+                            { label: "Channel", key: "channel", el: "select", options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "mixed", label: "Mixed" }] },
+                            { label: "WhatsApp Template", key: "wa_template_name", el: "input" },
+                            { label: "Entry Source", key: "source_type", el: "select", options: [{ value: "landing", label: "Landing Page" }, { value: "csv", label: "CSV Import" }, { value: "api", label: "External API" }, { value: "meta_ads", label: "Meta Lead Ads" }] },
                         ].map(f => (
                             <div key={f.key} className="mb-3">
                                 <label className="block text-xs font-semibold text-muted-foreground mb-1">{f.label}</label>
@@ -152,10 +152,10 @@ export default function CampaignsPage() {
                         ))}
                         <div className="mb-3 flex items-center gap-2">
                             <input type="checkbox" checked={form.fallback_email} onChange={e => setForm(p => ({ ...p, fallback_email: e.target.checked }))} id="fallback" />
-                            <label htmlFor="fallback" className="text-[13px] text-muted-foreground">Activar fallback a Email si falla WhatsApp</label>
+                            <label htmlFor="fallback" className="text-[13px] text-muted-foreground">Enable email fallback if WhatsApp fails</label>
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
                             <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>

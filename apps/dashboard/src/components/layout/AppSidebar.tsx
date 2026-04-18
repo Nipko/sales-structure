@@ -140,7 +140,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors hidden md:inline-flex"
-          title={collapsed ? "Expandir" : "Colapsar"}
+          title={collapsed ? "Expand" : "Collapse"}
         >
           {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
         </button>

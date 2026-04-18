@@ -172,7 +172,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
             console.warn("[EmbeddedSignup] Token refresh failed, using existing token");
           }
 
-          setStep("Registrando cuenta de WhatsApp Business...");
+          setStep("Registering WhatsApp Business account...");
 
           const payload = {
             tenantId,
@@ -240,7 +240,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
   const launchSignup = () => {
     const FB = (window as any).FB;
     if (!FB) {
-      onError("Facebook SDK no cargado");
+      onError("Facebook SDK not loaded");
       return;
     }
 
@@ -332,7 +332,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
           : launching
             ? "Waiting for authorization..."
             : processing
-              ? step || "Procesando..."
+              ? step || "Processing..."
               : "Conectar con WhatsApp Embedded Signup"}
       </button>
 
@@ -373,7 +373,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
       >
         A Meta window will open for you to authorize your WhatsApp Business account.
         <br />
-        Tus credenciales son cifradas con AES-256 y nunca se almacenan en texto plano.
+        Your credentials are encrypted with AES-256 and never stored in plain text.
       </p>
     </div>
   );

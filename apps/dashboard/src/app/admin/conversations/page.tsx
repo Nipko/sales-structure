@@ -14,16 +14,16 @@ import {
 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; color: string }> = {
-    active: { label: "Activa", color: "#2ecc71" },
-    waiting: { label: "Esperando", color: "#f39c12" },
-    resolved: { label: "Resuelta", color: "#95a5a6" },
+    active: { label: "Active", color: "#2ecc71" },
+    waiting: { label: "Waiting", color: "#f39c12" },
+    resolved: { label: "Resolved", color: "#95a5a6" },
     handoff: { label: "Handoff", color: "#e74c3c" },
 };
 
 const sentimentConfig: Record<string, { label: string; emoji: string }> = {
-    positive: { label: "Positivo", emoji: "😊" },
+    positive: { label: "Positive", emoji: "😊" },
     neutral: { label: "Neutral", emoji: "😐" },
-    negative: { label: "Negativo", emoji: "😞" },
+    negative: { label: "Negative", emoji: "😞" },
 };
 
 export default function ConversationsPage() {
@@ -69,19 +69,19 @@ export default function ConversationsPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                        <MessageSquare size={28} className="text-primary" /> Conversaciones
+                        <MessageSquare size={28} className="text-primary" /> Conversations
                         <DataSourceBadge isLive={isLive} />
                     </h1>
-                    <p className="text-muted-foreground mt-1">{stats.total} conversaciones · {stats.totalMessages} mensajes totales</p>
+                    <p className="text-muted-foreground mt-1">{stats.total} conversaciones · {stats.totalMessages} total messages</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
                     { label: "Total", value: stats.total, color: "#6c5ce7", icon: MessageSquare },
-                    { label: "Activas", value: stats.active, color: "#2ecc71", icon: CheckCircle2 },
-                    { label: "Esperando", value: stats.waiting, color: "#f39c12", icon: Clock },
-                    { label: "Resueltas", value: stats.resolved, color: "#95a5a6", icon: CheckCircle2 },
+                    { label: "Active", value: stats.active, color: "#2ecc71", icon: CheckCircle2 },
+                    { label: "Waiting", value: stats.waiting, color: "#f39c12", icon: Clock },
+                    { label: "Resolved", value: stats.resolved, color: "#95a5a6", icon: CheckCircle2 },
                 ].map(stat => (
                     <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
                         <div className="flex justify-between items-center">
@@ -103,13 +103,13 @@ export default function ConversationsPage() {
                     <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                 </div>
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
-                    <option value="all">Todos</option>
-                    <option value="active">Activas</option>
-                    <option value="waiting">Esperando</option>
-                    <option value="resolved">Resueltas</option>
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="waiting">Waiting</option>
+                    <option value="resolved">Resolved</option>
                 </select>
                 <button onClick={() => setSortBy(s => s === "recent" ? "messages" : "recent")} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-[13px] cursor-pointer">
-                    <ArrowUpDown size={14} /> {sortBy === "recent" ? "Recientes" : "Mas mensajes"}
+                    <ArrowUpDown size={14} /> {sortBy === "recent" ? "Recent" : "Most messages"}
                 </button>
             </div>
 
@@ -117,7 +117,7 @@ export default function ConversationsPage() {
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="bg-card">
-                            {["Contacto", "Ultimo mensaje", "Mensajes", "Status", "Agente", "Sentimiento", "Date"].map(h => (
+                            {["Contact", "Last message", "Messages", "Status", "Agent", "Sentiment", "Date"].map(h => (
                                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
                             ))}
                         </tr>
@@ -160,7 +160,7 @@ export default function ConversationsPage() {
 
             <div className="mt-5 p-4 rounded-[14px] bg-card border border-border">
                 <div className="text-[13px] font-semibold mb-2.5 flex items-center gap-1.5">
-                    <Tag size={14} className="text-primary" /> Tags mas usados
+                    <Tag size={14} className="text-primary" /> Most used tags
                 </div>
                 <div className="flex gap-2 flex-wrap">
                     {Array.from(new Set(conversations.flatMap(c => c.tags))).filter(Boolean).map(tag => {

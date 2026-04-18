@@ -15,16 +15,16 @@ import {
 } from "lucide-react";
 
 const STAGES: Record<string, { label: string; color: string }> = {
-    nuevo: { label: "Nuevo", color: "#95a5a6" },
-    contactado: { label: "Contactado", color: "#3498db" },
-    respondio: { label: "Respondio", color: "#9b59b6" },
-    calificado: { label: "Calificado", color: "#f39c12" },
-    tibio: { label: "Tibio", color: "#e67e22" },
-    caliente: { label: "Caliente", color: "#e74c3c" },
-    listo_cierre: { label: "Listo para cierre", color: "#27ae60" },
-    ganado: { label: "Ganado", color: "#2ecc71" },
-    perdido: { label: "Perdido", color: "#7f8c8d" },
-    no_interesado: { label: "No interesado", color: "#bdc3c7" },
+    nuevo: { label: "New", color: "#95a5a6" },
+    contactado: { label: "Contacted", color: "#3498db" },
+    respondio: { label: "Responded", color: "#9b59b6" },
+    calificado: { label: "Qualified", color: "#f39c12" },
+    tibio: { label: "Warm", color: "#e67e22" },
+    caliente: { label: "Hot", color: "#e74c3c" },
+    listo_cierre: { label: "Ready to close", color: "#27ae60" },
+    ganado: { label: "Won", color: "#2ecc71" },
+    perdido: { label: "Lost", color: "#7f8c8d" },
+    no_interesado: { label: "Not interested", color: "#bdc3c7" },
 };
 
 const EVENT_ICONS: Record<string, typeof MessageSquare> = {
@@ -102,7 +102,7 @@ export default function Lead360Page() {
         return (
             <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                Cargando perfil...
+                Loading profile...
             </div>
         );
     }
@@ -192,13 +192,13 @@ export default function Lead360Page() {
                     {/* Opportunities */}
                     <div className="bg-card rounded-xl border border-border p-4">
                         <h3 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
-                            <Briefcase size={14} className="text-primary" /> Oportunidades
+                            <Briefcase size={14} className="text-primary" /> Opportunities
                         </h3>
                         {opportunities.length === 0 ? (
-                            <p className="text-[13px] text-muted-foreground m-0">Sin oportunidades</p>
+                            <p className="text-[13px] text-muted-foreground m-0">No opportunities</p>
                         ) : opportunities.map((op: any) => (
                             <div key={op.id} className="py-2 border-b border-border">
-                                <div className="text-[13px] font-semibold">{op.course_name || "Oportunidad"}</div>
+                                <div className="text-[13px] font-semibold">{op.course_name || "Opportunity"}</div>
                                 <div className="flex gap-2 mt-1">
                                     <span className="text-[11px] text-muted-foreground">{STAGES[op.stage]?.label || op.stage}</span>
                                     {op.estimated_value && (
@@ -218,8 +218,8 @@ export default function Lead360Page() {
                     <div className="flex border-b border-border">
                         {[
                             { key: "timeline", label: "Timeline", icon: Clock },
-                            { key: "notes", label: `Notas (${notes.length})`, icon: StickyNote },
-                            { key: "tasks", label: `Tareas (${tasks.filter((t: any) => t.status !== "done").length})`, icon: CheckSquare },
+                            { key: "notes", label: `Notes (${notes.length})`, icon: StickyNote },
+                            { key: "tasks", label: `Tasks (${tasks.filter((t: any) => t.status !== "done").length})`, icon: CheckSquare },
                         ].map(tab => (
                             <button
                                 key={tab.key}
@@ -241,7 +241,7 @@ export default function Lead360Page() {
                         {activeTab === "timeline" && (
                             <div className="flex flex-col gap-3">
                                 {timeline.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-10">Sin actividad registrada aun.</p>
+                                    <p className="text-muted-foreground text-center py-10">No activity recorded yet.</p>
                                 )}
                                 {timeline.map((event: any, i: number) => {
                                     const Icon = EVENT_ICONS[event.event_type] || Zap;
@@ -270,7 +270,7 @@ export default function Lead360Page() {
                                     <textarea
                                         value={newNote}
                                         onChange={e => setNewNote(e.target.value)}
-                                        placeholder="Agregar una nota interna..."
+                                        placeholder="Add an internal note..."
                                         rows={3}
                                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-muted text-foreground text-[13px] resize-y outline-none box-border"
                                     />
@@ -282,7 +282,7 @@ export default function Lead360Page() {
                                             !newNote.trim() && "opacity-50"
                                         )}
                                     >
-                                        <Send size={14} /> Guardar nota
+                                        <Send size={14} /> Save note
                                     </button>
                                 </div>
                                 {notes.map((note: any) => (
@@ -295,7 +295,7 @@ export default function Lead360Page() {
                                     </div>
                                 ))}
                                 {notes.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-8">Sin notas aun.</p>
+                                    <p className="text-muted-foreground text-center py-8">No notes yet.</p>
                                 )}
                             </div>
                         )}
@@ -307,7 +307,7 @@ export default function Lead360Page() {
                                     <input
                                         value={newTask.title}
                                         onChange={e => setNewTask(t => ({ ...t, title: e.target.value }))}
-                                        placeholder="Nueva tarea... (ej: Llamar al cliente)"
+                                        placeholder="New task... (e.g.: Call client)"
                                         className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-[13px] outline-none box-border"
                                     />
                                     <div className="flex gap-2">
@@ -317,9 +317,9 @@ export default function Lead360Page() {
                                             className="flex-1 px-2.5 py-2 rounded-lg border border-border bg-card text-foreground text-xs outline-none"
                                         >
                                             <option value="follow_up">Follow-up</option>
-                                            <option value="call">Llamada</option>
+                                            <option value="call">Call</option>
                                             <option value="email">Email</option>
-                                            <option value="meeting">Reunion</option>
+                                            <option value="meeting">Meeting</option>
                                             <option value="handoff">Handoff</option>
                                         </select>
                                         <input
@@ -365,7 +365,7 @@ export default function Lead360Page() {
                                     </div>
                                 ))}
                                 {tasks.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-8">Sin tareas creadas.</p>
+                                    <p className="text-muted-foreground text-center py-8">No tasks created.</p>
                                 )}
                             </div>
                         )}

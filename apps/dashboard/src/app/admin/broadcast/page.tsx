@@ -15,11 +15,11 @@ import {
 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-    draft: { label: "Borrador", color: "#95a5a6", icon: FileText },
-    scheduled: { label: "Programada", color: "#f39c12", icon: Calendar },
-    sending: { label: "Enviando", color: "#3498db", icon: Zap },
-    sent: { label: "Enviada", color: "#2ecc71", icon: CheckCircle2 },
-    failed: { label: "Fallida", color: "#e74c3c", icon: AlertCircle },
+    draft: { label: "Draft", color: "#95a5a6", icon: FileText },
+    scheduled: { label: "Scheduled", color: "#f39c12", icon: Calendar },
+    sending: { label: "Sending", color: "#3498db", icon: Zap },
+    sent: { label: "Sent", color: "#2ecc71", icon: CheckCircle2 },
+    failed: { label: "Failed", color: "#e74c3c", icon: AlertCircle },
 };
 
 export default function BroadcastPage() {
@@ -68,7 +68,7 @@ export default function BroadcastPage() {
             setNewCampaign({ name: "", channel: "whatsapp", template: "", targetAudience: "all", scheduledAt: "" });
             loadCampaigns();
             setShowNewCampaign(false);
-            setToast("Campana creada exitosamente");
+            setToast("Campaign created successfully");
             setTimeout(() => setToast(null), 2000);
         } else {
             setCreating(false);
@@ -103,10 +103,10 @@ export default function BroadcastPage() {
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-4 mb-6">
                     {[
-                        { label: "Campanas", value: stats.total, color: "#6c5ce7", icon: Megaphone },
-                        { label: "Enviadas", value: stats.sent, color: "#2ecc71", icon: Send },
-                        { label: "Programadas", value: stats.scheduled, color: "#f39c12", icon: Calendar },
-                        { label: "Respuestas", value: stats.totalReplies, color: "#9b59b6", icon: MessageSquare },
+                        { label: "Campaigns", value: stats.total, color: "#6c5ce7", icon: Megaphone },
+                        { label: "Sent", value: stats.sent, color: "#2ecc71", icon: Send },
+                        { label: "Scheduled", value: stats.scheduled, color: "#f39c12", icon: Calendar },
+                        { label: "Responses", value: stats.totalReplies, color: "#9b59b6", icon: MessageSquare },
                     ].map(stat => (
                         <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
                             <div className="flex justify-between items-center">
@@ -158,21 +158,21 @@ export default function BroadcastPage() {
                                             <div className="flex gap-5 text-xs">
                                                 <span className="flex items-center gap-1">
                                                     <Target size={12} className="text-muted-foreground" />
-                                                    <strong>{campaign.recipientCount}</strong> destinatarios
+                                                    <strong>{campaign.recipientCount}</strong> recipients
                                                 </span>
-                                                <span className="text-emerald-500">📬 {deliveryRate}% entregados</span>
-                                                <span className="text-blue-500">👁️ {readRate}% leidos</span>
-                                                <span className="text-purple-500">💬 {replyRate}% respondieron</span>
+                                                <span className="text-emerald-500">📬 {deliveryRate}% delivered</span>
+                                                <span className="text-blue-500">👁️ {readRate}% read</span>
+                                                <span className="text-purple-500">💬 {replyRate}% responded</span>
                                             </div>
                                         )}
                                         {campaign.status === "scheduled" && campaign.scheduledAt && (
                                             <div className="text-xs text-amber-500 flex items-center gap-1">
-                                                <Clock size={12} /> Programada: {campaign.scheduledAt}
+                                                <Clock size={12} /> Scheduled: {campaign.scheduledAt}
                                             </div>
                                         )}
                                         {campaign.status === "draft" && (
                                             <div className="text-xs text-muted-foreground">
-                                                Borrador — sin programar
+                                                Draft — not scheduled
                                             </div>
                                         )}
                                     </div>
@@ -187,9 +187,9 @@ export default function BroadcastPage() {
                                             <div className="transition-[width] duration-500" style={{ width: `${deliveryRate - readRate}%`, background: "#2ecc71" }} />
                                         </div>
                                         <div className="flex justify-end gap-3 mt-1 text-[10px] text-muted-foreground">
-                                            <span>🟣 respondido</span>
-                                            <span>🔵 leido</span>
-                                            <span>🟢 entregado</span>
+                                            <span>🟣 responded</span>
+                                            <span>🔵 read</span>
+                                            <span>🟢 delivered</span>
                                         </div>
                                     </div>
                                 )}
@@ -207,12 +207,12 @@ export default function BroadcastPage() {
                 >
                     <div onClick={e => e.stopPropagation()} className="w-[500px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">Nueva Campana</h2>
+                            <h2 className="text-xl font-semibold m-0">New Campaign</h2>
                             <button onClick={() => setShowNewCampaign(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Nombre de la campana</label>
-                            <input value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} placeholder="Promo Verano 2026 ☀️" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Campaign name</label>
+                            <input value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} placeholder="Summer Promo 2026" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
                         <div className="mb-3.5">
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">
@@ -221,18 +221,18 @@ export default function BroadcastPage() {
                             <textarea value={newCampaign.template} onChange={e => setNewCampaign(p => ({ ...p, template: e.target.value }))} placeholder={"¡Hola {{name}}! Tenemos una oferta especial para ti..."} rows={4} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Fecha de envio (opcional)</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Send date (optional)</label>
                             <input type="datetime-local" value={newCampaign.scheduledAt} onChange={e => setNewCampaign(p => ({ ...p, scheduledAt: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
-                            <div className="text-[11px] text-muted-foreground mt-1">Dejar vacio para guardar como borrador</div>
+                            <div className="text-[11px] text-muted-foreground mt-1">Leave empty to save as draft</div>
                         </div>
                         <div className="p-3.5 rounded-[10px] bg-primary/[0.08] border border-primary/15 mb-3.5">
-                            <div className="text-xs font-semibold text-primary mb-1">📋 Vista previa del mensaje</div>
+                            <div className="text-xs font-semibold text-primary mb-1">📋 Message preview</div>
                             <div className="text-[13px] text-foreground leading-relaxed">
                                 {newCampaign.template ? newCampaign.template.replace(/\{\{name\}\}/g, "Carlos Medina") : "Tu mensaje aparecera aqui..."}
                             </div>
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowNewCampaign(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
+                            <button onClick={() => setShowNewCampaign(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
                             <button
                                 onClick={handleCreateCampaign}
                                 disabled={!newCampaign.name || !newCampaign.template}
@@ -241,7 +241,7 @@ export default function BroadcastPage() {
                                     (!newCampaign.name || !newCampaign.template) ? "bg-muted cursor-not-allowed" : "bg-primary cursor-pointer"
                                 )}
                             >
-                                {newCampaign.scheduledAt ? "📅 Programar" : "📝 Guardar borrador"}
+                                {newCampaign.scheduledAt ? "📅 Schedule" : "📝 Save draft"}
                             </button>
                         </div>
                     </div>

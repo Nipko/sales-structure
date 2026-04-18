@@ -81,7 +81,7 @@ export default function ChangePasswordPage() {
         try {
             const res = await api.changePassword(currentPassword, newPassword);
             if (res.success) {
-                showToast("success", "Contrasena actualizada correctamente");
+                showToast("success", "Password updated successfully");
                 setCurrentPassword("");
                 setNewPassword("");
                 setConfirmPassword("");

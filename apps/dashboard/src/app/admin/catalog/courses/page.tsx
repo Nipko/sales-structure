@@ -46,13 +46,13 @@ export default function CoursesPage() {
                 setCourses(prev => [created, ...prev]);
                 setShowModal(false);
                 setForm({ name: "", slug: "", description: "", price: "", currency: "COP", modality: "presencial", duration_hours: "", brochure_url: "" });
-                setToast("Curso creado exitosamente");
+                setToast("Course created successfully");
                 setTimeout(() => setToast(null), 2500);
             }
         } catch (err) { console.error(err); } finally { setSaving(false); }
     };
 
-    const modalityLabel: Record<string, string> = { presencial: "Presencial", virtual: "Virtual", hibrido: "Hibrido" };
+    const modalityLabel: Record<string, string> = { presencial: "In-person", virtual: "Virtual", hibrido: "Hybrid" };
 
     return (
         <>
@@ -61,12 +61,12 @@ export default function CoursesPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <BookOpen size={28} className="text-primary" /> Catalogo de Cursos
+                            <BookOpen size={28} className="text-primary" /> Course Catalog
                         </h1>
-                        <p className="text-muted-foreground mt-1">{courses.length} cursos registrados</p>
+                        <p className="text-muted-foreground mt-1">{courses.length} registered courses</p>
                     </div>
                     <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
-                        <Plus size={18} /> Nuevo Curso
+                        <Plus size={18} /> New Course
                     </button>
                 </div>
 
@@ -74,8 +74,8 @@ export default function CoursesPage() {
                 <div className="grid grid-cols-3 gap-3 mb-6">
                     {[
                         { icon: BookOpen, color: "#3498db", label: "Total", value: courses.length },
-                        { icon: Power, color: "#2ecc71", label: "Activos", value: courses.filter(c => c.is_active).length },
-                        { icon: DollarSign, color: "#f1c40f", label: "Precio Promedio", value: courses.length > 0 ? `$${(courses.reduce((s, c) => s + parseFloat(c.price || 0), 0) / courses.length).toFixed(0)}` : "$0" },
+                        { icon: Power, color: "#2ecc71", label: "Active", value: courses.filter(c => c.is_active).length },
+                        { icon: DollarSign, color: "#f1c40f", label: "Average Price", value: courses.length > 0 ? `$${(courses.reduce((s, c) => s + parseFloat(c.price || 0), 0) / courses.length).toFixed(0)}` : "$0" },
                     ].map((s, i) => {
                         const Icon = s.icon;
                         return (
@@ -114,7 +114,7 @@ export default function CoursesPage() {
                         </div>
                     ))}
                     {courses.length === 0 && (
-                        <div className="text-center py-10 text-muted-foreground">No hay cursos registrados aun. Crea el primero.</div>
+                        <div className="text-center py-10 text-muted-foreground">No courses registered yet.</div>
                     )}
                 </div>
             </div>
@@ -124,16 +124,16 @@ export default function CoursesPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">Nuevo Curso</h2>
+                            <h2 className="text-xl font-semibold m-0">New Course</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[
-                            { label: "Name", key: "name", placeholder: "Ej: Diplomado en Marketing Digital" },
+                            { label: "Name", key: "name", placeholder: "e.g.: Digital Marketing Diploma" },
                             { label: "Slug (URL)", key: "slug", placeholder: "marketing-digital" },
-                            { label: "Description", key: "description", placeholder: "Descripcion breve del curso..." },
+                            { label: "Description", key: "description", placeholder: "Brief course description..." },
                             { label: "Price", key: "price", placeholder: "2500000", type: "number" },
-                            { label: "Duracion (horas)", key: "duration_hours", placeholder: "120", type: "number" },
-                            { label: "URL Brochure", key: "brochure_url", placeholder: "https://..." },
+                            { label: "Duration (hours)", key: "duration_hours", placeholder: "120", type: "number" },
+                            { label: "Brochure URL", key: "brochure_url", placeholder: "https://..." },
                         ].map(f => (
                             <div key={f.key} className="mb-3">
                                 <label className="block text-xs font-semibold text-muted-foreground mb-1">{f.label}</label>
@@ -147,15 +147,15 @@ export default function CoursesPage() {
                             </div>
                         ))}
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Modalidad</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Modality</label>
                             <select value={form.modality} onChange={e => setForm(p => ({ ...p, modality: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
-                                <option value="presencial">Presencial</option>
+                                <option value="presencial">In-person</option>
                                 <option value="virtual">Virtual</option>
-                                <option value="hibrido">Hibrido</option>
+                                <option value="hibrido">Hybrid</option>
                             </select>
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
                             <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>

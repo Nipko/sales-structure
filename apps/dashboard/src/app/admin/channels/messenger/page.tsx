@@ -321,7 +321,7 @@ export default function MessengerSetupPage() {
                                         type="text"
                                         value={displayName}
                                         onChange={(e) => setDisplayName(e.target.value)}
-                                        placeholder="Nombre del canal"
+                                        placeholder="Channel name"
                                         className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none"
                                     />
                                 </div>

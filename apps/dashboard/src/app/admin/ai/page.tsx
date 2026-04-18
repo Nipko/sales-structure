@@ -55,17 +55,17 @@ export default function AIRouterPage() {
                     <DataSourceBadge isLive={isLive} />
                 </h1>
                 <p className="text-muted-foreground mt-1">
-                    {activeModels} modelos activos · {avgLatency}ms latencia promedio · {rules.length} reglas de enrutamiento
+                    {activeModels} active models · {avgLatency}ms avg latency · {rules.length} routing rules
                 </p>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { label: "Modelos", value: models.length, color: "#6c5ce7", icon: Cpu },
-                    { label: "Activos", value: activeModels, color: "#2ecc71", icon: CheckCircle2 },
-                    { label: "Latencia Avg", value: `${avgLatency}ms`, color: "#3498db", icon: Clock },
-                    { label: "Reglas", value: rules.length, color: "#9b59b6", icon: Sliders },
+                    { label: "Models", value: models.length, color: "#6c5ce7", icon: Cpu },
+                    { label: "Active", value: activeModels, color: "#2ecc71", icon: CheckCircle2 },
+                    { label: "Avg Latency", value: `${avgLatency}ms`, color: "#3498db", icon: Clock },
+                    { label: "Rules", value: rules.length, color: "#9b59b6", icon: Sliders },
                 ].map(stat => (
                     <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
                         <div className="flex justify-between items-center">
@@ -83,7 +83,7 @@ export default function AIRouterPage() {
 
             {/* Models Section */}
             <h2 className="text-lg font-semibold mb-3.5 flex items-center gap-2">
-                <Cpu size={20} /> Modelos Configurados
+                <Cpu size={20} /> Configured Models
             </h2>
             <div className="grid grid-cols-2 gap-3.5 mb-8">
                 {models.map(model => {
@@ -142,7 +142,7 @@ export default function AIRouterPage() {
 
             {/* Routing Rules */}
             <h2 className="text-lg font-semibold mb-3.5 flex items-center gap-2">
-                <Sliders size={20} /> Reglas de Enrutamiento
+                <Sliders size={20} /> Routing Rules
             </h2>
             <div className="rounded-[14px] border border-border overflow-hidden">
                 <table className="w-full border-collapse">
@@ -180,7 +180,7 @@ export default function AIRouterPage() {
 
             {/* Architecture Diagram */}
             <div className="mt-6 p-5 rounded-[14px] bg-card border border-border">
-                <div className="text-sm font-semibold mb-3">🏗️ Flujo de Enrutamiento</div>
+                <div className="text-sm font-semibold mb-3">🏗️ Routing Flow</div>
                 <div className="flex items-center gap-3 flex-wrap font-mono text-[13px]">
                     <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 font-semibold">📱 WhatsApp</span>
                     <ChevronRight size={16} className="text-muted-foreground" />
@@ -190,7 +190,7 @@ export default function AIRouterPage() {
                     <ChevronRight size={16} className="text-muted-foreground" />
                     <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-500 font-semibold">🤖 GPT-4o / GPT-3.5</span>
                     <ChevronRight size={16} className="text-muted-foreground" />
-                    <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 font-semibold">📤 Respuesta</span>
+                    <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 font-semibold">📤 Response</span>
                 </div>
             </div>
         </div>

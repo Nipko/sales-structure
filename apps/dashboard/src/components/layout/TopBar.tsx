@@ -19,13 +19,13 @@ import { locales, localeNames, type Locale } from "@/i18n/config";
 
 // Notification categories with colors and icons
 const NOTIF_CATEGORIES = {
-  chat:       { label: "Mensajes",    icon: MessageSquare, color: "text-emerald-500", bg: "bg-emerald-100 dark:bg-emerald-500/15", href: "/admin/inbox" },
-  handoff:    { label: "Transferencias", icon: Users,      color: "text-orange-500",  bg: "bg-orange-100 dark:bg-orange-500/15",  href: "/admin/inbox" },
+  chat:       { label: "Messages",    icon: MessageSquare, color: "text-emerald-500", bg: "bg-emerald-100 dark:bg-emerald-500/15", href: "/admin/inbox" },
+  handoff:    { label: "Transfers",   icon: Users,      color: "text-orange-500",  bg: "bg-orange-100 dark:bg-orange-500/15",  href: "/admin/inbox" },
   compliance: { label: "Compliance",  icon: Shield,        color: "text-red-500",     bg: "bg-red-100 dark:bg-red-500/15",        href: "/admin/compliance" },
-  appointment:{ label: "Citas",       icon: Calendar,      color: "text-blue-500",    bg: "bg-blue-100 dark:bg-blue-500/15",      href: "/admin/appointments" },
-  automation: { label: "Automatizacion", icon: Zap,        color: "text-purple-500",  bg: "bg-purple-100 dark:bg-purple-500/15",  href: "/admin/automation" },
-  order:      { label: "Ordenes",     icon: Package,       color: "text-cyan-500",    bg: "bg-cyan-100 dark:bg-cyan-500/15",      href: "/admin/orders" },
-  system:     { label: "Sistema",     icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-100 dark:bg-amber-500/15",    href: "/admin" },
+  appointment:{ label: "Appointments", icon: Calendar,    color: "text-blue-500",    bg: "bg-blue-100 dark:bg-blue-500/15",      href: "/admin/appointments" },
+  automation: { label: "Automation",  icon: Zap,           color: "text-purple-500",  bg: "bg-purple-100 dark:bg-purple-500/15",  href: "/admin/automation" },
+  order:      { label: "Orders",      icon: Package,       color: "text-cyan-500",    bg: "bg-cyan-100 dark:bg-cyan-500/15",      href: "/admin/orders" },
+  system:     { label: "System",      icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-100 dark:bg-amber-500/15",    href: "/admin" },
 } as const;
 
 type NotifType = keyof typeof NOTIF_CATEGORIES;
@@ -45,29 +45,29 @@ const pathLabels: Record<string, string> = {
   contacts: "CRM",
   pipeline: "Pipeline",
   automation: "Automation",
-  agent: "Agente IA",
+  agent: "AI Agent",
   settings: "Settings",
-  channels: "Canales",
+  channels: "Channels",
   analytics: "Analytics",
   "analytics-v2": "Analytics",
-  "agent-analytics": "Reportes",
-  identity: "Identidad",
+  "agent-analytics": "Reports",
+  identity: "Identity",
   knowledge: "Knowledge Base",
-  users: "Usuarios",
+  users: "Users",
   broadcast: "Campaigns",
   compliance: "Compliance",
-  inventory: "Inventario",
+  inventory: "Inventory",
   orders: "Orders",
   tenants: "Tenants",
-  appointments: "Citas",
-  "email-templates": "Plantillas",
-  media: "Imagenes",
-  "change-password": "Contrasena",
-  "custom-attributes": "Atributos",
+  appointments: "Appointments",
+  "email-templates": "Templates",
+  media: "Images",
+  "change-password": "Password",
+  "custom-attributes": "Attributes",
   macros: "Macros",
   prechat: "Pre-Chat",
-  appearance: "Apariencia",
-  segments: "Segmentos",
+  appearance: "Appearance",
+  segments: "Segments",
   whatsapp: "WhatsApp",
   instagram: "Instagram",
   messenger: "Messenger",
@@ -133,44 +133,44 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     socket.on("newMessage", (payload: any) => {
       const { message } = payload;
       if (message?.direction === "inbound") {
-        addNotif("chat", "Nuevo mensaje entrante", (message.content_text || message.content || "").slice(0, 80));
+        addNotif("chat", "New incoming message", (message.content_text || message.content || "").slice(0, 80));
       }
     });
 
     // ── Handoff ──
     socket.on("handoff.escalated", (payload: any) => {
-      addNotif("handoff", "Transferencia a agente", payload.reason || "Un cliente solicita hablar con un agente humano");
+      addNotif("handoff", "Transfer to agent", payload.reason || "A customer requests to speak with a human agent");
     });
 
     // ── Compliance / Opt-out ──
     socket.on("optout.detected", (payload: any) => {
-      addNotif("compliance", "Opt-out detectado", `${payload.phone || "Contacto"}: "${(payload.triggerMessage || "").slice(0, 60)}"`);
+      addNotif("compliance", "Opt-out detected", `${payload.phone || "Contact"}: "${(payload.triggerMessage || "").slice(0, 60)}"`);
     });
 
     // ── Appointments ──
     socket.on("appointment.created", (payload: any) => {
-      addNotif("appointment", "Nueva cita agendada", `${payload.serviceName || "Cita"} — ${payload.startAt ? new Date(payload.startAt).toLocaleDateString("es-CO") : ""}`);
+      addNotif("appointment", "New appointment", `${payload.serviceName || "Appointment"} — ${payload.startAt ? new Date(payload.startAt).toLocaleDateString() : ""}`);
     });
     socket.on("appointment.cancelled", (payload: any) => {
-      addNotif("appointment", "Cita cancelada", payload.serviceName || "Una cita fue cancelada");
+      addNotif("appointment", "Appointment cancelled", payload.serviceName || "An appointment was cancelled");
     });
 
     // ── Automation ──
     socket.on("automation.triggered", (payload: any) => {
-      addNotif("automation", "Regla ejecutada", payload.ruleName || "Una regla de automatizacion se ejecuto");
+      addNotif("automation", "Rule executed", payload.ruleName || "An automation rule was executed");
     });
     socket.on("lead.captured", (payload: any) => {
-      addNotif("automation", "Nuevo lead capturado", `${payload.name || payload.phone || "Nuevo contacto"} via ${payload.channel || "whatsapp"}`);
+      addNotif("automation", "New lead captured", `${payload.name || payload.phone || "New contact"} via ${payload.channel || "whatsapp"}`);
     });
 
     // ── Orders ──
     socket.on("order.created", (payload: any) => {
-      addNotif("order", "Nueva orden", `Orden por $${payload.totalAmount || 0} — ${payload.status || "pendiente"}`);
+      addNotif("order", "New order", `Order for $${payload.totalAmount || 0} — ${payload.status || "pending"}`);
     });
 
     // ── System ──
     socket.on("error", (err: any) => {
-      addNotif("system", "Error del sistema", typeof err === "string" ? err : err?.message || "Error de conexion");
+      addNotif("system", "System error", typeof err === "string" ? err : err?.message || "Connection error");
     });
 
     socketRef.current = socket;
@@ -219,9 +219,9 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   }, [pathname]);
 
   const themeOptions = [
-    { key: "light", icon: Sun, label: "Claro" },
-    { key: "dark", icon: Moon, label: "Oscuro" },
-    { key: "system", icon: Monitor, label: "Sistema" },
+    { key: "light", icon: Sun, label: "Light" },
+    { key: "dark", icon: Moon, label: "Dark" },
+    { key: "system", icon: Monitor, label: "System" },
   ] as const;
 
   return (
@@ -307,7 +307,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         <button
           onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markAllRead(); }}
           className="relative p-2 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          title="Notificaciones"
+          title="Notifications"
         >
           <Bell size={18} />
           {unreadCount > 0 && (
@@ -321,18 +321,18 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           <div className="absolute right-0 top-full mt-2 w-96 max-h-[500px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-xl z-50 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
-              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Notificaciones</span>
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Notifications</span>
               <div className="flex items-center gap-2">
                 {filteredNotifs.length > 0 && (
                   <button onClick={clearNotifications}
                     className="text-[11px] text-red-500 hover:text-red-400 cursor-pointer bg-transparent border-none font-medium">
-                    Limpiar{notifTab !== "all" ? ` ${NOTIF_CATEGORIES[notifTab]?.label}` : ""}
+                    Clear{notifTab !== "all" ? ` ${NOTIF_CATEGORIES[notifTab]?.label}` : ""}
                   </button>
                 )}
                 {unreadCount > 0 && (
                   <button onClick={markAllRead}
                     className="text-[11px] text-indigo-500 hover:text-indigo-400 cursor-pointer bg-transparent border-none font-medium">
-                    Marcar leidas
+                    Mark read
                   </button>
                 )}
               </div>
@@ -343,7 +343,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               <button onClick={() => setNotifTab("all")}
                 className={cn("px-2.5 py-1 rounded-md text-[11px] font-medium border-none cursor-pointer whitespace-nowrap transition-colors",
                   notifTab === "all" ? "bg-indigo-500 text-white" : "bg-transparent text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}>
-                Todas {unreadCount > 0 && <span className="ml-1 text-[10px]">({unreadCount})</span>}
+                All {unreadCount > 0 && <span className="ml-1 text-[10px]">({unreadCount})</span>}
               </button>
               {(Object.entries(NOTIF_CATEGORIES) as [NotifType, typeof NOTIF_CATEGORIES[NotifType]][]).map(([key, cat]) => {
                 const count = unreadByType[key] || 0;
@@ -366,7 +366,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 <div className="py-10 text-center">
                   <Bell size={24} className="text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
                   <p className="text-sm text-neutral-400 dark:text-neutral-500">
-                    {notifTab === "all" ? "Sin notificaciones" : `Sin ${NOTIF_CATEGORIES[notifTab]?.label.toLowerCase()}`}
+                    {notifTab === "all" ? "No notifications" : `No ${NOTIF_CATEGORIES[notifTab]?.label.toLowerCase()}`}
                   </p>
                 </div>
               ) : (
@@ -471,7 +471,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
               <User size={15} />
-              Mi perfil
+              My profile
             </Link>
             <Link
               href="/admin/settings"

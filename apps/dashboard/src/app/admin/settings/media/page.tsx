@@ -159,8 +159,8 @@ export default function MediaBankPage() {
         // Add immediately to gallery for instant feedback
         if (res.data) setFiles(prev => [res.data, ...prev]);
         loadTags();
-      } else showToast(`Error: ${res.error || "No se pudo subir"}`);
-    } catch { clearInterval(iv); showToast("Error: Fallo la conexion"); }
+      } else showToast(`Error: ${res.error || "Could not upload"}`);
+    } catch { clearInterval(iv); showToast("Error: Connection failed"); }
     finally { setTimeout(() => { setUploading(false); setUploadProgress(0); }, 600); }
   }
 
@@ -172,11 +172,11 @@ export default function MediaBankPage() {
       const res = await api.uploadLogo(tenantId, file);
       if (res.success && res.data?.logoUrl) {
         setLogoUrl(mediaUrl(res.data.logoUrl));
-        showToast("Logo actualizado");
+        showToast("Logo updated");
         loadMedia(); // Refresh gallery to show logo in list too
       }
-      else showToast(`Error: ${res.error || "No se pudo subir"}`);
-    } catch { showToast("Error: Fallo la conexion"); }
+      else showToast(`Error: ${res.error || "Could not upload"}`);
+    } catch { showToast("Error: Connection failed"); }
     finally { setLogoUploading(false); }
   }
 
@@ -267,7 +267,7 @@ export default function MediaBankPage() {
             <button onClick={() => logoInputRef.current?.click()} disabled={logoUploading}
               className="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-indigo-600 text-white border-none cursor-pointer text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors">
               {logoUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              {logoUploading ? "Subiendo..." : t('uploadLogo')}
+              {logoUploading ? "Uploading..." : t('uploadLogo')}
             </button>
           </div>
         </div>
@@ -281,7 +281,7 @@ export default function MediaBankPage() {
             <h2 className="text-base font-semibold text-foreground m-0">{t('uploadImage')}</h2>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Tipo:</span>
+            <span className="text-xs font-semibold text-muted-foreground">Type:</span>
             <select value={entityType} onChange={e => setEntityType(e.target.value)}
               className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none w-[140px]">
               {ENTITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -297,7 +297,7 @@ export default function MediaBankPage() {
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={32} className="text-indigo-500 animate-spin" />
-              <p className="text-sm text-muted-foreground">Subiendo... {uploadProgress}%</p>
+              <p className="text-sm text-muted-foreground">Uploading... {uploadProgress}%</p>
               <div className="w-48 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                 <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
               </div>
@@ -342,7 +342,7 @@ export default function MediaBankPage() {
             <button onClick={() => setFilterTag("")}
               className={cn("px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer",
                 !filterTag ? "bg-indigo-500 text-white border-indigo-500" : "bg-background text-muted-foreground border-border hover:border-indigo-400")}>
-              Todas
+              All
             </button>
             {allTags.map(t => (
               <button key={t} onClick={() => setFilterTag(filterTag === t ? "" : t)}
@@ -357,7 +357,7 @@ export default function MediaBankPage() {
         {loading ? (
           <div className="p-12 text-center text-muted-foreground">
             <Loader2 size={28} className="animate-spin mx-auto mb-2 opacity-60" />
-            <p className="text-sm">Cargando imagenes...</p>
+            <p className="text-sm">Loading images...</p>
           </div>
         ) : files.length === 0 ? (
           <div className="p-12 text-center">
@@ -385,7 +385,7 @@ export default function MediaBankPage() {
                           img.dataset.retried = "1";
                           setTimeout(() => { img.src = thumbUrl + "?t=" + Date.now(); }, 1000);
                         } else {
-                          img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f0f0f0'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='%23999' font-size='11'%3ECargando...%3C/text%3E%3C/svg%3E";
+                          img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f0f0f0'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='%23999' font-size='11'%3ELoading...%3C/text%3E%3C/svg%3E";
                         }
                       }} />
                     {!isEditing && (
@@ -422,7 +422,7 @@ export default function MediaBankPage() {
                             ))}
                           </div>
                           <div className="flex gap-1">
-                            <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="Nueva etiqueta..."
+                            <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="New tag..."
                               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
                               className="flex-1 px-2 py-1 rounded-md border border-border bg-background text-foreground text-[11px] outline-none" />
                             <button onClick={addTag}
@@ -435,11 +435,11 @@ export default function MediaBankPage() {
                         <div className="flex gap-1.5">
                           <button onClick={saveEdit} disabled={saving}
                             className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-medium cursor-pointer border-none disabled:opacity-60">
-                            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
                           </button>
                           <button onClick={() => setEditingId(null)}
                             className="px-2 py-1.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-foreground text-xs cursor-pointer border-none">
-                            Cancelar
+                            Cancel
                           </button>
                         </div>
                       </div>
@@ -468,11 +468,11 @@ export default function MediaBankPage() {
                         <div className="flex gap-1.5">
                           <button onClick={() => startEdit(file)}
                             className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-xs font-medium cursor-pointer hover:bg-indigo-500/20 transition-colors">
-                            <Pencil size={12} /> Editar
+                            <Pencil size={12} /> Edit
                           </button>
                           <button onClick={() => handleDelete(file.id)}
                             className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium cursor-pointer hover:bg-red-500/20 transition-colors">
-                            <Trash2 size={12} /> Eliminar
+                            <Trash2 size={12} /> Delete
                           </button>
                         </div>
                       </>
@@ -495,7 +495,7 @@ export default function MediaBankPage() {
             </button>
             <img src={mediaUrl(previewFile.url)} alt={previewFile.label || previewFile.originalName}
               className="max-w-[85vw] max-h-[75vh] object-contain block"
-              onError={e => { (e.target as HTMLImageElement).alt = "No se pudo cargar la imagen"; }} />
+              onError={e => { (e.target as HTMLImageElement).alt = "Could not load image"; }} />
             <div className="p-4 border-t border-border">
               <div className="flex items-center justify-between gap-4 mb-2">
                 <div className="min-w-0">

@@ -98,7 +98,9 @@ export class ChannelManagementController {
         const accountId = botInfo.username;
 
         // 2. Auto-set webhook URL using bot-specific path
-        const apiUrl = this.configService.get<string>('NEXT_PUBLIC_API_URL') || 'https://api.parallly-chat.cloud/api/v1';
+        const apiUrl = this.configService.get<string>('API_BASE_URL')
+            || this.configService.get<string>('NEXT_PUBLIC_API_URL')
+            || 'https://api.parallly-chat.cloud/api/v1';
         const baseUrl = apiUrl.replace('/api/v1', '');
         const webhookUrl = `${baseUrl}/api/v1/channels/webhook/telegram/${accountId}`;
 
@@ -269,7 +271,9 @@ export class ChannelManagementController {
         }
 
         // 2. Configure webhook URL for inbound SMS
-        const apiUrl = this.configService.get<string>('NEXT_PUBLIC_API_URL') || 'https://api.parallly-chat.cloud/api/v1';
+        const apiUrl = this.configService.get<string>('API_BASE_URL')
+            || this.configService.get<string>('NEXT_PUBLIC_API_URL')
+            || 'https://api.parallly-chat.cloud/api/v1';
         const baseUrl = apiUrl.replace('/api/v1', '');
         const webhookUrl = `${baseUrl}/api/v1/channels/webhook/sms/${encodeURIComponent(phoneNumber)}`;
 
@@ -468,7 +472,9 @@ export class ChannelManagementController {
     @Get(':channelType/config')
     @ApiOperation({ summary: 'Get webhook configuration for a channel' })
     async getConfig(@Param('channelType') channelType: string) {
-        const apiUrl = this.configService.get<string>('NEXT_PUBLIC_API_URL') || 'https://api.parallly-chat.cloud/api/v1';
+        const apiUrl = this.configService.get<string>('API_BASE_URL')
+            || this.configService.get<string>('NEXT_PUBLIC_API_URL')
+            || 'https://api.parallly-chat.cloud/api/v1';
         const baseUrl = apiUrl.replace('/api/v1', '');
         const verifyToken = this.configService.get<string>('META_VERIFY_TOKEN') || this.configService.get<string>('WHATSAPP_VERIFY_TOKEN') || '';
 

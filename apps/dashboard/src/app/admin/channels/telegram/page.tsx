@@ -82,9 +82,7 @@ export default function TelegramSetupPage() {
             });
             setTestResult({ ok: true, text: t("telegram.testSuccess") });
         } catch {
-            // Test message to bot itself usually fails — that's expected
-            // Show a different success: webhook is configured correctly
-            setTestResult({ ok: true, text: t("telegram.testReady") });
+            setTestResult({ ok: false, text: t("telegram.testFailed") || "Test failed — check your bot token" });
         } finally {
             setTesting(false);
         }

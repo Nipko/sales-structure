@@ -108,6 +108,11 @@ export default function AppointmentsPage() {
       active: i < 5,
     }))
   );
+  // False until we confirm the tenant has at least one slot persisted in DB.
+  // The form shows Mon-Fri as convenient defaults, which previously looked
+  // "already saved" to operators who then left without clicking Guardar — the
+  // bot ends up telling every customer "no hay disponibilidad".
+  const [hasSavedAvailability, setHasSavedAvailability] = useState(true);
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
   const [calendarIntegrations, setCalendarIntegrations] = useState<CalendarIntegration[]>([]);
   const [externalEvents, setExternalEvents] = useState<any[]>([]);
@@ -200,6 +205,9 @@ export default function AppointmentsPage() {
             : { dayOfWeek: i + 1, startTime: "09:00", endTime: "18:00", active: false };
         });
         setAvailabilitySlots(merged);
+        setHasSavedAvailability(true);
+      } else {
+        setHasSavedAvailability(false);
       }
     } catch {
       /* ignore */
@@ -471,6 +479,7 @@ export default function AppointmentsPage() {
         .filter((s) => s.active)
         .map(({ dayOfWeek, startTime, endTime }) => ({ dayOfWeek, startTime, endTime }));
       await api.saveAvailability(activeTenantId, { userId: undefined, slots: activeSlots });
+      setHasSavedAvailability(activeSlots.length > 0);
       showToast(t("configSection.schedule") + " ✓");
     } catch {
       showToast(t("errors.saveAvailability"));
@@ -751,6 +760,7 @@ export default function AppointmentsPage() {
             activeTenantId={activeTenantId}
             availabilitySlots={availabilitySlots}
             setAvailabilitySlots={setAvailabilitySlots}
+            hasSavedAvailability={hasSavedAvailability}
             blockedDates={blockedDates}
             calendarIntegrations={calendarIntegrations}
             externalEventsCount={externalEvents.length}

@@ -34,6 +34,7 @@ interface ConfigTabProps {
     activeTenantId: string;
     availabilitySlots: AvailabilitySlot[];
     setAvailabilitySlots: (slots: AvailabilitySlot[]) => void;
+    hasSavedAvailability?: boolean;
     blockedDates: BlockedDate[];
     calendarIntegrations: CalendarIntegration[];
     externalEventsCount: number;
@@ -90,7 +91,7 @@ function Toggle({ enabled, onChange, label }: { enabled: boolean; onChange: (v: 
 }
 
 export default function ConfigTab({
-    activeTenantId, availabilitySlots, setAvailabilitySlots,
+    activeTenantId, availabilitySlots, setAvailabilitySlots, hasSavedAvailability = true,
     blockedDates, calendarIntegrations, externalEventsCount,
     onConnectCalendar, onDisconnectCalendar, onSaveAvailability,
     onAddBlockedDate, onDeleteBlockedDate, onRefresh, showToast,
@@ -129,6 +130,18 @@ export default function ConfigTab({
 
     return (
         <div className="space-y-6">
+
+            {!hasSavedAvailability && (
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
+                    <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <p className="text-sm font-semibold text-red-700 dark:text-red-300">Horarios no guardados</p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                            Todavía no configuraste los horarios de atención. Los valores que ves son solo sugerencias, no están en la base de datos. Si tu agente IA tiene la herramienta de agendamiento activada, responderá <em>&quot;no hay disponibilidad&quot;</em> a todos los clientes hasta que guardes esta configuración.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* ── 1. Connected Calendars ── */}
             <ConfigCard icon={Link2} iconColor="bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400"

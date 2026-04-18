@@ -1246,6 +1246,20 @@
       "stepOf": "Paso {current} de {total}"
     }
   },
+  "copilot": {
+    "subtitle": "Tu asistente de la plataforma",
+    "clearChat": "Limpiar chat",
+    "close": "Cerrar",
+    "greeting": "Hola!",
+    "greetingDesc": "Soy tu asistente de Parallly. Preguntame cualquier cosa sobre la plataforma.",
+    "suggestions": "Sugerencias para esta pagina:",
+    "suggestion1": "Como uso esta funcionalidad?",
+    "suggestion2": "Que puedo configurar aqui?",
+    "thinking": "Pensando...",
+    "inputPlaceholder": "Preguntame cualquier cosa...",
+    "errorProcessing": "Lo siento, no pude procesar tu solicitud. Intenta de nuevo.",
+    "errorConnection": "Error de conexion. Verifica tu internet e intentalo de nuevo."
+  },
   "checklist": {
     "title": "Tu Progreso",
     "essentials": "Esenciales",

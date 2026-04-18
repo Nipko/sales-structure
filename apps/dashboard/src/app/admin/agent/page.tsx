@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -156,6 +157,10 @@ export default function AgentConfigPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
+    // Gates the appointments toggle in step 5. Until these are non-zero the
+    // backend will reject enabling the tool (persona.service.ts), so we also
+    // reflect that in the UI so the operator cannot save a broken state.
+    const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({ services: 0, slots: 0, loaded: false });
 
     // Load existing config
     useEffect(() => {
@@ -175,6 +180,22 @@ export default function AgentConfigPage() {
             })
             .catch(() => {})
             .finally(() => setLoading(false));
+    }, [activeTenantId]);
+
+    // Load appointments readiness (services + availability_slots counts)
+    useEffect(() => {
+        if (!activeTenantId) return;
+        let cancelled = false;
+        Promise.all([
+            api.getServices(activeTenantId).catch(() => null),
+            api.getAvailability(activeTenantId).catch(() => null),
+        ]).then(([svcRes, availRes]: any[]) => {
+            if (cancelled) return;
+            const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false).length : 0;
+            const slots = Array.isArray(availRes?.data?.slots) ? availRes.data.slots.length : 0;
+            setApptReadiness({ services, slots, loaded: true });
+        });
+        return () => { cancelled = true; };
     }, [activeTenantId]);
 
     // Toast auto-dismiss
@@ -276,7 +297,9 @@ export default function AgentConfigPage() {
             if (res?.success) {
                 setToast("Configuracion guardada exitosamente");
             } else {
-                setToast(tc("errorSaving"));
+                // Surface backend validation messages (e.g. missing appointments
+                // prerequisites) instead of a generic "error saving".
+                setToast((res as any)?.error || tc("errorSaving"));
             }
         } catch {
             setToast(tc("errorSaving"));
@@ -673,6 +696,12 @@ export default function AgentConfigPage() {
             });
         };
 
+        const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
+        const missingItems: string[] = [];
+        if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push('servicios');
+        if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push('horarios de atención');
+        const toggleBlocked = !canEnableAppointments && !apt.enabled;
+
         return (
             <div>
                 <h3 className="text-lg font-semibold mb-1">Herramientas del Agente</h3>
@@ -693,10 +722,13 @@ export default function AgentConfigPage() {
                             </div>
                         </div>
                         <button
-                            onClick={() => updateTools({ enabled: !apt.enabled })}
+                            onClick={() => { if (!toggleBlocked) updateTools({ enabled: !apt.enabled }); }}
+                            disabled={toggleBlocked}
+                            title={toggleBlocked ? `Configurá ${missingItems.join(' y ')} antes de activar` : undefined}
                             className={cn(
                                 "relative w-11 h-6 rounded-full transition-colors",
-                                apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20"
+                                apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20",
+                                toggleBlocked && "opacity-40 cursor-not-allowed"
                             )}
                         >
                             <div className={cn(
@@ -705,6 +737,30 @@ export default function AgentConfigPage() {
                             )} />
                         </button>
                     </div>
+
+                    {/* Prerequisites warning — shown whenever services/slots are missing,
+                        regardless of toggle state. Red when the tool is already enabled
+                        (broken state), neutral when disabled (guidance). */}
+                    {apptReadiness.loaded && !canEnableAppointments && (
+                        <div className={cn(
+                            "flex items-start gap-2 p-3 rounded-lg border mb-3",
+                            apt.enabled
+                                ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30"
+                                : "bg-neutral-100 dark:bg-white/5 border-neutral-200 dark:border-white/10"
+                        )}>
+                            <AlertTriangle size={14} className={cn("shrink-0 mt-0.5", apt.enabled ? "text-red-500" : "text-muted-foreground")} />
+                            <div className="flex-1">
+                                <p className={cn("text-xs font-medium", apt.enabled ? "text-red-700 dark:text-red-300" : "text-foreground")}>
+                                    {apt.enabled
+                                        ? `Esta herramienta está activa pero le faltan ${missingItems.join(' y ')}. El bot responderá "no hay disponibilidad" a todos los clientes hasta que completes la configuración.`
+                                        : `Primero configurá ${missingItems.join(' y ')} en Citas.`}
+                                </p>
+                                <Link href="/admin/appointments" className="inline-block mt-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    Ir a Citas →
+                                </Link>
+                            </div>
+                        </div>
+                    )}
 
                     {apt.enabled && (
                         <div className="pl-13 space-y-3 border-t border-neutral-200 dark:border-white/10 pt-4">
@@ -724,12 +780,6 @@ export default function AgentConfigPage() {
                                     <p className="text-xs text-muted-foreground">El agente puede cancelar citas del mismo cliente que lo solicita</p>
                                 </div>
                             </label>
-                            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
-                                <AlertTriangle size={14} className="text-amber-500 shrink-0" />
-                                <p className="text-xs text-amber-700 dark:text-amber-300">
-                                    El agente siempre pedirá confirmación antes de agendar. Necesitas tener servicios y horarios configurados en Citas.
-                                </p>
-                            </div>
                         </div>
                     )}
                 </div>

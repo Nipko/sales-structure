@@ -157,10 +157,152 @@
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
 .badge-active { background: rgba(0,214,143,0.15); color: #00d68f; }
 .badge-inactive { background: rgba(152,152,176,0.15); color: #9898b0; }
-.animate-in { animation: fadeIn 0.3s ease forwards; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+/* ============================================
+   Parallly — Premium Interaction System
+   Based on Linear/Stripe/Cal.com patterns
+   ============================================ */
+
+/* Transition tokens (design-system skill) */
+:root {
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Base interactive transition — apply to all interactive elements */
+@layer base {
+  button, a, [role="button"], input, select, textarea {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-in-out);
+  }
+}
+
+/* Focus ring system (states-and-variants skill) */
+@layer base {
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--background)),
+                0 0 0 4px hsl(var(--ring));
+    border-radius: inherit;
+  }
+}
+
+/* Page entrance animation */
+.animate-in {
+  animation: fadeSlideIn var(--duration-slow) var(--ease-out) forwards;
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Staggered children animation */
+.animate-stagger > * {
+  opacity: 0;
+  animation: fadeSlideIn var(--duration-slow) var(--ease-out) forwards;
+}
+.animate-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.animate-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.animate-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.animate-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.animate-stagger > *:nth-child(6) { animation-delay: 250ms; }
+
+/* Card hover — premium lift effect */
+.hover-lift {
+  transition: transform var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-in-out);
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.dark .hover-lift:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Button press effect */
+.press-effect:active {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.08) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Pulse dot (online indicators) */
+.pulse-dot {
+  animation: pulseDot 2s ease-in-out infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Subtle pulse glow for accent elements */
 .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
-@keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(79,70,229,0); } 50% { box-shadow: 0 0 0 8px rgba(79,70,229,0.1); } }
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+  50% { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.08); }
+}
+
+/* Slide-in from bottom (toasts, modals) */
+.slide-in-bottom {
+  animation: slideInBottom var(--duration-normal) var(--ease-out) forwards;
+}
+@keyframes slideInBottom {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade backdrop */
+.fade-backdrop {
+  animation: fadeIn var(--duration-fast) ease forwards;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Nav item hover underline (Stripe pattern) */
+.nav-underline {
+  position: relative;
+}
+.nav-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: hsl(var(--foreground));
+  transform: scaleX(0);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.nav-underline:hover::after {
+  transform: scaleX(1);
+}
+.nav-underline.active::after {
+  transform: scaleX(1);
+}
 
 /* Monospace font for code / API keys */
 .font-mono {

@@ -649,13 +649,13 @@ export default function AppointmentsPage() {
             </p>
           </div>
           <button onClick={() => openCreateModal()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 active:scale-[0.97] transition-all duration-150">
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
             <Plus size={16} /> {t("newAppointment")}
           </button>
         </div>
 
         {/* ── KPI row (compact) ─────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-stagger">
           {[
             { label: t("status.pending"), value: kpis.pending, color: "text-amber-500" },
             { label: t("status.confirmed"), value: kpis.confirmed, color: "text-emerald-500" },

@@ -127,7 +127,7 @@ export default function SettingsHub() {
                                     <button
                                         key={card.href}
                                         onClick={() => router.push(card.href)}
-                                        className="group flex items-center gap-3.5 rounded-xl border border-neutral-200 bg-white px-5 py-4 text-left transition-all hover:border-indigo-400 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-indigo-500"
+                                        className="group flex items-center gap-3.5 rounded-xl border border-neutral-200 bg-white px-5 py-4 text-left hover-lift hover:border-indigo-400 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-indigo-500"
                                     >
                                         <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", card.iconBg)}>
                                             <Icon size={20} className={card.iconColor} />

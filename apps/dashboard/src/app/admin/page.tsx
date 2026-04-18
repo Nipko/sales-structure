@@ -142,7 +142,7 @@ export default function AdminDashboard() {
                     <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("platform")}</h2>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <Link href="/admin/tenants">
-                            <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer">
+                            <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer">
                                 <CardContent className="pt-0">
                                     <div className="flex items-start justify-between">
                                         <div>
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
                                 </CardContent>
                             </Card>
                         </Link>
-                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
@@ -169,7 +169,7 @@ export default function AdminDashboard() {
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
@@ -190,7 +190,7 @@ export default function AdminDashboard() {
             )}
 
             {/* Stats Grid */}
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-stagger">
                 {statConfig.map((stat) => {
                     const Icon = stat.icon;
                     const rawValue = overview[stat.key] ?? 0;
@@ -198,7 +198,7 @@ export default function AdminDashboard() {
                         ? `$${rawValue.toFixed(2)}`
                         : rawValue.toLocaleString("es-CO");
                     return (
-                        <Card key={stat.key} className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                        <Card key={stat.key} className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
             {/* Two Column Layout */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {/* Recent Activity */}
-                <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                     <CardHeader>
                         <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                             Actividad Reciente
@@ -270,7 +270,7 @@ export default function AdminDashboard() {
                 </Card>
 
                 {/* LLM Model Usage */}
-                <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                     <CardHeader>
                         <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                             {t("modelUsage")}

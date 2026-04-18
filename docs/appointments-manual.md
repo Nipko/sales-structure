@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Appointments module is a comprehensive scheduling system built into Parallly, supporting multi-channel booking (WhatsApp, Instagram, Messenger, Telegram), AI-powered scheduling via tool calling, public self-service booking, and recurring appointments.
+The Appointments module is a comprehensive scheduling system built into Parallly, supporting multi-channel booking (WhatsApp, Instagram, Messenger, Telegram, SMS), AI-powered scheduling via tool calling, public self-service booking, and recurring appointments.
 
 ---
 

@@ -28,7 +28,7 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. Core business logic, 36 modules
+  api/          — NestJS 10, port 3000. Core business logic, 37 modules
   dashboard/    — Next.js 16, port 3001. Admin panel (45+ pages), React 19, Tailwind + shadcn/ui + recharts
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud), 4-language i18n
@@ -56,12 +56,12 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Event-driven**: HandoffService emits events, AgentConsoleGateway listens via @OnEvent
 - **Outbound messages**: Always through OutboundQueueService (BullMQ, 3 retries, priority by tenant plan)
 - **Rate limiting**: TenantThrottleService (starter: 50 auto/h + 200 outbound/h, pro: 500+2000, enterprise: 5000+20000)
-- **Webhook idempotency**: Redis keys `idem:wa:{id}`, `idem:ig:{id}`, `idem:fb:{id}`, `idem:tg:{id}` with 24h TTL
+- **Webhook idempotency**: Redis keys `idem:wa:{id}`, `idem:ig:{id}`, `idem:fb:{id}`, `idem:tg:{id}`, `idem:sms:{id}` with 24h TTL
 - **LLM Router**: Skips unconfigured providers. Auto-upgrades tier if no key available
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
 - **i18n**: Every page edit/creation MUST include i18n updates in all 4 JSON files (es/en/pt/fr)
-- **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram
+- **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio)
 
 ## API modules (36 total)
 
@@ -99,7 +99,7 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | Add LLM provider | `ai/providers/*.provider.ts`, `ai/router/llm-router.service.ts` |
 | Agent persona config | `persona/persona.service.ts`, `persona/persona.controller.ts` |
 | Channel adapters | `channels/{channel}/*.adapter.ts`, `channels/channel-gateway.service.ts` |
-| Channel management | `channels/channel-management.controller.ts` (connect IG/Messenger/Telegram) |
+| Channel management | `channels/channel-management.controller.ts` (connect IG/Messenger/Telegram/SMS) |
 | Webhook validation | `channels/meta-signature.util.ts` (shared HMAC validator) |
 | Handoff logic | `handoff/handoff.service.ts` |
 | Agent console | `agent-console/agent-console.gateway.ts` (WebSocket), `.service.ts` |
@@ -150,10 +150,10 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | **AI** | Agent Config (6-step wizard + custom prompt mode), AI Settings |
 | **Automation** | Rules (4-step wizard), Settings |
 | **Analytics** | Analytics V2 (8 tabs: Overview/AI & Bot/Automation/Campaigns/Channels/CSAT/Anomalies/Cohorts), Agent Performance (legacy 4 tabs) |
-| **Channels** | Overview, WhatsApp Setup, Instagram Setup, Messenger Setup, Telegram Setup |
+| **Channels** | Overview, WhatsApp Setup, Instagram Setup, Messenger Setup, Telegram Setup, SMS/Twilio Setup |
 | **Identity** | Merge Suggestions (approve/reject) |
 | **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports** (threshold alerts + scheduled email reports) |
-| **Scheduling** | Appointments (calendar, list, availability config) |
+| **Scheduling** | Appointments (week/day calendar, agenda, services + staff, config, analytics), Public Booking (/book/:tenantSlug) |
 | **Operations** | Broadcast, Inventory, Orders, Compliance, Knowledge Base |
 | **Public** | `/kb/[tenantSlug]` (public help center, light theme, no auth) |
 
@@ -202,6 +202,9 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | `*/5 * * * *` | AgentAvailabilityService | Auto-offline inactive agents (15min) |
 | `0 */6 * * *` | NurturingService | Auto-resolve stale conversations (72h) |
 | `0 */2 * * *` | NurturingService | Check stale conversations for follow-up |
+| `*/15 * * * *` | AppointmentRemindersService | Send 24h appointment reminders |
+| `3,18,33,48 * * * *` | AppointmentRemindersService | Send 1h appointment reminders |
+| `5,35 * * * *` | AppointmentRemindersService | Auto-mark no-shows + send follow-up |
 
 ### Redis Keys (Analytics)
 ```
@@ -311,7 +314,7 @@ See `.env.example`. Key ones:
 
 - Landing: https://parallly-chat.cloud (static, nginx container, 4-language i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui + recharts)
-- API: https://api.parallly-chat.cloud (NestJS, 36 modules)
+- API: https://api.parallly-chat.cloud (NestJS, 37 modules)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)

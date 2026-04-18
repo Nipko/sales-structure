@@ -70,7 +70,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
     <div className="space-y-6">
       {/* Period selector */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">{t("analyticsTitle") || "Appointment Analytics"}</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t("analyticsTitle")}</h2>
         <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
           {(["7d", "30d", "90d"] as const).map(p => (
             <button key={p} onClick={() => setPeriod(p)}
@@ -114,7 +114,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Daily Volume Chart */}
         <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">{t("dailyVolume") || "Daily Volume"}</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">{t("dailyVolume")}</h3>
           <div className="flex items-end gap-[2px] h-32">
             {daily.map((d: any, i: number) => (
               <div key={i} className="flex-1 flex flex-col items-stretch gap-[1px]" title={`${d.date}: ${d.total}`}>
@@ -138,7 +138,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
         {/* Peak Hours */}
         <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Clock size={14} /> {t("peakHours") || "Peak Hours"}
+            <Clock size={14} /> {t("peakHours")}
           </h3>
           <div className="flex items-end gap-1 h-32">
             {Array.from({ length: 14 }, (_, i) => i + 7).map(hour => {
@@ -156,7 +156,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
 
         {/* By Service */}
         <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">{t("byService") || "By Service"}</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">{t("byService")}</h3>
           {byService.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noAppointments")}</p>
           ) : (
@@ -184,7 +184,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
 
         {/* By Source */}
         <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4">{t("bySource") || "By Source"}</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">{t("bySource")}</h3>
           {bySource.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-4">{t("noAppointments")}</p>
           ) : (

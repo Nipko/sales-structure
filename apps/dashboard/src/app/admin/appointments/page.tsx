@@ -612,7 +612,7 @@ export default function AppointmentsPage() {
     { id: "agenda" as const, label: t("agenda"), icon: List },
     { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
     { id: "config" as const, label: t("configSection.title"), icon: Settings },
-    { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
+    { id: "analytics" as const, label: t("analyticsTab"), icon: BarChart3 },
   ];
 
   return (

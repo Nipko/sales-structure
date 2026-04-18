@@ -438,6 +438,12 @@ export class ConversationsService {
         // 2. Build Prompt (with optional RAG context)
         let systemPrompt = this.personaService.buildSystemPrompt(config);
 
+        // 2a. Inject temporal context so the LLM has a real "today" reference.
+        // Without this the model anchors on its training cutoff and invents
+        // dates like 2023-10-06 when the customer mentions "hoy" or asks for
+        // the next available slot.
+        systemPrompt += '\n' + (await this.buildTemporalContext(tenantId));
+
         // 2b. Inject AI tools prompt if appointments tool is enabled
         const toolsConfig = (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
@@ -663,5 +669,37 @@ export class ConversationsService {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.redis.set(cacheKey, schema, 600);
         return schema;
+    }
+
+    private async buildTemporalContext(tenantId: string): Promise<string> {
+        let tz = 'America/Bogota';
+        try {
+            const cacheKey = `tenant:${tenantId}:timezone`;
+            const cached = await this.redis.get(cacheKey);
+            if (cached) {
+                tz = cached;
+            } else {
+                const tenant = await this.prisma.tenant.findUnique({
+                    where: { id: tenantId },
+                    select: { settings: true },
+                });
+                const configured = (tenant?.settings as any)?.timezone;
+                if (typeof configured === 'string' && configured.length > 0) tz = configured;
+                await this.redis.set(cacheKey, tz, 600);
+            }
+        } catch {
+            // fall through with default
+        }
+
+        const now = new Date();
+        const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+        const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
+        const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(now);
+
+        return `## Current context
+- Today's date: ${date} (${weekday})
+- Current local time: ${time}
+- Tenant timezone: ${tz}
+When the customer references "today" / "hoy", "tomorrow" / "mañana", days of the week, or any relative date, compute it from the values above. Never use any other reference date.`;
     }
 }

@@ -34,9 +34,14 @@ export class OutboundQueueProcessor extends WorkerHost {
         const startTime = Date.now();
 
         // Block outbound to opted-out contacts
-        if (await this.compliance.isBlocked(outbound.tenantId, outbound.to)) {
-            this.logger.warn(`[Outbound] Blocked: ${outbound.to} is opted out for tenant ${outbound.tenantId}`);
-            return null;
+        try {
+            if (await this.compliance.isBlocked(outbound.tenantId, outbound.to)) {
+                this.logger.warn(`[Outbound] Blocked: ${outbound.to} is opted out for tenant ${outbound.tenantId}`);
+                return null;
+            }
+        } catch (err) {
+            // Don't block sending if compliance check fails
+            this.logger.warn(`[Outbound] Compliance check failed (non-fatal): ${err.message}`);
         }
 
         // Per-tenant rate limit — retry if exceeded

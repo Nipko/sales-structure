@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { PageHeader } from "@/components/ui/page-header";
 import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
@@ -113,13 +115,15 @@ export default function Lead360Page() {
 
     return (
         <div>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-                <button onClick={() => router.back()} className="bg-transparent border border-border rounded-lg px-2.5 py-1.5 cursor-pointer text-muted-foreground flex items-center gap-1">
-                    <ArrowLeft size={16} /> Volver
-                </button>
-                <h1 className="m-0 text-[22px] font-semibold">Lead 360°</h1>
-            </div>
+            <PageHeader
+                title="Lead 360°"
+                breadcrumbs={
+                    <Breadcrumbs items={[
+                        { label: "CRM", href: "/admin/contacts" },
+                        { label: lead?.name || "Contact" },
+                    ]} />
+                }
+            />
 
             <div className="grid grid-cols-[340px_1fr] gap-5">
                 {/* === LEFT PANEL: Profile === */}

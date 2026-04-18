@@ -4,42 +4,30 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import ConfigTab from "@/components/appointments/ConfigTab";
 import ServicesTab from "@/components/appointments/ServicesTab";
 import {
   CalendarDays,
   List,
-  Clock,
   Plus,
   X,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  XCircle,
   AlertCircle,
   CalendarCheck,
-  CalendarX,
   UserCheck,
   MapPin,
   FileText,
   Save,
-  Trash2,
   Ban,
   Eye,
   Tag,
-  Pencil,
   Link2,
-  Unlink,
   Search,
   Settings,
-  CalendarClock,
-  Timer,
-  DollarSign,
-  ToggleLeft,
-  ToggleRight,
-  Calendar,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -98,38 +86,38 @@ interface CalendarIntegration {
 
 const STATUS_CONFIG: Record<
   string,
-  { label: string; color: string; bg: string; twText: string; twBg: string }
+  { i18nKey: string; color: string; bg: string; twText: string; twBg: string }
 > = {
   pending: {
-    label: "Pendiente",
+    i18nKey: "status.pending",
     color: "#f59e0b",
     bg: "#f59e0b15",
     twText: "text-amber-500 dark:text-amber-400",
     twBg: "bg-amber-50 dark:bg-amber-500/10",
   },
   confirmed: {
-    label: "Confirmada",
+    i18nKey: "status.confirmed",
     color: "#22c55e",
     bg: "#22c55e15",
     twText: "text-emerald-600 dark:text-emerald-400",
     twBg: "bg-emerald-50 dark:bg-emerald-500/10",
   },
   cancelled: {
-    label: "Cancelada",
+    i18nKey: "status.cancelled",
     color: "#ef4444",
     bg: "#ef444415",
     twText: "text-red-500 dark:text-red-400",
     twBg: "bg-red-50 dark:bg-red-500/10",
   },
   completed: {
-    label: "Completada",
+    i18nKey: "status.completed",
     color: "#3b82f6",
     bg: "#3b82f615",
     twText: "text-blue-600 dark:text-blue-400",
     twBg: "bg-blue-50 dark:bg-blue-500/10",
   },
   no_show: {
-    label: "No asistio",
+    i18nKey: "status.noShow",
     color: "#6b7280",
     bg: "#6b728015",
     twText: "text-gray-500 dark:text-gray-400",
@@ -137,17 +125,7 @@ const STATUS_CONFIG: Record<
   },
 };
 
-const DAY_NAMES = [
-  "Lunes",
-  "Martes",
-  "Miercoles",
-  "Jueves",
-  "Viernes",
-  "Sabado",
-  "Domingo",
-];
-
-const DAY_NAMES_SHORT = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7-20
 
@@ -198,25 +176,25 @@ function formatTime(iso: string) {
   return `${fmt2(d.getHours())}:${fmt2(d.getMinutes())}`;
 }
 
-function formatDate(iso: string) {
+function formatDate(iso: string, loc: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString("es-MX", {
+  return d.toLocaleDateString(loc, {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
 }
 
-function formatDateTime(iso: string) {
-  return `${formatDate(iso)} ${formatTime(iso)}`;
+function formatDateTime(iso: string, loc: string) {
+  return `${formatDate(iso, loc)} ${formatTime(iso)}`;
 }
 
-function formatWeekRange(start: Date, end: Date) {
-  const s = start.toLocaleDateString("es-MX", {
+function formatWeekRange(start: Date, end: Date, loc: string) {
+  const s = start.toLocaleDateString(loc, {
     day: "numeric",
     month: "long",
   });
-  const e = end.toLocaleDateString("es-MX", {
+  const e = end.toLocaleDateString(loc, {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -256,6 +234,8 @@ function MicrosoftIcon({ size = 18 }: { size?: number }) {
 
 export default function AppointmentsPage() {
   const t = useTranslations("appointments");
+  const locale = useLocale();
+  const dateLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-MX";
   const { activeTenantId } = useTenant();
   const { user } = useAuth();
 
@@ -265,7 +245,7 @@ export default function AppointmentsPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [availabilitySlots, setAvailabilitySlots] = useState<AvailabilitySlot[]>(
-    DAY_NAMES.map((_, i) => ({
+    DAY_KEYS.map((_, i) => ({
       dayOfWeek: i + 1,
       startTime: "09:00",
       endTime: "18:00",
@@ -354,7 +334,7 @@ export default function AppointmentsPage() {
     try {
       const res = await api.getAvailability(activeTenantId);
       if (res?.success && res.data?.slots?.length) {
-        const merged = DAY_NAMES.map((_, i) => {
+        const merged = DAY_KEYS.map((_, i) => {
           const existing = res.data.slots.find((s: any) => s.dayOfWeek === i + 1);
           return existing
             ? { ...existing, active: true }
@@ -556,7 +536,7 @@ export default function AppointmentsPage() {
       setShowModal(false);
       loadAppointments();
     } catch {
-      showToast("Error al guardar la cita");
+      showToast(t("errors.saveAppointment"));
     }
     setSaving(false);
   };
@@ -574,7 +554,7 @@ export default function AppointmentsPage() {
       }
       loadAppointments();
     } catch {
-      showToast("Error al actualizar la cita");
+      showToast(t("errors.updateAppointment"));
     }
   };
 
@@ -592,7 +572,7 @@ export default function AppointmentsPage() {
       await api.saveAvailability(activeTenantId, { userId: undefined, slots: activeSlots });
       showToast(t("configSection.schedule") + " ✓");
     } catch {
-      showToast("Error al guardar disponibilidad");
+      showToast(t("errors.saveAvailability"));
     }
     setSavingAvailability(false);
   };
@@ -611,7 +591,7 @@ export default function AppointmentsPage() {
       loadBlockedDates();
       showToast(t("configSection.addBlockedDate") + " ✓");
     } catch {
-      showToast("Error al agregar fecha bloqueada");
+      showToast(t("errors.addBlockedDate"));
     }
   };
 
@@ -622,7 +602,7 @@ export default function AppointmentsPage() {
       loadBlockedDates();
       showToast(t("configSection.blockedDates") + " ✓");
     } catch {
-      showToast("Error al eliminar fecha bloqueada");
+      showToast(t("errors.deleteBlockedDate"));
     }
   };
 
@@ -654,15 +634,15 @@ export default function AppointmentsPage() {
     try {
       if (editingService) {
         await api.updateService(activeTenantId, editingService.id, serviceForm);
-        showToast("Servicio actualizado");
+        showToast(t("toasts.serviceUpdated"));
       } else {
         await api.createService(activeTenantId, serviceForm);
-        showToast("Servicio creado");
+        showToast(t("toasts.serviceCreated"));
       }
       setShowServiceModal(false);
       loadServices();
     } catch {
-      showToast("Error al guardar servicio");
+      showToast(t("errors.saveService"));
     }
     setSavingService(false);
   };
@@ -672,9 +652,9 @@ export default function AppointmentsPage() {
     try {
       await api.deleteService(activeTenantId, serviceId);
       loadServices();
-      showToast("Servicio eliminado");
+      showToast(t("toasts.serviceDeleted"));
     } catch {
-      showToast("Error al eliminar servicio");
+      showToast(t("errors.deleteService"));
     }
   };
 
@@ -684,7 +664,7 @@ export default function AppointmentsPage() {
       await api.updateService(activeTenantId, svc.id, { active: !svc.active });
       loadServices();
     } catch {
-      showToast("Error al actualizar servicio");
+      showToast(t("errors.updateService"));
     }
   };
 
@@ -704,7 +684,7 @@ export default function AppointmentsPage() {
         window.location.href = res.data.url;
       }
     } catch {
-      showToast("Error al conectar calendario");
+      showToast(t("errors.connectCalendar"));
     }
     setConnectingCalendar(false);
   };
@@ -714,9 +694,9 @@ export default function AppointmentsPage() {
     try {
       await api.disconnectCalendar(activeTenantId, integrationId);
       loadCalendarIntegrations();
-      showToast("Calendario desconectado");
+      showToast(t("toasts.calendarDisconnected"));
     } catch {
-      showToast("Error al desconectar calendario");
+      showToast(t("errors.disconnectCalendar"));
     }
   };
 
@@ -747,9 +727,9 @@ export default function AppointmentsPage() {
 
   const tabs = [
     { id: "calendar" as const, label: t("calendar"), icon: CalendarDays },
-    { id: "agenda" as const, label: "Agenda", icon: List },
-    { id: "services" as const, label: "Servicios", icon: Tag },
-    { id: "config" as const, label: "Configuracion", icon: Settings },
+    { id: "agenda" as const, label: t("agenda"), icon: List },
+    { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
+    { id: "config" as const, label: t("configSection.title"), icon: Settings },
   ];
 
   return (
@@ -847,15 +827,15 @@ export default function AppointmentsPage() {
                 {calendarIntegrations.map((cal: any) => (
                   <span key={cal.id} className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-300">
                     {cal.provider === 'microsoft' ? '📅 Outlook' : '📅 Google'} Calendar
-                    <span className="text-xs text-emerald-500 dark:text-emerald-400">({cal.account_email || cal.accountEmail || 'conectado'})</span>
+                    <span className="text-xs text-emerald-500 dark:text-emerald-400">({cal.account_email || cal.accountEmail || t('connected')})</span>
                   </span>
                 ))}
               </div>
               <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {externalEvents.length > 0
-                  ? `${externalEvents.length} evento(s) sincronizado(s) esta semana`
-                  : 'Sincronizado'}
-                {' · '}Zona horaria: America/Bogota (UTC-5)
+                  ? t('eventsSynced', { count: externalEvents.length })
+                  : t('synced')}
+                {' · '}{t('timezone')}: America/Bogota (UTC-5)
               </p>
             </div>
           </div>
@@ -870,8 +850,8 @@ export default function AppointmentsPage() {
               <Link2 size={22} className="text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Sincroniza tu calendario</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Conecta Google Calendar u Outlook para evitar conflictos de horario</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{t('syncCalendar')}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('syncCalendarDesc')}</p>
             </div>
             <div className="flex gap-2">
               <button onClick={() => handleConnectCalendar("google")} disabled={connectingCalendar}
@@ -914,7 +894,7 @@ export default function AppointmentsPage() {
           <div className="flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Cargando citas...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('loadingAppointments')}</p>
             </div>
           </div>
         )}
@@ -929,7 +909,7 @@ export default function AppointmentsPage() {
               <button
                 onClick={() => setWeekStart(addDays(weekStart, -7))}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-600 dark:text-gray-300"
-                title="Semana anterior"
+                title={t('prevWeek')}
               >
                 <ChevronLeft size={20} />
               </button>
@@ -939,17 +919,17 @@ export default function AppointmentsPage() {
                   onClick={() => setWeekStart(getMondayOfWeek(new Date()))}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 bg-transparent text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  Hoy
+                  {t('today')}
                 </button>
                 <span className="font-semibold text-sm text-gray-900 dark:text-white">
-                  {formatWeekRange(weekDays[0], weekDays[6])}
+                  {formatWeekRange(weekDays[0], weekDays[6], dateLocale)}
                 </span>
               </div>
 
               <button
                 onClick={() => setWeekStart(addDays(weekStart, 7))}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-600 dark:text-gray-300"
-                title="Semana siguiente"
+                title={t('nextWeek')}
               >
                 <ChevronRight size={20} />
               </button>
@@ -969,7 +949,7 @@ export default function AppointmentsPage() {
                     )}
                   >
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                      {DAY_NAMES_SHORT[i]}
+                      {t(`businessHoursPage.daysShort.${DAY_KEYS[i]}`)}
                     </div>
                     <div
                       className={cn(
@@ -1111,7 +1091,7 @@ export default function AppointmentsPage() {
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar por servicio, cliente o agente..."
+                  placeholder={t('searchAppointments')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
@@ -1129,7 +1109,7 @@ export default function AppointmentsPage() {
                       : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
                   )}
                 >
-                  Todos
+                  {t('allStatuses')}
                 </button>
                 {Object.entries(STATUS_CONFIG).map(([key, sc]) => (
                   <button
@@ -1142,7 +1122,7 @@ export default function AppointmentsPage() {
                         : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
                     )}
                   >
-                    {sc.label}
+                    {t(sc.i18nKey)}
                   </button>
                 ))}
               </div>
@@ -1151,7 +1131,7 @@ export default function AppointmentsPage() {
             {/* Date range */}
             <div className="flex gap-3 items-center flex-wrap">
               <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Desde</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('from')}</label>
                 <input
                   type="date"
                   value={filterStartDate}
@@ -1160,7 +1140,7 @@ export default function AppointmentsPage() {
                 />
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Hasta</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('to')}</label>
                 <input
                   type="date"
                   value={filterEndDate}
@@ -1178,7 +1158,7 @@ export default function AppointmentsPage() {
                   }}
                   className="text-xs text-primary hover:underline cursor-pointer bg-transparent border-none"
                 >
-                  Limpiar filtros
+                  {t('clearFilters')}
                 </button>
               )}
             </div>
@@ -1191,17 +1171,17 @@ export default function AppointmentsPage() {
                     <CalendarDays size={28} className="text-gray-400" />
                   </div>
                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    No hay citas para mostrar
+                    {t('noAppointmentsToShow')}
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Ajusta los filtros o crea una nueva cita
+                    {t('adjustFilters')}
                   </p>
                 </div>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-800">
-                      {["Servicio", "Cliente", "Fecha / Hora", "Agente", "Estado", "Acciones"].map(
+                      {[t("service"), t("client"), t("dateTime"), t("agent"), t("statusLabel"), t("actionsLabel")].map(
                         (h) => (
                           <th
                             key={h}
@@ -1235,12 +1215,12 @@ export default function AppointmentsPage() {
                           </td>
                           <td className="px-5 py-4 text-gray-600 dark:text-gray-300">
                             {appt.contactName || (
-                              <span className="text-gray-400">Sin asignar</span>
+                              <span className="text-gray-400">{t('unassigned')}</span>
                             )}
                           </td>
                           <td className="px-5 py-4">
                             <div className="text-gray-900 dark:text-white text-sm">
-                              {formatDate(appt.startAt)}
+                              {formatDate(appt.startAt, dateLocale)}
                             </div>
                             <div className="text-gray-400 text-xs mt-0.5">
                               {formatTime(appt.startAt)} - {formatTime(appt.endAt)}
@@ -1248,7 +1228,7 @@ export default function AppointmentsPage() {
                           </td>
                           <td className="px-5 py-4 text-gray-600 dark:text-gray-300">
                             {appt.assignedName || (
-                              <span className="text-gray-400">Sin agente</span>
+                              <span className="text-gray-400">{t('noAgent')}</span>
                             )}
                           </td>
                           <td className="px-5 py-4">
@@ -1259,7 +1239,7 @@ export default function AppointmentsPage() {
                                 sc.twText
                               )}
                             >
-                              {sc.label}
+                              {t(sc.i18nKey)}
                             </span>
                           </td>
                           <td className="px-5 py-4">
@@ -1267,7 +1247,7 @@ export default function AppointmentsPage() {
                               <button
                                 onClick={() => openEditModal(appt)}
                                 className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                                title="Ver detalles"
+                                title={t('viewDetails')}
                               >
                                 <Eye size={15} />
                               </button>
@@ -1275,7 +1255,7 @@ export default function AppointmentsPage() {
                                 <button
                                   onClick={() => handleQuickAction(appt.id, "confirm")}
                                   className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors cursor-pointer border-none bg-transparent text-emerald-500"
-                                  title="Confirmar"
+                                  title={t("actions.confirm")}
                                 >
                                   <CheckCircle2 size={15} />
                                 </button>
@@ -1285,14 +1265,14 @@ export default function AppointmentsPage() {
                                   <button
                                     onClick={() => handleQuickAction(appt.id, "complete")}
                                     className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer border-none bg-transparent text-blue-500"
-                                    title="Completar"
+                                    title={t("actions.complete")}
                                   >
                                     <CalendarCheck size={15} />
                                   </button>
                                   <button
                                     onClick={() => handleQuickAction(appt.id, "cancel")}
                                     className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent text-red-500"
-                                    title="Cancelar"
+                                    title={t("actions.cancel")}
                                   >
                                     <Ban size={15} />
                                   </button>
@@ -1324,120 +1304,6 @@ export default function AppointmentsPage() {
           />
         )}
 
-        {/* OLD SERVICES TAB - kept for reference */}
-        {false && activeTab === "services" && (
-          <div className="space-y-4 hidden">
-            <div className="flex items-center justify-between">
-              <div></div>
-              <button className="">Placeholder</button>
-            </div>
-
-            {loadingServices ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : services.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-                <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-                  <Tag size={28} className="text-gray-400" />
-                </div>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                  No hay servicios configurados
-                </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  Crea tu primer servicio para comenzar a agendar
-                </p>
-                <button
-                  onClick={openCreateServiceModal}
-                  className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium cursor-pointer border-none hover:opacity-90"
-                >
-                  <Plus size={16} />
-                  Crear servicio
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {services.map((svc) => (
-                  <div
-                    key={svc.id}
-                    className={cn(
-                      "relative rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-md transition-shadow",
-                      !svc.active && "opacity-60"
-                    )}
-                  >
-                    {/* Color stripe */}
-                    <div className="h-1.5" style={{ backgroundColor: svc.color }} />
-
-                    <div className="p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: svc.color }}
-                          />
-                          <h3 className="font-semibold text-gray-900 dark:text-white text-base">
-                            {svc.name}
-                          </h3>
-                        </div>
-                        {/* Active toggle */}
-                        <button
-                          onClick={() => handleToggleServiceActive(svc)}
-                          className={cn(
-                            "w-10 h-[22px] rounded-full relative transition-colors cursor-pointer border-none flex-shrink-0",
-                            svc.active ? "bg-primary" : "bg-gray-300 dark:bg-gray-600"
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "absolute top-[3px] w-4 h-4 rounded-full bg-white transition-transform shadow-sm",
-                              svc.active ? "left-[22px]" : "left-[3px]"
-                            )}
-                          />
-                        </button>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium">
-                          <Timer size={12} />
-                          {svc.duration} min
-                        </span>
-                        {svc.buffer > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium">
-                            <CalendarClock size={12} />
-                            +{svc.buffer} min buffer
-                          </span>
-                        )}
-                        {svc.price > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium">
-                            <DollarSign size={12} />
-                            ${svc.price.toLocaleString("es-CO")}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
-                        <button
-                          onClick={() => openEditServiceModal(svc)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent"
-                        >
-                          <Pencil size={13} />
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDeleteService(svc.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent"
-                        >
-                          <Trash2 size={13} />
-                          Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ============================================================ */}
         {/*  TAB: CONFIGURACION (refactored component)                    */}
@@ -1458,312 +1324,6 @@ export default function AppointmentsPage() {
             onRefresh={() => { loadCalendarIntegrations(); loadBlockedDates(); loadAvailability(); }}
             showToast={showToast}
           />
-        )}
-        {/* OLD CONFIG TAB - removed, replaced by ConfigTab component */}
-        {false && (
-          <div className="space-y-6 hidden">
-            {/* OLD CONFIG - kept for reference, remove later */}
-            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <Clock size={18} className="text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                      Horario de atencion
-                    </h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Define los horarios disponibles para agendar citas
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-3">
-                {availabilitySlots.map((slot, i) => (
-                  <div
-                    key={slot.dayOfWeek}
-                    className={cn(
-                      "flex items-center gap-4 p-4 rounded-xl border transition-all",
-                      slot.active
-                        ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-                        : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30"
-                    )}
-                  >
-                    <button
-                      onClick={() => {
-                        const updated = [...availabilitySlots];
-                        updated[i] = { ...updated[i], active: !updated[i].active };
-                        setAvailabilitySlots(updated);
-                      }}
-                      className={cn(
-                        "w-10 h-[22px] rounded-full relative transition-colors cursor-pointer border-none flex-shrink-0",
-                        slot.active ? "bg-primary" : "bg-gray-300 dark:bg-gray-600"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "absolute top-[3px] w-4 h-4 rounded-full bg-white transition-transform shadow-sm",
-                          slot.active ? "left-[22px]" : "left-[3px]"
-                        )}
-                      />
-                    </button>
-
-                    <span
-                      className={cn(
-                        "w-28 text-sm font-medium",
-                        slot.active
-                          ? "text-gray-900 dark:text-white"
-                          : "text-gray-400 dark:text-gray-500"
-                      )}
-                    >
-                      {DAY_NAMES[i]}
-                    </span>
-
-                    {slot.active ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          value={slot.startTime}
-                          onChange={(e) => {
-                            const updated = [...availabilitySlots];
-                            updated[i] = { ...updated[i], startTime: e.target.value };
-                            setAvailabilitySlots(updated);
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                        <span className="text-gray-400 text-sm">a</span>
-                        <input
-                          type="time"
-                          value={slot.endTime}
-                          onChange={(e) => {
-                            const updated = [...availabilitySlots];
-                            updated[i] = { ...updated[i], endTime: e.target.value };
-                            setAvailabilitySlots(updated);
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-400 dark:text-gray-500 italic">
-                        No disponible
-                      </span>
-                    )}
-                  </div>
-                ))}
-
-                <div className="flex justify-end pt-3">
-                  <button
-                    onClick={handleSaveAvailability}
-                    disabled={savingAvailability}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  >
-                    <Save size={16} />
-                    {savingAvailability ? "Guardando..." : "Guardar disponibilidad"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ---- Section 2: Calendarios conectados ---- */}
-            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-500/10">
-                    <Link2 size={18} className="text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                      Calendarios conectados
-                    </h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Sincroniza tus citas con calendarios externos
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6">
-                {calendarIntegrations.length > 0 && (
-                  <div className="space-y-3 mb-6">
-                    {calendarIntegrations.map((cal) => (
-                      <div
-                        key={cal.id}
-                        className="flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30"
-                      >
-                        <div className="flex items-center gap-3">
-                          {cal.provider === "google" ? (
-                            <GoogleIcon size={22} />
-                          ) : (
-                            <MicrosoftIcon size={22} />
-                          )}
-                          <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {cal.provider === "google" ? "Google Calendar" : "Outlook Calendar"}
-                            </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mt-0.5">
-                              <span
-                                className={cn(
-                                  "w-1.5 h-1.5 rounded-full",
-                                  cal.active ? "bg-emerald-500" : "bg-gray-400"
-                                )}
-                              />
-                              {cal.email}
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleDisconnectCalendar(cal.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 bg-transparent text-red-500 text-xs font-medium cursor-pointer hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-                        >
-                          <Unlink size={13} />
-                          Desconectar
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {calendarIntegrations.length === 0 && (
-                  <div className="text-center py-6 mb-6">
-                    <Calendar size={32} className="text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Conecta tu calendario para sincronizar citas automaticamente
-                    </p>
-                  </div>
-                )}
-
-                {/* Connect CTAs */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => handleConnectCalendar("google")}
-                    disabled={connectingCalendar}
-                    className="flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 bg-transparent text-left cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-500/5 transition-all disabled:opacity-50 group"
-                  >
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 group-hover:shadow-md transition-shadow">
-                      <GoogleIcon size={22} />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        Google Calendar
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Conectar cuenta de Google
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => handleConnectCalendar("microsoft")}
-                    disabled={connectingCalendar}
-                    className="flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 bg-transparent text-left cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-500/5 transition-all disabled:opacity-50 group"
-                  >
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 group-hover:shadow-md transition-shadow">
-                      <MicrosoftIcon size={22} />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        Outlook Calendar
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Conectar cuenta de Microsoft
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ---- Section 3: Fechas bloqueadas ---- */}
-            <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-              <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-red-50 dark:bg-red-500/10">
-                    <CalendarX size={18} className="text-red-500 dark:text-red-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                      Fechas bloqueadas
-                    </h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Bloquea dias especificos para evitar agendamientos
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6">
-                {/* Add form */}
-                <div className="flex gap-3 mb-5 flex-wrap">
-                  <input
-                    type="date"
-                    value={newBlockedDate}
-                    onChange={(e) => setNewBlockedDate(e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Motivo (opcional)"
-                    value={newBlockedReason}
-                    onChange={(e) => setNewBlockedReason(e.target.value)}
-                    className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm flex-1 min-w-[200px] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                  <button
-                    onClick={() => handleAddBlockedDate()}
-                    disabled={!newBlockedDate}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-none bg-red-500 text-white font-semibold text-sm cursor-pointer disabled:opacity-40 hover:bg-red-600 transition-colors"
-                  >
-                    <Plus size={16} />
-                    Bloquear fecha
-                  </button>
-                </div>
-
-                {/* Blocked dates list */}
-                {blockedDates.length === 0 ? (
-                  <div className="text-center py-6">
-                    <p className="text-sm text-gray-400 dark:text-gray-500">
-                      No hay fechas bloqueadas
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {blockedDates.map((bd) => (
-                      <div
-                        key={bd.id}
-                        className="flex items-center justify-between p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full bg-red-500" />
-                          <div>
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              {new Date(bd.blockedDate + "T12:00:00").toLocaleDateString("es-MX", {
-                                weekday: "long",
-                                day: "numeric",
-                                month: "long",
-                                year: "numeric",
-                              })}
-                            </span>
-                            {bd.reason && (
-                              <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">
-                                — {bd.reason}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteBlockedDate(bd.id)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent text-red-500"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         )}
       </div>
 
@@ -1786,7 +1346,7 @@ export default function AppointmentsPage() {
                   <CalendarDays size={18} className="text-primary" />
                 </div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {editingAppointment ? "Editar cita" : "Nueva cita"}
+                  {editingAppointment ? t('editAppointmentTitle') : t('newAppointmentTitle')}
                 </h2>
               </div>
               <button
@@ -1802,7 +1362,7 @@ export default function AppointmentsPage() {
               {services.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Servicio
+                    {t('service')}
                   </label>
                   <select
                     value={services.find((s) => s.name === modalForm.serviceName)?.id || ""}
@@ -1822,7 +1382,7 @@ export default function AppointmentsPage() {
                     }}
                     className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   >
-                    <option value="">-- Seleccionar servicio --</option>
+                    <option value="">{t('selectServicePlaceholder')}</option>
                     {services
                       .filter((s) => s.active)
                       .map((s) => (
@@ -1837,11 +1397,11 @@ export default function AppointmentsPage() {
               {/* Service name (manual fallback) */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Nombre del servicio *
+                  {t('serviceName')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: Consulta general"
+                  placeholder={t('serviceNamePlaceholder')}
                   value={modalForm.serviceName}
                   onChange={(e) => setModalForm({ ...modalForm, serviceName: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -1851,7 +1411,7 @@ export default function AppointmentsPage() {
               {/* Date */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Fecha *
+                  {t('dateRequired')}
                 </label>
                 <input
                   type="date"
@@ -1865,7 +1425,7 @@ export default function AppointmentsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Hora inicio *
+                    {t('startTimeRequired')}
                   </label>
                   <input
                     type="time"
@@ -1876,7 +1436,7 @@ export default function AppointmentsPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Hora fin *
+                    {t('endTimeRequired')}
                   </label>
                   <input
                     type="time"
@@ -1891,11 +1451,11 @@ export default function AppointmentsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                   <MapPin size={14} className="inline mr-1.5 -mt-0.5" />
-                  Ubicacion
+                  {t('location')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: Oficina central"
+                  placeholder={t('locationPlaceholder')}
                   value={modalForm.location}
                   onChange={(e) => setModalForm({ ...modalForm, location: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1906,11 +1466,11 @@ export default function AppointmentsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                   <FileText size={14} className="inline mr-1.5 -mt-0.5" />
-                  Notas
+                  {t('notes')}
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Notas adicionales..."
+                  placeholder={t('additionalNotes')}
                   value={modalForm.notes}
                   onChange={(e) => setModalForm({ ...modalForm, notes: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm resize-none placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1921,11 +1481,11 @@ export default function AppointmentsPage() {
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                   <UserCheck size={14} className="inline mr-1.5 -mt-0.5" />
-                  Agente asignado
+                  {t('assignedAgent')}
                 </label>
                 <input
                   type="text"
-                  placeholder="ID del agente"
+                  placeholder={t('agentIdPlaceholder')}
                   value={modalForm.assignedTo}
                   onChange={(e) => setModalForm({ ...modalForm, assignedTo: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1935,11 +1495,11 @@ export default function AppointmentsPage() {
               {/* Contact */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Contacto
+                  {t('contact')}
                 </label>
                 <input
                   type="text"
-                  placeholder="ID del contacto"
+                  placeholder={t('contactIdPlaceholder')}
                   value={modalForm.contactId}
                   onChange={(e) => setModalForm({ ...modalForm, contactId: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -1953,7 +1513,7 @@ export default function AppointmentsPage() {
                 onClick={() => setShowModal(false)}
                 className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
-                Cancelar
+                {t('cancel')}
               </button>
               <button
                 onClick={handleSave}
@@ -1961,7 +1521,7 @@ export default function AppointmentsPage() {
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
                 <Save size={16} />
-                {saving ? "Guardando..." : editingAppointment ? "Actualizar" : "Crear cita"}
+                {saving ? t("saving") : editingAppointment ? t("update") : t("createAppointment")}
               </button>
             </div>
           </div>
@@ -1987,7 +1547,7 @@ export default function AppointmentsPage() {
                   <Tag size={18} style={{ color: serviceForm.color }} />
                 </div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {editingService ? "Editar servicio" : "Nuevo servicio"}
+                  {editingService ? t('editServiceTitle') : t('newServiceTitle')}
                 </h2>
               </div>
               <button
@@ -2002,11 +1562,11 @@ export default function AppointmentsPage() {
               {/* Name */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Nombre del servicio *
+                  {t('serviceName')}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: Consulta general"
+                  placeholder={t('serviceNamePlaceholder')}
                   value={serviceForm.name}
                   onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -2016,7 +1576,7 @@ export default function AppointmentsPage() {
               {/* Duration presets */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Duracion *
+                  {t('durationRequired')}
                 </label>
                 <div className="flex gap-2 mb-2">
                   {DURATION_PRESETS.map((d) => (
@@ -2040,7 +1600,7 @@ export default function AppointmentsPage() {
                   value={serviceForm.duration || ""}
                   onChange={(e) => setServiceForm({ ...serviceForm, duration: e.target.value === "" ? 0 : Number(e.target.value) })}
                   className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  placeholder="Duracion personalizada en minutos"
+                  placeholder={t('customDuration')}
                 />
               </div>
 
@@ -2048,11 +1608,11 @@ export default function AppointmentsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                    Tiempo entre citas (min)
+                    {t('bufferTime')}
                     <span className="relative group">
                       <span className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-[10px] flex items-center justify-center cursor-help font-bold">?</span>
                       <span className="absolute bottom-6 left-1/2 -translate-x-1/2 w-48 p-2 rounded-lg bg-gray-900 text-white text-[11px] leading-relaxed hidden group-hover:block z-50 shadow-lg">
-                        Tiempo de descanso entre una cita y la siguiente. Por ejemplo, 10 min para preparar el espacio.
+                        {t('bufferTooltip')}
                       </span>
                     </span>
                   </label>
@@ -2061,24 +1621,24 @@ export default function AppointmentsPage() {
                     onChange={(e) => setServiceForm({ ...serviceForm, buffer: Number(e.target.value) })}
                     className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value={0}>Sin tiempo entre citas</option>
-                    <option value={5}>5 minutos</option>
-                    <option value={10}>10 minutos</option>
-                    <option value={15}>15 minutos</option>
-                    <option value={20}>20 minutos</option>
-                    <option value={30}>30 minutos</option>
+                    <option value={0}>{t('noBuffer')}</option>
+                    <option value={5}>{t('nMinutes', { n: 5 })}</option>
+                    <option value={10}>{t('nMinutes', { n: 10 })}</option>
+                    <option value={15}>{t('nMinutes', { n: 15 })}</option>
+                    <option value={20}>{t('nMinutes', { n: 20 })}</option>
+                    <option value={30}>{t('nMinutes', { n: 30 })}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                    Precio
+                    {t('price')}
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
                     <input
                       type="text"
                       inputMode="numeric"
-                      value={serviceForm.price > 0 ? serviceForm.price.toLocaleString('es-CO') : ''}
+                      value={serviceForm.price > 0 ? serviceForm.price.toLocaleString(dateLocale) : ''}
                       onChange={(e) => {
                         const raw = e.target.value.replace(/[^0-9]/g, '');
                         setServiceForm({ ...serviceForm, price: raw ? Number(raw) : 0 });
@@ -2086,7 +1646,7 @@ export default function AppointmentsPage() {
                       placeholder="0"
                       className="w-full px-3 pl-7 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">COP</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{t('currency')}</span>
                   </div>
                 </div>
               </div>
@@ -2094,7 +1654,7 @@ export default function AppointmentsPage() {
               {/* Color picker */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Color
+                  {t('color')}
                 </label>
                 <div className="flex items-center gap-3">
                   <div className="flex gap-2 flex-wrap">
@@ -2128,7 +1688,7 @@ export default function AppointmentsPage() {
                 onClick={() => setShowServiceModal(false)}
                 className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-transparent text-gray-700 dark:text-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
-                Cancelar
+                {t('cancel')}
               </button>
               <button
                 onClick={handleSaveService}
@@ -2136,7 +1696,7 @@ export default function AppointmentsPage() {
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
               >
                 <Save size={16} />
-                {savingService ? "Guardando..." : editingService ? "Actualizar" : "Crear servicio"}
+                {savingService ? t("saving") : editingService ? t("updateService") : t("createService")}
               </button>
             </div>
           </div>

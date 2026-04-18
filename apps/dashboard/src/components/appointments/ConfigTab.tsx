@@ -46,7 +46,7 @@ interface ConfigTabProps {
     showToast: (msg: string) => void;
 }
 
-const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
 // ── Card wrapper ──
 function ConfigCard({ icon: Icon, iconColor, title, description, children, badge }: {
@@ -201,7 +201,7 @@ export default function ConfigTab({
                                     setAvailabilitySlots(updated);
                                 }} />
                                 <span className={cn("w-24 text-sm font-medium", slot.active ? "text-foreground" : "text-muted-foreground")}>
-                                    {DAY_NAMES[i]}
+                                    {t(`businessHoursPage.days.${DAY_KEYS[i]}`)}
                                 </span>
                                 {slot.active ? (
                                     <div className="flex items-center gap-2">
@@ -252,7 +252,7 @@ export default function ConfigTab({
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
                         <AlertTriangle size={14} className="text-amber-500 shrink-0" />
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                            Los recordatorios se envían por WhatsApp usando templates aprobados de Meta.
+                            {t('configSection.reminderNote')}
                         </p>
                     </div>
                 </div>

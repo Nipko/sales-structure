@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
     Plus, Pencil, Trash2, Timer, DollarSign, Clock, Search,
@@ -42,6 +42,8 @@ export default function ServicesTab({
     services, loading, onCreateService, onEditService, onDeleteService, onToggleActive,
 }: ServicesTabProps) {
     const t = useTranslations("appointments");
+    const locale = useLocale();
+    const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-CO";
     const [searchQuery, setSearchQuery] = useState("");
     const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("all");
 
@@ -107,7 +109,7 @@ export default function ServicesTab({
                                     filterActive === f
                                         ? "bg-white dark:bg-gray-900 text-foreground shadow-sm"
                                         : "text-muted-foreground hover:text-foreground bg-transparent")}>
-                                {f === "all" ? "Todos" : f === "active" ? t("servicesSection.active") : t("servicesSection.inactive")}
+                                {f === "all" ? t("servicesSection.all") : f === "active" ? t("servicesSection.active") : t("servicesSection.inactive")}
                             </button>
                         ))}
                     </div>
@@ -175,7 +177,7 @@ export default function ServicesTab({
                                     )}
                                     {svc.price > 0 && (
                                         <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-muted-foreground text-xs font-medium">
-                                            <DollarSign size={12} /> ${svc.price.toLocaleString("es-CO")}
+                                            <DollarSign size={12} /> ${svc.price.toLocaleString(numLocale)}
                                         </span>
                                     )}
                                 </div>
@@ -186,7 +188,7 @@ export default function ServicesTab({
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer border-none bg-transparent">
                                         <Pencil size={13} /> {t("editAppointment").split(" ")[0]}
                                     </button>
-                                    <button onClick={() => { if (confirm('¿Eliminar este servicio?')) onDeleteService(svc.id); }}
+                                    <button onClick={() => { if (confirm(t('servicesSection.confirmDelete'))) onDeleteService(svc.id); }}
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent">
                                         <Trash2 size={13} /> {t("actions.cancel").split(" ")[0]}
                                     </button>

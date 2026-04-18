@@ -66,7 +66,7 @@ export default function ConversationsPage() {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                    <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                         <MessageSquare size={28} className="text-primary" /> Conversaciones
                         <DataSourceBadge isLive={isLive} />
                     </h1>
@@ -85,7 +85,7 @@ export default function ConversationsPage() {
                         <div className="flex justify-between items-center">
                             <div>
                                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
-                                <div className="text-[28px] font-bold mt-1">{stat.value}</div>
+                                <div className="text-[28px] font-semibold mt-1">{stat.value}</div>
                             </div>
                             <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                                 <stat.icon size={22} color={stat.color} />
@@ -128,7 +128,7 @@ export default function ConversationsPage() {
                                 <tr key={conv.id} className="border-b border-border cursor-pointer">
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2.5">
-                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
                                                 {conv.contactName.charAt(0)}
                                             </div>
                                             <div>

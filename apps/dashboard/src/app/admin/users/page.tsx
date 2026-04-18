@@ -70,7 +70,7 @@ export default function UsersPage() {
             <div>
                 <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                             <Users size={28} className="text-primary" /> {t('title')}
                             <DataSourceBadge isLive={isLive} />
                         </h1>
@@ -92,7 +92,7 @@ export default function UsersPage() {
                             <div className="flex justify-between items-center">
                                 <div>
                                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
-                                    <div className="text-[28px] font-bold mt-1">{stat.value}</div>
+                                    <div className="text-[28px] font-semibold mt-1">{stat.value}</div>
                                 </div>
                                 <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                                     <stat.icon size={22} color={stat.color} />
@@ -131,7 +131,7 @@ export default function UsersPage() {
                                     <tr key={u.id} className="border-b border-border">
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2.5">
-                                                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm" style={{ background: `linear-gradient(135deg, ${rc.color}, ${rc.color}88)` }}>
+                                                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ background: `linear-gradient(135deg, ${rc.color}, ${rc.color}88)` }}>
                                                     {u.firstName.charAt(0)}{u.lastName.charAt(0)}
                                                 </div>
                                                 <span className="font-semibold">{u.firstName} {u.lastName}</span>
@@ -160,7 +160,7 @@ export default function UsersPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowNewUser(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[460px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-bold m-0">Nuevo Usuario</h2>
+                            <h2 className="text-xl font-semibold m-0">Nuevo Usuario</h2>
                             <button onClick={() => setShowNewUser(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="grid grid-cols-2 gap-3 mb-3.5">

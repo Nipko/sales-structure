@@ -226,7 +226,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         )}
       >
         <div
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0"
+          className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold shrink-0"
           title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
         >
           {user?.firstName?.charAt(0) || "U"}

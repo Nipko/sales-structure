@@ -34,7 +34,7 @@ export default function AuthCallbackPage() {
     }, [searchParams]);
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0a0a14]">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-[#0a0a14]">
             <Loader2 size={24} className="animate-spin text-indigo-500" />
         </div>
     );

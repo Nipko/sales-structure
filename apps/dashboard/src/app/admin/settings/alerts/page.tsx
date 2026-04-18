@@ -115,7 +115,7 @@ export default function AlertsSettingsPage() {
         );
     }
 
-    const inputCls = "w-full py-2.5 px-3 rounded-lg border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-500/50";
+    const inputCls = "w-full py-2.5 px-3 rounded-lg border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500 dark:focus:border-indigo-500/50";
 
     return (
         <div className="p-6 max-w-[900px] mx-auto space-y-8">
@@ -124,7 +124,7 @@ export default function AlertsSettingsPage() {
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                         <Bell size={20} className="text-amber-400" />
-                        <h2 className="text-lg font-bold text-foreground">Alertas</h2>
+                        <h2 className="text-lg font-semibold text-foreground">Alertas</h2>
                     </div>
                     <button
                         onClick={() => setShowForm(!showForm)}
@@ -140,7 +140,7 @@ export default function AlertsSettingsPage() {
 
                 {/* Create form */}
                 {showForm && (
-                    <div className="p-5 mb-4 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-3">
+                    <div className="p-5 mb-4 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-3">
                         <input
                             type="text" placeholder="Nombre de la alerta"
                             value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
@@ -191,8 +191,8 @@ export default function AlertsSettingsPage() {
                         <p className="text-sm text-muted-foreground py-6 text-center">No hay alertas configuradas.</p>
                     ) : (
                         rules.map((rule: any) => (
-                            <div key={rule.id} className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
-                                <div className={`w-2 h-2 rounded-full ${rule.is_active ? "bg-emerald-400" : "bg-gray-400"}`} />
+                            <div key={rule.id} className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
+                                <div className={`w-2 h-2 rounded-full ${rule.is_active ? "bg-emerald-400" : "bg-neutral-400"}`} />
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-foreground truncate">{rule.name}</p>
                                     <p className="text-[12px] text-muted-foreground">
@@ -205,7 +205,7 @@ export default function AlertsSettingsPage() {
                                     className={`px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-colors ${
                                         rule.is_active
                                             ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/10"
-                                            : "border-gray-300 dark:border-white/10 text-muted-foreground"
+                                            : "border-neutral-300 dark:border-white/10 text-muted-foreground"
                                     }`}
                                 >
                                     {rule.is_active ? "Activa" : "Inactiva"}
@@ -226,14 +226,14 @@ export default function AlertsSettingsPage() {
             <div>
                 <div className="flex items-center gap-2 mb-4">
                     <Calendar size={20} className="text-blue-400" />
-                    <h2 className="text-lg font-bold text-foreground">Informes Programados</h2>
+                    <h2 className="text-lg font-semibold text-foreground">Informes Programados</h2>
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
                     Recibe un resumen de KPIs por email de forma automática.
                 </p>
 
-                <div className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-4">
+                <div className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-4">
                     <div className="flex items-center gap-3">
                         <label className="text-sm text-muted-foreground w-24 shrink-0">Frecuencia</label>
                         <select
@@ -264,7 +264,7 @@ export default function AlertsSettingsPage() {
                                 type="checkbox"
                                 checked={reportForm.isActive}
                                 onChange={e => setReportForm({ ...reportForm, isActive: e.target.checked })}
-                                className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30"
+                                className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30"
                             />
                             <span className="text-sm text-foreground">
                                 {reportForm.isActive ? "Habilitado" : "Deshabilitado"}

@@ -59,7 +59,7 @@ export default function AnalyticsV4Page() {
         <div>
             {/* Header */}
             <div className="mb-6">
-                <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                     <BarChart3 size={28} className="text-primary" /> Analytics V4
                 </h1>
                 <p className="text-muted-foreground mt-1">Metricas ejecutivas, funnel de conversion y rendimiento por campana</p>
@@ -81,7 +81,7 @@ export default function AnalyticsV4Page() {
                                 <Icon size={22} color={kpi.color} />
                             </div>
                             <div>
-                                <div className="text-[22px] font-bold">{kpi.value}</div>
+                                <div className="text-[22px] font-semibold">{kpi.value}</div>
                                 <div className="text-xs text-muted-foreground">{kpi.label}</div>
                             </div>
                         </div>
@@ -90,8 +90,8 @@ export default function AnalyticsV4Page() {
             </div>
 
             {/* Funnel */}
-            <div className="p-5 rounded-2xl border border-border bg-card mb-6">
-                <h2 className="text-base font-bold mb-4">📊 Funnel de Conversion</h2>
+            <div className="p-5 rounded-xl border border-border bg-card mb-6">
+                <h2 className="text-base font-semibold mb-4">📊 Funnel de Conversion</h2>
                 <div className="flex flex-col gap-2">
                     {funnel.filter(f => f.stage !== "perdido").map((f, i) => {
                         const pct = maxFunnel > 0 ? (f.count / maxFunnel) * 100 : 0;
@@ -109,7 +109,7 @@ export default function AnalyticsV4Page() {
                                             background: `linear-gradient(90deg, ${color}cc, ${color})`,
                                         }}
                                     >
-                                        <span className="text-xs font-bold text-white">{f.count}</span>
+                                        <span className="text-xs font-semibold text-white">{f.count}</span>
                                     </div>
                                 </div>
                                 {i < funnel.filter(f2 => f2.stage !== "perdido").length - 1 && (
@@ -122,8 +122,8 @@ export default function AnalyticsV4Page() {
             </div>
 
             {/* Campaign Analytics Table */}
-            <div className="p-5 rounded-2xl border border-border bg-card">
-                <h2 className="text-base font-bold mb-4">📈 Rendimiento por Campana</h2>
+            <div className="p-5 rounded-xl border border-border bg-card">
+                <h2 className="text-base font-semibold mb-4">📈 Rendimiento por Campana</h2>
                 {campaigns.length > 0 ? (
                     <table className="w-full border-collapse text-[13px]">
                         <thead>
@@ -149,7 +149,7 @@ export default function AnalyticsV4Page() {
                                     <td className="p-2.5 text-red-500 font-semibold">{c.hot_leads}</td>
                                     <td className="p-2.5 text-emerald-500 font-semibold">{c.converted}</td>
                                     <td className="p-2.5">{c.avg_score || "—"}</td>
-                                    <td className="p-2.5 font-bold" style={{ color: parseFloat(c.conversion_rate) > 0 ? "#2ecc71" : undefined }}>
+                                    <td className="p-2.5 font-semibold" style={{ color: parseFloat(c.conversion_rate) > 0 ? "#2ecc71" : undefined }}>
                                         {c.conversion_rate || 0}%
                                     </td>
                                 </tr>
@@ -168,15 +168,15 @@ export default function AnalyticsV4Page() {
                 <div className="mt-6 grid grid-cols-3 gap-3">
                     <div className="p-4 rounded-[14px] border border-border bg-card">
                         <div className="text-xs text-muted-foreground mb-1">Oportunidades Totales</div>
-                        <div className="text-[22px] font-bold">{crmStats.opportunities?.total || 0}</div>
+                        <div className="text-[22px] font-semibold">{crmStats.opportunities?.total || 0}</div>
                     </div>
                     <div className="p-4 rounded-[14px] border border-border bg-card">
                         <div className="text-xs text-muted-foreground mb-1">Valor Total Pipeline</div>
-                        <div className="text-[22px] font-bold">${(crmStats.opportunities?.totalValue || 0).toLocaleString()}</div>
+                        <div className="text-[22px] font-semibold">${(crmStats.opportunities?.totalValue || 0).toLocaleString()}</div>
                     </div>
                     <div className="p-4 rounded-[14px] border border-border bg-card">
                         <div className="text-xs text-muted-foreground mb-1">Win Rate</div>
-                        <div className="text-[22px] font-bold text-emerald-500">{crmStats.opportunities?.winRate || 0}%</div>
+                        <div className="text-[22px] font-semibold text-emerald-500">{crmStats.opportunities?.winRate || 0}%</div>
                     </div>
                 </div>
             )}

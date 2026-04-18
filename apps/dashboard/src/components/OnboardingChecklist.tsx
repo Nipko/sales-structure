@@ -98,7 +98,7 @@ export default function OnboardingChecklist() {
     const recommendedItems = ITEMS.filter(i => !i.essential);
 
     return (
-        <div className="border-l border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] w-72 shrink-0 hidden xl:block overflow-y-auto">
+        <div className="border-l border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] w-72 shrink-0 hidden xl:block overflow-y-auto">
             <div className="p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">
@@ -118,7 +118,7 @@ export default function OnboardingChecklist() {
                     <div className="flex items-center justify-between mb-1">
                         <span className="text-[11px] text-muted-foreground">{percentage}% {t("complete")}</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-neutral-100 dark:bg-white/[0.06] overflow-hidden">
                         <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${percentage}%` }} />
                     </div>
                 </div>
@@ -134,7 +134,7 @@ export default function OnboardingChecklist() {
                                     return (
                                         <div key={item.key} className="flex items-center gap-2.5">
                                             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                                                done ? "bg-emerald-500 text-white" : "border-2 border-gray-300 dark:border-white/20"
+                                                done ? "bg-emerald-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"
                                             }`}>
                                                 {done && <Check size={12} />}
                                             </div>
@@ -164,7 +164,7 @@ export default function OnboardingChecklist() {
                                     return (
                                         <div key={item.key} className="flex items-center gap-2.5">
                                             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                                                done ? "bg-emerald-500 text-white" : "border-2 border-gray-300 dark:border-white/20"
+                                                done ? "bg-emerald-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"
                                             }`}>
                                                 {done && <Check size={12} />}
                                             </div>
@@ -174,7 +174,7 @@ export default function OnboardingChecklist() {
                                             {!done && item.href && (
                                                 <button
                                                     onClick={() => router.push(item.href)}
-                                                    className="text-[10px] px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors"
+                                                    className="text-[10px] px-2 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors"
                                                 >
                                                     {t(`actions.${item.actionKey}`)}
                                                 </button>

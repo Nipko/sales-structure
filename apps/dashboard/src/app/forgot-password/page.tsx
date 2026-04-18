@@ -181,7 +181,7 @@ export default function ForgotPasswordPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
             {/* Background glow effects (dark mode only) */}
             <div className="hidden dark:block fixed top-[20%] left-[30%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(108,92,231,0.15)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
@@ -196,7 +196,7 @@ export default function ForgotPasswordPage() {
                 </div>
 
                 {/* Card */}
-                <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     {/* Success message */}
                     {successMessage ? (
                         <div className="text-center py-4">
@@ -208,7 +208,7 @@ export default function ForgotPasswordPage() {
                                     />
                                 </div>
                             </div>
-                            <h2 className="text-xl font-bold text-foreground mb-2">
+                            <h2 className="text-xl font-semibold text-foreground mb-2">
                                 {t('passwordResetSuccess')}
                             </h2>
                             <p className="text-muted-foreground text-sm">
@@ -227,7 +227,7 @@ export default function ForgotPasswordPage() {
                                 </div>
                             </div>
 
-                            <h1 className="text-2xl font-bold text-foreground mb-1 text-center">
+                            <h1 className="text-2xl font-semibold text-foreground mb-1 text-center">
                                 {t('resetPassword')}
                             </h1>
                             <p className="text-muted-foreground text-sm mb-6 text-center">
@@ -261,7 +261,7 @@ export default function ForgotPasswordPage() {
                                             placeholder={t('resetEmailPlaceholder')}
                                             required
                                             autoFocus
-                                            className="w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                            className="w-full py-3 px-3.5 pl-11 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                         />
                                     </div>
                                 </div>
@@ -300,7 +300,7 @@ export default function ForgotPasswordPage() {
                                 <ArrowLeft size={14} /> {t('changeEmail')}
                             </button>
 
-                            <h1 className="text-2xl font-bold text-foreground mb-1">
+                            <h1 className="text-2xl font-semibold text-foreground mb-1">
                                 {t('resetPassword')}
                             </h1>
                             <p className="text-muted-foreground text-sm mb-6">
@@ -347,11 +347,11 @@ export default function ForgotPasswordPage() {
                                                 disabled={isSubmitting}
                                                 autoFocus={i === 0}
                                                 className={cn(
-                                                    "w-12 h-14 text-center text-2xl font-bold rounded-xl border outline-none transition-all",
-                                                    "bg-gray-50 dark:bg-white/5 text-foreground",
+                                                    "w-12 h-14 text-center text-2xl font-semibold rounded-xl border outline-none transition-all",
+                                                    "bg-neutral-50 dark:bg-white/5 text-foreground",
                                                     digit
                                                         ? "border-indigo-500 dark:border-indigo-500/50 ring-1 ring-indigo-500/20"
-                                                        : "border-gray-300 dark:border-white/10",
+                                                        : "border-neutral-300 dark:border-white/10",
                                                     "focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20",
                                                     isSubmitting &&
                                                         "opacity-60 cursor-wait"
@@ -383,7 +383,7 @@ export default function ForgotPasswordPage() {
                                             }
                                             placeholder={t('passwordRequirements.minLength')}
                                             required
-                                            className="w-full py-3 px-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                            className="w-full py-3 px-11 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                         />
                                         <button
                                             type="button"
@@ -425,7 +425,7 @@ export default function ForgotPasswordPage() {
                                             }
                                             placeholder={t('repeatPassword')}
                                             required
-                                            className="w-full py-3 px-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                            className="w-full py-3 px-11 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                         />
                                         <button
                                             type="button"
@@ -458,7 +458,7 @@ export default function ForgotPasswordPage() {
                                                         "shrink-0 transition-colors",
                                                         met
                                                             ? "text-emerald-500"
-                                                            : "text-gray-300 dark:text-white/15"
+                                                            : "text-neutral-300 dark:text-white/15"
                                                     )}
                                                 />
                                                 <span

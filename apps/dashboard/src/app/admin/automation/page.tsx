@@ -290,7 +290,7 @@ export default function AutomationPage() {
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                             <Workflow size={28} className="text-indigo-600" /> {t('title')}
                         </h1>
                         <p className="text-muted-foreground mt-1 mb-0 text-sm">
@@ -317,7 +317,7 @@ export default function AutomationPage() {
                                         <Icon size={20} color={stat.color} />
                                     </div>
                                     <div>
-                                        <div className="text-[22px] font-bold">{stat.value}</div>
+                                        <div className="text-[22px] font-semibold">{stat.value}</div>
                                         <div className="text-xs text-muted-foreground">{stat.label}</div>
                                     </div>
                                 </CardContent>
@@ -486,7 +486,7 @@ export default function AutomationPage() {
                 >
                     <ChevronLeft size={20} />
                 </button>
-                <h1 className="text-[22px] font-bold m-0">
+                <h1 className="text-[22px] font-semibold m-0">
                     {editingRuleId ? "Editar Regla" : "Nueva Regla"}
                 </h1>
             </div>
@@ -500,7 +500,7 @@ export default function AutomationPage() {
                             className={cn("flex items-center gap-2", i <= wizardStep ? "cursor-pointer" : "cursor-default")}
                         >
                             <div className={cn(
-                                "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold transition-all duration-200",
+                                "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold transition-all duration-200",
                                 i < wizardStep
                                     ? "bg-emerald-500 text-white"
                                     : i === wizardStep
@@ -533,7 +533,7 @@ export default function AutomationPage() {
                     {/* -- Step 0: Trigger -- */}
                     {wizardStep === 0 && (
                         <div>
-                            <h2 className="text-lg font-bold mb-1">
+                            <h2 className="text-lg font-semibold mb-1">
                                 ¿Qué evento activa esta regla?
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
@@ -567,7 +567,7 @@ export default function AutomationPage() {
                     {/* -- Step 1: Conditions -- */}
                     {wizardStep === 1 && (
                         <div>
-                            <h2 className="text-lg font-bold mb-1">
+                            <h2 className="text-lg font-semibold mb-1">
                                 ¿Bajo qué condiciones se ejecuta?
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
@@ -631,7 +631,7 @@ export default function AutomationPage() {
                     {/* -- Step 2: Actions -- */}
                     {wizardStep === 2 && (
                         <div>
-                            <h2 className="text-lg font-bold mb-1">
+                            <h2 className="text-lg font-semibold mb-1">
                                 ¿Qué acciones ejecutar?
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
@@ -778,7 +778,7 @@ export default function AutomationPage() {
                     {/* -- Step 3: Summary -- */}
                     {wizardStep === 3 && (
                         <div>
-                            <h2 className="text-lg font-bold mb-1">
+                            <h2 className="text-lg font-semibold mb-1">
                                 Revisa y guarda tu regla
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
@@ -832,7 +832,7 @@ export default function AutomationPage() {
                                 onClick={handleSave}
                                 disabled={!ruleForm.name}
                                 className={cn(
-                                    "w-full py-3.5 rounded-[10px] text-[15px] font-bold transition-colors duration-200",
+                                    "w-full py-3.5 rounded-[10px] text-[15px] font-semibold transition-colors duration-200",
                                     ruleForm.name
                                         ? "bg-indigo-600 hover:bg-indigo-700 text-white"
                                         : "bg-neutral-200 dark:bg-neutral-700 text-muted-foreground cursor-not-allowed"

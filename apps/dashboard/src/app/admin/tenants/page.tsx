@@ -97,7 +97,7 @@ export default function TenantsPage() {
                 <div className="flex items-center gap-3 mb-8">
                     <button className="btn-outline p-2" onClick={() => { setSelectedTenant(null); setTenantUsers([]); }}><ArrowLeft size={18} /></button>
                     <div>
-                        <h1 className="text-[28px] font-extrabold m-0">{selectedTenant.name}</h1>
+                        <h1 className="text-[28px] font-semibold m-0">{selectedTenant.name}</h1>
                         <p className="text-muted-foreground mt-1">
                             {selectedTenant.slug} &middot; {selectedTenant.plan} &middot; <span className={selectedTenant.isActive ? "text-[var(--success)]" : "text-destructive"}>{selectedTenant.isActive ? "Activo" : "Inactivo"}</span>
                         </p>
@@ -108,12 +108,12 @@ export default function TenantsPage() {
                     {[{ label: "Industria", value: selectedTenant.industry }, { label: "Idioma", value: selectedTenant.language }, { label: "Plan", value: selectedTenant.plan }, { label: "Creado", value: selectedTenant.createdAt }, { label: "Usuarios", value: String(tenantUsers.length) }].map(item => (
                         <div key={item.label} className="glass-card p-5">
                             <div className="text-xs text-muted-foreground mb-1">{item.label}</div>
-                            <div className="text-lg font-bold">{item.value}</div>
+                            <div className="text-lg font-semibold">{item.value}</div>
                         </div>
                     ))}
                 </div>
 
-                <h2 className="text-xl font-bold mb-4"><Users size={20} className="inline align-middle mr-2" />Usuarios del tenant</h2>
+                <h2 className="text-xl font-semibold mb-4"><Users size={20} className="inline align-middle mr-2" />Usuarios del tenant</h2>
                 <div className="glass-card p-0 overflow-hidden">
                     {loadingUsers ? <div className="p-10 text-center text-muted-foreground">Cargando usuarios...</div> : (
                         <table>
@@ -139,7 +139,7 @@ export default function TenantsPage() {
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100]" onClick={() => setResetUser(null)}>
                         <div className="glass-card animate-in w-[440px] max-w-[90vw] p-8" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-between items-center mb-6">
-                                <h2 className="m-0 text-xl font-bold">Restablecer contrase\u00f1a</h2>
+                                <h2 className="m-0 text-xl font-semibold">Restablecer contrase\u00f1a</h2>
                                 <button onClick={() => setResetUser(null)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                             </div>
                             <p className="text-muted-foreground mb-5 text-sm">Usuario: <strong className="text-foreground">{resetUser.firstName} {resetUser.lastName}</strong><br />Email: <strong className="text-foreground">{resetUser.email}</strong></p>
@@ -166,7 +166,7 @@ export default function TenantsPage() {
         <div className="animate-in">
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-[28px] font-extrabold m-0">{t('title')}</h1>
+                    <h1 className="text-[28px] font-semibold m-0">{t('title')}</h1>
                     <p className="text-muted-foreground mt-1">Gestiona las empresas cliente conectadas a la plataforma</p>
                 </div>
                 <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreateModal(true)}><Plus size={18} /> Nuevo Tenant</button>
@@ -185,7 +185,7 @@ export default function TenantsPage() {
                         <div key={stat.label} className="glass-card p-5 flex items-start justify-between">
                             <div>
                                 <p className="text-xs text-muted-foreground mb-1">{stat.label}</p>
-                                <p className="text-3xl font-extrabold">{stat.value}</p>
+                                <p className="text-3xl font-semibold">{stat.value}</p>
                             </div>
                             <div className={cn("flex h-11 w-11 items-center justify-center rounded-xl", stat.bg)}>
                                 <Icon size={22} className={stat.color} />
@@ -237,7 +237,7 @@ export default function TenantsPage() {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100]" onClick={() => setShowCreateModal(false)}>
                     <div className="glass-card animate-in w-[500px] max-w-[90vw] p-8" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="m-0 text-xl font-bold">Nuevo Tenant</h2>
+                            <h2 className="m-0 text-xl font-semibold">Nuevo Tenant</h2>
                             <button onClick={() => setShowCreateModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="flex flex-col gap-4">

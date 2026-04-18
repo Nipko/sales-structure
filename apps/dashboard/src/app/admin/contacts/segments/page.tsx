@@ -110,10 +110,10 @@ export default function SegmentsPage() {
                         <Users size={22} className="text-primary" />
                     </div>
                     <div>
-                        <h1 className="text-[22px] font-bold text-foreground m-0">{viewingSegment.name}</h1>
+                        <h1 className="text-[22px] font-semibold text-foreground m-0">{viewingSegment.name}</h1>
                         <p className="text-[13px] text-muted-foreground m-0">{viewingSegment.description || "Sin descripcion"}</p>
                     </div>
-                    <span className="ml-auto px-3.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] text-[13px] font-bold">
+                    <span className="ml-auto px-3.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] text-[13px] font-semibold">
                         {contacts.length} contactos
                     </span>
                 </div>
@@ -127,7 +127,7 @@ export default function SegmentsPage() {
                             <thead>
                                 <tr className="border-b border-border">
                                     {["Nombre", "Telefono", "Email", "Etapa", "Score"].map(h => (
-                                        <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-muted-foreground uppercase tracking-wide">{h}</th>
+                                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -140,7 +140,7 @@ export default function SegmentsPage() {
                                         <td className="px-4 py-3">
                                             <span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary text-xs font-semibold">{c.stage || "—"}</span>
                                         </td>
-                                        <td className="px-4 py-3 text-[13px] text-foreground font-bold">{c.score ?? "—"}</td>
+                                        <td className="px-4 py-3 text-[13px] text-foreground font-semibold">{c.score ?? "—"}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -165,7 +165,7 @@ export default function SegmentsPage() {
                         <Users size={22} className="text-primary" />
                     </div>
                     <div>
-                        <h1 className="text-[22px] font-bold text-foreground m-0">Segmentos</h1>
+                        <h1 className="text-[22px] font-semibold text-foreground m-0">Segmentos</h1>
                         <p className="text-[13px] text-muted-foreground m-0">Agrupa contactos con filtros dinamicos</p>
                     </div>
                 </div>
@@ -194,12 +194,12 @@ export default function SegmentsPage() {
                                     <Filter size={18} className="text-primary" />
                                 </div>
                                 <div>
-                                    <div className="text-[15px] font-bold text-foreground">{seg.name}</div>
+                                    <div className="text-[15px] font-semibold text-foreground">{seg.name}</div>
                                     <div className="text-xs text-muted-foreground mt-0.5">{seg.description || "Sin descripcion"}</div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
-                                <span className="px-3.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] text-[13px] font-bold">
+                                <span className="px-3.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] text-[13px] font-semibold">
                                     {seg.contact_count ?? 0} contactos
                                 </span>
                                 <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
@@ -215,9 +215,9 @@ export default function SegmentsPage() {
             {/* Create Modal */}
             {modalOpen && (
                 <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center" onClick={() => setModalOpen(false)}>
-                    <div className="bg-secondary rounded-2xl border border-border p-7 w-[560px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-secondary rounded-xl border border-border p-7 w-[560px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-lg font-bold text-foreground m-0">Nuevo Segmento</h2>
+                            <h2 className="text-lg font-semibold text-foreground m-0">Nuevo Segmento</h2>
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">

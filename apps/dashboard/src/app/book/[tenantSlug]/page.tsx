@@ -182,11 +182,11 @@ export default function PublicBookingPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-neutral-50 flex items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
   if (error && step !== "confirmed") return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-md">
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-lg p-8 text-center max-w-md">
         <p className="text-red-500 font-medium">{error}</p>
         <button onClick={() => { setError(""); setStep("services"); }} className="mt-4 text-indigo-600 text-sm hover:underline">{t("tryAgain")}</button>
       </div>
@@ -194,8 +194,8 @@ export default function PublicBookingPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50/30">
-      <div className="bg-white border-b border-gray-200 shadow-sm">
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-indigo-50/30">
+      <div className="bg-white border-b border-neutral-200 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-5 flex items-center gap-3">
           {tenantInfo.logo ? (
             <img src={tenantInfo.logo} alt="" className="w-10 h-10 rounded-xl object-cover" />
@@ -205,8 +205,8 @@ export default function PublicBookingPage() {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-bold text-gray-900">{tenantInfo.name || t("title")}</h1>
-            <p className="text-xs text-gray-500">{t("subtitle")}</p>
+            <h1 className="text-lg font-semibold text-neutral-900">{tenantInfo.name || t("title")}</h1>
+            <p className="text-xs text-neutral-500">{t("subtitle")}</p>
           </div>
         </div>
       </div>
@@ -215,7 +215,7 @@ export default function PublicBookingPage() {
         <div className="max-w-2xl mx-auto px-4 pt-6">
           <div className="flex gap-1">
             {(["services", "date", "time", "info"] as Step[]).map((s, i) => (
-              <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${["services", "date", "time", "info"].indexOf(step) >= i ? "bg-indigo-500" : "bg-gray-200"}`} />
+              <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${["services", "date", "time", "info"].indexOf(step) >= i ? "bg-indigo-500" : "bg-neutral-200"}`} />
             ))}
           </div>
         </div>
@@ -226,28 +226,28 @@ export default function PublicBookingPage() {
         {/* Step 1: Services */}
         {step === "services" && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-gray-900">{t("selectService")}</h2>
+            <h2 className="text-xl font-semibold text-neutral-900">{t("selectService")}</h2>
             <div className="grid gap-3">
               {services.map(svc => (
                 <button key={svc.id} onClick={() => { setSelectedService(svc); setStep("date"); }}
-                  className="flex items-center gap-4 p-5 bg-white rounded-2xl border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all text-left cursor-pointer group">
+                  className="flex items-center gap-4 p-5 bg-white rounded-xl border border-neutral-200 hover:border-indigo-300 hover:shadow-md transition-all text-left cursor-pointer group">
                   <div className="w-3 h-12 rounded-full shrink-0" style={{ backgroundColor: svc.color }} />
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{svc.name}</h3>
-                    {svc.description && <p className="text-sm text-gray-500 mt-0.5 truncate">{svc.description}</p>}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                    <h3 className="font-semibold text-neutral-900 group-hover:text-indigo-600 transition-colors">{svc.name}</h3>
+                    {svc.description && <p className="text-sm text-neutral-500 mt-0.5 truncate">{svc.description}</p>}
+                    <div className="flex items-center gap-3 mt-2 text-xs text-neutral-400">
                       <span className="flex items-center gap-1"><Clock size={12} /> {svc.durationMinutes} {t("min")}</span>
                       {svc.price > 0 && <span>${svc.price.toLocaleString()}</span>}
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
+                  <ChevronRight size={18} className="text-neutral-300 group-hover:text-indigo-400 transition-colors" />
                 </button>
               ))}
             </div>
             {services.length === 0 && (
-              <div className="bg-white rounded-2xl p-10 text-center border border-gray-200">
-                <Calendar size={32} className="text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">{t("noServices")}</p>
+              <div className="bg-white rounded-xl p-10 text-center border border-neutral-200">
+                <Calendar size={32} className="text-neutral-300 mx-auto mb-3" />
+                <p className="text-neutral-500 text-sm">{t("noServices")}</p>
               </div>
             )}
           </div>
@@ -257,16 +257,16 @@ export default function PublicBookingPage() {
         {step === "date" && selectedService && (
           <div className="space-y-4">
             <button onClick={() => setStep("services")} className="flex items-center gap-1 text-sm text-indigo-600 hover:underline bg-transparent border-none cursor-pointer"><ChevronLeft size={16} /> {t("back")}</button>
-            <h2 className="text-xl font-bold text-gray-900">{t("pickDate")}</h2>
-            <p className="text-sm text-gray-500">{selectedService.name} — {selectedService.durationMinutes} {t("min")}</p>
-            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+            <h2 className="text-xl font-semibold text-neutral-900">{t("pickDate")}</h2>
+            <p className="text-sm text-neutral-500">{selectedService.name} — {selectedService.durationMinutes} {t("min")}</p>
+            <div className="bg-white rounded-xl border border-neutral-200 p-5">
               <div className="flex items-center justify-between mb-4">
-                <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer border-none bg-transparent text-gray-500"><ChevronLeft size={18} /></button>
-                <span className="text-sm font-semibold text-gray-900 capitalize">{monthLabel}</span>
-                <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer border-none bg-transparent text-gray-500"><ChevronRight size={18} /></button>
+                <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="p-1.5 rounded-lg hover:bg-neutral-100 cursor-pointer border-none bg-transparent text-neutral-500"><ChevronLeft size={18} /></button>
+                <span className="text-sm font-semibold text-neutral-900 capitalize">{monthLabel}</span>
+                <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="p-1.5 rounded-lg hover:bg-neutral-100 cursor-pointer border-none bg-transparent text-neutral-500"><ChevronRight size={18} /></button>
               </div>
               <div className="grid grid-cols-7 gap-1 mb-1">
-                {dayHeaders.map(d => <div key={d} className="text-center text-[10px] font-semibold text-gray-400 uppercase py-1">{t(d)}</div>)}
+                {dayHeaders.map(d => <div key={d} className="text-center text-[10px] font-semibold text-neutral-400 uppercase py-1">{t(d)}</div>)}
               </div>
               <div className="grid grid-cols-7 gap-1">
                 {calendarDays.map((day, i) => {
@@ -277,7 +277,7 @@ export default function PublicBookingPage() {
                   const isToday = dateStr === todayStr;
                   return (
                     <button key={day} disabled={!selectable} onClick={() => { setSelectedDate(dateStr); setStep("time"); }}
-                      className={`aspect-square rounded-xl text-sm font-medium transition-all cursor-pointer border-none ${isSelected ? "bg-indigo-500 text-white shadow-md" : selectable ? isToday ? "bg-indigo-50 text-indigo-600 hover:bg-indigo-100" : "bg-transparent text-gray-700 hover:bg-gray-100" : "bg-transparent text-gray-300 cursor-not-allowed"}`}>
+                      className={`aspect-square rounded-xl text-sm font-medium transition-all cursor-pointer border-none ${isSelected ? "bg-indigo-500 text-white shadow-md" : selectable ? isToday ? "bg-indigo-50 text-indigo-600 hover:bg-indigo-100" : "bg-transparent text-neutral-700 hover:bg-neutral-100" : "bg-transparent text-neutral-300 cursor-not-allowed"}`}>
                       {day}
                     </button>
                   );
@@ -291,23 +291,23 @@ export default function PublicBookingPage() {
         {step === "time" && selectedService && selectedDate && (
           <div className="space-y-4">
             <button onClick={() => setStep("date")} className="flex items-center gap-1 text-sm text-indigo-600 hover:underline bg-transparent border-none cursor-pointer"><ChevronLeft size={16} /> {t("back")}</button>
-            <h2 className="text-xl font-bold text-gray-900">{t("chooseTime")}</h2>
-            <p className="text-sm text-gray-500">
+            <h2 className="text-xl font-semibold text-neutral-900">{t("chooseTime")}</h2>
+            <p className="text-sm text-neutral-500">
               {selectedService.name} — {new Date(selectedDate + "T12:00:00").toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" })}
             </p>
             {loadingSlots ? (
               <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>
             ) : slots.length === 0 ? (
-              <div className="bg-white rounded-2xl p-10 text-center border border-gray-200">
-                <Clock size={32} className="text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">{t("noSlots")}</p>
+              <div className="bg-white rounded-xl p-10 text-center border border-neutral-200">
+                <Clock size={32} className="text-neutral-300 mx-auto mb-3" />
+                <p className="text-neutral-500 text-sm">{t("noSlots")}</p>
                 <button onClick={() => setStep("date")} className="mt-3 text-indigo-600 text-sm hover:underline bg-transparent border-none cursor-pointer">{t("chooseAnother")}</button>
               </div>
             ) : (
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {slots.map(slot => (
                   <button key={slot.start} onClick={() => { setSelectedSlot(slot); setStep("info"); }}
-                    className={`py-3 px-2 rounded-xl text-sm font-medium border transition-all cursor-pointer ${selectedSlot?.start === slot.start ? "bg-indigo-500 text-white border-indigo-500 shadow-md" : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50"}`}>
+                    className={`py-3 px-2 rounded-xl text-sm font-medium border transition-all cursor-pointer ${selectedSlot?.start === slot.start ? "bg-indigo-500 text-white border-indigo-500 shadow-md" : "bg-white text-neutral-700 border-neutral-200 hover:border-indigo-300 hover:bg-indigo-50"}`}>
                     {slot.display || slot.start}
                   </button>
                 ))}
@@ -320,8 +320,8 @@ export default function PublicBookingPage() {
         {step === "info" && selectedService && selectedSlot && (
           <div className="space-y-4">
             <button onClick={() => setStep("time")} className="flex items-center gap-1 text-sm text-indigo-600 hover:underline bg-transparent border-none cursor-pointer"><ChevronLeft size={16} /> {t("back")}</button>
-            <h2 className="text-xl font-bold text-gray-900">{t("yourInfo")}</h2>
-            <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
+            <h2 className="text-xl font-semibold text-neutral-900">{t("yourInfo")}</h2>
+            <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
               <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: selectedService.color }} />
                 {selectedService.name}
@@ -332,22 +332,22 @@ export default function PublicBookingPage() {
                 <span>{selectedService.durationMinutes} {t("min")}</span>
               </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-5 space-y-4">
               <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5"><User size={14} /> {t("fullName")} *</label>
-                <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
+                <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 mb-1.5"><User size={14} /> {t("fullName")} *</label>
+                <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5"><Phone size={14} /> {t("phone")} *</label>
-                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+57 300 123 4567" className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
+                <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 mb-1.5"><Phone size={14} /> {t("phone")} *</label>
+                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+57 300 123 4567" className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5"><Mail size={14} /> {t("email")}</label>
-                <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
+                <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 mb-1.5"><Mail size={14} /> {t("email")}</label>
+                <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
               </div>
               <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5"><FileText size={14} /> {t("notesLabel")}</label>
-                <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
+                <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 mb-1.5"><FileText size={14} /> {t("notesLabel")}</label>
+                <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
               </div>
               <button onClick={handleBook} disabled={booking || !customerName || !customerPhone}
                 className="w-full py-3 rounded-xl bg-indigo-500 text-white font-semibold text-sm cursor-pointer border-none hover:bg-indigo-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
@@ -359,14 +359,14 @@ export default function PublicBookingPage() {
 
         {/* Step 5: Confirmation */}
         {step === "confirmed" && confirmationData && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+          <div className="bg-white rounded-xl border border-neutral-200 p-8 text-center">
             <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4"><CheckCircle2 size={32} className="text-emerald-500" /></div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">{t("confirmed")}</h2>
-            <p className="text-sm text-gray-500 mb-6">{t("confirmMessage")}</p>
-            <div className="bg-gray-50 rounded-xl p-5 text-left space-y-3">
-              <div className="flex items-center gap-2 text-sm"><MapPin size={14} className="text-gray-400" /><span className="font-medium text-gray-900">{confirmationData.service}</span></div>
-              <div className="flex items-center gap-2 text-sm"><Calendar size={14} className="text-gray-400" /><span className="text-gray-700">{new Date(confirmationData.date + "T12:00:00").toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div>
-              <div className="flex items-center gap-2 text-sm"><Clock size={14} className="text-gray-400" /><span className="text-gray-700">{confirmationData.startTime} - {confirmationData.endTime}</span></div>
+            <h2 className="text-xl font-semibold text-neutral-900 mb-1">{t("confirmed")}</h2>
+            <p className="text-sm text-neutral-500 mb-6">{t("confirmMessage")}</p>
+            <div className="bg-neutral-50 rounded-xl p-5 text-left space-y-3">
+              <div className="flex items-center gap-2 text-sm"><MapPin size={14} className="text-neutral-400" /><span className="font-medium text-neutral-900">{confirmationData.service}</span></div>
+              <div className="flex items-center gap-2 text-sm"><Calendar size={14} className="text-neutral-400" /><span className="text-neutral-700">{new Date(confirmationData.date + "T12:00:00").toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div>
+              <div className="flex items-center gap-2 text-sm"><Clock size={14} className="text-neutral-400" /><span className="text-neutral-700">{confirmationData.startTime} - {confirmationData.endTime}</span></div>
             </div>
             <button onClick={() => { setStep("services"); setSelectedService(null); setSelectedDate(""); setSelectedSlot(null); setCustomerName(""); setCustomerPhone(""); setCustomerEmail(""); setNotes(""); setConfirmationData(null); }}
               className="mt-6 text-indigo-600 text-sm font-medium hover:underline bg-transparent border-none cursor-pointer">{t("bookAnother")}</button>
@@ -374,7 +374,7 @@ export default function PublicBookingPage() {
         )}
       </div>
 
-      <div className="text-center py-6 text-xs text-gray-400">{t("poweredBy")}</div>
+      <div className="text-center py-6 text-xs text-neutral-400">{t("poweredBy")}</div>
     </div>
   );
 }

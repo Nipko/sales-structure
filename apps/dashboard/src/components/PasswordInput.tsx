@@ -78,7 +78,7 @@ export default function PasswordInput({
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={placeholder || t("passwordRequirements.minLength")}
                     required
-                    className="w-full py-3 px-3.5 pl-11 pr-24 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                    className="w-full py-3 px-3.5 pl-11 pr-24 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
                     {showGenerator && (

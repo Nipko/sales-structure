@@ -124,16 +124,16 @@ export default function AgentAnalyticsPage() {
                     { title: "Tasa Resolucion", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
                     { title: "CSAT Promedio", value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
                 ].map((card) => (
-                    <div key={card.title} className="rounded-2xl border border-border bg-[var(--bg-secondary)] px-5 py-[18px] flex flex-col gap-2">
+                    <div key={card.title} className="rounded-xl border border-border bg-[var(--bg-secondary)] px-5 py-[18px] flex flex-col gap-2">
                         <span className="text-xs text-[var(--text-secondary)] font-semibold uppercase tracking-wide">{card.title}</span>
-                        <div className="text-[28px] font-extrabold leading-none" style={{ color: card.color }}>{card.value}</div>
+                        <div className="text-[28px] font-semibold leading-none" style={{ color: card.color }}>{card.value}</div>
                     </div>
                 ))}
             </div>
 
             {/* Daily Bar Chart */}
-            <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] p-5">
-                <h3 className="m-0 mb-4 text-[15px] font-bold">Volumen Diario de Conversaciones</h3>
+            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5">
+                <h3 className="m-0 mb-4 text-[15px] font-semibold">Volumen Diario de Conversaciones</h3>
                 {series.length === 0 ? (
                     <div className="text-center py-10 text-[var(--text-secondary)]">Sin datos para el rango seleccionado</div>
                 ) : (
@@ -171,7 +171,7 @@ export default function AgentAnalyticsPage() {
         ];
 
         return (
-            <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b border-border">
@@ -201,7 +201,7 @@ export default function AgentAnalyticsPage() {
                                 <td className="px-4 py-2.5">
                                     <span
                                         className={cn(
-                                            "px-2 py-0.5 rounded text-xs font-bold",
+                                            "px-2 py-0.5 rounded text-xs font-semibold",
                                             agent.csatAvg >= 4
                                                 ? "bg-[#27ae6020] text-[#27ae60]"
                                                 : agent.csatAvg >= 3
@@ -228,20 +228,20 @@ export default function AgentAnalyticsPage() {
                 const color = CHANNEL_COLORS[ch.channel] || "#95a5a6";
                 const label = CHANNEL_LABELS[ch.channel] || ch.channel;
                 return (
-                    <div key={ch.channel} className="rounded-2xl border border-border bg-[var(--bg-secondary)] px-5 py-6 flex flex-col gap-3">
+                    <div key={ch.channel} className="rounded-xl border border-border bg-[var(--bg-secondary)] px-5 py-6 flex flex-col gap-3">
                         <div className="flex items-center gap-2.5">
                             <div
-                                className="w-10 h-10 rounded-[10px] flex items-center justify-center text-lg font-extrabold"
+                                className="w-10 h-10 rounded-[10px] flex items-center justify-center text-lg font-semibold"
                                 style={{ background: `${color}18`, color }}
                             >
                                 {label[0]}
                             </div>
                             <div>
-                                <div className="text-[15px] font-bold">{label}</div>
+                                <div className="text-[15px] font-semibold">{label}</div>
                                 <div className="text-xs text-[var(--text-secondary)]">{ch.percentage}% del total</div>
                             </div>
                         </div>
-                        <div className="text-[32px] font-extrabold" style={{ color }}>{ch.count}</div>
+                        <div className="text-[32px] font-semibold" style={{ color }}>{ch.count}</div>
                         <div className="text-xs text-[var(--text-secondary)]">conversaciones</div>
                         {/* Percentage bar */}
                         <div className="h-1.5 rounded-full bg-[var(--bg-tertiary)]">
@@ -264,12 +264,12 @@ export default function AgentAnalyticsPage() {
         return (
             <div>
                 {/* Big Average */}
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] px-6 py-8 text-center mb-6">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] px-6 py-8 text-center mb-6">
                     <div className="text-sm text-[var(--text-secondary)] font-semibold uppercase tracking-wide mb-2">
                         Promedio CSAT
                     </div>
                     <div
-                        className="text-[56px] font-extrabold"
+                        className="text-[56px] font-semibold"
                         style={{ color: avg >= 4 ? "#27ae60" : avg >= 3 ? "#f39c12" : "#e74c3c" }}
                     >
                         {avg ? avg.toFixed(1) : "\u2014"}
@@ -280,19 +280,19 @@ export default function AgentAnalyticsPage() {
                 </div>
 
                 {/* Rating Bars */}
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] p-5 mb-6">
-                    <h3 className="m-0 mb-4 text-[15px] font-bold">Distribucion por Estrellas</h3>
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5 mb-6">
+                    <h3 className="m-0 mb-4 text-[15px] font-semibold">Distribucion por Estrellas</h3>
                     {[5, 4, 3, 2, 1].map((rating) => {
                         const count = dist[rating] || 0;
                         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
                         return (
                             <div key={rating} className="flex items-center gap-3 mb-2.5">
-                                <span className="w-6 text-sm font-bold" style={{ color: ratingColors[rating] }}>{rating}</span>
+                                <span className="w-6 text-sm font-semibold" style={{ color: ratingColors[rating] }}>{rating}</span>
                                 <div className="flex-1 h-2 rounded bg-[var(--bg-tertiary)]">
                                     <div className="h-full rounded transition-[width] duration-300" style={{ width: `${pct}%`, background: ratingColors[rating] }} />
                                 </div>
                                 <span className="w-10 text-xs text-[var(--text-secondary)] text-right">{pct}%</span>
-                                <span className="w-8 text-xs font-bold text-right">{count}</span>
+                                <span className="w-8 text-xs font-semibold text-right">{count}</span>
                             </div>
                         );
                     })}
@@ -300,8 +300,8 @@ export default function AgentAnalyticsPage() {
 
                 {/* Recent Feedback */}
                 {feedback.length > 0 && (
-                    <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] p-5">
-                        <h3 className="m-0 mb-4 text-[15px] font-bold">Feedback Reciente</h3>
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5">
+                        <h3 className="m-0 mb-4 text-[15px] font-semibold">Feedback Reciente</h3>
                         <div className="flex flex-col gap-3">
                             {feedback.map((f: any) => (
                                 <div key={f.id} className="p-3 rounded-lg border border-border bg-[var(--bg-primary)]">
@@ -311,7 +311,7 @@ export default function AgentAnalyticsPage() {
                                             <span className="text-[11px] text-[var(--text-secondary)]">/ {f.agentName}</span>
                                         </div>
                                         <span
-                                            className="px-2 py-0.5 rounded text-xs font-bold"
+                                            className="px-2 py-0.5 rounded text-xs font-semibold"
                                             style={{ background: `${ratingColors[f.rating]}20`, color: ratingColors[f.rating] }}
                                         >
                                             {f.rating}/5
@@ -349,7 +349,7 @@ export default function AgentAnalyticsPage() {
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="m-0 text-[26px] font-bold">{t('title')}</h1>
+                    <h1 className="m-0 text-[26px] font-semibold">{t('title')}</h1>
                     <p className="mt-1 mb-0 text-[var(--text-secondary)] text-[13px]">
                         Rendimiento de agentes y canales
                     </p>

@@ -58,7 +58,7 @@ export default function CoursesPage() {
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                             <BookOpen size={28} className="text-primary" /> Catalogo de Cursos
                         </h1>
                         <p className="text-muted-foreground mt-1">{courses.length} cursos registrados</p>
@@ -82,7 +82,7 @@ export default function CoursesPage() {
                                     <Icon size={20} color={s.color} />
                                 </div>
                                 <div>
-                                    <div className="text-lg font-bold">{s.value}</div>
+                                    <div className="text-lg font-semibold">{s.value}</div>
                                     <div className="text-xs text-muted-foreground">{s.label}</div>
                                 </div>
                             </div>
@@ -122,7 +122,7 @@ export default function CoursesPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-bold m-0">Nuevo Curso</h2>
+                            <h2 className="text-xl font-semibold m-0">Nuevo Curso</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[

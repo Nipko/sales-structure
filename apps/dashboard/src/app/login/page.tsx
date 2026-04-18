@@ -114,7 +114,7 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
             {/* Background glow effects (dark mode only) */}
             <div className="hidden dark:block fixed top-[20%] left-[30%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(108,92,231,0.15)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
@@ -140,8 +140,8 @@ export default function LoginPage() {
                 </div>
 
                 {/* Login Card */}
-                <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
-                    <h1 className="text-2xl font-bold text-foreground mb-1">
+                <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                    <h1 className="text-2xl font-semibold text-foreground mb-1">
                         {t('login')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-6">
@@ -167,11 +167,11 @@ export default function LoginPage() {
                         type="button"
                         onClick={handleGoogleClick}
                         disabled={!googleReady || isGoogleLoading}
-                        className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-foreground text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.08] transition-colors disabled:opacity-50 disabled:cursor-wait"
+                        className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-neutral-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-foreground text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.08] transition-colors disabled:opacity-50 disabled:cursor-wait"
                     >
                         {!googleReady ? (
                             <>
-                                <div className="w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+                                <div className="w-5 h-5 border-2 border-neutral-300 border-t-indigo-500 rounded-full animate-spin" />
                                 {t('loadingGoogle')}
                             </>
                         ) : (
@@ -190,7 +190,7 @@ export default function LoginPage() {
                     <div ref={googleHiddenRef} className="hidden" />
                     {isGoogleLoading && (
                         <div className="flex items-center justify-center gap-2 mt-2 text-sm text-muted-foreground">
-                            <div className="w-4 h-4 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+                            <div className="w-4 h-4 border-2 border-neutral-300 border-t-indigo-500 rounded-full animate-spin" />
                             {t('verifying')}
                         </div>
                     )}
@@ -205,7 +205,7 @@ export default function LoginPage() {
                                 if (data.success) window.location.href = data.data.url;
                             } catch { setError(t('connectionError')); }
                         }}
-                        className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-foreground text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.08] transition-colors mt-3"
+                        className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-neutral-300 dark:border-white/15 bg-white dark:bg-white/[0.06] text-foreground text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/[0.08] transition-colors mt-3"
                     >
                         <svg width="18" height="18" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
                         {t('continueWithMicrosoft')}
@@ -213,9 +213,9 @@ export default function LoginPage() {
 
                     {/* Separator */}
                     <div className="flex items-center gap-3 my-6">
-                        <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+                        <div className="flex-1 h-px bg-neutral-200 dark:bg-white/10" />
                         <span className="text-xs text-muted-foreground">{t('or')}</span>
-                        <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+                        <div className="flex-1 h-px bg-neutral-200 dark:bg-white/10" />
                     </div>
 
                     <form onSubmit={handleSubmit}>
@@ -232,7 +232,7 @@ export default function LoginPage() {
                                     onChange={e => setEmail(e.target.value)}
                                     placeholder="admin@parallext.com"
                                     required
-                                    className="w-full py-3 px-3.5 pl-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                    className="w-full py-3 px-3.5 pl-11 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                 />
                             </div>
                         </div>
@@ -255,7 +255,7 @@ export default function LoginPage() {
                                     onChange={e => setPassword(e.target.value)}
                                     placeholder="••••••••"
                                     required
-                                    className="w-full py-3 px-11 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                    className="w-full py-3 px-11 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                                 />
                                 <button
                                     type="button"
@@ -273,7 +273,7 @@ export default function LoginPage() {
                                 type="checkbox"
                                 checked={rememberMe}
                                 onChange={(e) => setRememberMe(e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30 bg-gray-50 dark:bg-white/5 cursor-pointer"
+                                className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30 bg-neutral-50 dark:bg-white/5 cursor-pointer"
                             />
                             <span className="text-[13px] text-muted-foreground">{t('rememberMe')}</span>
                         </label>

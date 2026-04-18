@@ -62,7 +62,7 @@ export default function MacrosPage() {
             <div className="flex justify-between items-center mb-7">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center"><Zap size={22} className="text-primary" /></div>
-                    <div><h1 className="text-[22px] font-bold text-foreground m-0">Macros</h1><p className="text-[13px] text-muted-foreground m-0">Automatiza acciones repetitivas con un solo clic</p></div>
+                    <div><h1 className="text-[22px] font-semibold text-foreground m-0">Macros</h1><p className="text-[13px] text-muted-foreground m-0">Automatiza acciones repetitivas con un solo clic</p></div>
                 </div>
                 <button onClick={openCreate} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"><Plus size={16} /> Nueva Macro</button>
             </div>
@@ -79,12 +79,12 @@ export default function MacrosPage() {
                             <div className="flex items-center gap-3.5">
                                 <div className="w-[38px] h-[38px] rounded-[10px] bg-primary/10 flex items-center justify-center"><Zap size={18} className="text-primary" /></div>
                                 <div>
-                                    <div className="text-[15px] font-bold text-foreground">{macro.name}</div>
+                                    <div className="text-[15px] font-semibold text-foreground">{macro.name}</div>
                                     <div className="text-xs text-muted-foreground mt-0.5">{macro.description || "Sin descripcion"}</div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2.5">
-                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">{macro.actions?.length || 0} acciones</span>
+                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">{macro.actions?.length || 0} acciones</span>
                                 <span className={cn("px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1", macro.visibility === "team" ? "bg-[var(--success)]/10 text-[var(--success)]" : "bg-muted text-muted-foreground")}>
                                     {macro.visibility === "team" ? <Eye size={12} /> : <EyeOff size={12} />} {macro.visibility === "team" ? "Equipo" : "Personal"}
                                 </span>
@@ -97,9 +97,9 @@ export default function MacrosPage() {
 
             {modalOpen && (
                 <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center" onClick={() => setModalOpen(false)}>
-                    <div className="bg-secondary rounded-2xl border border-border p-7 w-[540px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-secondary rounded-xl border border-border p-7 w-[540px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-lg font-bold text-foreground m-0">{editingId ? "Editar Macro" : "Nueva Macro"}</h2>
+                            <h2 className="text-lg font-semibold text-foreground m-0">{editingId ? "Editar Macro" : "Nueva Macro"}</h2>
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">

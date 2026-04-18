@@ -289,7 +289,7 @@ export default function AgentConfigPage() {
     function renderStep0() {
         return (
             <div className={cardCls}>
-                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
                     <User size={20} className="text-primary" /> Identidad del Agente
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
@@ -365,7 +365,7 @@ export default function AgentConfigPage() {
     function renderStep1() {
         return (
             <div className={cardCls}>
-                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
                     <Smile size={20} className="text-primary" /> Personalidad
                 </h3>
                 <div className="grid grid-cols-2 gap-5">
@@ -433,7 +433,7 @@ export default function AgentConfigPage() {
             <div className="flex flex-col gap-5">
                 {sections.map(section => (
                     <div key={section.key} className={cardCls}>
-                        <h3 className="text-base font-bold mt-0 mb-3.5 flex items-center gap-2">
+                        <h3 className="text-base font-semibold mt-0 mb-3.5 flex items-center gap-2">
                             <section.icon size={18} className="text-primary" /> {section.title}
                         </h3>
                         <div className="flex flex-col gap-2.5">
@@ -510,7 +510,7 @@ export default function AgentConfigPage() {
 
         return (
             <div className={cardCls}>
-                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
                     <Calendar size={20} className="text-primary" /> Horario del Agente
                 </h3>
 
@@ -538,7 +538,7 @@ export default function AgentConfigPage() {
                         onClick={() => toggle247(!is247)}
                         className={cn(
                             "w-12 h-7 rounded-full border-none cursor-pointer relative transition-colors duration-200",
-                            is247 ? "bg-indigo-500" : "bg-gray-300 dark:bg-white/20"
+                            is247 ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20"
                         )}
                     >
                         <div
@@ -616,7 +616,7 @@ export default function AgentConfigPage() {
     function renderStep4() {
         return (
             <div className={cardCls}>
-                <h3 className="text-lg font-bold mt-0 mb-5 flex items-center gap-2">
+                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
                     <Cpu size={20} className="text-primary" /> Modelo de IA
                 </h3>
                 <div className="grid grid-cols-2 gap-6">
@@ -674,7 +674,7 @@ export default function AgentConfigPage() {
 
         return (
             <div>
-                <h3 className="text-lg font-bold mb-1">Herramientas del Agente</h3>
+                <h3 className="text-lg font-semibold mb-1">Herramientas del Agente</h3>
                 <p className="text-sm text-muted-foreground mb-6">
                     Activa las herramientas que tu agente IA puede usar durante las conversaciones.
                 </p>
@@ -687,7 +687,7 @@ export default function AgentConfigPage() {
                                 <Calendar size={20} className="text-indigo-500" />
                             </div>
                             <div>
-                                <h4 className="text-sm font-bold">Agendamiento de Citas</h4>
+                                <h4 className="text-sm font-semibold">Agendamiento de Citas</h4>
                                 <p className="text-xs text-muted-foreground">Permite al agente consultar disponibilidad, agendar y cancelar citas</p>
                             </div>
                         </div>
@@ -695,7 +695,7 @@ export default function AgentConfigPage() {
                             onClick={() => updateTools({ enabled: !apt.enabled })}
                             className={cn(
                                 "relative w-11 h-6 rounded-full transition-colors",
-                                apt.enabled ? "bg-indigo-500" : "bg-gray-300 dark:bg-white/20"
+                                apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20"
                             )}
                         >
                             <div className={cn(
@@ -706,10 +706,10 @@ export default function AgentConfigPage() {
                     </div>
 
                     {apt.enabled && (
-                        <div className="pl-13 space-y-3 border-t border-gray-200 dark:border-white/10 pt-4">
+                        <div className="pl-13 space-y-3 border-t border-neutral-200 dark:border-white/10 pt-4">
                             <label className="flex items-center gap-3 cursor-pointer">
                                 <input type="checkbox" checked={apt.canBook} onChange={(e) => updateTools({ canBook: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500" />
+                                    className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
                                 <div>
                                     <span className="text-sm font-medium">Crear citas</span>
                                     <p className="text-xs text-muted-foreground">El agente puede agendar citas nuevas con confirmación del cliente</p>
@@ -717,7 +717,7 @@ export default function AgentConfigPage() {
                             </label>
                             <label className="flex items-center gap-3 cursor-pointer">
                                 <input type="checkbox" checked={apt.canCancel} onChange={(e) => updateTools({ canCancel: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-500" />
+                                    className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
                                 <div>
                                     <span className="text-sm font-medium">Cancelar citas</span>
                                     <p className="text-xs text-muted-foreground">El agente puede cancelar citas del mismo cliente que lo solicita</p>
@@ -736,11 +736,11 @@ export default function AgentConfigPage() {
                 {/* Future tools placeholder */}
                 <div className={cn(cardCls, "opacity-50")}>
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center">
                             <Wrench size={20} className="text-muted-foreground" />
                         </div>
                         <div>
-                            <h4 className="text-sm font-bold text-muted-foreground">Más herramientas próximamente</h4>
+                            <h4 className="text-sm font-semibold text-muted-foreground">Más herramientas próximamente</h4>
                             <p className="text-xs text-muted-foreground">Catálogo, CRM, pagos y más</p>
                         </div>
                     </div>
@@ -752,7 +752,7 @@ export default function AgentConfigPage() {
     function renderStep6() {
         const summarySection = (title: string, icon: any, items: { label: string; value: string }[]) => (
             <div className={cn(cardCls, "mb-4")}>
-                <h4 className="text-[15px] font-bold mt-0 mb-3.5 flex items-center gap-2">
+                <h4 className="text-[15px] font-semibold mt-0 mb-3.5 flex items-center gap-2">
                     {icon} {title}
                 </h4>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -809,7 +809,7 @@ export default function AgentConfigPage() {
                     onClick={handleSave}
                     disabled={saving}
                     className={cn(
-                        "w-full py-3.5 px-6 rounded-xl border-none text-white text-base font-bold cursor-pointer flex items-center justify-center gap-2 transition-colors duration-200",
+                        "w-full py-3.5 px-6 rounded-xl border-none text-white text-base font-semibold cursor-pointer flex items-center justify-center gap-2 transition-colors duration-200",
                         saving ? "bg-border cursor-not-allowed" : "bg-primary hover:bg-[var(--accent-hover)]"
                     )}
                 >
@@ -839,7 +839,7 @@ export default function AgentConfigPage() {
         <div>
             {/* Header */}
             <div className="mb-6">
-                <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                     <Bot size={28} className="text-primary" /> {t('title')}
                 </h1>
                 <p className="text-[var(--text-secondary)] mt-1 text-sm">
@@ -877,7 +877,7 @@ export default function AgentConfigPage() {
                 /* ── Prompt mode ─────────────────────────── */
                 <>
                     <div className={cn(cardCls, "mb-6")}>
-                        <h3 className="text-lg font-bold mt-0 mb-2 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold mt-0 mb-2 flex items-center gap-2">
                             <Brain size={20} className="text-primary" /> System Prompt personalizado
                         </h3>
                         <p className="text-[var(--text-secondary)] text-[13px] mb-4">

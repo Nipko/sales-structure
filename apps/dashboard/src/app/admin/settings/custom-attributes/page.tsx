@@ -54,7 +54,7 @@ export default function CustomAttributesPage() {
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center"><Database size={22} className="text-primary" /></div>
                     <div>
-                        <h1 className="text-[22px] font-bold text-foreground m-0">Atributos Personalizados</h1>
+                        <h1 className="text-[22px] font-semibold text-foreground m-0">Atributos Personalizados</h1>
                         <p className="text-[13px] text-muted-foreground m-0">Define campos adicionales para tus entidades</p>
                     </div>
                 </div>
@@ -72,7 +72,7 @@ export default function CustomAttributesPage() {
                     : attributes.length === 0 ? <div className="p-10 text-center text-muted-foreground"><Database size={32} className="mb-2 opacity-40" /><p>No hay atributos para esta entidad</p></div>
                         : (
                             <table className="w-full border-collapse">
-                                <thead><tr className="border-b border-border">{["Clave", "Etiqueta", "Tipo", "Requerido", "Opciones", "Acciones"].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-muted-foreground uppercase tracking-wide">{h}</th>)}</tr></thead>
+                                <thead><tr className="border-b border-border">{["Clave", "Etiqueta", "Tipo", "Requerido", "Opciones", "Acciones"].map(h => <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>)}</tr></thead>
                                 <tbody>
                                     {attributes.map(attr => (
                                         <tr key={attr.id} className="border-b border-border">
@@ -96,9 +96,9 @@ export default function CustomAttributesPage() {
 
             {modalOpen && (
                 <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center" onClick={() => setModalOpen(false)}>
-                    <div className="bg-secondary rounded-2xl border border-border p-7 w-[480px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-secondary rounded-xl border border-border p-7 w-[480px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-lg font-bold text-foreground m-0">{editingId ? "Editar Atributo" : "Nuevo Atributo"}</h2>
+                            <h2 className="text-lg font-semibold text-foreground m-0">{editingId ? "Editar Atributo" : "Nuevo Atributo"}</h2>
                             <button onClick={() => setModalOpen(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
                         </div>
                         <div className="flex flex-col gap-4">

@@ -122,7 +122,7 @@ export default function WhatsAppSetupPage() {
                         <div className="w-10 h-10 rounded-[10px] flex items-center justify-center bg-[#25D366]">
                             <MessageSquare size={20} className="text-white" />
                         </div>
-                        <h1 className="text-[28px] font-bold m-0">WhatsApp Business</h1>
+                        <h1 className="text-[28px] font-semibold m-0">WhatsApp Business</h1>
                     </div>
                     <p className="text-[var(--text-secondary)] mt-1">
                         Conecta y gestiona tu cuenta de WhatsApp Business con Meta Cloud API.
@@ -156,7 +156,7 @@ export default function WhatsAppSetupPage() {
             )}
 
             {/* ======== SECTION 1: WEBHOOK CONFIG (always visible) ======== */}
-            <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                 <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                     <Shield size={18} className="text-[#e67e22]" />
                     <h2 className="text-base font-semibold m-0">Configuracion del Webhook</h2>
@@ -200,13 +200,13 @@ export default function WhatsAppSetupPage() {
             {!isConnected ? (
                 <>
                     {/* Embedded Signup (primary) */}
-                    <div className="rounded-2xl p-7 mb-4 bg-gradient-to-br from-[rgba(37,211,102,0.05)] to-[rgba(18,140,126,0.08)] border border-[rgba(37,211,102,0.15)]">
+                    <div className="rounded-xl p-7 mb-4 bg-gradient-to-br from-[rgba(37,211,102,0.05)] to-[rgba(18,140,126,0.08)] border border-[rgba(37,211,102,0.15)]">
                         <div className="flex items-center gap-2.5 mb-4">
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#25D366]">
                                 <Zap size={16} className="text-white" />
                             </div>
                             <div>
-                                <h2 className="text-base font-bold m-0">Conexion Rapida — Embedded Signup</h2>
+                                <h2 className="text-base font-semibold m-0">Conexion Rapida — Embedded Signup</h2>
                                 <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                                     Conecta tu cuenta de WhatsApp Business con un solo clic
                                 </p>
@@ -234,7 +234,7 @@ export default function WhatsAppSetupPage() {
 
                     {/* Manual connection form */}
                     {showManual && (
-                        <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                        <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                             <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                                 <Settings size={18} className="text-primary" />
                                 <h2 className="text-base font-semibold m-0">Conexion Manual</h2>
@@ -284,7 +284,7 @@ export default function WhatsAppSetupPage() {
                 /* ======== CONNECTED STATE ======== */
                 <div className="grid grid-cols-2 gap-6 mb-6">
                     {/* Channel Info */}
-                    <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <Phone size={18} className="text-[#25D366]" />
                             <h2 className="text-base font-semibold m-0">Canal Activo</h2>
@@ -320,7 +320,7 @@ export default function WhatsAppSetupPage() {
                     </div>
 
                     {/* Update Credentials */}
-                    <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <LinkIcon size={18} className="text-primary" />
                             <h2 className="text-base font-semibold m-0">Actualizar Credenciales</h2>
@@ -357,7 +357,7 @@ export default function WhatsAppSetupPage() {
 
             {/* ======== SECTION 3: TEMPLATES ======== */}
             {isConnected && (
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                     <div className="px-6 py-5 border-b border-border flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
                             <MessageSquare size={18} className="text-primary" />

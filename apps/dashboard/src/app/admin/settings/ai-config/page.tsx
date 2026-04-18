@@ -53,7 +53,7 @@ export default function AIConfigPage() {
         <div className="max-w-2xl space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+                    <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                         {t("pages.aiConfig")}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">

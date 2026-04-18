@@ -91,8 +91,8 @@ export default function SmsChannelPage() {
           <MessageSquare size={24} className="text-green-600 dark:text-green-400" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t("title")}</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{t("subtitle")}</p>
+          <h1 className="text-xl font-semibold text-neutral-900 dark:text-white">{t("title")}</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -112,13 +112,13 @@ export default function SmsChannelPage() {
 
       {/* Connected state */}
       {isConnected && (
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          <div className="px-6 py-5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
               <div>
-                <h2 className="font-semibold text-gray-900 dark:text-white">{status.displayName || status.phoneNumber}</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{status.phoneNumber}</p>
+                <h2 className="font-semibold text-neutral-900 dark:text-white">{status.displayName || status.phoneNumber}</h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{status.phoneNumber}</p>
               </div>
             </div>
             <button onClick={handleDisconnect}
@@ -128,12 +128,12 @@ export default function SmsChannelPage() {
           </div>
 
           {status.metadata?.webhookUrl && (
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800">
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{t("webhookUrl")}</p>
+            <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+              <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2">{t("webhookUrl")}</p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300 overflow-x-auto">{status.metadata.webhookUrl}</code>
+                <code className="flex-1 px-3 py-2 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-xs text-neutral-700 dark:text-neutral-300 overflow-x-auto">{status.metadata.webhookUrl}</code>
                 <button onClick={() => { navigator.clipboard.writeText(status.metadata.webhookUrl); setSuccess(t("webhookCopied")); }}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer border-none bg-transparent text-gray-500"><Copy size={14} /></button>
+                  className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer border-none bg-transparent text-neutral-500"><Copy size={14} /></button>
               </div>
               <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming" target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 mt-2 text-xs text-indigo-600 hover:underline">
@@ -143,10 +143,10 @@ export default function SmsChannelPage() {
           )}
 
           <div className="px-6 py-4">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{t("testSms")}</p>
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2">{t("testSms")}</p>
             <div className="flex gap-2">
               <input type="tel" value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="+1234567890"
-                className="flex-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                className="flex-1 px-3 py-2 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
               <button onClick={handleTestSms} disabled={testing || !testTo}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium cursor-pointer border-none hover:bg-indigo-600 disabled:opacity-50 transition-colors">
                 {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} {t("testBtn")}
@@ -158,31 +158,31 @@ export default function SmsChannelPage() {
 
       {/* Setup form */}
       {!isConnected && (
-        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800">
-            <h2 className="font-semibold text-gray-900 dark:text-white">{t("connectTitle")}</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t("connectSubtitle")}</p>
+        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          <div className="px-6 py-5 border-b border-neutral-100 dark:border-neutral-800">
+            <h2 className="font-semibold text-neutral-900 dark:text-white">{t("connectTitle")}</h2>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{t("connectSubtitle")}</p>
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"><Hash size={14} /> {t("accountSid")}</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5"><Hash size={14} /> {t("accountSid")}</label>
               <input type="text" value={accountSid} onChange={e => setAccountSid(e.target.value)} placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono" />
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono" />
             </div>
             <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"><Key size={14} /> {t("authToken")}</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5"><Key size={14} /> {t("authToken")}</label>
               <input type="password" value={authToken} onChange={e => setAuthToken(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
             </div>
             <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"><Phone size={14} /> {t("phoneNumber")}</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5"><Phone size={14} /> {t("phoneNumber")}</label>
               <input type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="+1234567890"
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
             </div>
             <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"><MessageSquare size={14} /> {t("displayName")}</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5"><MessageSquare size={14} /> {t("displayName")}</label>
               <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
             </div>
             <button onClick={handleConnect} disabled={connecting || !accountSid || !authToken || !phoneNumber}
               className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold text-sm cursor-pointer border-none hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
@@ -190,8 +190,8 @@ export default function SmsChannelPage() {
               {connecting ? t("connecting") : t("connectBtn")}
             </button>
 
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 text-xs text-gray-600 dark:text-gray-400 space-y-2">
-              <p className="font-semibold text-gray-700 dark:text-gray-300">{t("howTo")}</p>
+            <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl p-4 text-xs text-neutral-600 dark:text-neutral-400 space-y-2">
+              <p className="font-semibold text-neutral-700 dark:text-neutral-300">{t("howTo")}</p>
               <ol className="list-decimal list-inside space-y-1">
                 <li>{t("step1")}</li>
                 <li>{t("step2")}</li>

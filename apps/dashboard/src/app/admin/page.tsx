@@ -139,7 +139,7 @@ export default function AdminDashboard() {
             {/* Platform Section — super_admin only */}
             {user?.role === "super_admin" && (
                 <div className="mb-8">
-                    <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mb-4">{t("platform")}</h2>
+                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("platform")}</h2>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <Link href="/admin/tenants">
                             <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer">
@@ -228,7 +228,7 @@ export default function AdminDashboard() {
                 {/* Recent Activity */}
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
                     <CardHeader>
-                        <CardTitle className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                        <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                             Actividad Reciente
                         </CardTitle>
                     </CardHeader>
@@ -272,7 +272,7 @@ export default function AdminDashboard() {
                 {/* LLM Model Usage */}
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
                     <CardHeader>
-                        <CardTitle className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                        <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                             {t("modelUsage")}
                         </CardTitle>
                     </CardHeader>

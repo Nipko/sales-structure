@@ -88,7 +88,7 @@ export default function OrdersPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-[28px] font-bold m-0">{t('title')}</h1>
+                        <h1 className="text-[28px] font-semibold m-0">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="text-muted-foreground mt-1">Gestiona las ventas, pagos y reservas de tus clientes</p>
@@ -107,14 +107,14 @@ export default function OrdersPage() {
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
-                        <div key={i} className="bg-card rounded-2xl border border-border p-5">
+                        <div key={i} className="bg-card rounded-xl border border-border p-5">
                             <div className="flex justify-between mb-3">
                                 <span className="text-[13px] text-muted-foreground">{kpi.label}</span>
                                 <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
                                     <Icon size={18} color={kpi.color} />
                                 </div>
                             </div>
-                            <div className="text-2xl font-bold">{kpi.value}</div>
+                            <div className="text-2xl font-semibold">{kpi.value}</div>
                             <div className="text-xs text-muted-foreground mt-1">{kpi.sub}</div>
                         </div>
                     );
@@ -136,7 +136,7 @@ export default function OrdersPage() {
                 </div>
             </div>
 
-            <div className="bg-card rounded-2xl border border-border overflow-hidden">
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
                 <table className="w-full border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-border">
@@ -164,7 +164,7 @@ export default function OrdersPage() {
                                     </td>
                                     <td className="px-5 py-4 text-muted-foreground text-[13px]">{formatDate(order.createdAt)}</td>
                                     <td className="px-5 py-4">
-                                        <div className="font-bold text-[15px] text-primary">{formatCurrency(order.totalAmount)}</div>
+                                        <div className="font-semibold text-[15px] text-primary">{formatCurrency(order.totalAmount)}</div>
                                         <div className="text-[11px] text-muted-foreground uppercase">{order.paymentMethod.replace("_", " ")}</div>
                                     </td>
                                     <td className="px-5 py-4">
@@ -229,7 +229,7 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[560px] max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-bold m-0">Nueva Orden</h2>
+                    <h2 className="text-xl font-semibold m-0">Nueva Orden</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="grid grid-cols-2 gap-4 mb-5">
@@ -273,7 +273,7 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
                                 <div key={item.productId} className="flex items-center gap-3 bg-muted px-3.5 py-2.5 rounded-[10px] border border-border">
                                     <div className="flex-1"><div className="font-semibold text-sm">{item.productName}</div><div className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</div></div>
                                     <input type="number" value={item.quantity} min={1} max={item.maxStock} onChange={e => updateQuantity(item.productId, e.target.value)} className="w-[60px] px-2 py-1.5 rounded-lg border border-border bg-card text-foreground text-center" />
-                                    <div className="font-bold w-[90px] text-right text-primary">{formatCurrency(item.quantity * item.unitPrice)}</div>
+                                    <div className="font-semibold w-[90px] text-right text-primary">{formatCurrency(item.quantity * item.unitPrice)}</div>
                                     <button onClick={() => removeItem(item.productId)} className="bg-transparent border-none cursor-pointer text-destructive p-1"><X size={16} /></button>
                                 </div>
                             ))}
@@ -286,7 +286,7 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
                 </div>
                 <div className="flex items-center justify-between px-5 py-4 bg-primary/10 rounded-xl mb-5">
                     <span className="font-semibold text-muted-foreground">Total de la Orden:</span>
-                    <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
+                    <span className="text-2xl font-semibold text-primary">{formatCurrency(total)}</span>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || selectedItems.length === 0} className={cn("w-full py-3.5 rounded-xl border-none bg-primary text-white font-semibold text-[15px] cursor-pointer flex items-center justify-center gap-2", (saving || selectedItems.length === 0) && "opacity-50")}>
                     {saving ? "Creando..." : <><Check size={18} /> Crear Orden</>}

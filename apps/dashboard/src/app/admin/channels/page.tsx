@@ -101,7 +101,7 @@ export default function ChannelsOverviewPage() {
                     <div className="flex items-center justify-center w-10 h-10 rounded-[10px] bg-primary">
                         <Globe size={20} className="text-white" />
                     </div>
-                    <h1 className="text-[28px] font-bold m-0 text-foreground">
+                    <h1 className="text-[28px] font-semibold m-0 text-foreground">
                         {t('title')}
                     </h1>
                 </div>
@@ -117,7 +117,7 @@ export default function ChannelsOverviewPage() {
                     return (
                         <div
                             key={ch.key}
-                            className="rounded-2xl border border-border bg-card overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
+                            className="rounded-xl border border-border bg-card overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.3)]"
                             onClick={() => router.push(ch.href)}
                         >
                             {/* Card Top */}
@@ -129,7 +129,7 @@ export default function ChannelsOverviewPage() {
                                     <ch.Icon size={28} className="text-white" />
                                 </div>
                                 <div className="text-center">
-                                    <h2 className="text-lg font-bold m-0 text-foreground">
+                                    <h2 className="text-lg font-semibold m-0 text-foreground">
                                         {ch.name}
                                     </h2>
                                     <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">

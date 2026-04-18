@@ -125,7 +125,7 @@ export default function LocalizationPage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Localización</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Localización</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     Zona horaria, moneda, formato de fecha e idioma del workspace
                 </p>

@@ -172,7 +172,7 @@ export default function ContactsPage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{t('title')}</h1>
+                        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
@@ -227,7 +227,7 @@ export default function ContactsPage() {
                                 : "border-neutral-200 bg-white hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800/50"
                         )}
                     >
-                        <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{seg.count}</div>
+                        <div className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{seg.count}</div>
                         <div className="text-xs text-neutral-500 dark:text-neutral-400">{seg.label}</div>
                     </button>
                 ))}
@@ -269,7 +269,7 @@ export default function ContactsPage() {
                                 >
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2.5">
-                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-bold text-white">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-semibold text-white">
                                                 {contact.name.charAt(0)}
                                             </div>
                                             <div>
@@ -339,7 +339,7 @@ export default function ContactsPage() {
                 >
                     <div
                         onClick={e => e.stopPropagation()}
-                        className="max-h-[80vh] w-[520px] overflow-auto rounded-2xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900"
+                        className="max-h-[80vh] w-[520px] overflow-auto rounded-xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900"
                     >
                         <div className="mb-5 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Importar Contactos</h2>

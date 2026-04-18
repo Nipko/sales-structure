@@ -53,7 +53,7 @@ export default function SessionTimeoutModal({
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="w-full max-w-sm mx-4 p-6 rounded-2xl bg-white dark:bg-[#1a1a2e] border border-gray-200 dark:border-white/10 shadow-2xl">
+            <div className="w-full max-w-sm mx-4 p-6 rounded-xl bg-white dark:bg-[#1a1a2e] border border-neutral-200 dark:border-white/10 shadow-2xl">
                 {/* Icon */}
                 <div className="flex justify-center mb-4">
                     <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center">
@@ -62,7 +62,7 @@ export default function SessionTimeoutModal({
                 </div>
 
                 {/* Title */}
-                <h2 className="text-lg font-bold text-center text-foreground mb-2">
+                <h2 className="text-lg font-semibold text-center text-foreground mb-2">
                     {t("sessionWarningTitle")}
                 </h2>
 
@@ -70,7 +70,7 @@ export default function SessionTimeoutModal({
                 <p className="text-sm text-muted-foreground text-center mb-1">
                     {t("sessionWarningMessage")}
                 </p>
-                <p className="text-3xl font-mono font-bold text-center text-amber-600 dark:text-amber-400 mb-6">
+                <p className="text-3xl font-mono font-semibold text-center text-amber-600 dark:text-amber-400 mb-6">
                     {timeStr}
                 </p>
 
@@ -84,7 +84,7 @@ export default function SessionTimeoutModal({
                     </button>
                     <button
                         onClick={onLogout}
-                        className="w-full py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-transparent text-muted-foreground text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors inline-flex items-center justify-center gap-2"
+                        className="w-full py-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-transparent text-muted-foreground text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-white/5 transition-colors inline-flex items-center justify-center gap-2"
                     >
                         <LogOut size={16} /> {t("logout")}
                     </button>

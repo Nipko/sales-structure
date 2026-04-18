@@ -311,7 +311,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         >
           <Bell size={18} />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 animate-pulse">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-semibold px-1 animate-pulse">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
@@ -354,7 +354,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                       notifTab === key ? "bg-indigo-500 text-white" : "bg-transparent text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}>
                     <CatIcon size={11} />
                     {cat.label}
-                    {count > 0 && <span className="min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold">{count}</span>}
+                    {count > 0 && <span className="min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-semibold">{count}</span>}
                   </button>
                 );
               })}
@@ -430,7 +430,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           {user?.picture ? (
             <img src={user.picture} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
               {user?.firstName?.charAt(0) || "U"}
             </div>
           )}
@@ -447,7 +447,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               {user?.picture ? (
                 <img src={user.picture} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-semibold shrink-0">
                   {user?.firstName?.charAt(0) || "U"}
                 </div>
               )}

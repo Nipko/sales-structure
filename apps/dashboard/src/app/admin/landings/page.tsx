@@ -106,7 +106,7 @@ export default function LandingsPage() {
                         ))}
                     </div>
                 ) : filteredLandings.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 bg-card rounded-2xl border border-border border-dashed">
+                    <div className="flex flex-col items-center justify-center py-20 bg-card rounded-xl border border-border border-dashed">
                         <div className="h-16 w-16 mb-4 rounded-full bg-background flex items-center justify-center">
                             <LayoutTemplate className="text-muted-foreground" size={32} />
                         </div>
@@ -167,7 +167,7 @@ export default function LandingsPage() {
             {/* Create Modal */}
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-2xl">
+                    <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-2xl">
                         <h2 className="mb-1 text-xl font-medium text-foreground">Nueva Landing Page</h2>
                         <p className="mb-6 text-sm text-muted-foreground">Define los datos base de la landing.</p>
 

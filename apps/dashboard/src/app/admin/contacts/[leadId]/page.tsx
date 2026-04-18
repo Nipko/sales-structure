@@ -118,20 +118,20 @@ export default function Lead360Page() {
                 <button onClick={() => router.back()} className="bg-transparent border border-border rounded-lg px-2.5 py-1.5 cursor-pointer text-muted-foreground flex items-center gap-1">
                     <ArrowLeft size={16} /> Volver
                 </button>
-                <h1 className="m-0 text-[22px] font-bold">Lead 360°</h1>
+                <h1 className="m-0 text-[22px] font-semibold">Lead 360°</h1>
             </div>
 
             <div className="grid grid-cols-[340px_1fr] gap-5">
                 {/* === LEFT PANEL: Profile === */}
                 <div className="flex flex-col gap-4">
                     {/* Profile Card */}
-                    <div className="bg-card rounded-2xl border border-border p-5">
+                    <div className="bg-card rounded-xl border border-border p-5">
                         <div className="flex items-center gap-3.5 mb-4">
-                            <div className="w-[52px] h-[52px] rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-bold text-xl shrink-0">
+                            <div className="w-[52px] h-[52px] rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-semibold text-xl shrink-0">
                                 {(lead.first_name || "?").charAt(0)}
                             </div>
                             <div>
-                                <div className="font-bold text-lg">{lead.first_name} {lead.last_name}</div>
+                                <div className="font-semibold text-lg">{lead.first_name} {lead.last_name}</div>
                                 {lead.company_name && (
                                     <div className="text-[13px] text-muted-foreground flex items-center gap-1">
                                         <Building2 size={12} /> {lead.company_name}
@@ -144,7 +144,7 @@ export default function Lead360Page() {
                         <div className="mb-3.5">
                             <div className="flex justify-between text-xs mb-1">
                                 <span className="text-muted-foreground">Score</span>
-                                <span className="font-bold" style={{ color: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }}>{score}/10</span>
+                                <span className="font-semibold" style={{ color: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }}>{score}/10</span>
                             </div>
                             <div className="h-1.5 rounded bg-muted overflow-hidden">
                                 <div className="h-full rounded transition-[width] duration-500" style={{ width: `${score * 10}%`, background: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }} />
@@ -156,7 +156,7 @@ export default function Lead360Page() {
                             {stageInfo.label}
                         </span>
                         {lead.is_vip && (
-                            <span className="ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
+                            <span className="ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
                                 ⭐ VIP
                             </span>
                         )}
@@ -186,8 +186,8 @@ export default function Lead360Page() {
                     </div>
 
                     {/* Opportunities */}
-                    <div className="bg-card rounded-2xl border border-border p-4">
-                        <h3 className="m-0 mb-3 text-sm font-bold flex items-center gap-1.5">
+                    <div className="bg-card rounded-xl border border-border p-4">
+                        <h3 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
                             <Briefcase size={14} className="text-primary" /> Oportunidades
                         </h3>
                         {opportunities.length === 0 ? (
@@ -209,7 +209,7 @@ export default function Lead360Page() {
                 </div>
 
                 {/* === RIGHT PANEL: Timeline / Notes / Tasks === */}
-                <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                <div className="bg-card rounded-xl border border-border overflow-hidden">
                     {/* Tabs */}
                     <div className="flex border-b border-border">
                         {[

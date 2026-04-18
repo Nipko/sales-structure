@@ -50,7 +50,7 @@ export default function AIRouterPage() {
         <div>
             {/* Header */}
             <div className="mb-6">
-                <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                     <Brain size={28} className="text-primary" /> AI / LLM Router
                     <DataSourceBadge isLive={isLive} />
                 </h1>
@@ -71,7 +71,7 @@ export default function AIRouterPage() {
                         <div className="flex justify-between items-center">
                             <div>
                                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
-                                <div className="text-[28px] font-bold mt-1">{stat.value}</div>
+                                <div className="text-[28px] font-semibold mt-1">{stat.value}</div>
                             </div>
                             <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                                 <stat.icon size={22} color={stat.color} />
@@ -82,7 +82,7 @@ export default function AIRouterPage() {
             </div>
 
             {/* Models Section */}
-            <h2 className="text-lg font-bold mb-3.5 flex items-center gap-2">
+            <h2 className="text-lg font-semibold mb-3.5 flex items-center gap-2">
                 <Cpu size={20} /> Modelos Configurados
             </h2>
             <div className="grid grid-cols-2 gap-3.5 mb-8">
@@ -99,7 +99,7 @@ export default function AIRouterPage() {
                         >
                             <div className="flex justify-between items-start mb-2.5">
                                 <div>
-                                    <div className="text-base font-bold">{model.name}</div>
+                                    <div className="text-base font-semibold">{model.name}</div>
                                     <div className="text-xs text-muted-foreground mt-0.5">{model.provider}</div>
                                 </div>
                                 <span
@@ -141,7 +141,7 @@ export default function AIRouterPage() {
             </div>
 
             {/* Routing Rules */}
-            <h2 className="text-lg font-bold mb-3.5 flex items-center gap-2">
+            <h2 className="text-lg font-semibold mb-3.5 flex items-center gap-2">
                 <Sliders size={20} /> Reglas de Enrutamiento
             </h2>
             <div className="rounded-[14px] border border-border overflow-hidden">
@@ -157,7 +157,7 @@ export default function AIRouterPage() {
                         {rules.map(rule => (
                             <tr key={rule.id} className="border-b border-border">
                                 <td className="px-4 py-3">
-                                    <span className="w-7 h-7 rounded-lg bg-[var(--accent-glow)] text-primary font-bold text-[13px] inline-flex items-center justify-center">
+                                    <span className="w-7 h-7 rounded-lg bg-[var(--accent-glow)] text-primary font-semibold text-[13px] inline-flex items-center justify-center">
                                         {rule.priority}
                                     </span>
                                 </td>
@@ -180,7 +180,7 @@ export default function AIRouterPage() {
 
             {/* Architecture Diagram */}
             <div className="mt-6 p-5 rounded-[14px] bg-card border border-border">
-                <div className="text-sm font-bold mb-3">🏗️ Flujo de Enrutamiento</div>
+                <div className="text-sm font-semibold mb-3">🏗️ Flujo de Enrutamiento</div>
                 <div className="flex items-center gap-3 flex-wrap font-mono text-[13px]">
                     <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 font-semibold">📱 WhatsApp</span>
                     <ChevronRight size={16} className="text-muted-foreground" />

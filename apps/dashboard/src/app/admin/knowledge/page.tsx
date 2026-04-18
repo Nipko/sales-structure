@@ -63,7 +63,7 @@ export default function KnowledgePage() {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                    <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                         <BookOpen size={28} className="text-primary" /> {t('title')}
                     </h1>
                     <p className="text-muted-foreground mt-1">Bases de conocimiento, FAQs y documentos comerciales para Carla AI</p>
@@ -150,7 +150,7 @@ export default function KnowledgePage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-bold m-0">Nuevo Recurso de Conocimiento</h2>
+                            <h2 className="text-xl font-semibold m-0">Nuevo Recurso de Conocimiento</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3">

@@ -47,7 +47,7 @@ export default function AIProvidersPage() {
         <div className="max-w-2xl space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+                    <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                         {t("pages.aiProviders")}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
@@ -83,7 +83,7 @@ export default function AIProvidersPage() {
                             className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900"
                         >
                             <div className="flex items-center gap-3 mb-3">
-                                <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-bold", provider.color)}>
+                                <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-semibold", provider.color)}>
                                     {provider.label.charAt(0)}
                                 </div>
                                 <div>

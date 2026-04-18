@@ -243,7 +243,7 @@ export default function MediaBankPage() {
             <ImageIcon size={22} className="text-indigo-500" />
           </div>
           <div>
-            <h1 className="text-[22px] font-bold text-foreground m-0">{t('title')}</h1>
+            <h1 className="text-[22px] font-semibold text-foreground m-0">{t('title')}</h1>
             <p className="text-[13px] text-muted-foreground m-0">{t('subtitle')}</p>
           </div>
         </div>
@@ -253,7 +253,7 @@ export default function MediaBankPage() {
       <div className="bg-card rounded-[14px] border border-border p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <Building2 size={18} className="text-indigo-500" />
-          <h2 className="text-base font-bold text-foreground m-0">{t('companyLogo')}</h2>
+          <h2 className="text-base font-semibold text-foreground m-0">{t('companyLogo')}</h2>
         </div>
         <div className="flex items-center gap-6">
           <div className="w-24 h-24 rounded-xl border-2 border-dashed border-border bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
@@ -277,7 +277,7 @@ export default function MediaBankPage() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <Upload size={18} className="text-indigo-500" />
-            <h2 className="text-base font-bold text-foreground m-0">{t('uploadImage')}</h2>
+            <h2 className="text-base font-semibold text-foreground m-0">{t('uploadImage')}</h2>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-muted-foreground">Tipo:</span>
@@ -316,7 +316,7 @@ export default function MediaBankPage() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <ImageIcon size={18} className="text-indigo-500" />
-            <h2 className="text-base font-bold text-foreground m-0">{t('gallery')}</h2>
+            <h2 className="text-base font-semibold text-foreground m-0">{t('gallery')}</h2>
             <span className="text-xs text-muted-foreground">({files.length})</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -487,7 +487,7 @@ export default function MediaBankPage() {
       {/* Preview Modal */}
       {previewFile && (
         <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setPreviewFile(null)}>
-          <div className="relative max-w-[90vw] max-h-[90vh] bg-card rounded-2xl border border-border overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="relative max-w-[90vw] max-h-[90vh] bg-card rounded-xl border border-border overflow-hidden" onClick={e => e.stopPropagation()}>
             <button onClick={() => setPreviewFile(null)}
               className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 border-none text-white cursor-pointer flex items-center justify-center hover:bg-black/70 transition-colors">
               <X size={16} />

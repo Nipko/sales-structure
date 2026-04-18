@@ -117,12 +117,12 @@ export default function TelegramSetupPage() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                        className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4"
                         style={{ background: BRAND }}
                     >
                         <Send size={28} className="text-white" />
                     </div>
-                    <h1 className="text-2xl font-bold text-foreground mb-1">Telegram</h1>
+                    <h1 className="text-2xl font-semibold text-foreground mb-1">Telegram</h1>
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[rgba(0,214,143,0.1)] text-[var(--success)] border border-[rgba(0,214,143,0.2)]">
                         <CheckCircle size={12} />
                         {t("connected")}
@@ -130,7 +130,7 @@ export default function TelegramSetupPage() {
                 </div>
 
                 {/* Bot Card */}
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">
                     <div className="p-6">
                         <div className="flex items-center gap-4">
                             <div
@@ -140,7 +140,7 @@ export default function TelegramSetupPage() {
                                 <Send size={20} style={{ color: BRAND }} />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-lg font-bold text-foreground m-0 truncate">
+                                <p className="text-lg font-semibold text-foreground m-0 truncate">
                                     {account.metadata?.botName || account.displayName}
                                 </p>
                                 <p className="text-sm font-mono m-0 mt-0.5" style={{ color: BRAND }}>
@@ -165,7 +165,7 @@ export default function TelegramSetupPage() {
                 )}
 
                 {/* How to test */}
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">
                     <div className="p-5">
                         <div className="flex items-start gap-3">
                             <Sparkles size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
@@ -193,7 +193,7 @@ export default function TelegramSetupPage() {
                 </div>
 
                 {/* Danger zone */}
-                <div className="rounded-2xl border border-[rgba(255,71,87,0.2)] bg-[var(--bg-secondary)] overflow-hidden">
+                <div className="rounded-xl border border-[rgba(255,71,87,0.2)] bg-[var(--bg-secondary)] overflow-hidden">
                     <div className="p-5 flex items-center justify-between">
                         <div>
                             <p className="text-sm font-semibold text-foreground m-0">
@@ -223,12 +223,12 @@ export default function TelegramSetupPage() {
             {/* Header */}
             <div className="text-center mb-10">
                 <div
-                    className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                    className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4"
                     style={{ background: BRAND }}
                 >
                     <Send size={28} className="text-white" />
                 </div>
-                <h1 className="text-2xl font-bold text-foreground mb-1">
+                <h1 className="text-2xl font-semibold text-foreground mb-1">
                     {t("telegram.setupTitle")}
                 </h1>
                 <p className="text-[var(--text-secondary)] text-sm m-0">
@@ -241,7 +241,7 @@ export default function TelegramSetupPage() {
                 {[1, 2].map((s) => (
                     <div key={s} className="flex items-center gap-2">
                         <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all",
+                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-all",
                             step >= s
                                 ? "text-white"
                                 : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-border"
@@ -262,14 +262,14 @@ export default function TelegramSetupPage() {
 
             {/* Step 1: Create Bot */}
             {step === 1 && (
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                     <div className="p-8">
                         <div className="flex items-center gap-3 mb-5">
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-sky-500/10">
                                 <Zap size={20} className="text-sky-500" />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-foreground m-0">
+                                <h2 className="text-lg font-semibold text-foreground m-0">
                                     {t("telegram.step1Title")}
                                 </h2>
                                 <p className="text-xs text-[var(--text-secondary)] m-0 mt-0.5">
@@ -281,7 +281,7 @@ export default function TelegramSetupPage() {
                         <div className="space-y-4 mb-6">
                             <div className="flex gap-3">
                                 <div className="w-6 h-6 rounded-full bg-[var(--bg-tertiary)] border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <span className="text-xs font-bold text-[var(--text-secondary)]">1</span>
+                                    <span className="text-xs font-semibold text-[var(--text-secondary)]">1</span>
                                 </div>
                                 <div>
                                     <p className="text-sm text-foreground m-0">
@@ -291,7 +291,7 @@ export default function TelegramSetupPage() {
                             </div>
                             <div className="flex gap-3">
                                 <div className="w-6 h-6 rounded-full bg-[var(--bg-tertiary)] border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <span className="text-xs font-bold text-[var(--text-secondary)]">2</span>
+                                    <span className="text-xs font-semibold text-[var(--text-secondary)]">2</span>
                                 </div>
                                 <p className="text-sm text-foreground m-0">
                                     {t("telegram.guide2")}
@@ -299,7 +299,7 @@ export default function TelegramSetupPage() {
                             </div>
                             <div className="flex gap-3">
                                 <div className="w-6 h-6 rounded-full bg-[var(--bg-tertiary)] border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <span className="text-xs font-bold text-[var(--text-secondary)]">3</span>
+                                    <span className="text-xs font-semibold text-[var(--text-secondary)]">3</span>
                                 </div>
                                 <p className="text-sm text-foreground m-0">
                                     {t("telegram.guide3")}
@@ -333,14 +333,14 @@ export default function TelegramSetupPage() {
 
             {/* Step 2: Paste Token */}
             {step === 2 && (
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                     <div className="p-8">
                         <div className="flex items-center gap-3 mb-5">
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-500/10">
                                 <Clipboard size={20} className="text-emerald-500" />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-foreground m-0">
+                                <h2 className="text-lg font-semibold text-foreground m-0">
                                     {t("telegram.step2Title")}
                                 </h2>
                                 <p className="text-xs text-[var(--text-secondary)] m-0 mt-0.5">
@@ -415,7 +415,7 @@ export default function TelegramSetupPage() {
                     <div className="w-16 h-16 rounded-full bg-[rgba(0,214,143,0.15)] flex items-center justify-center mx-auto mb-4">
                         <CheckCircle size={32} className="text-[var(--success)]" />
                     </div>
-                    <h2 className="text-xl font-bold text-foreground mb-1">
+                    <h2 className="text-xl font-semibold text-foreground mb-1">
                         {t("telegram.successTitle")}
                     </h2>
                     <p className="text-[var(--text-secondary)] text-sm mb-6">
@@ -428,7 +428,7 @@ export default function TelegramSetupPage() {
                             <Send size={16} style={{ color: BRAND }} />
                         </div>
                         <div className="text-left">
-                            <p className="text-sm font-bold text-foreground m-0">
+                            <p className="text-sm font-semibold text-foreground m-0">
                                 {account.metadata?.botName || account.displayName}
                             </p>
                             <p className="text-xs font-mono m-0" style={{ color: BRAND }}>

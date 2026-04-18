@@ -140,12 +140,12 @@ export default function AnalyticsV2Page() {
         <div className="p-6 max-w-[1400px] mx-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-                <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
+                <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
                 <div className="flex items-center gap-3 flex-wrap">
                     <DateRangePicker start={start} end={end} onChange={handleDateChange} />
                     <button
                         onClick={handleExportCSV}
-                        className="px-3 py-1.5 rounded-lg text-[13px] font-medium border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5"
+                        className="px-3 py-1.5 rounded-lg text-[13px] font-medium border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5"
                     >
                         <Download size={14} /> {t("exportCSV")}
                     </button>
@@ -153,7 +153,7 @@ export default function AnalyticsV2Page() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-white/10 overflow-x-auto">
+            <div className="flex gap-1 mb-6 border-b border-neutral-200 dark:border-white/10 overflow-x-auto">
                 {TABS.map(tab => (
                     <button
                         key={tab}
@@ -227,7 +227,7 @@ function OverviewTab({ kpis, volume, heatmap, responseTimes }: any) {
             </div>
 
             {/* Volume by Channel */}
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">{t("volumeByChannel")}</h3>
                 <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={volume}>
@@ -246,7 +246,7 @@ function OverviewTab({ kpis, volume, heatmap, responseTimes }: any) {
 
             {/* Response Times */}
             {responseTimes.length > 0 && (
-                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                     <h3 className="text-sm font-semibold text-foreground mb-4">{t("responseTimes")}</h3>
                     <ResponsiveContainer width="100%" height={250}>
                         <LineChart data={responseTimes}>
@@ -265,7 +265,7 @@ function OverviewTab({ kpis, volume, heatmap, responseTimes }: any) {
             )}
 
             {/* Heatmap */}
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">{t("peakHours")}</h3>
                 <Heatmap data={heatmap} />
             </div>
@@ -295,7 +295,7 @@ function AIBotTab({ data }: { data: any }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Model Usage Pie */}
                 {data.modelUsage?.length > 0 && (
-                    <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                    <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                         <h3 className="text-sm font-semibold text-foreground mb-4">{t("modelUsage")}</h3>
                         <ResponsiveContainer width="100%" height={250}>
                             <PieChart>
@@ -327,7 +327,7 @@ function AIBotTab({ data }: { data: any }) {
 
                 {/* Handoff Reasons */}
                 {data.handoffReasons?.length > 0 && (
-                    <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                    <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                         <h3 className="text-sm font-semibold text-foreground mb-4">{t("handoffReasons")}</h3>
                         <ResponsiveContainer width="100%" height={250}>
                             <BarChart data={data.handoffReasons} layout="vertical">
@@ -369,9 +369,9 @@ function ChannelsTab({ volume }: { volume: any[] }) {
             {/* Channel cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {channels.map(ch => (
-                    <div key={ch.channel} className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                    <div key={ch.channel} className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                         <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-bold" style={{ background: CHANNEL_COLORS[ch.channel] }}>
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-semibold" style={{ background: CHANNEL_COLORS[ch.channel] }}>
                                 {ch.channel[0].toUpperCase()}
                             </div>
                             <div>
@@ -379,8 +379,8 @@ function ChannelsTab({ volume }: { volume: any[] }) {
                                 <p className="text-[12px] text-muted-foreground">{ch.pct}% del total</p>
                             </div>
                         </div>
-                        <p className="text-2xl font-bold text-foreground">{ch.count}</p>
-                        <div className="mt-3 h-2 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                        <p className="text-2xl font-semibold text-foreground">{ch.count}</p>
+                        <div className="mt-3 h-2 rounded-full bg-neutral-100 dark:bg-white/[0.06] overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${ch.pct}%`, background: CHANNEL_COLORS[ch.channel] }} />
                         </div>
                     </div>
@@ -388,7 +388,7 @@ function ChannelsTab({ volume }: { volume: any[] }) {
             </div>
 
             {/* Channel volume over time */}
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">{t("volumeByChannel")}</h3>
                 <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={volume}>
@@ -418,16 +418,16 @@ function CSATTab({ kpis }: { kpis: any[] }) {
 
     return (
         <div className="space-y-6">
-            <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-center">
+            <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] text-center">
                 <p className="text-sm text-muted-foreground mb-2">{t("csatAvg")}</p>
-                <p className={`text-6xl font-bold ${scoreColor}`}>{csatKPI.value}</p>
+                <p className={`text-6xl font-semibold ${scoreColor}`}>{csatKPI.value}</p>
                 <p className="text-muted-foreground text-sm mt-1">/ 5</p>
                 <div className="flex items-center justify-center gap-1 mt-3">
                     {[1, 2, 3, 4, 5].map(star => (
                         <Star
                             key={star}
                             size={24}
-                            className={star <= Math.round(csatKPI.value) ? "text-yellow-400 fill-yellow-400" : "text-gray-300 dark:text-white/20"}
+                            className={star <= Math.round(csatKPI.value) ? "text-yellow-400 fill-yellow-400" : "text-neutral-300 dark:text-white/20"}
                         />
                     ))}
                 </div>
@@ -442,7 +442,7 @@ function RealtimeCard({ label, value, icon: Icon, color, pulse }: {
     label: string; value: number; icon: any; color: string; pulse?: boolean;
 }) {
     return (
-        <div className="px-4 py-3 rounded-lg bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] flex items-center gap-3">
+        <div className="px-4 py-3 rounded-lg bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] flex items-center gap-3">
             <div className={`${color} relative`}>
                 <Icon size={18} />
                 {pulse && value > 0 && (
@@ -450,7 +450,7 @@ function RealtimeCard({ label, value, icon: Icon, color, pulse }: {
                 )}
             </div>
             <div>
-                <p className="text-lg font-bold text-foreground leading-tight">{value}</p>
+                <p className="text-lg font-semibold text-foreground leading-tight">{value}</p>
                 <p className="text-[11px] text-muted-foreground">{label}</p>
             </div>
         </div>
@@ -476,7 +476,7 @@ function AutomationTab({ data }: { data: any }) {
 
             {/* Executions by day chart */}
             {data.executionsByDay?.length > 0 && (
-                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                     <h3 className="text-sm font-semibold text-foreground mb-4">{t("executionsByDay")}</h3>
                     <ResponsiveContainer width="100%" height={250}>
                         <BarChart data={data.executionsByDay}>
@@ -494,12 +494,12 @@ function AutomationTab({ data }: { data: any }) {
 
             {/* Rule performance table */}
             {data.rulePerformance?.length > 0 && (
-                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+                <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                     <h3 className="text-sm font-semibold text-foreground mb-4">{t("rulePerformance")}</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="border-b border-gray-200 dark:border-white/10">
+                                <tr className="border-b border-neutral-200 dark:border-white/10">
                                     <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("rule")}</th>
                                     <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("trigger")}</th>
                                     <th className="text-center py-2.5 px-3 text-muted-foreground font-medium">{t("status")}</th>
@@ -510,11 +510,11 @@ function AutomationTab({ data }: { data: any }) {
                             </thead>
                             <tbody>
                                 {data.rulePerformance.map((r: any, i: number) => (
-                                    <tr key={i} className="border-b border-gray-100 dark:border-white/5">
+                                    <tr key={i} className="border-b border-neutral-100 dark:border-white/5">
                                         <td className="py-2.5 px-3 text-foreground font-medium">{r.name}</td>
                                         <td className="py-2.5 px-3 text-muted-foreground">{r.triggerType}</td>
                                         <td className="py-2.5 px-3 text-center">
-                                            <span className={`text-xs px-2 py-0.5 rounded-full ${r.active ? "bg-emerald-500/10 text-emerald-500" : "bg-gray-200 dark:bg-white/10 text-muted-foreground"}`}>
+                                            <span className={`text-xs px-2 py-0.5 rounded-full ${r.active ? "bg-emerald-500/10 text-emerald-500" : "bg-neutral-200 dark:bg-white/10 text-muted-foreground"}`}>
                                                 {r.active ? t("active") : t("inactive")}
                                             </span>
                                         </td>
@@ -552,7 +552,7 @@ function BroadcastTab({ data }: { data: any }) {
     return (
         <div className="space-y-6">
             {/* Funnel summary */}
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">{t("broadcastFunnel")}</h3>
                 <div className="space-y-3">
                     {funnelData.map((item, i) => {
@@ -560,7 +560,7 @@ function BroadcastTab({ data }: { data: any }) {
                         return (
                             <div key={i} className="flex items-center gap-4">
                                 <span className="w-24 text-[13px] text-muted-foreground shrink-0">{item.stage}</span>
-                                <div className="flex-1 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.04] overflow-hidden">
+                                <div className="flex-1 h-8 rounded-lg bg-neutral-100 dark:bg-white/[0.04] overflow-hidden">
                                     <div
                                         className="h-full rounded-lg flex items-center px-3 text-white text-[12px] font-medium transition-all"
                                         style={{ width: `${Math.max(pct, 2)}%`, background: item.color }}
@@ -575,7 +575,7 @@ function BroadcastTab({ data }: { data: any }) {
                     {totals.failed > 0 && (
                         <div className="flex items-center gap-4">
                             <span className="w-24 text-[13px] text-red-400 shrink-0">{t("failed")}</span>
-                            <div className="flex-1 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.04] overflow-hidden">
+                            <div className="flex-1 h-8 rounded-lg bg-neutral-100 dark:bg-white/[0.04] overflow-hidden">
                                 <div
                                     className="h-full rounded-lg flex items-center px-3 text-white text-[12px] font-medium"
                                     style={{ width: `${Math.max((totals.failed / totals.total) * 100, 2)}%`, background: "#d63031" }}
@@ -590,12 +590,12 @@ function BroadcastTab({ data }: { data: any }) {
             </div>
 
             {/* Per-campaign table */}
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">{t("campaign")}</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-200 dark:border-white/10">
+                            <tr className="border-b border-neutral-200 dark:border-white/10">
                                 <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("campaign")}</th>
                                 <th className="text-center py-2.5 px-3 text-muted-foreground font-medium">{t("channel")}</th>
                                 <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("total")}</th>
@@ -609,7 +609,7 @@ function BroadcastTab({ data }: { data: any }) {
                         </thead>
                         <tbody>
                             {data.campaigns.map((c: any) => (
-                                <tr key={c.id} className="border-b border-gray-100 dark:border-white/5">
+                                <tr key={c.id} className="border-b border-neutral-100 dark:border-white/5">
                                     <td className="py-2.5 px-3 text-foreground font-medium">{c.name}</td>
                                     <td className="py-2.5 px-3 text-center">
                                         <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${CHANNEL_COLORS[c.channel] || "#6c5ce7"}20`, color: CHANNEL_COLORS[c.channel] || "#6c5ce7" }}>
@@ -644,7 +644,7 @@ function AnomaliesTab({ data }: { data: any }) {
 
     if (anomalies.length === 0) {
         return (
-            <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-center">
+            <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] text-center">
                 <CheckCircle size={40} className="mx-auto text-emerald-400 mb-3" />
                 <p className="text-foreground font-medium">{t("noAnomalies")}</p>
             </div>
@@ -653,7 +653,7 @@ function AnomaliesTab({ data }: { data: any }) {
 
     return (
         <div className="space-y-6">
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                     <AlertTriangle size={16} className="text-amber-400" />
                     {t("anomaliesDetected")} ({anomalies.length})
@@ -661,7 +661,7 @@ function AnomaliesTab({ data }: { data: any }) {
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-200 dark:border-white/10">
+                            <tr className="border-b border-neutral-200 dark:border-white/10">
                                 <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("metric")}</th>
                                 <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("date")}</th>
                                 <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("value")}</th>
@@ -671,11 +671,11 @@ function AnomaliesTab({ data }: { data: any }) {
                         </thead>
                         <tbody>
                             {anomalies.map((a: any, i: number) => (
-                                <tr key={i} className="border-b border-gray-100 dark:border-white/5">
+                                <tr key={i} className="border-b border-neutral-100 dark:border-white/5">
                                     <td className="py-2.5 px-3 text-foreground font-medium capitalize">{a.metric}</td>
                                     <td className="py-2.5 px-3 text-muted-foreground">{a.date}</td>
                                     <td className="py-2.5 px-3 text-right">
-                                        <span className={`font-bold ${a.value > a.avg ? "text-red-400" : "text-blue-400"}`}>{a.value}</span>
+                                        <span className={`font-semibold ${a.value > a.avg ? "text-red-400" : "text-blue-400"}`}>{a.value}</span>
                                     </td>
                                     <td className="py-2.5 px-3 text-right text-muted-foreground">{a.avg}</td>
                                     <td className="py-2.5 px-3 text-right">
@@ -714,12 +714,12 @@ function CohortsTab({ data }: { data: any }) {
 
     return (
         <div className="space-y-6">
-            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08]">
+            <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                 <h3 className="text-sm font-semibold text-foreground mb-4">{t("cohortRetention")}</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-200 dark:border-white/10">
+                            <tr className="border-b border-neutral-200 dark:border-white/10">
                                 <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">{t("cohortMonth")}</th>
                                 <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">{t("cohortSize")}</th>
                                 {Array.from({ length: maxMonths }, (_, i) => (
@@ -731,7 +731,7 @@ function CohortsTab({ data }: { data: any }) {
                         </thead>
                         <tbody>
                             {cohorts.map((cohort: any) => (
-                                <tr key={cohort.month} className="border-b border-gray-100 dark:border-white/5">
+                                <tr key={cohort.month} className="border-b border-neutral-100 dark:border-white/5">
                                     <td className="py-2.5 px-3 text-foreground font-medium">{cohort.month}</td>
                                     <td className="py-2.5 px-3 text-right text-muted-foreground">{cohort.size}</td>
                                     {Array.from({ length: maxMonths }, (_, i) => (

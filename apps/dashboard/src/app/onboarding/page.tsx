@@ -42,7 +42,7 @@ function TikTokIcon({ className }: { className?: string }) {
     );
 }
 
-const inputClasses = "w-full py-3 px-3.5 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
+const inputClasses = "w-full py-3 px-3.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
 const inputWithIconClasses = cn(inputClasses, "pl-11");
 const selectClasses = cn(inputClasses, "appearance-none cursor-pointer");
 
@@ -171,7 +171,7 @@ export default function OnboardingPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
             {/* Background glow effects */}
             <div className="hidden dark:block fixed top-[20%] left-[30%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(108,92,231,0.15)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
@@ -199,7 +199,7 @@ export default function OnboardingPage() {
                             </div>
                         ))}
                     </div>
-                    <div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-white/10 overflow-hidden">
                         <div
                             className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-300"
                             style={{ width: `${((step + 1) / STEP_KEYS.length) * 100}%` }}
@@ -208,7 +208,7 @@ export default function OnboardingPage() {
                 </div>
 
                 {/* Card */}
-                <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     {/* Error */}
                     {error && (
                         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
@@ -219,7 +219,7 @@ export default function OnboardingPage() {
                     {/* Step 1: Company */}
                     {step === 0 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">Tu empresa</h2>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">Tu empresa</h2>
                             <p className="text-muted-foreground text-sm mb-6">
                                 Cuéntanos sobre tu negocio
                             </p>
@@ -379,7 +379,7 @@ export default function OnboardingPage() {
                     {/* Step 2: Audience */}
                     {step === 1 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">{t('step2')}</h2>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('step2')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">
                                 {t('audienceTitle')}
                             </p>
@@ -392,14 +392,14 @@ export default function OnboardingPage() {
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
                                             audiences.includes(key)
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
-                                                : "border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] hover:border-gray-300 dark:hover:border-white/20"
+                                                : "border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] hover:border-neutral-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
                                             type="checkbox"
                                             checked={audiences.includes(key)}
                                             onChange={() => toggleCheckbox(audiences, setAudiences, key)}
-                                            className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
+                                            className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
                                         <span className="text-sm text-foreground">{t(`audiences.${key}`)}</span>
                                     </label>
@@ -421,7 +421,7 @@ export default function OnboardingPage() {
                     {/* Step 3: Goals */}
                     {step === 2 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">{t('goalsTitle')}</h2>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('goalsTitle')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">{t('step3')}</p>
 
                             <div className="space-y-3">
@@ -432,14 +432,14 @@ export default function OnboardingPage() {
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
                                             goals.includes(key)
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
-                                                : "border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] hover:border-gray-300 dark:hover:border-white/20"
+                                                : "border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] hover:border-neutral-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
                                             type="checkbox"
                                             checked={goals.includes(key)}
                                             onChange={() => toggleCheckbox(goals, setGoals, key)}
-                                            className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
+                                            className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
                                         <span className="text-sm text-foreground">{t(`goals.${key}`)}</span>
                                     </label>
@@ -461,7 +461,7 @@ export default function OnboardingPage() {
                     {/* Step 4: Referral */}
                     {step === 3 && (
                         <div>
-                            <h2 className="text-xl font-bold text-foreground mb-1">{t('referralTitle')}</h2>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('referralTitle')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">{t('step4')}</p>
 
                             <div className="space-y-3">
@@ -472,7 +472,7 @@ export default function OnboardingPage() {
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
                                             referral === key
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
-                                                : "border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] hover:border-gray-300 dark:hover:border-white/20"
+                                                : "border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] hover:border-neutral-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
@@ -480,7 +480,7 @@ export default function OnboardingPage() {
                                             name="referral"
                                             checked={referral === key}
                                             onChange={() => setReferral(key)}
-                                            className="w-4 h-4 border-gray-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
+                                            className="w-4 h-4 border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
                                         <span className="text-sm text-foreground">{t(`referrals.${key}`)}</span>
                                     </label>
@@ -505,7 +505,7 @@ export default function OnboardingPage() {
                             <button
                                 type="button"
                                 onClick={() => setStep(step - 1)}
-                                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-white/10 bg-transparent text-sm font-medium text-foreground hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-transparent text-sm font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <ChevronLeft size={16} /> Anterior
                             </button>

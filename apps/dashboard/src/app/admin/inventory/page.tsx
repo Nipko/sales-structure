@@ -64,7 +64,7 @@ export default function InventoryPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-[28px] font-bold m-0">{t('title')}</h1>
+                        <h1 className="text-[28px] font-semibold m-0">{t('title')}</h1>
                         <DataSourceBadge isLive={isLive} />
                     </div>
                     <p className="text-muted-foreground mt-1">Gestion de productos, stock y movimientos</p>
@@ -84,14 +84,14 @@ export default function InventoryPage() {
                 ].map((kpi, i) => {
                     const Icon = kpi.icon;
                     return (
-                        <div key={i} className="bg-card rounded-2xl border border-border p-5">
+                        <div key={i} className="bg-card rounded-xl border border-border p-5">
                             <div className="flex justify-between mb-3">
                                 <span className="text-[13px] text-muted-foreground">{kpi.label}</span>
                                 <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
                                     <Icon size={18} color={kpi.color} />
                                 </div>
                             </div>
-                            <div className="text-[26px] font-bold" style={{ color: typeof kpi.value === "number" && ((kpi.label === "Stock Bajo" || kpi.label === "Agotados") && kpi.value > 0) ? kpi.color : undefined }}>
+                            <div className="text-[26px] font-semibold" style={{ color: typeof kpi.value === "number" && ((kpi.label === "Stock Bajo" || kpi.label === "Agotados") && kpi.value > 0) ? kpi.color : undefined }}>
                                 {kpi.value}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">{kpi.sub}</div>
@@ -116,7 +116,7 @@ export default function InventoryPage() {
             </div>
 
             <div className="grid grid-cols-[2fr_1fr] gap-4">
-                <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                <div className="bg-card rounded-xl border border-border overflow-hidden">
                     <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">Productos ({filteredProducts.length})</div>
                     <div className="max-h-[520px] overflow-y-auto">
                         <table className="w-full border-collapse text-sm">
@@ -136,7 +136,7 @@ export default function InventoryPage() {
                                             <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{product.sku}</td>
                                             <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg bg-muted text-xs font-medium">{product.category}</span></td>
                                             <td className="px-4 py-3 font-semibold text-primary">{formatCurrency(product.price)}</td>
-                                            <td className="px-4 py-3"><span className="font-bold text-base">{product.stock}</span><span className="text-[11px] text-muted-foreground ml-1">{product.unit}</span></td>
+                                            <td className="px-4 py-3"><span className="font-semibold text-base">{product.stock}</span><span className="text-[11px] text-muted-foreground ml-1">{product.unit}</span></td>
                                             <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: status.bg, color: status.color }}>{status.label}</span></td>
                                             <td className="px-4 py-3">
                                                 <button onClick={() => setShowStockModal(product)} className="px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground text-xs cursor-pointer flex items-center gap-1">
@@ -152,7 +152,7 @@ export default function InventoryPage() {
                     </div>
                 </div>
 
-                <div className="bg-card rounded-2xl border border-border">
+                <div className="bg-card rounded-xl border border-border">
                     <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">Movimientos Recientes</div>
                     <div className="max-h-[520px] overflow-y-auto">
                         {data.recentMovements.map(m => (
@@ -196,7 +196,7 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[480px] max-h-[80vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-bold m-0">Nuevo Producto</h2>
+                    <h2 className="text-xl font-semibold m-0">Nuevo Producto</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="flex flex-col gap-3.5">
@@ -258,7 +258,7 @@ function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product:
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[420px]">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-bold m-0">Ajustar Stock</h2>
+                    <h2 className="text-xl font-semibold m-0">Ajustar Stock</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="bg-muted rounded-xl p-4 mb-5">
@@ -281,7 +281,7 @@ function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product:
                 </div>
                 <div className="mb-3.5">
                     <label className="text-[13px] font-semibold block mb-1">Cantidad</label>
-                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder={type === "adjustment" ? "Nuevo stock total" : "Cantidad"} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-base font-bold outline-none box-border" />
+                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder={type === "adjustment" ? "Nuevo stock total" : "Cantidad"} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-base font-semibold outline-none box-border" />
                 </div>
                 <div className="mb-3.5">
                     <label className="text-[13px] font-semibold block mb-1">Razon</label>
@@ -290,7 +290,7 @@ function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product:
                 {quantity && (
                     <div className="bg-muted rounded-[10px] p-3 mb-4 flex justify-between items-center">
                         <span className="text-[13px] text-muted-foreground">Resultado:</span>
-                        <span className="text-base font-bold">{product.stock} → <span style={{ color: newStock < product.minStock ? "#ff4757" : "#2ecc71" }}>{newStock}</span> {product.unit}</span>
+                        <span className="text-base font-semibold">{product.stock} → <span style={{ color: newStock < product.minStock ? "#ff4757" : "#2ecc71" }}>{newStock}</span> {product.unit}</span>
                     </div>
                 )}
                 <button onClick={handleSubmit} disabled={saving || !quantity || !reason} className={cn("w-full py-3 rounded-xl border-none text-white font-semibold text-sm cursor-pointer flex items-center justify-center gap-1.5", (saving || !quantity || !reason) && "opacity-50")} style={{ background: type === "in" ? "#2ecc71" : type === "out" ? "#ff4757" : "#ffa502" }}>

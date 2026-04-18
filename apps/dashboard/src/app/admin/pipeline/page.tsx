@@ -69,7 +69,7 @@ export default function PipelinePage() {
                 <div className="flex justify-between items-center mb-4">
                     <div>
                         <div className="flex items-center gap-2.5">
-                            <h1 className="text-[28px] font-bold m-0">{t('title')}</h1>
+                            <h1 className="text-[28px] font-semibold m-0">{t('title')}</h1>
                             <DataSourceBadge isLive={isLive} />
                         </div>
                         <p className="text-muted-foreground mt-1 mb-0">
@@ -92,7 +92,7 @@ export default function PipelinePage() {
                                     <card.icon size={20} color={card.color} />
                                 </div>
                                 <div>
-                                    <div className="text-xl font-bold">{card.value}</div>
+                                    <div className="text-xl font-semibold">{card.value}</div>
                                     <div className="text-xs text-muted-foreground">{card.label}</div>
                                 </div>
                             </CardContent>
@@ -196,7 +196,7 @@ export default function PipelinePage() {
 
                                             <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
                                                 <div
-                                                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                                                    className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
                                                     style={{ background: `linear-gradient(135deg, ${stage.color}, ${stage.color}88)` }}
                                                 >
                                                     {deal.contactName.charAt(0)}
@@ -205,7 +205,7 @@ export default function PipelinePage() {
                                             </div>
 
                                             <div className="flex justify-between items-center mt-2.5">
-                                                <span className="text-[15px] font-bold text-emerald-500">
+                                                <span className="text-[15px] font-semibold text-emerald-500">
                                                     {deal.value > 0 ? formatCurrency(deal.value) : "\u2014"}
                                                 </span>
                                                 <div className="flex gap-1.5 items-center">

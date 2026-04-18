@@ -26,7 +26,7 @@ export default function LocaleSwitcher() {
             <select
                 value={current}
                 onChange={(e) => handleChange(e.target.value)}
-                className="bg-transparent text-[13px] text-muted-foreground outline-none cursor-pointer pl-0 pr-5 py-1 border border-gray-200 dark:border-white/15 rounded-lg appearance-none hover:text-foreground transition-colors"
+                className="bg-transparent text-[13px] text-muted-foreground outline-none cursor-pointer pl-0 pr-5 py-1 border border-neutral-200 dark:border-white/15 rounded-lg appearance-none hover:text-foreground transition-colors"
                 style={{ paddingLeft: '8px' }}
             >
                 {locales.map(l => (

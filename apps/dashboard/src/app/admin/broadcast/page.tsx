@@ -88,7 +88,7 @@ export default function BroadcastPage() {
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h1 className="text-[28px] font-bold m-0 flex items-center gap-2.5">
+                        <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
                             <Megaphone size={28} className="text-primary" /> {t('title')}
                             <DataSourceBadge isLive={false} />
                         </h1>
@@ -116,7 +116,7 @@ export default function BroadcastPage() {
                             <div className="flex justify-between items-center">
                                 <div>
                                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
-                                    <div className="text-[28px] font-bold mt-1">{stat.value}</div>
+                                    <div className="text-[28px] font-semibold mt-1">{stat.value}</div>
                                 </div>
                                 <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                                     <stat.icon size={22} color={stat.color} />
@@ -211,7 +211,7 @@ export default function BroadcastPage() {
                 >
                     <div onClick={e => e.stopPropagation()} className="w-[500px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-bold m-0">Nueva Campana</h2>
+                            <h2 className="text-xl font-semibold m-0">Nueva Campana</h2>
                             <button onClick={() => setShowNewCampaign(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3.5">

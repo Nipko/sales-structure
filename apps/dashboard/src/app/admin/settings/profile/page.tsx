@@ -66,7 +66,7 @@ export default function ProfilePage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Perfil</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Perfil</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                     Tu información personal y datos de contacto
                 </p>
@@ -80,7 +80,7 @@ export default function ProfilePage() {
 
             {/* Avatar */}
             <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-2xl font-bold text-white">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-2xl font-semibold text-white">
                     {form.firstName?.charAt(0) || "U"}
                 </div>
                 <div>

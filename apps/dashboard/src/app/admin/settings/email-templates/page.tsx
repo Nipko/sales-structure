@@ -340,7 +340,7 @@ export default function EmailTemplatesPage() {
             <Mail size={22} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-[22px] font-bold text-foreground m-0">{t('title')}</h1>
+            <h1 className="text-[22px] font-semibold text-foreground m-0">{t('title')}</h1>
             <p className="text-[13px] text-muted-foreground m-0">
               Disena y gestiona los correos transaccionales de tu plataforma
             </p>
@@ -388,7 +388,7 @@ export default function EmailTemplatesPage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-bold text-foreground truncate">{t.name}</div>
+                    <div className="text-[14px] font-semibold text-foreground truncate">{t.name}</div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-[11px] font-mono">
                         {t.slug}
@@ -430,7 +430,7 @@ export default function EmailTemplatesPage() {
             {/* Editor */}
             <div className="bg-card rounded-[14px] border border-border p-6">
               <div className="flex items-center justify-between mb-5">
-                <h2 className="text-lg font-bold text-foreground m-0">
+                <h2 className="text-lg font-semibold text-foreground m-0">
                   {isCreating ? "Nueva plantilla" : "Editar plantilla"}
                 </h2>
                 <button
@@ -564,7 +564,7 @@ export default function EmailTemplatesPage() {
             {/* Preview */}
             <div className="bg-card rounded-[14px] border border-border overflow-hidden">
               <div className="flex items-center border-b border-border px-5 py-3">
-                <h3 className="text-sm font-bold text-foreground m-0 flex-1">Vista previa</h3>
+                <h3 className="text-sm font-semibold text-foreground m-0 flex-1">Vista previa</h3>
                 <div className="flex rounded-lg bg-muted p-0.5">
                   <button
                     onClick={() => setPreviewTab("preview")}
@@ -617,11 +617,11 @@ export default function EmailTemplatesPage() {
           onClick={() => setTestModalOpen(false)}
         >
           <div
-            className="bg-card rounded-2xl border border-border p-6 w-[420px] shadow-2xl"
+            className="bg-card rounded-xl border border-border p-6 w-[420px] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-bold text-foreground m-0 flex items-center gap-2">
+              <h3 className="text-base font-semibold text-foreground m-0 flex items-center gap-2">
                 <Send size={18} className="text-primary" />
                 Enviar correo de prueba
               </h3>

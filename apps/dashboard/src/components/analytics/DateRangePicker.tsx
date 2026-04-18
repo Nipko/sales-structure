@@ -41,7 +41,7 @@ export default function DateRangePicker({ start, end, onChange }: DateRangePicke
                     className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors border ${
                         activePreset?.key === p.key && !showCustom
                             ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-500"
-                            : "bg-white dark:bg-white/[0.04] border-gray-200 dark:border-white/10 text-muted-foreground hover:text-foreground"
+                            : "bg-white dark:bg-white/[0.04] border-neutral-200 dark:border-white/10 text-muted-foreground hover:text-foreground"
                     }`}
                 >
                     {t(p.key)}
@@ -53,7 +53,7 @@ export default function DateRangePicker({ start, end, onChange }: DateRangePicke
                 className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors border inline-flex items-center gap-1.5 ${
                     showCustom
                         ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-500"
-                        : "bg-white dark:bg-white/[0.04] border-gray-200 dark:border-white/10 text-muted-foreground hover:text-foreground"
+                        : "bg-white dark:bg-white/[0.04] border-neutral-200 dark:border-white/10 text-muted-foreground hover:text-foreground"
                 }`}
             >
                 <Calendar size={14} /> {t("custom")} <ChevronDown size={12} />
@@ -65,14 +65,14 @@ export default function DateRangePicker({ start, end, onChange }: DateRangePicke
                         type="date"
                         value={start}
                         onChange={e => onChange(e.target.value, end)}
-                        className="px-2.5 py-1.5 rounded-lg text-[13px] border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-foreground outline-none"
+                        className="px-2.5 py-1.5 rounded-lg text-[13px] border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-foreground outline-none"
                     />
                     <span className="text-muted-foreground text-[13px]">—</span>
                     <input
                         type="date"
                         value={end}
                         onChange={e => onChange(start, e.target.value)}
-                        className="px-2.5 py-1.5 rounded-lg text-[13px] border border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-foreground outline-none"
+                        className="px-2.5 py-1.5 rounded-lg text-[13px] border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-foreground outline-none"
                     />
                 </div>
             )}

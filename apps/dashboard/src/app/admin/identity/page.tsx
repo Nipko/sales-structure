@@ -74,7 +74,7 @@ export default function IdentityPage() {
                     <div className="bg-primary w-10 h-10 rounded-[10px] flex items-center justify-center">
                         <Users size={20} color="white" />
                     </div>
-                    <h1 className="text-[28px] font-bold m-0 text-foreground">{t('title')}</h1>
+                    <h1 className="text-[28px] font-semibold m-0 text-foreground">{t('title')}</h1>
                 </div>
                 <p className="text-muted-foreground mt-1 pl-[50px]">Gestiona la identidad de tus clientes entre canales</p>
             </div>
@@ -91,19 +91,19 @@ export default function IdentityPage() {
                     { label: "Aprobadas", count: approved.length, color: "var(--success, #00d68f)", Icon: CheckCircle },
                     { label: "Rechazadas", count: rejected.length, color: "var(--danger, #ff4757)", Icon: XCircle },
                 ].map(stat => (
-                    <div key={stat.label} className="bg-card border border-border rounded-2xl overflow-hidden p-6 flex items-center gap-4">
+                    <div key={stat.label} className="bg-card border border-border rounded-xl overflow-hidden p-6 flex items-center gap-4">
                         <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
                             <stat.Icon size={22} color={stat.color} />
                         </div>
                         <div>
-                            <p className="text-[28px] font-bold m-0 text-foreground">{stat.count}</p>
+                            <p className="text-[28px] font-semibold m-0 text-foreground">{stat.count}</p>
                             <p className="text-[13px] text-muted-foreground m-0">{stat.label}</p>
                         </div>
                     </div>
                 ))}
             </div>
 
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
                 <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                     <Users size={18} className="text-primary" />
                     <h2 className="text-base font-semibold m-0 text-foreground">Sugerencias Pendientes</h2>
@@ -134,7 +134,7 @@ export default function IdentityPage() {
                                         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-[11px] font-semibold" style={{ background: mt.bg, color: mt.color }}>{mt.label}</span>
                                         <div className="flex items-center gap-1.5">
                                             <ArrowRight size={14} className="text-muted-foreground" />
-                                            <span className="text-[13px] font-bold text-foreground">{s.confidence != null ? `${Math.round(Number(s.confidence) * 100)}%` : "—"}</span>
+                                            <span className="text-[13px] font-semibold text-foreground">{s.confidence != null ? `${Math.round(Number(s.confidence) * 100)}%` : "—"}</span>
                                         </div>
                                     </div>
                                     <div className="flex-1 min-w-0 text-right">

@@ -97,7 +97,7 @@ export default function SetupWizardPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0a0a14]">
+            <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-[#0a0a14]">
                 <Loader2 size={24} className="animate-spin text-indigo-500" />
             </div>
         );
@@ -105,9 +105,9 @@ export default function SetupWizardPage() {
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-4xl max-h-[90vh] mx-4 bg-white dark:bg-[#12122a] rounded-2xl shadow-2xl dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
+            <div className="w-full max-w-4xl max-h-[90vh] mx-4 bg-white dark:bg-[#12122a] rounded-xl shadow-2xl dark:shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="border-b border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.02] shrink-0">
+            <div className="border-b border-neutral-200 dark:border-white/[0.08] bg-neutral-50 dark:bg-white/[0.02] shrink-0">
                 <div className="px-6 py-4 flex items-center justify-between">
                     <AnimatedLogo height={28} animate={false} showPoweredBy={false} />
                     <button onClick={handleSkip} className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
@@ -124,14 +124,14 @@ export default function SetupWizardPage() {
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0 transition-colors ${
                                 i < step ? "bg-emerald-500 text-white" :
                                 i === step ? "bg-indigo-500 text-white" :
-                                "bg-gray-200 dark:bg-white/10 text-muted-foreground"
+                                "bg-neutral-200 dark:bg-white/10 text-muted-foreground"
                             }`}>
                                 {i < step ? <Check size={14} /> : i + 1}
                             </div>
                             <span className={`text-[12px] hidden sm:block ${i === step ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                                 {t(s.key)}
                             </span>
-                            {i < STEPS.length - 1 && <div className={`flex-1 h-px ${i < step ? "bg-emerald-500" : "bg-gray-200 dark:bg-white/10"}`} />}
+                            {i < STEPS.length - 1 && <div className={`flex-1 h-px ${i < step ? "bg-emerald-500" : "bg-neutral-200 dark:bg-white/10"}`} />}
                         </div>
                     ))}
                 </div>
@@ -146,7 +146,7 @@ export default function SetupWizardPage() {
                 {/* Step 0: Goal */}
                 {step === 0 && (
                     <div>
-                        <h2 className="text-2xl font-bold text-foreground mb-2">{t("step1Subtitle")}</h2>
+                        <h2 className="text-2xl font-semibold text-foreground mb-2">{t("step1Subtitle")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("subtitle")}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {GOALS.map(goal => {
@@ -158,10 +158,10 @@ export default function SetupWizardPage() {
                                         className={`p-4 rounded-xl border text-left transition-all flex items-center gap-3 ${
                                             selected
                                                 ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
-                                                : "border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
+                                                : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
                                         }`}
                                     >
-                                        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${selected ? "bg-indigo-500 text-white" : "border-2 border-gray-300 dark:border-white/20"}`}>
+                                        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${selected ? "bg-indigo-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"}`}>
                                             {selected && <Check size={12} />}
                                         </div>
                                         <p className="text-sm font-medium text-foreground">{t(`goal_${goal}`)}</p>
@@ -175,7 +175,7 @@ export default function SetupWizardPage() {
                 {/* Step 1: Templates */}
                 {step === 1 && (
                     <div>
-                        <h2 className="text-2xl font-bold text-foreground mb-1">{t("templates.chooseTemplate")}</h2>
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("templates.chooseTemplate")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("templates.customizeAfter")}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {templates.map((tmpl: any, i: number) => {
@@ -188,7 +188,7 @@ export default function SetupWizardPage() {
                                         className={`p-5 rounded-xl border text-left transition-all relative ${
                                             isSelected
                                                 ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
-                                                : "border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
+                                                : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
                                         }`}
                                     >
                                         {i < 2 && (
@@ -217,21 +217,21 @@ export default function SetupWizardPage() {
                 {/* Step 2: Customize */}
                 {step === 2 && selectedTemplate && (
                     <div>
-                        <h2 className="text-2xl font-bold text-foreground mb-1">{t("step3Title")}</h2>
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("step3Title")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("templates.customizeAfter")}</p>
                         <div className="max-w-lg space-y-5">
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("customize.agentName")}</label>
                                 <input
                                     type="text" value={agentName} onChange={e => setAgentName(e.target.value)}
-                                    className="w-full py-2.5 px-3.5 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500"
+                                    className="w-full py-2.5 px-3.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500"
                                 />
                             </div>
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("customize.greeting")}</label>
                                 <textarea
                                     value={greeting} onChange={e => setGreeting(e.target.value)} rows={3}
-                                    className="w-full py-2.5 px-3.5 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500 resize-none"
+                                    className="w-full py-2.5 px-3.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500 resize-none"
                                 />
                             </div>
                             <div>
@@ -244,7 +244,7 @@ export default function SetupWizardPage() {
                                             className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                                                 tone === t2
                                                     ? "border-indigo-500 bg-indigo-500/10 text-indigo-500"
-                                                    : "border-gray-200 dark:border-white/10 text-muted-foreground hover:border-indigo-500/30"
+                                                    : "border-neutral-200 dark:border-white/10 text-muted-foreground hover:border-indigo-500/30"
                                             }`}
                                         >
                                             {t(`customize.tone${t2.charAt(0).toUpperCase() + t2.slice(1)}`)}
@@ -258,7 +258,7 @@ export default function SetupWizardPage() {
                                     <button
                                         onClick={() => setIs247(true)}
                                         className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                                            is247 ? "border-indigo-500 bg-indigo-500/10 text-indigo-500" : "border-gray-200 dark:border-white/10 text-muted-foreground"
+                                            is247 ? "border-indigo-500 bg-indigo-500/10 text-indigo-500" : "border-neutral-200 dark:border-white/10 text-muted-foreground"
                                         }`}
                                     >
                                         <Clock size={14} className="inline mr-1.5" />{t("customize.hours247")}
@@ -266,7 +266,7 @@ export default function SetupWizardPage() {
                                     <button
                                         onClick={() => setIs247(false)}
                                         className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                                            !is247 ? "border-indigo-500 bg-indigo-500/10 text-indigo-500" : "border-gray-200 dark:border-white/10 text-muted-foreground"
+                                            !is247 ? "border-indigo-500 bg-indigo-500/10 text-indigo-500" : "border-neutral-200 dark:border-white/10 text-muted-foreground"
                                         }`}
                                     >
                                         {t("customize.hoursCustom")}
@@ -280,7 +280,7 @@ export default function SetupWizardPage() {
                 {/* Step 3: Channels */}
                 {step === 3 && (
                     <div>
-                        <h2 className="text-2xl font-bold text-foreground mb-1">{t("channels.title")}</h2>
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("channels.title")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("channels.subtitle")}</p>
                         <div className="space-y-3 max-w-lg">
                             {CHANNELS.map(ch => (
@@ -290,10 +290,10 @@ export default function SetupWizardPage() {
                                     className={`w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all ${
                                         selectedChannels.includes(ch.id)
                                             ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10"
-                                            : "border-gray-200 dark:border-white/10 bg-white dark:bg-white/[0.04]"
+                                            : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04]"
                                     }`}
                                 >
-                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-bold" style={{ background: ch.color }}>
+                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-semibold" style={{ background: ch.color }}>
                                         {ch.id[0].toUpperCase()}
                                     </div>
                                     <span className="text-sm text-foreground flex-1">{t(`channels.${ch.key}`)}</span>
@@ -307,7 +307,7 @@ export default function SetupWizardPage() {
                             <p className="text-[13px] text-muted-foreground font-medium mb-3">{t("channels.integrations")}</p>
                             <div className="flex flex-wrap gap-2">
                                 {INTEGRATIONS.map(int => (
-                                    <div key={int.name} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.03] text-[12px] text-muted-foreground">
+                                    <div key={int.name} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] text-[12px] text-muted-foreground">
                                         <span>{int.icon}</span> {int.name}
                                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium ml-1">
                                             {t("channels.comingSoon")}
@@ -321,7 +321,7 @@ export default function SetupWizardPage() {
             </div>
 
             {/* Navigation */}
-            <div className="border-t border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.02] shrink-0">
+            <div className="border-t border-neutral-200 dark:border-white/[0.08] bg-neutral-50 dark:bg-white/[0.02] shrink-0">
                 <div className="px-6 py-4 flex items-center justify-between">
                     <button
                         onClick={() => setStep(Math.max(0, step - 1))}

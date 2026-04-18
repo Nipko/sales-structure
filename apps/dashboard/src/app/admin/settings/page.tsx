@@ -99,7 +99,7 @@ export default function SettingsHub() {
     return (
         <div className="space-y-8 max-w-5xl">
             <div>
-                <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
                     {t("title")}
                 </h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">

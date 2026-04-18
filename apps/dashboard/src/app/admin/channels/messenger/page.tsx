@@ -107,7 +107,7 @@ export default function MessengerSetupPage() {
                         >
                             <MessageCircle size={20} className="text-white" />
                         </div>
-                        <h1 className="text-[28px] font-bold m-0 text-foreground">
+                        <h1 className="text-[28px] font-semibold m-0 text-foreground">
                             Facebook Messenger
                         </h1>
                     </div>
@@ -143,7 +143,7 @@ export default function MessengerSetupPage() {
             )}
 
             {/* Webhook Config Card */}
-            <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                 <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                     <Shield size={18} className="text-[#e67e22]" />
                     <h2 className="text-base font-semibold m-0 text-foreground">
@@ -191,7 +191,7 @@ export default function MessengerSetupPage() {
 
             {/* Connection / Connected State */}
             {!isConnected ? (
-                <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                     <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                         <LinkIcon size={18} style={{ color: BRAND_COLOR }} />
                         <h2 className="text-base font-semibold m-0 text-foreground">
@@ -264,7 +264,7 @@ export default function MessengerSetupPage() {
             ) : (
                 <div className="grid grid-cols-2 gap-6 mb-6">
                     {/* Account Info */}
-                    <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <User size={18} style={{ color: BRAND_COLOR }} />
                             <h2 className="text-base font-semibold m-0 text-foreground">
@@ -290,7 +290,7 @@ export default function MessengerSetupPage() {
                     </div>
 
                     {/* Update Token */}
-                    <div className="rounded-2xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <LinkIcon size={18} className="text-primary" />
                             <h2 className="text-base font-semibold m-0 text-foreground">

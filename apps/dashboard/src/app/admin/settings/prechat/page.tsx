@@ -62,7 +62,7 @@ export default function PrechatPage() {
             <div className="flex justify-between items-center mb-7">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center"><MessageSquare size={22} className="text-primary" /></div>
-                    <div><h1 className="text-[22px] font-bold text-foreground m-0">Formulario Pre-Chat</h1><p className="text-[13px] text-muted-foreground m-0">Recopila informacion del cliente antes de la primera respuesta del agente</p></div>
+                    <div><h1 className="text-[22px] font-semibold text-foreground m-0">Formulario Pre-Chat</h1><p className="text-[13px] text-muted-foreground m-0">Recopila informacion del cliente antes de la primera respuesta del agente</p></div>
                 </div>
                 <button onClick={handleSave} disabled={saving} className={cn("flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold", saving && "opacity-60 cursor-not-allowed")}>
                     <Save size={16} /> {saving ? "Guardando..." : "Guardar"}
@@ -74,7 +74,7 @@ export default function PrechatPage() {
                     {/* Active toggle */}
                     <div className="bg-card rounded-[14px] border border-border px-[22px] py-[18px] flex items-center justify-between">
                         <div>
-                            <div className="text-[15px] font-bold text-foreground">Formulario activo</div>
+                            <div className="text-[15px] font-semibold text-foreground">Formulario activo</div>
                             <div className="text-xs text-muted-foreground mt-0.5">Activa para recopilar datos antes de la conversacion</div>
                         </div>
                         <button onClick={() => setConfig(prev => ({ ...prev, is_active: !prev.is_active }))} className="w-12 h-[26px] rounded-[13px] border-none cursor-pointer relative transition-colors duration-200" style={{ background: config.is_active ? "var(--accent-hex)" : "var(--border)" }}>
@@ -133,7 +133,7 @@ export default function PrechatPage() {
                     <div className="bg-card rounded-[14px] border border-border px-[22px] py-[18px]">
                         <div className="flex items-center gap-2 mb-4">
                             <Smartphone size={16} className="text-primary" />
-                            <span className="text-sm font-bold text-foreground">Vista previa WhatsApp</span>
+                            <span className="text-sm font-semibold text-foreground">Vista previa WhatsApp</span>
                         </div>
                         <div className="bg-[#0b141a] rounded-xl p-3.5 min-h-[300px]">
                             {config.greeting_message && (

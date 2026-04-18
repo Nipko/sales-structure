@@ -20,7 +20,7 @@ export default function Heatmap({ data }: HeatmapProps) {
     }
 
     const getColor = (count: number) => {
-        if (count === 0) return "bg-gray-100 dark:bg-white/[0.03]";
+        if (count === 0) return "bg-neutral-100 dark:bg-white/[0.03]";
         const intensity = count / maxCount;
         if (intensity < 0.25) return "bg-emerald-100 dark:bg-emerald-500/10";
         if (intensity < 0.5) return "bg-emerald-300 dark:bg-emerald-500/25";
@@ -59,7 +59,7 @@ export default function Heatmap({ data }: HeatmapProps) {
                 {/* Legend */}
                 <div className="flex items-center gap-2 mt-3 ml-10">
                     <span className="text-[10px] text-muted-foreground">{t("less")}</span>
-                    <div className="w-4 h-3 rounded-sm bg-gray-100 dark:bg-white/[0.03]" />
+                    <div className="w-4 h-3 rounded-sm bg-neutral-100 dark:bg-white/[0.03]" />
                     <div className="w-4 h-3 rounded-sm bg-emerald-100 dark:bg-emerald-500/10" />
                     <div className="w-4 h-3 rounded-sm bg-emerald-300 dark:bg-emerald-500/25" />
                     <div className="w-4 h-3 rounded-sm bg-emerald-400 dark:bg-emerald-500/45" />

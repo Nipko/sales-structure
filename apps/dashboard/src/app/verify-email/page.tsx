@@ -127,7 +127,7 @@ export default function VerifyEmailPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
             {/* Background glow effects */}
             <div className="hidden dark:block fixed top-[20%] left-[30%] w-[400px] h-[400px] rounded-full bg-[radial-gradient(circle,rgba(108,92,231,0.15)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
             <div className="hidden dark:block fixed bottom-[10%] right-[20%] w-[300px] h-[300px] rounded-full bg-[radial-gradient(circle,rgba(46,204,113,0.1)_0%,transparent_70%)] blur-[60px] pointer-events-none" />
@@ -139,7 +139,7 @@ export default function VerifyEmailPage() {
                 </div>
 
                 {/* Card */}
-                <div className="p-8 rounded-2xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     {/* Email icon */}
                     <div className="flex justify-center mb-4">
                         <div className="w-14 h-14 rounded-full bg-indigo-100 dark:bg-indigo-500/15 flex items-center justify-center">
@@ -147,7 +147,7 @@ export default function VerifyEmailPage() {
                         </div>
                     </div>
 
-                    <h1 className="text-2xl font-bold text-foreground mb-1 text-center">
+                    <h1 className="text-2xl font-semibold text-foreground mb-1 text-center">
                         {t('verifyCode')}
                     </h1>
                     <p className="text-muted-foreground text-sm mb-8 text-center">
@@ -179,11 +179,11 @@ export default function VerifyEmailPage() {
                                 disabled={isSubmitting}
                                 autoFocus={i === 0}
                                 className={cn(
-                                    "w-12 h-14 text-center text-2xl font-bold rounded-xl border outline-none transition-all",
-                                    "bg-gray-50 dark:bg-white/5 text-foreground",
+                                    "w-12 h-14 text-center text-2xl font-semibold rounded-xl border outline-none transition-all",
+                                    "bg-neutral-50 dark:bg-white/5 text-foreground",
                                     digit
                                         ? "border-indigo-500 dark:border-indigo-500/50 ring-1 ring-indigo-500/20"
-                                        : "border-gray-300 dark:border-white/10",
+                                        : "border-neutral-300 dark:border-white/10",
                                     "focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20",
                                     isSubmitting && "opacity-60 cursor-wait"
                                 )}
@@ -194,7 +194,7 @@ export default function VerifyEmailPage() {
                     {/* Loading indicator */}
                     {isSubmitting && (
                         <div className="flex justify-center mb-4">
-                            <div className="w-6 h-6 border-2 border-gray-300 dark:border-white/20 border-t-indigo-500 rounded-full animate-spin" />
+                            <div className="w-6 h-6 border-2 border-neutral-300 dark:border-white/20 border-t-indigo-500 rounded-full animate-spin" />
                         </div>
                     )}
 

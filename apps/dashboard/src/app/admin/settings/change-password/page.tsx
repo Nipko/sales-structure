@@ -118,7 +118,7 @@ export default function ChangePasswordPage() {
                     <ArrowLeft size={18} />
                 </button>
                 <div>
-                    <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                    <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
                         {t('title')}
                     </h1>
                     <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">

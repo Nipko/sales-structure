@@ -117,7 +117,7 @@ export default function ConversationsPage() {
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="bg-card">
-                            {["Contacto", "Ultimo mensaje", "Mensajes", "Estado", "Agente", "Sentimiento", "Fecha"].map(h => (
+                            {["Contacto", "Ultimo mensaje", "Mensajes", "Status", "Agente", "Sentimiento", "Date"].map(h => (
                                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
                             ))}
                         </tr>

@@ -120,7 +120,7 @@ export default function UsersPage() {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-card">
-                                {["Usuario", "Email", "Rol", "Tenant", "Estado", "Registrado"].map(h => (
+                                {["Usuario", "Email", "Rol", "Tenant", "Status", "Registrado"].map(h => (
                                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
                                 ))}
                             </tr>
@@ -145,7 +145,7 @@ export default function UsersPage() {
                                         <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.tenantName}</td>
                                         <td className="px-4 py-3">
                                             <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: u.isActive ? "rgba(46,204,113,0.15)" : "rgba(231,76,60,0.15)", color: u.isActive ? "#2ecc71" : "#e74c3c" }}>
-                                                {u.isActive ? "Activo" : "Inactivo"}
+                                                {u.isActive ?  tc("active") : tc("inactive")}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.createdAt}</td>

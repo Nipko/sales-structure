@@ -10,7 +10,7 @@ import { Database, Plus, Pencil, Trash2, X, Check, AlertCircle } from "lucide-re
 interface CustomAttribute { id: string; entity_type: string; attribute_key: string; label: string; data_type: string; is_required: boolean; options: string[] | null; }
 
 const ENTITY_TYPES = [{ value: "contact", label: "Contacto" }, { value: "lead", label: "Lead" }, { value: "company", label: "Empresa" }, { value: "conversation", label: "Conversacion" }];
-const DATA_TYPES = [{ value: "text", label: "Texto" }, { value: "number", label: "Numero" }, { value: "date", label: "Fecha" }, { value: "boolean", label: "Booleano" }, { value: "list", label: "Lista" }, { value: "url", label: "URL" }];
+const DATA_TYPES = [{ value: "text", label: "Texto" }, { value: "number", label: "Numero" }, { value: "date", label: "Date" }, { value: "boolean", label: "Booleano" }, { value: "list", label: "Lista" }, { value: "url", label: "URL" }];
 
 const inputCls = "w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border";
 const labelCls = "block text-xs font-semibold text-muted-foreground mb-1";

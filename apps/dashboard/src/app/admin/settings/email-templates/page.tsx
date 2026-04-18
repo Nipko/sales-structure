@@ -659,7 +659,7 @@ export default function EmailTemplatesPage() {
                 className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 <Send size={14} />
-                {sendingTest ? "Enviando..." : "Enviar"}
+                {sendingTest ? "Enviando..." :  tc("save")}
               </button>
             </div>
           </div>

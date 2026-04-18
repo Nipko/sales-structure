@@ -829,7 +829,7 @@ export default function AgentConfigPage() {
         return (
             <div>
                 {summarySection("Identidad", <User size={16} className="text-primary" />, [
-                    { label: "Nombre", value: config.persona.name },
+                    { label: "Name", value: config.persona.name },
                     { label: "Rol", value: config.persona.role },
                     { label: "Idioma", value: config.language },
                     { label: "Industria", value: config.industry },

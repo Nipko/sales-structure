@@ -21,7 +21,7 @@ const formatCurrency = (n: number) => new Intl.NumberFormat("es-CO", { style: "c
 const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s; } };
 
 const statusConfig = {
-    pending: { label: "Pendiente", color: "#ffa502", bg: "rgba(255,165,2,0.12)", icon: Clock },
+    pending: { label: "Pending", color: "#ffa502", bg: "rgba(255,165,2,0.12)", icon: Clock },
     confirmed: { label: "Confirmada", color: "#1f93ff", bg: "rgba(31,147,255,0.12)", icon: Package },
     paid: { label: "Pagada", color: "#2ecc71", bg: "rgba(46,204,113,0.12)", icon: CheckCircle },
     cancelled: { label: "Cancelada", color: "#ff4757", bg: "rgba(255,71,87,0.12)", icon: XCircle },
@@ -140,7 +140,7 @@ export default function OrdersPage() {
                 <table className="w-full border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-border">
-                            {["Detalle de Orden", "Cliente", "Fecha", "Monto", "Estado", "Accion rapida"].map(h => (
+                            {["Detalle de Orden", "Cliente", "Date", "Monto", "Status", "Accion rapida"].map(h => (
                                 <th key={h} className="px-5 py-3.5 text-left font-semibold text-muted-foreground text-xs uppercase">{h}</th>
                             ))}
                         </tr>

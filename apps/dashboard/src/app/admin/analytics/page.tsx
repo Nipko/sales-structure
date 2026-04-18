@@ -125,7 +125,7 @@ export default function AnalyticsV4Page() {
                     <table className="w-full border-collapse text-[13px]">
                         <thead>
                             <tr className="border-b border-border">
-                                {["Campana", "Estado", "Canal", "Leads", "Calificados", "Calientes", "Convertidos", "Score Prom.", "Conversion"].map(h => (
+                                {["Campana", "Status", "Canal", "Leads", "Calificados", "Calientes", "Convertidos", "Score Prom.", "Conversion"].map(h => (
                                     <th key={h} className="px-2.5 py-2 text-left font-semibold text-muted-foreground text-[11px] uppercase">{h}</th>
                                 ))}
                             </tr>

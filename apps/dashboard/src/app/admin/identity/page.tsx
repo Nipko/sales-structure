@@ -17,7 +17,7 @@ const channelColors: Record<string, { bg: string; color: string; label: string }
 };
 
 const matchTypeStyles: Record<string, { bg: string; color: string; label: string }> = {
-    phone_match: { bg: "rgba(0, 214, 143, 0.15)", color: "var(--success, #00d68f)", label: "Telefono" },
+    phone_match: { bg: "rgba(0, 214, 143, 0.15)", color: "var(--success, #00d68f)", label: "Phone" },
     email_match: { bg: "rgba(108, 92, 231, 0.15)", color: "var(--accent-hex, #6c5ce7)", label: "Email" },
 };
 

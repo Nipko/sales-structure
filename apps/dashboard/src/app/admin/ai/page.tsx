@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 
 const statusColors: Record<string, { label: string; color: string }> = {
-    active: { label: "Activo", color: "#2ecc71" },
+    active: { label: "Active", color: "#2ecc71" },
     standby: { label: "Standby", color: "#f39c12" },
-    inactive: { label: "Inactivo", color: "#95a5a6" },
+    inactive: { label: "Inactive", color: "#95a5a6" },
 };
 
 export default function AIRouterPage() {

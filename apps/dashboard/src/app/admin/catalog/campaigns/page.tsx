@@ -133,7 +133,7 @@ export default function CampaignsPage() {
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[
-                            { label: "Nombre", key: "name", el: "input" },
+                            { label: "Name", key: "name", el: "input" },
                             { label: "Curso Principal", key: "course_id", el: "select", options: [{ value: "", label: "— Sin curso —" }, ...courses.map(c => ({ value: c.id, label: c.name }))] },
                             { label: "Canal", key: "channel", el: "select", options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "mixed", label: "Mixto" }] },
                             { label: "Template WhatsApp", key: "wa_template_name", el: "input" },

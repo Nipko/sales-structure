@@ -100,7 +100,7 @@ export default function TenantsPage() {
                     <div>
                         <h1 className="text-[28px] font-semibold m-0">{selectedTenant.name}</h1>
                         <p className="text-muted-foreground mt-1">
-                            {selectedTenant.slug} &middot; {selectedTenant.plan} &middot; <span className={selectedTenant.isActive ? "text-[var(--success)]" : "text-destructive"}>{selectedTenant.isActive ? "Activo" : "Inactivo"}</span>
+                            {selectedTenant.slug} &middot; {selectedTenant.plan} &middot; <span className={selectedTenant.isActive ? "text-[var(--success)]" : "text-destructive"}>{selectedTenant.isActive ?  tc("active") : tc("inactive")}</span>
                         </p>
                     </div>
                 </div>
@@ -125,7 +125,7 @@ export default function TenantsPage() {
                                         <td className="font-semibold">{user.firstName} {user.lastName}</td>
                                         <td className="text-muted-foreground text-[13px]">{user.email}</td>
                                         <td><span className="badge badge-info">{roleLabel(user.role)}</span></td>
-                                        <td><span className={cn("badge", user.isActive ? "badge-active" : "badge-inactive")}><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: user.isActive ? "#00d68f" : "#ff4757" }} /> {user.isActive ? "Activo" : "Inactivo"}</span></td>
+                                        <td><span className={cn("badge", user.isActive ? "badge-active" : "badge-inactive")}><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: user.isActive ? "#00d68f" : "#ff4757" }} /> {user.isActive ?  tc("active") : tc("inactive")}</span></td>
                                         <td className="text-muted-foreground text-[13px]">{user.createdAt?.split("T")[0] || "\u2014"}</td>
                                         <td><button className="btn-outline px-3 py-1.5 flex items-center gap-1.5 text-[13px]" onClick={() => { setResetUser(user); setNewPassword(""); }} title="Restablecer contrase\u00f1a"><KeyRound size={14} />Restablecer contrase\u00f1a</button></td>
                                     </tr>
@@ -217,7 +217,7 @@ export default function TenantsPage() {
                                 </td>
                                 <td>{tenant.industry}</td>
                                 <td><span className="badge badge-info">{tenant.plan}</span></td>
-                                <td><span className={cn("badge", tenant.isActive ? "badge-active" : "badge-inactive")}><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: tenant.isActive ? "#00d68f" : "#ff4757" }} />{tenant.isActive ? "Activo" : "Inactivo"}</span></td>
+                                <td><span className={cn("badge", tenant.isActive ? "badge-active" : "badge-inactive")}><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: tenant.isActive ? "#00d68f" : "#ff4757" }} />{tenant.isActive ?  tc("active") : tc("inactive")}</span></td>
                                 <td><div className="flex items-center gap-1"><Users size={14} className="text-muted-foreground" />{tenant.users}</div></td>
                                 <td><div className="flex items-center gap-1"><Globe size={14} className="text-muted-foreground" />{tenant.channels}</div></td>
                                 <td className="text-muted-foreground text-[13px]">{tenant.createdAt}</td>

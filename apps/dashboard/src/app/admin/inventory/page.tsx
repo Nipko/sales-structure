@@ -122,7 +122,7 @@ export default function InventoryPage() {
                         <table className="w-full border-collapse text-sm">
                             <thead>
                                 <tr className="border-b border-border">
-                                    {["Producto", "SKU", "Categoria", "Precio", "Stock", "Estado", "Acciones"].map(h => (
+                                    {["Producto", "SKU", "Categoria", "Price", "Stock", "Status", "Acciones"].map(h => (
                                         <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground text-xs uppercase">{h}</th>
                                     ))}
                                 </tr>
@@ -202,9 +202,9 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                 </div>
                 <div className="flex flex-col gap-3.5">
                     {[
-                        { key: "name", label: "Nombre del producto", placeholder: "Tour Rafting Rio Fonce" },
+                        { key: "name", label: "Product name", placeholder: "Tour Rafting Rio Fonce" },
                         { key: "sku", label: "SKU", placeholder: "TOUR-RAFT-001" },
-                        { key: "description", label: "Descripcion", placeholder: "Descripcion breve..." },
+                        { key: "description", label: "Description", placeholder: "Descripcion breve..." },
                     ].map(f => (
                         <div key={f.key}>
                             <label className="text-[13px] font-semibold block mb-1">{f.label}</label>
@@ -212,7 +212,7 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                         </div>
                     ))}
                     <div className="grid grid-cols-2 gap-3">
-                        {[{ key: "price", label: "Precio", ph: "120000" }, { key: "cost", label: "Costo", ph: "45000" }].map(f => (
+                        {[{ key: "price", label: "Price", ph: "120000" }, { key: "cost", label: "Costo", ph: "45000" }].map(f => (
                             <div key={f.key}>
                                 <label className="text-[13px] font-semibold block mb-1">{f.label}</label>
                                 <input type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.ph} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
@@ -282,7 +282,7 @@ function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product:
                 </div>
                 <div className="mb-3.5">
                     <label className="text-[13px] font-semibold block mb-1">Cantidad</label>
-                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder={type === "adjustment" ? "Nuevo stock total" : "Cantidad"} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-base font-semibold outline-none box-border" />
+                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder={type === "adjustment" ? "Nuevo stock total" : "Quantity"} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-base font-semibold outline-none box-border" />
                 </div>
                 <div className="mb-3.5">
                     <label className="text-[13px] font-semibold block mb-1">Razon</label>

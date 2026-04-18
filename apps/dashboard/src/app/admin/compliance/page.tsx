@@ -130,7 +130,7 @@ export default function CompliancePage() {
                                         <FileText size={16} className="text-primary" />
                                         <span className="font-semibold">v{lt.version}</span>
                                         <span className="text-[11px] px-2 py-0.5 rounded-md" style={{ background: "#3498db22", color: "#3498db" }}>{lt.channel}</span>
-                                        <span className="text-[11px] px-2 py-0.5 rounded-md" style={{ background: lt.active ? "#2ecc7122" : "#e74c3c22", color: lt.active ? "#2ecc71" : "#e74c3c" }}>{lt.active ? "Activo" : "Inactivo"}</span>
+                                        <span className="text-[11px] px-2 py-0.5 rounded-md" style={{ background: lt.active ? "#2ecc7122" : "#e74c3c22", color: lt.active ? "#2ecc71" : "#e74c3c" }}>{lt.active ?  tc("active") : tc("inactive")}</span>
                                     </div>
                                     <span className="text-xs text-muted-foreground">{new Date(lt.created_at).toLocaleDateString()}</span>
                                 </div>
@@ -204,7 +204,7 @@ export default function CompliancePage() {
                                                 o.status === "confirmed" ? "bg-red-500/15 text-red-500" :
                                                 "bg-emerald-500/15 text-emerald-500"
                                             )}>
-                                                {o.status === "pending" ? "Pendiente" : o.status === "confirmed" ? "Confirmado" : "Rechazado (falso positivo)"}
+                                                {o.status === "pending" ? tc("pending") : o.status === "confirmed" ? "Confirmado" : "Rechazado (falso positivo)"}
                                             </span>
                                             <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">{o.channel}</span>
                                             <span className="text-[11px] px-2 py-0.5 rounded-md bg-neutral-500/10 text-muted-foreground">{o.detected_from || "keyword"}</span>

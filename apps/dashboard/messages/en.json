@@ -204,7 +204,8 @@
       "qualified": "Qualified",
       "customer": "Customers",
       "churned": "Churned"
-    }
+    },
+    "subtitle": "Manage your contacts, leads and segments"
   },
   "inbox": {
     "title": "Inbox",
@@ -297,7 +298,8 @@
     "priority": "Priority",
     "additionalInfo": "Additional information",
     "client": "Client",
-    "agent": "Agent"
+    "agent": "Agent",
+    "subtitle": "Real-time conversations across all channels"
   },
   "settings": {
     "title": "Settings",
@@ -812,7 +814,8 @@
     "newDeal": "New deal",
     "value": "Value",
     "stage": "Stage",
-    "dragToMove": "Drag to move"
+    "dragToMove": "Drag to move",
+    "subtitle": "Drag deals between stages"
   },
   "automation": {
     "title": "Automation",
@@ -871,7 +874,8 @@
     "actionQuestion": "What actions to execute?",
     "actionDesc": "Define the actions to perform when the rule activates",
     "noActions": "Add at least one action",
-    "addAction": "Add action"
+    "addAction": "Add action",
+    "subtitle": "Automated rules to optimize operations"
   },
   "broadcast": {
     "title": "Campaigns",
@@ -880,7 +884,8 @@
     "recipients": "Recipients",
     "scheduled": "Scheduled",
     "sent": "Sent",
-    "draft": "Draft"
+    "draft": "Draft",
+    "subtitle": "Mass campaigns and template messages"
   },
   "channels": {
     "title": "Channels",
@@ -966,7 +971,8 @@
     "llm": "LLM Model",
     "hours": "Schedule",
     "preview": "Preview",
-    "saveConfig": "Save configuration"
+    "saveConfig": "Save configuration",
+    "subtitle": "Configure your AI agent personality and tools"
   },
   "knowledge": {
     "title": "Knowledge Base",
@@ -974,7 +980,8 @@
     "upload": "Upload document",
     "processing": "Processing",
     "ready": "Ready",
-    "chunks": "Chunks"
+    "chunks": "Chunks",
+    "subtitle": "Knowledge base, FAQs and documents for AI"
   },
   "identity": {
     "title": "Identity",
@@ -982,7 +989,8 @@
     "approve": "Approve",
     "reject": "Reject",
     "confidence": "Confidence",
-    "matchType": "Match type"
+    "matchType": "Match type",
+    "subtitle": "Manage cross-channel customer identity"
   },
   "users": {
     "title": "Users",
@@ -990,7 +998,8 @@
     "role": "Role",
     "status": "Status",
     "lastLogin": "Last login",
-    "resetPassword": "Reset password"
+    "resetPassword": "Reset password",
+    "subtitle": "Manage users, roles and permissions"
   },
   "orders": {
     "title": "Orders",
@@ -999,7 +1008,8 @@
     "status": "Status",
     "paymentMethod": "Payment method",
     "items": "Items",
-    "invoice": "Invoice"
+    "invoice": "Invoice",
+    "subtitle": "Manage sales, payments and reservations"
   },
   "inventory": {
     "title": "Inventory",
@@ -1008,7 +1018,8 @@
     "stock": "Stock",
     "price": "Price",
     "category": "Category",
-    "available": "Available"
+    "available": "Available",
+    "subtitle": "Product management, stock and movements"
   },
   "tenants": {
     "title": "Tenants",
@@ -1016,7 +1027,8 @@
     "plan": "Plan",
     "schema": "Schema",
     "industry": "Industry",
-    "activeUsers": "Active users"
+    "activeUsers": "Active users",
+    "subtitle": "Manage organizations and tenants"
   },
   "onboarding": {
     "title": "Set up your company",
@@ -1095,7 +1107,8 @@
     "csat": "CSAT",
     "performance": "Performance",
     "responseTime": "Response time",
-    "totalConversations": "Total conversations"
+    "totalConversations": "Total conversations",
+    "subtitle": "Executive metrics and performance"
   },
   "emailTemplates": {
     "title": "Email Templates",

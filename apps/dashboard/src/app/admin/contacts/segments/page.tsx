@@ -15,7 +15,7 @@ interface Contact { id: string; name: string; phone: string; email: string; stag
 
 const FIELDS = [
     { value: "stage", label: "Etapa" }, { value: "score", label: "Score" },
-    { value: "phone", label: "Telefono" }, { value: "email", label: "Email" },
+    { value: "phone", label: "Phone" }, { value: "email", label: "Email" },
     { value: "source", label: "Fuente" }, { value: "is_vip", label: "VIP" },
     { value: "created_at", label: "Fecha de creacion" },
 ];
@@ -128,7 +128,7 @@ export default function SegmentsPage() {
                         <table className="w-full border-collapse">
                             <thead>
                                 <tr className="border-b border-border">
-                                    {["Nombre", "Telefono", "Email", "Etapa", "Score"].map(h => (
+                                    {["Name", "Phone", "Email", "Etapa", "Score"].map(h => (
                                         <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                                     ))}
                                 </tr>

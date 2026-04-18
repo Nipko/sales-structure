@@ -204,7 +204,8 @@
       "qualified": "Qualificados",
       "customer": "Clientes",
       "churned": "Perdidos"
-    }
+    },
+    "subtitle": "Gerencie seus contatos, leads e segmentos"
   },
   "inbox": {
     "title": "Caixa de entrada",
@@ -297,7 +298,8 @@
     "priority": "Prioridade",
     "additionalInfo": "Informacao adicional",
     "client": "Cliente",
-    "agent": "Agente"
+    "agent": "Agente",
+    "subtitle": "Conversas em tempo real em todos os canais"
   },
   "settings": {
     "title": "Configuracoes",
@@ -812,7 +814,8 @@
     "newDeal": "Novo negocio",
     "value": "Valor",
     "stage": "Etapa",
-    "dragToMove": "Arraste para mover"
+    "dragToMove": "Arraste para mover",
+    "subtitle": "Arraste negocios entre etapas"
   },
   "automation": {
     "title": "Automacao",
@@ -871,7 +874,8 @@
     "actionQuestion": "Quais acoes executar?",
     "actionDesc": "Defina as acoes a serem realizadas quando a regra ativar",
     "noActions": "Adicione pelo menos uma acao",
-    "addAction": "Adicionar acao"
+    "addAction": "Adicionar acao",
+    "subtitle": "Regras automaticas para otimizar operacoes"
   },
   "broadcast": {
     "title": "Campanhas",
@@ -880,7 +884,8 @@
     "recipients": "Destinatarios",
     "scheduled": "Agendada",
     "sent": "Enviada",
-    "draft": "Rascunho"
+    "draft": "Rascunho",
+    "subtitle": "Campanhas em massa e mensagens com modelos"
   },
   "channels": {
     "title": "Canais",
@@ -966,7 +971,8 @@
     "llm": "Modelo LLM",
     "hours": "Horario",
     "preview": "Pré-visualização",
-    "saveConfig": "Salvar configuração"
+    "saveConfig": "Salvar configuração",
+    "subtitle": "Configure a personalidade e ferramentas do seu agente IA"
   },
   "knowledge": {
     "title": "Base de Conhecimento",
@@ -974,7 +980,8 @@
     "upload": "Enviar documento",
     "processing": "Processando",
     "ready": "Pronto",
-    "chunks": "Fragmentos"
+    "chunks": "Fragmentos",
+    "subtitle": "Base de conhecimento, FAQs e documentos para IA"
   },
   "identity": {
     "title": "Identidade",
@@ -982,7 +989,8 @@
     "approve": "Aprovar",
     "reject": "Rejeitar",
     "confidence": "Confiança",
-    "matchType": "Tipo de correspondência"
+    "matchType": "Tipo de correspondência",
+    "subtitle": "Gerencie a identidade de clientes entre canais"
   },
   "users": {
     "title": "Usuários",
@@ -990,7 +998,8 @@
     "role": "Função",
     "status": "Status",
     "lastLogin": "Ultimo acesso",
-    "resetPassword": "Redefinir senha"
+    "resetPassword": "Redefinir senha",
+    "subtitle": "Gerencie usuarios, funcoes e permissoes"
   },
   "orders": {
     "title": "Pedidos",
@@ -999,7 +1008,8 @@
     "status": "Status",
     "paymentMethod": "Metodo de pagamento",
     "items": "Itens",
-    "invoice": "Fatura"
+    "invoice": "Fatura",
+    "subtitle": "Gerencie vendas, pagamentos e reservas"
   },
   "inventory": {
     "title": "Estoque",
@@ -1008,7 +1018,8 @@
     "stock": "Estoque",
     "price": "Preço",
     "category": "Categoria",
-    "available": "Disponível"
+    "available": "Disponível",
+    "subtitle": "Gestao de produtos, estoque e movimentos"
   },
   "tenants": {
     "title": "Tenants",
@@ -1016,7 +1027,8 @@
     "plan": "Plano",
     "schema": "Schema",
     "industry": "Indústria",
-    "activeUsers": "Usuários ativos"
+    "activeUsers": "Usuários ativos",
+    "subtitle": "Gerencie organizacoes e tenants"
   },
   "onboarding": {
     "title": "Configure sua empresa",
@@ -1095,7 +1107,8 @@
     "csat": "CSAT",
     "performance": "Desempenho",
     "responseTime": "Tempo de resposta",
-    "totalConversations": "Total de conversas"
+    "totalConversations": "Total de conversas",
+    "subtitle": "Metricas executivas e desempenho"
   },
   "emailTemplates": {
     "title": "Modelos de Email",

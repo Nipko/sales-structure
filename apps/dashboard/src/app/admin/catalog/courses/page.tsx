@@ -100,7 +100,7 @@ export default function CoursesPage() {
                                 <div className="flex items-center gap-2">
                                     <span className="font-semibold text-[15px]">{course.name}</span>
                                     <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold" style={{ background: course.is_active ? "#2ecc7122" : "#e74c3c22", color: course.is_active ? "#2ecc71" : "#e74c3c" }}>
-                                        {course.is_active ? "Activo" : "Inactivo"}
+                                        {course.is_active ?  tc("active") : tc("inactive")}
                                     </span>
                                 </div>
                                 <div className="text-[13px] text-muted-foreground mt-1">{course.description || tc("noData")}</div>
@@ -128,10 +128,10 @@ export default function CoursesPage() {
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[
-                            { label: "Nombre", key: "name", placeholder: "Ej: Diplomado en Marketing Digital" },
+                            { label: "Name", key: "name", placeholder: "Ej: Diplomado en Marketing Digital" },
                             { label: "Slug (URL)", key: "slug", placeholder: "marketing-digital" },
-                            { label: "Descripcion", key: "description", placeholder: "Descripcion breve del curso..." },
-                            { label: "Precio", key: "price", placeholder: "2500000", type: "number" },
+                            { label: "Description", key: "description", placeholder: "Descripcion breve del curso..." },
+                            { label: "Price", key: "price", placeholder: "2500000", type: "number" },
                             { label: "Duracion (horas)", key: "duration_hours", placeholder: "120", type: "number" },
                             { label: "URL Brochure", key: "brochure_url", placeholder: "https://..." },
                         ].map(f => (

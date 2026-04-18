@@ -10,7 +10,7 @@ import { MessageSquare, Plus, Trash2, X, Check, Save, GripVertical, Eye, Smartph
 interface PrechatField { key: string; label: string; type: string; required: boolean; options: string; map_to: string; }
 interface PrechatConfig { is_active: boolean; greeting_message: string; fields: PrechatField[]; }
 
-const FIELD_TYPES = [{ value: "text", label: "Texto" }, { value: "email", label: "Email" }, { value: "phone", label: "Telefono" }, { value: "select", label: "Seleccion" }];
+const FIELD_TYPES = [{ value: "text", label: "Texto" }, { value: "email", label: "Email" }, { value: "phone", label: "Phone" }, { value: "select", label: "Seleccion" }];
 const MAP_TO_OPTIONS = [{ value: "contact.name", label: "Nombre del contacto" }, { value: "contact.email", label: "Email del contacto" }, { value: "contact.phone", label: "Telefono del contacto" }, { value: "lead.stage", label: "Etapa del lead" }, { value: "metadata", label: "Metadata personalizada" }];
 
 const inputCls = "w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border";

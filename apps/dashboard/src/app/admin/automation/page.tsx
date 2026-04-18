@@ -89,6 +89,7 @@ const emptyRuleForm = () => ({
 
 export default function AutomationPage() {
     const t = useTranslations('automation');
+    const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
     // -- State --
@@ -859,7 +860,7 @@ export default function AutomationPage() {
                     }}
                     className="gap-1.5 border-border"
                 >
-                    <ChevronLeft size={16} /> {wizardStep === 0 ? "Cancelar" : "Anterior"}
+                    <ChevronLeft size={16} /> {wizardStep === 0 ?  tc("cancel") : tc("previous")}
                 </Button>
 
                 {wizardStep < 3 && (

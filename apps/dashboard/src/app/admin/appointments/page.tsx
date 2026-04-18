@@ -393,6 +393,34 @@ export default function AppointmentsPage() {
     setSaving(false);
   };
 
+  const handleSaveRecurring = async (recurrence: { frequency: string; count: number }) => {
+    if (!activeTenantId || !modalForm.serviceName || !modalForm.date) return;
+    setSaving(true);
+    try {
+      const startAt = `${modalForm.date}T${modalForm.startTime}:00`;
+      const endAt = `${modalForm.date}T${modalForm.endTime}:00`;
+      await api.createRecurringAppointment(activeTenantId, {
+        serviceName: modalForm.serviceName,
+        startAt,
+        endAt,
+        location: modalForm.location || undefined,
+        notes: modalForm.notes || undefined,
+        assignedTo: modalForm.assignedTo || undefined,
+        contactId: modalForm.contactId || undefined,
+        recurrence: {
+          frequency: recurrence.frequency,
+          count: recurrence.count,
+        },
+      });
+      showToast(t("createRecurringSeries") + " ✓");
+      setShowModal(false);
+      loadAppointments();
+    } catch {
+      showToast(t("errors.saveAppointment"));
+    }
+    setSaving(false);
+  };
+
   const handleQuickAction = async (apptId: string, action: "confirm" | "cancel" | "complete") => {
     if (!activeTenantId) return;
     try {
@@ -823,6 +851,7 @@ export default function AppointmentsPage() {
           editingAppointment={editingAppointment}
           saving={saving}
           onSave={handleSave}
+          onSaveRecurring={handleSaveRecurring}
           onClose={() => setShowModal(false)}
         />
       )}

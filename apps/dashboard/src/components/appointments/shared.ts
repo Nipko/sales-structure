@@ -13,6 +13,8 @@ export interface Appointment {
   location?: string;
   notes?: string;
   createdAt: string;
+  recurringGroupId?: string | null;
+  recurrenceRule?: Record<string, any> | null;
 }
 
 export interface Service {

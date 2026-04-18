@@ -221,6 +221,42 @@ export class AppointmentsController {
         return { success: true, data };
     }
 
+    // ── Recurring Appointments ────────────────────────────────
+
+    @Post(':tenantId/recurring')
+    @ApiOperation({ summary: 'Create a recurring appointment series' })
+    async createRecurring(
+        @Param('tenantId') tenantId: string,
+        @Body() body: any,
+        @CurrentUser() user: any,
+    ) {
+        const data = await this.service.createRecurring(user.schemaName, body);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/recurring/:groupId')
+    @ApiOperation({ summary: 'Get all instances of a recurring series' })
+    async getRecurringSeries(
+        @Param('tenantId') tenantId: string,
+        @Param('groupId') groupId: string,
+        @CurrentUser() user: any,
+    ) {
+        const data = await this.service.getSeriesInstances(user.schemaName, groupId);
+        return { success: true, data };
+    }
+
+    @Put(':tenantId/recurring/:groupId/cancel')
+    @ApiOperation({ summary: 'Cancel all future instances of a recurring series' })
+    async cancelRecurringSeries(
+        @Param('tenantId') tenantId: string,
+        @Param('groupId') groupId: string,
+        @Body() body: { reason?: string },
+        @CurrentUser() user: any,
+    ) {
+        const cancelled = await this.service.cancelSeries(user.schemaName, groupId, body.reason);
+        return { success: true, data: { cancelled } };
+    }
+
     // ── Dynamic routes AFTER static ones ─────────────────────────
 
     @Get(':tenantId')

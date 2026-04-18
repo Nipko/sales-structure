@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, CalendarDays, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, Repeat } from "lucide-react";
 import {
   Appointment, Service, STATUS_CONFIG, DAY_KEYS, HOURS,
   fmt2, toLocalDate, addDays, getMondayOfWeek, formatTime, formatWeekRange,
@@ -144,7 +144,10 @@ export default function CalendarGrid({
         }}
         onClick={(e) => { e.stopPropagation(); onEditAppointment(appt); }}
       >
-        <div className="font-semibold truncate">{appt.serviceName}</div>
+        <div className="font-semibold truncate flex items-center gap-1">
+          {appt.recurringGroupId && <Repeat size={isDayView ? 11 : 9} className="shrink-0 opacity-70" />}
+          {appt.serviceName}
+        </div>
         {pos.height > 30 && (
           <div className="truncate opacity-80">
             {formatTime(appt.startAt)} - {formatTime(appt.endAt)}

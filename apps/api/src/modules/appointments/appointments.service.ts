@@ -19,6 +19,8 @@ export interface Appointment {
     reminderSent: boolean;
     metadata: Record<string, any>;
     createdAt: string;
+    recurringGroupId: string | null;
+    recurrenceRule: Record<string, any> | null;
 }
 
 export interface AvailabilitySlot {
@@ -177,6 +179,108 @@ export class AppointmentsService {
         this.eventEmitter.emit('appointment.cancelled', { schemaName, appointment, reason });
 
         return appointment;
+    }
+
+    // ── Recurring Appointments ─────────────────────────────────
+
+    async createRecurring(schemaName: string, data: {
+        contactId?: string;
+        assignedTo?: string;
+        serviceName: string;
+        startAt: string;
+        endAt: string;
+        location?: string;
+        notes?: string;
+        metadata?: Record<string, any>;
+        recurrence: {
+            frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
+            count: number; // how many total instances (including first)
+            endDate?: string; // alternative: stop at date
+        };
+    }): Promise<{ groupId: string; appointments: Appointment[] }> {
+        const groupId = randomUUID();
+        const rule = data.recurrence;
+        const created: Appointment[] = [];
+
+        const baseStart = new Date(data.startAt);
+        const baseEnd = new Date(data.endAt);
+        const durationMs = baseEnd.getTime() - baseStart.getTime();
+
+        const maxInstances = Math.min(rule.count || 52, 52); // cap at 52 weeks
+
+        for (let i = 0; i < maxInstances; i++) {
+            const instanceStart = new Date(baseStart);
+            const instanceEnd = new Date(baseStart);
+
+            switch (rule.frequency) {
+                case 'daily': instanceStart.setDate(baseStart.getDate() + i); break;
+                case 'weekly': instanceStart.setDate(baseStart.getDate() + i * 7); break;
+                case 'biweekly': instanceStart.setDate(baseStart.getDate() + i * 14); break;
+                case 'monthly': instanceStart.setMonth(baseStart.getMonth() + i); break;
+            }
+            instanceEnd.setTime(instanceStart.getTime() + durationMs);
+
+            // Stop if past endDate
+            if (rule.endDate && instanceStart.toISOString().split('T')[0] > rule.endDate) break;
+
+            const id = randomUUID();
+            const startIso = instanceStart.toISOString();
+            const endIso = instanceEnd.toISOString();
+
+            try {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `INSERT INTO appointments (id, contact_id, assigned_to, service_name, start_at, end_at,
+                        location, notes, metadata, recurring_group_id, recurrence_rule, created_at, updated_at)
+                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::timestamp, $6::timestamp,
+                        $7, $8, $9::jsonb, $10::uuid, $11::jsonb, NOW(), NOW())`,
+                    [
+                        id, data.contactId || null, data.assignedTo || null,
+                        data.serviceName, startIso, endIso,
+                        data.location || null, data.notes || null,
+                        JSON.stringify(data.metadata || {}),
+                        groupId,
+                        i === 0 ? JSON.stringify(rule) : null, // only store rule on first instance
+                    ],
+                );
+                created.push(await this.getById(schemaName, id));
+            } catch (err) {
+                this.logger.warn(`Skipped recurring instance ${i} due to conflict: ${err.message}`);
+            }
+        }
+
+        this.logger.log(`Created recurring series ${groupId} with ${created.length} instances`);
+
+        // Emit event only for first instance
+        if (created.length > 0) {
+            this.eventEmitter.emit('appointment.created', { schemaName, appointment: created[0] });
+        }
+
+        return { groupId, appointments: created };
+    }
+
+    async cancelSeries(schemaName: string, groupId: string, reason?: string): Promise<number> {
+        const result = await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE appointments SET status = 'cancelled', cancellation_reason = $2, updated_at = NOW()
+             WHERE recurring_group_id = $1::uuid AND status IN ('pending', 'confirmed')
+             RETURNING id`,
+            [groupId, reason || null],
+        );
+        const count = (result as any[])?.length || 0;
+        this.logger.log(`Cancelled ${count} appointments in recurring series ${groupId}`);
+        return count;
+    }
+
+    async getSeriesInstances(schemaName: string, groupId: string): Promise<Appointment[]> {
+        const rows = await this.prisma.executeInTenantSchema(schemaName,
+            `SELECT a.*, c.name as contact_name, u.first_name || ' ' || u.last_name as assigned_name
+             FROM appointments a
+             LEFT JOIN contacts c ON c.id = a.contact_id
+             LEFT JOIN public.users u ON u.id = a.assigned_to::uuid
+             WHERE a.recurring_group_id = $1::uuid
+             ORDER BY a.start_at ASC`,
+            [groupId],
+        );
+        return (rows as any[]).map(this.mapRow);
     }
 
     // ── Availability ──────────────────────────────────────────
@@ -355,6 +459,8 @@ export class AppointmentsService {
             reminderSent: row.reminder_sent,
             metadata: row.metadata || {},
             createdAt: row.created_at,
+            recurringGroupId: row.recurring_group_id || null,
+            recurrenceRule: row.recurrence_rule || null,
         };
     }
 

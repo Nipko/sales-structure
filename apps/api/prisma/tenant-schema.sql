@@ -1189,6 +1189,9 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "cancellat
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating" INTEGER;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating_feedback" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "recurring_group_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "recurrence_rule" JSONB;
+CREATE INDEX IF NOT EXISTS "appt_recurring_idx" ON "{{SCHEMA_NAME}}"."appointments" ("recurring_group_id") WHERE "recurring_group_id" IS NOT NULL;
 
 -- ---- Availability Slots (weekly schedule per agent) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."availability_slots" (

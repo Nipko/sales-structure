@@ -463,6 +463,14 @@ export const api = {
     removeServiceStaff: (tenantId: string, serviceId: string, userId: string) =>
         apiDelete(`/appointments/${tenantId}/services/${serviceId}/staff/${userId}`),
 
+    // --- Recurring Appointments ---
+    createRecurringAppointment: (tenantId: string, data: any) =>
+        apiPost(`/appointments/${tenantId}/recurring`, data),
+    getRecurringSeries: (tenantId: string, groupId: string) =>
+        apiGet(`/appointments/${tenantId}/recurring/${groupId}`),
+    cancelRecurringSeries: (tenantId: string, groupId: string, reason?: string) =>
+        apiPut(`/appointments/${tenantId}/recurring/${groupId}/cancel`, { reason }),
+
     // --- Calendar Integrations ---
     getCalendarIntegrations: (tenantId: string) =>
         apiGet(`/appointments/${tenantId}/calendar/integrations`),

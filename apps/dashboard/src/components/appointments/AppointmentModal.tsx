@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { CalendarDays, X, MapPin, FileText, UserCheck, Save } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CalendarDays, X, MapPin, FileText, UserCheck, Save, Repeat } from "lucide-react";
 import { Appointment, Service, fmt2 } from "./shared";
 
 interface ModalForm {
@@ -15,6 +17,12 @@ interface ModalForm {
   contactId: string;
 }
 
+export interface RecurrenceConfig {
+  enabled: boolean;
+  frequency: "daily" | "weekly" | "biweekly" | "monthly";
+  count: number;
+}
+
 interface AppointmentModalProps {
   form: ModalForm;
   onChange: (form: ModalForm) => void;
@@ -22,13 +30,25 @@ interface AppointmentModalProps {
   editingAppointment: Appointment | null;
   saving: boolean;
   onSave: () => void;
+  onSaveRecurring?: (recurrence: RecurrenceConfig) => void;
   onClose: () => void;
 }
 
 export default function AppointmentModal({
-  form, onChange, services, editingAppointment, saving, onSave, onClose,
+  form, onChange, services, editingAppointment, saving, onSave, onSaveRecurring, onClose,
 }: AppointmentModalProps) {
   const t = useTranslations("appointments");
+  const [recurrence, setRecurrence] = useState<RecurrenceConfig>({
+    enabled: false, frequency: "weekly", count: 4,
+  });
+
+  const handleSave = () => {
+    if (recurrence.enabled && onSaveRecurring && !editingAppointment) {
+      onSaveRecurring(recurrence);
+    } else {
+      onSave();
+    }
+  };
 
   return (
     <div
@@ -207,6 +227,55 @@ export default function AppointmentModal({
           </div>
         </div>
 
+        {/* Recurrence (only for new appointments) */}
+        {!editingAppointment && onSaveRecurring && (
+          <div className="px-6 pb-5">
+            <div className={cn(
+              "rounded-xl border p-4 transition-colors",
+              recurrence.enabled
+                ? "border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-500/5"
+                : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+            )}>
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={recurrence.enabled}
+                  onChange={e => setRecurrence({ ...recurrence, enabled: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500/20 cursor-pointer"
+                />
+                <Repeat size={14} className={recurrence.enabled ? "text-indigo-500" : "text-gray-400"} />
+                <span className={cn("text-sm font-medium", recurrence.enabled ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400")}>
+                  {t('recurring')}
+                </span>
+              </label>
+
+              {recurrence.enabled && (
+                <div className="mt-3 flex gap-3 flex-wrap">
+                  <select
+                    value={recurrence.frequency}
+                    onChange={e => setRecurrence({ ...recurrence, frequency: e.target.value as any })}
+                    className="px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                  >
+                    <option value="daily">{t('recurrenceDaily')}</option>
+                    <option value="weekly">{t('recurrenceWeekly')}</option>
+                    <option value="biweekly">{t('recurrenceBiweekly')}</option>
+                    <option value="monthly">{t('recurrenceMonthly')}</option>
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={2} max={52}
+                      value={recurrence.count}
+                      onChange={e => setRecurrence({ ...recurrence, count: Math.min(52, Math.max(2, Number(e.target.value))) })}
+                      className="w-16 px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm text-center text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    <span className="text-xs text-gray-500">{t('recurrenceTimes')}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800 sticky bottom-0 bg-white dark:bg-gray-900 rounded-b-2xl">
           <button
@@ -216,12 +285,12 @@ export default function AppointmentModal({
             {t('cancel')}
           </button>
           <button
-            onClick={onSave}
+            onClick={handleSave}
             disabled={saving || !form.serviceName || !form.date}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
             <Save size={16} />
-            {saving ? t("saving") : editingAppointment ? t("update") : t("createAppointment")}
+            {saving ? t("saving") : editingAppointment ? t("update") : recurrence.enabled ? t("createRecurringSeries") : t("createAppointment")}
           </button>
         </div>
       </div>

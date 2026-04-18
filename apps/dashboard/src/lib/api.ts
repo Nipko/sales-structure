@@ -444,6 +444,20 @@ export const api = {
         apiPut(`/compliance/opt-outs/${tenantId}/${recordId}/confirm`, { notes }),
     rejectOptOut: (tenantId: string, recordId: string, notes?: string) =>
         apiPut(`/compliance/opt-outs/${tenantId}/${recordId}/reject`, { notes }),
+    createManualOptOut: (tenantId: string, data: any) =>
+        apiPost(`/compliance/opt-outs/${tenantId}`, data),
+    getLegalTexts: (tenantId: string) =>
+        apiGet(`/compliance/legal-texts/${tenantId}`),
+    createLegalText: (tenantId: string, data: any) =>
+        apiPost(`/compliance/legal-texts/${tenantId}`, data),
+    getConsents: (tenantId: string, leadId?: string) =>
+        apiGet(`/compliance/consents/${tenantId}${leadId ? `?leadId=${leadId}` : ''}`),
+    getDeletionRequests: (tenantId: string) =>
+        apiGet(`/compliance/deletion-requests/${tenantId}`),
+    createDeletionRequest: (tenantId: string, data: any) =>
+        apiPost(`/compliance/deletion-requests/${tenantId}`, data),
+    processDeletionRequest: (tenantId: string, id: string) =>
+        apiPut(`/compliance/deletion-requests/${tenantId}/${id}/process`, {}),
 
     // --- Bookable Services ---
     getServices: (tenantId: string) =>

@@ -45,9 +45,9 @@ export class ComplianceService {
     async createConsent(schemaName: string, data: any) {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO consent_records (tenant_id, lead_id, channel, legal_text_version, legal_text_snapshot, ip_address, user_agent, source_url)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [data.tenant_id, data.lead_id, data.channel || 'web', data.legal_text_version, data.legal_text_snapshot, data.ip_address, data.user_agent, data.source_url]
+            `INSERT INTO consent_records (lead_id, channel, legal_version, legal_text_hash, ip_address, user_agent, origin_url)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [data.lead_id, data.channel || 'web', data.legal_version || 'v1.0', data.legal_text_hash || null, data.ip_address, data.user_agent, data.origin_url]
         );
         return rows[0];
     }

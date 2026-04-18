@@ -13,12 +13,14 @@ import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
     imports: [
         BullModule.registerQueue({ name: OUTBOUND_QUEUE }),
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
+        AnalyticsModule,
     ],
     controllers: [ChannelsController, ChannelManagementController],
     providers: [

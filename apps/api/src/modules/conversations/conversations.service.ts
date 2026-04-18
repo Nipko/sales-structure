@@ -17,6 +17,7 @@ import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/sha
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { APPOINTMENT_TOOLS, APPOINTMENT_SYSTEM_PROMPT } from './tools/appointment-tools';
+import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -42,6 +43,7 @@ export class ConversationsService {
         private nurturingService: NurturingService,
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
+        private complianceService: AnalyticsComplianceService,
     ) {}
 
     /**
@@ -99,6 +101,18 @@ export class ConversationsService {
         // 4. Save User Message
         await this.saveMessage(tenantId, conversation.id, normalizedMsg);
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
+
+        // 4.5 Opt-out detection (all channels)
+        if (content?.text && this.complianceService.detectOptOut(content.text)) {
+            this.logger.warn(`Opt-out detected from ${contactId} on ${channelType}`);
+            await this.complianceService.processOptOut(tenantId, {
+                leadId: lead?.id,
+                phone: contactId,
+                channel: channelType,
+                triggerMessage: content.text,
+                detectedFrom: 'keyword',
+            }).catch(e => this.logger.warn(`Opt-out processing failed (non-fatal): ${e.message}`));
+        }
 
         // 5. Check handoff triggers BEFORE generating AI response
         const handoffReason = this.handoffService.shouldHandoff(

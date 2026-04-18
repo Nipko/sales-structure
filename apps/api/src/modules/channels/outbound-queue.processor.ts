@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nestjs';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { OutboundMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { ComplianceService } from '../analytics/compliance.service';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
@@ -23,6 +24,7 @@ export class OutboundQueueProcessor extends WorkerHost {
     constructor(
         private channelGateway: ChannelGatewayService,
         private throttle: TenantThrottleService,
+        private compliance: ComplianceService,
     ) {
         super();
     }
@@ -30,6 +32,12 @@ export class OutboundQueueProcessor extends WorkerHost {
     async process(job: Job<OutboundJobData>): Promise<string | null> {
         const { outbound, accessToken } = job.data;
         const startTime = Date.now();
+
+        // Block outbound to opted-out contacts
+        if (await this.compliance.isBlocked(outbound.tenantId, outbound.to)) {
+            this.logger.warn(`[Outbound] Blocked: ${outbound.to} is opted out for tenant ${outbound.tenantId}`);
+            return null;
+        }
 
         // Per-tenant rate limit — retry if exceeded
         if (await this.throttle.isLimited(outbound.tenantId, 'outbound')) {

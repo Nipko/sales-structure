@@ -12,6 +12,7 @@ import {
     Instagram,
     MessageCircle,
     Send,
+    Phone,
     CheckCircle,
     AlertCircle,
     ArrowRight,
@@ -49,6 +50,14 @@ const channels = [
         Icon: Send,
         href: "/admin/channels/telegram",
         description: "Telegram Bot API — mensajes directos automatizados",
+    },
+    {
+        key: "sms",
+        name: "SMS (Twilio)",
+        color: "#0D9B47",
+        Icon: Phone,
+        href: "/admin/channels/sms",
+        description: "Twilio SMS — mensajes de texto bidireccionales",
     },
 ];
 

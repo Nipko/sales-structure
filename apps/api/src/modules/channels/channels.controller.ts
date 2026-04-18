@@ -207,6 +207,54 @@ export class ChannelsController {
     // Telegram
     // ==========================================
 
+    // ── SMS / Twilio Webhook ──────────────────────────────────
+
+    @Post('webhook/sms/:phoneNumber')
+    @ApiOperation({ summary: 'Receive inbound SMS from Twilio' })
+    async receiveSms(
+        @Param('phoneNumber') phoneNumber: string,
+        @Body() body: any,
+        @Res() res: Response,
+    ) {
+        // Twilio expects TwiML response; empty <Response/> = acknowledge
+        res.type('text/xml').status(200).send('<Response/>');
+        await this.processSmsWebhook(body, phoneNumber);
+    }
+
+    private async processSmsWebhook(body: any, phoneNumber: string): Promise<void> {
+        try {
+            const messageSid = body?.MessageSid;
+            if (messageSid) {
+                const idemKey = `idem:sms:${messageSid}`;
+                if (await this.redis.get(idemKey)) return;
+                await this.redis.set(idemKey, '1', 86400);
+            }
+
+            const channelAccount = await this.prisma.channelAccount.findFirst({
+                where: { channelType: 'sms', accountId: phoneNumber, isActive: true },
+            });
+
+            if (!channelAccount) {
+                this.logger.warn(`No SMS channel account found for phone: ${phoneNumber}`);
+                return;
+            }
+
+            const adapter = this.gateway.getAdapter('sms');
+            if (!adapter) return;
+
+            const normalized = await adapter.handleWebhook(body, phoneNumber);
+            if (!normalized) return;
+
+            normalized.tenantId = channelAccount.tenantId;
+            await this.conversationsService.processIncomingMessage(normalized);
+            this.logger.log(`Incoming SMS from ${body?.From} to ${phoneNumber}`);
+        } catch (error) {
+            this.logger.error(`Error processing SMS webhook: ${error}`);
+        }
+    }
+
+    // ── Telegram Webhook ────────────────────────────────────
+
     @Post('webhook/telegram/:botUsername')
     @ApiOperation({ summary: 'Receive Telegram Bot webhook updates (bot-specific URL)' })
     async receiveTelegramByBot(

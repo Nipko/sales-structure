@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
 import { TelegramAdapter } from './telegram/telegram.adapter';
+import { SmsAdapter } from './sms/sms.adapter';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -22,6 +23,7 @@ export class ChannelManagementController {
         private cryptoService: WhatsappCryptoService,
         private channelToken: ChannelTokenService,
         private telegramAdapter: TelegramAdapter,
+        private smsAdapter: SmsAdapter,
     ) {}
 
     @Get('overview')
@@ -240,6 +242,152 @@ export class ChannelManagementController {
 
         this.logger.log(`Telegram disconnected for tenant ${tenantId}`);
         return { success: true, message: 'Bot de Telegram desconectado' };
+    }
+
+    // ==========================================
+    // SMS / Twilio
+    // ==========================================
+
+    @Post('sms/connect')
+    @ApiOperation({ summary: 'Connect Twilio SMS — validates credentials, stores encrypted' })
+    async connectSms(
+        @Body() body: { accountSid: string; authToken: string; phoneNumber: string; displayName?: string },
+        @Req() req: any,
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        const { accountSid, authToken, phoneNumber, displayName } = body;
+        if (!accountSid || !authToken || !phoneNumber) {
+            throw new BadRequestException('accountSid, authToken, and phoneNumber are required');
+        }
+
+        // 1. Validate credentials
+        const account = await this.smsAdapter.validateCredentials(accountSid, authToken);
+        if (!account) {
+            throw new BadRequestException('Invalid Twilio credentials');
+        }
+
+        // 2. Configure webhook URL for inbound SMS
+        const apiUrl = this.configService.get<string>('NEXT_PUBLIC_API_URL') || 'https://api.parallly-chat.cloud/api/v1';
+        const baseUrl = apiUrl.replace('/api/v1', '');
+        const webhookUrl = `${baseUrl}/api/v1/channels/webhook/sms/${encodeURIComponent(phoneNumber)}`;
+
+        // 3. Encrypt credentials (store as "accountSid:authToken")
+        const combined = `${accountSid}:${authToken}`;
+        const encryptedToken = this.cryptoService.encryptToken(combined);
+
+        // 4. Upsert channel_account
+        const existing = await this.prisma.channelAccount.findFirst({
+            where: { channelType: 'sms', accountId: phoneNumber },
+        });
+
+        const channelData = {
+            tenantId,
+            channelType: 'sms',
+            accountId: phoneNumber,
+            displayName: displayName || `SMS ${phoneNumber}`,
+            accessToken: 'encrypted_ref',
+            isActive: true,
+            metadata: {
+                source: 'dashboard_connect',
+                accountSid,
+                friendlyName: account.friendlyName,
+                webhookUrl,
+            },
+        };
+
+        if (existing) {
+            await this.prisma.channelAccount.update({ where: { id: existing.id }, data: channelData });
+        } else {
+            await this.prisma.channelAccount.create({ data: channelData });
+        }
+
+        // 5. Store encrypted credential
+        const existingCred = await this.prisma.whatsappCredential.findFirst({
+            where: { tenantId, credentialType: 'sms_token' },
+        });
+
+        if (existingCred) {
+            await this.prisma.whatsappCredential.update({
+                where: { id: existingCred.id },
+                data: { encryptedValue: encryptedToken, rotationState: 'active' },
+            });
+        } else {
+            await this.prisma.whatsappCredential.create({
+                data: {
+                    tenantId,
+                    credentialType: 'sms_token',
+                    encryptedValue: encryptedToken,
+                    rotationState: 'active',
+                },
+            });
+        }
+
+        this.logger.log(`SMS connected for tenant ${tenantId}: ${phoneNumber}`);
+
+        return {
+            success: true,
+            data: {
+                phoneNumber,
+                friendlyName: account.friendlyName,
+                webhookUrl,
+                message: 'SMS connected. Configure this webhook URL in your Twilio console for incoming messages.',
+            },
+        };
+    }
+
+    @Get('sms/status')
+    @ApiOperation({ summary: 'Get SMS channel status' })
+    async getSmsStatus(@Req() req: any) {
+        const tenantId = req.user?.tenantId;
+        const account = await this.prisma.channelAccount.findFirst({
+            where: { tenantId, channelType: 'sms', isActive: true },
+        });
+        return {
+            success: true,
+            data: {
+                connected: !!account,
+                phoneNumber: account?.accountId || null,
+                displayName: account?.displayName || null,
+                metadata: account?.metadata || null,
+            },
+        };
+    }
+
+    @Delete('sms/disconnect')
+    @ApiOperation({ summary: 'Disconnect Twilio SMS' })
+    async disconnectSms(@Req() req: any) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        await this.prisma.channelAccount.updateMany({
+            where: { tenantId, channelType: 'sms' },
+            data: { isActive: false },
+        });
+
+        this.logger.log(`SMS disconnected for tenant ${tenantId}`);
+        return { success: true, message: 'SMS disconnected' };
+    }
+
+    @Post('sms/test')
+    @ApiOperation({ summary: 'Send a test SMS' })
+    async testSms(
+        @Body() body: { to: string },
+        @Req() req: any,
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
+        await this.smsAdapter.sendTextMessage(
+            body.to,
+            'Test message from Parallly - SMS channel connected successfully!',
+            creds.accountId,
+            creds.accessToken,
+        );
+
+        return { success: true, message: `Test SMS sent to ${body.to}` };
     }
 
     // ==========================================

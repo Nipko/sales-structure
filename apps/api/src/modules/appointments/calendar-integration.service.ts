@@ -79,7 +79,7 @@ export class CalendarIntegrationService {
         return oauth2.generateAuthUrl({
             access_type: 'offline',
             prompt: 'consent',
-            scope: ['https://www.googleapis.com/auth/calendar.events'],
+            scope: ['https://www.googleapis.com/auth/calendar'],
             state: `${tenantId}:${userId}`,
         });
     }

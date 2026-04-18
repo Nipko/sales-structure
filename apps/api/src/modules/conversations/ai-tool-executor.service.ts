@@ -100,9 +100,9 @@ export class AIToolExecutorService {
             // work this specific weekday". The first case is a misconfiguration that
             // must surface — otherwise the bot silently tells every customer there
             // is no availability and the tenant never finds out.
-            const [anyRow] = await this.prisma.$queryRawUnsafe<any[]>(
+            const [anyRow] = (await this.prisma.$queryRawUnsafe(
                 `SELECT COUNT(*)::int AS cnt FROM "${schema}".availability_slots WHERE is_active = true`,
-            );
+            )) as any[];
             const hasAnySlots = Number(anyRow?.cnt || 0) > 0;
             if (!hasAnySlots) {
                 this.logger.warn(`[Tool] check_availability for schema=${schema} but no active availability_slots exist — misconfiguration`);

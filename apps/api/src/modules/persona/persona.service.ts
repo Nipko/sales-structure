@@ -261,12 +261,12 @@ export class PersonaService {
     }
 
     private async assertAppointmentsPrerequisites(tenantId: string, schemaName: string): Promise<void> {
-        const [servicesRow] = await this.prisma.$queryRawUnsafe<any[]>(
+        const [servicesRow] = (await this.prisma.$queryRawUnsafe(
             `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".services WHERE is_active = true`,
-        );
-        const [slotsRow] = await this.prisma.$queryRawUnsafe<any[]>(
+        )) as any[];
+        const [slotsRow] = (await this.prisma.$queryRawUnsafe(
             `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".availability_slots WHERE is_active = true`,
-        );
+        )) as any[];
         const services = Number(servicesRow?.cnt || 0);
         const slots = Number(slotsRow?.cnt || 0);
 

@@ -281,7 +281,15 @@
     "statusPending": "En attente",
     "statusResolved": "Resolue",
     "statusWithHuman": "Avec agent",
-    "statusWaitingHuman": "En attente d'agent"
+    "statusWaitingHuman": "En attente d'agent",
+    "unknown": "Inconnu",
+    "noPhone": "Sans telephone",
+    "assignedAgent": "Agent assigne",
+    "lastActivity": "Derniere activite",
+    "priority": "Priorite",
+    "additionalInfo": "Informations supplementaires",
+    "client": "Client",
+    "agent": "Agent"
   },
   "settings": {
     "title": "Parametres",

@@ -383,7 +383,7 @@ export default function InboxPage() {
                 if (inboxResult.success && Array.isArray(inboxResult.data) && inboxResult.data.length > 0) {
                     const convs = inboxResult.data.map((c: any) => ({
                         id: c.id,
-                        contactName: c.contact_name || c.contactName || 'Desconocido',
+                        contactName: c.contact_name || c.contactName || t('unknown'),
                         contactPhone: c.contact_phone || c.contactPhone || '',
                         contactEmail: c.contact_email || c.contactEmail || '',
                         lastMessage: c.last_message || c.lastMessage || '',
@@ -441,8 +441,8 @@ export default function InboxPage() {
                             id: m.id,
                             content: m.content_text || m.content || '',
                             direction: isInbound ? 'inbound' : 'outbound',
-                            senderLabel: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
-                            senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? 'Agente' : 'IA'),
+                            senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
+                            senderName: isInbound ? selectedConv.contactName : (isHumanAgent ? t('agent') : 'IA'),
                             timestamp: (m.timestamp || m.created_at) ? formatTime(m.timestamp || m.created_at) : '',
                             rawDate: m.timestamp || m.created_at || '',
                             type: m.content_type || 'text',
@@ -454,7 +454,7 @@ export default function InboxPage() {
                         setNotes(conv.notes.map((n: any) => ({
                             id: n.id,
                             content: n.content || n.content_text || '',
-                            agentName: n.created_by || n.agent_name || 'Agente',
+                            agentName: n.created_by || n.agent_name || t('agent'),
                             createdAt: n.created_at ? new Date(n.created_at).toLocaleDateString('es-CO') : '',
                         })));
                     }
@@ -502,8 +502,8 @@ export default function InboxPage() {
                 id: message.id,
                 content: message.content_text || message.content || '',
                 direction: isInbound ? 'inbound' : 'outbound',
-                senderLabel: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
-                senderName: isInbound ? 'Cliente' : (isHumanAgent ? 'Agente' : 'IA'),
+                senderLabel: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
+                senderName: isInbound ? t('client') : (isHumanAgent ? t('agent') : 'IA'),
                 timestamp: (message.timestamp || message.created_at) ? formatTime(message.timestamp || message.created_at) : new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
                 rawDate: message.timestamp || message.created_at || new Date().toISOString(),
                 type: message.content_type || 'text',
@@ -590,7 +590,7 @@ export default function InboxPage() {
         return content
             .replace(/\{\{contactName\}\}/gi, selectedConv?.contactName || '')
             .replace(/\{\{contactPhone\}\}/gi, selectedConv?.contactPhone || '')
-            .replace(/\{\{agentName\}\}/gi, user?.firstName || 'Agente');
+            .replace(/\{\{agentName\}\}/gi, user?.firstName || t('agent'));
     };
 
     const selectCannedResponse = (response: CannedResponse) => {
@@ -650,7 +650,7 @@ export default function InboxPage() {
         try {
             const result = await api.assignConversation(activeTenantId, selectedConv.id, user.id);
             if (result.success) {
-                const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Agente';
+                const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || t('agent');
                 // Update the selected conversation -- backend assignConversation() sets status 'with_human'
                 setSelectedConv((prev: any) => ({
                     ...prev,
@@ -694,8 +694,8 @@ export default function InboxPage() {
             id: `msg_${Date.now()}`,
             direction: 'outbound',
             content,
-            senderLabel: 'Agente',
-            senderName: user?.firstName || 'Agente',
+            senderLabel: t('agent'),
+            senderName: user?.firstName || t('agent'),
             timestamp: now.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
             rawDate: now.toISOString(),
             type: 'text',
@@ -770,7 +770,7 @@ export default function InboxPage() {
                 <div className="px-4 pt-4 pb-3 border-b border-border">
                     <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-2.5">
-                            <h2 className="text-lg font-bold m-0">Inbox</h2>
+                            <h2 className="text-lg font-semibold m-0">Inbox</h2>
                             {isLive && (
                                 <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -783,7 +783,7 @@ export default function InboxPage() {
                             <div className="relative cursor-pointer">
                                 <Bell size={18} className="text-muted-foreground" />
                                 {totalUnread > 0 && (
-                                    <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full px-[5px] py-px min-w-[16px] text-center leading-[14px] shadow-[0_0_0_2px_hsl(var(--card))]">
+                                    <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[10px] font-semibold rounded-full px-[5px] py-px min-w-[16px] text-center leading-[14px] shadow-[0_0_0_2px_hsl(var(--card))]">
                                         {totalUnread > 99 ? "99+" : totalUnread}
                                     </span>
                                 )}
@@ -875,7 +875,7 @@ export default function InboxPage() {
                                                 <div className="flex items-center gap-1.5 min-w-0">
                                                     <span className={cn(
                                                         "text-sm truncate",
-                                                        hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground"
+                                                        hasUnread ? "font-semibold text-foreground" : "font-semibold text-foreground"
                                                     )}>
                                                         {conv.contactName}
                                                     </span>
@@ -899,13 +899,13 @@ export default function InboxPage() {
                                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                                     {/* Assigned agent initial */}
                                                     {conv.assignedAgentName && (
-                                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center text-[9px] font-bold flex-shrink-0" title={conv.assignedAgentName}>
+                                                        <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center text-[9px] font-semibold flex-shrink-0" title={conv.assignedAgentName}>
                                                             {conv.assignedAgentName.charAt(0).toUpperCase()}
                                                         </div>
                                                     )}
                                                     {/* Unread badge */}
                                                     {hasUnread && (
-                                                        <span className="bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold flex-shrink-0">
+                                                        <span className="bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-semibold flex-shrink-0">
                                                             {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
                                                         </span>
                                                     )}
@@ -1154,7 +1154,7 @@ export default function InboxPage() {
                                                 isInbound ? "text-left justify-start pl-1" : "text-right justify-end pr-1"
                                             )}>
                                                 {!isInbound && msg.senderLabel === "IA" && <Bot size={10} className="text-indigo-500" />}
-                                                {!isInbound && msg.senderLabel === "Agente" && <User size={10} />}
+                                                {!isInbound && msg.senderLabel === t('agent') && <User size={10} />}
                                                 <span className="font-semibold">{msg.senderLabel || msg.senderName}</span>
                                                 <ChannelIcon channel={selectedConv.channel} size={14} />
                                                 <span className="opacity-50">{msg.timestamp}</span>
@@ -1164,10 +1164,10 @@ export default function InboxPage() {
                                             <div className={cn(
                                                 "px-4 py-3 text-sm leading-relaxed break-words shadow-sm",
                                                 isInbound
-                                                    ? "bg-card border border-border rounded-2xl rounded-bl-md"
+                                                    ? "bg-card border border-border rounded-xl rounded-bl-md"
                                                     : msg.senderLabel === "IA"
-                                                        ? "bg-indigo-600/[0.12] border border-indigo-500/20 rounded-2xl rounded-br-md text-foreground"
-                                                        : "bg-blue-600 border-none rounded-2xl rounded-br-md text-white"
+                                                        ? "bg-indigo-600/[0.12] border border-indigo-500/20 rounded-xl rounded-br-md text-foreground"
+                                                        : "bg-blue-600 border-none rounded-xl rounded-br-md text-white"
                                             )}>
                                                 {msg.content}
                                             </div>
@@ -1336,7 +1336,7 @@ export default function InboxPage() {
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
-                        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+                        <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center">
                             <MessageSquare size={28} className="opacity-30" />
                         </div>
                         <span className="text-sm">{t("selectConversation")}</span>
@@ -1350,10 +1350,10 @@ export default function InboxPage() {
                     <div className="p-5">
                         {/* Contact Avatar & Name */}
                         <div className="text-center mb-6">
-                            <div className="w-[72px] h-[72px] rounded-2xl mx-auto mb-3 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-indigo-500/20">
+                            <div className="w-[72px] h-[72px] rounded-xl mx-auto mb-3 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-semibold text-white shadow-lg shadow-indigo-500/20">
                                 {selectedConv.contactName?.charAt(0) || '?'}
                             </div>
-                            <div className="font-bold text-base">{selectedConv.contactName}</div>
+                            <div className="font-semibold text-base">{selectedConv.contactName}</div>
                             <div className="flex items-center justify-center gap-2 mt-1.5">
                                 <span
                                     className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
@@ -1376,7 +1376,7 @@ export default function InboxPage() {
                             <div className="flex flex-col gap-2.5">
                                 <div className="flex items-center gap-2.5 text-[13px]">
                                     <Phone size={14} className="text-muted-foreground flex-shrink-0" />
-                                    <span className="truncate">{selectedConv.contactPhone || 'Sin telefono'}</span>
+                                    <span className="truncate">{selectedConv.contactPhone || t('noPhone')}</span>
                                     {selectedConv.contactPhone && (
                                         <button
                                             onClick={() => navigator.clipboard.writeText(selectedConv.contactPhone)}
@@ -1413,11 +1413,11 @@ export default function InboxPage() {
                         {/* Assigned Agent */}
                         <div className="mb-4">
                             <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <UserCheck size={12} /> Agente asignado
+                                <UserCheck size={12} /> {t('assignedAgent')}
                             </div>
                             {selectedConv.assignedAgentName ? (
                                 <div className="px-3.5 py-2.5 rounded-xl bg-blue-500/[0.08] border border-blue-500/20 flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-sm">
+                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 shadow-sm">
                                         {selectedConv.assignedAgentName.charAt(0).toUpperCase()}
                                     </div>
                                     <div>
@@ -1454,7 +1454,7 @@ export default function InboxPage() {
                         {selectedConv.estimatedValue > 0 && (
                             <div className="p-3.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15 mb-4">
                                 <div className="text-[11px] text-muted-foreground mb-1">{t("estimatedValue")}</div>
-                                <div className="text-xl font-bold text-emerald-500">
+                                <div className="text-xl font-semibold text-emerald-500">
                                     ${selectedConv.estimatedValue.toLocaleString()} COP
                                 </div>
                             </div>
@@ -1466,12 +1466,12 @@ export default function InboxPage() {
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <Clock size={13} className="text-muted-foreground flex-shrink-0" />
-                                    <span className="text-muted-foreground text-xs">Ultima actividad:</span>
+                                    <span className="text-muted-foreground text-xs">{t('lastActivity')}:</span>
                                     <span className="text-xs ml-auto">{selectedConv.lastMessageAt || 'N/A'}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <MessageSquare size={13} className="text-muted-foreground flex-shrink-0" />
-                                    <span className="text-muted-foreground text-xs">Prioridad:</span>
+                                    <span className="text-muted-foreground text-xs">{t('priority')}:</span>
                                     <span
                                         className="text-xs ml-auto font-medium px-1.5 py-0.5 rounded"
                                         style={{
@@ -1485,10 +1485,10 @@ export default function InboxPage() {
                             </div>
                         </div>
 
-                        {/* Informacion adicional */}
+                        {/* {t('additionalInfo')} */}
                         <div className="mb-4">
                             <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                                <Edit2 size={12} /> Informacion adicional
+                                <Edit2 size={12} /> {t('additionalInfo')}
                             </div>
                             <div className="flex flex-col gap-2.5">
                                 {/* {t("company")} */}

@@ -25,7 +25,7 @@ const channels = [
         color: "#25D366",
         Icon: MessageSquare,
         href: "/admin/channels/whatsapp",
-        description: "WhatsApp Business API via Meta Cloud API",
+        description: "whatsappDesc",
     },
     {
         key: "instagram",
@@ -33,7 +33,7 @@ const channels = [
         color: "#E4405F",
         Icon: Instagram,
         href: "/admin/channels/instagram",
-        description: "Instagram Direct Messages via Graph API",
+        description: "instagramDesc",
     },
     {
         key: "messenger",
@@ -41,7 +41,7 @@ const channels = [
         color: "#0084FF",
         Icon: MessageCircle,
         href: "/admin/channels/messenger",
-        description: "Messenger via Facebook Page integration",
+        description: "messengerDesc",
     },
     {
         key: "telegram",
@@ -49,7 +49,7 @@ const channels = [
         color: "#0088cc",
         Icon: Send,
         href: "/admin/channels/telegram",
-        description: "Telegram Bot API — mensajes directos automatizados",
+        description: "telegramDesc",
     },
     {
         key: "sms",
@@ -57,7 +57,7 @@ const channels = [
         color: "#0D9B47",
         Icon: Phone,
         href: "/admin/channels/sms",
-        description: "Twilio SMS — mensajes de texto bidireccionales",
+        description: "smsDesc",
     },
 ];
 
@@ -88,7 +88,7 @@ export default function ChannelsOverviewPage() {
     if (loading) {
         return (
             <div className="p-8 text-center text-[var(--text-secondary)]">
-                Cargando canales...
+                {t('loading')}
             </div>
         );
     }
@@ -106,7 +106,7 @@ export default function ChannelsOverviewPage() {
                     </h1>
                 </div>
                 <p className="text-[var(--text-secondary)] mt-1 ml-[50px]">
-                    Gestiona tus canales de comunicacion
+                    {t('subtitle')}
                 </p>
             </div>
 
@@ -133,7 +133,7 @@ export default function ChannelsOverviewPage() {
                                         {ch.name}
                                     </h2>
                                     <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
-                                        {ch.description}
+                                        {t(ch.description)}
                                     </p>
                                 </div>
 
@@ -147,13 +147,13 @@ export default function ChannelsOverviewPage() {
                                     )}
                                 >
                                     {isConnected ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                                    {isConnected ? "Conectado" : "Desconectado"}
+                                    {isConnected ? t('connected') : t('disconnected')}
                                 </div>
                             </div>
 
                             {/* Card Footer */}
                             <div className="px-6 py-3.5 border-t border-border flex items-center justify-center gap-2 text-primary text-[13px] font-semibold">
-                                Configurar
+                                {t('configure')}
                                 <ArrowRight size={14} />
                             </div>
                         </div>

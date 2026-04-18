@@ -814,7 +814,7 @@ export default function AgentConfigPage() {
                     )}
                 >
                     <Save size={18} />
-                    {saving ? "Guardando..." : "Guardar Configuracion"}
+                    {saving ? t("saving") || "..." : "Guardar Configuracion"}
                 </button>
             </div>
         );
@@ -904,7 +904,7 @@ export default function AgentConfigPage() {
                                         : "bg-primary"
                                 )}
                             >
-                                <Save size={16} /> {saving ? "Guardando..." : "Guardar Prompt"}
+                                <Save size={16} /> {saving ? t("saving") || "..." : "Guardar Prompt"}
                             </button>
                         </div>
                     </div>
@@ -972,7 +972,7 @@ export default function AgentConfigPage() {
                                     saving ? "bg-border cursor-not-allowed" : "bg-primary cursor-pointer"
                                 )}
                             >
-                                <Save size={16} /> {saving ? "Guardando..." : "Guardar"}
+                                <Save size={16} /> {saving ? t("saving") || "..." : "Guardar"}
                             </button>
                         )}
                     </div>

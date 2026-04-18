@@ -264,10 +264,10 @@ export default function EmailTemplatesPage() {
           setIsCreating(false);
         }
       } else {
-        showToast(res?.error || "Error al guardar", true);
+        showToast(res?.error || t("errorSaving") || "Error", true);
       }
     } catch {
-      showToast("Error de conexion", true);
+      showToast(t("connectionError") || "Error", true);
     } finally {
       setSaving(false);
     }
@@ -303,7 +303,7 @@ export default function EmailTemplatesPage() {
         showToast(res?.error || "Error al enviar prueba", true);
       }
     } catch {
-      showToast("Error de conexion", true);
+      showToast(t("connectionError") || "Error", true);
     } finally {
       setSendingTest(false);
     }
@@ -547,7 +547,7 @@ export default function EmailTemplatesPage() {
                   className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   <Save size={16} />
-                  {saving ? "Guardando..." : "Guardar"}
+                  {saving ? t("saving") || "..." : "Guardar"}
                 </button>
                 {selectedId && !isCreating && (
                   <button

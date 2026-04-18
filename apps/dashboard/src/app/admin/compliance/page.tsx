@@ -317,7 +317,7 @@ export default function CompliancePage() {
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
                                     <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
-                                    <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? "Guardando..." : "Crear Texto"}</button>
+                                    <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? t("saving") || "..." : "Crear Texto"}</button>
                                 </div>
                             </>
                         )}
@@ -342,7 +342,7 @@ export default function CompliancePage() {
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
                                     <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancelar</button>
-                                    <button onClick={handleCreateOptOut} disabled={saving || !optOutForm.lead_id} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-red-500 cursor-pointer")}>{saving ? "Guardando..." : "Registrar Opt-Out"}</button>
+                                    <button onClick={handleCreateOptOut} disabled={saving || !optOutForm.lead_id} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-red-500 cursor-pointer")}>{saving ? t("saving") || "..." : "Registrar Opt-Out"}</button>
                                 </div>
                             </>
                         )}

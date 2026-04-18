@@ -197,9 +197,9 @@ export default function MediaBankPage() {
       const res = await api.updateMedia(tenantId, editingId, { label: editLabel, description: editDesc, tags: editTags });
       if (res.success) {
         setFiles(prev => prev.map(f => f.id === editingId ? { ...f, label: editLabel, description: editDesc, tags: editTags } : f));
-        showToast("Guardado"); setEditingId(null); loadTags();
+        showToast(t("saved") || "OK"); setEditingId(null); loadTags();
       } else showToast(`Error: ${res.error}`);
-    } catch { showToast("Error al guardar"); }
+    } catch { showToast(t("errorSaving") || "Error"); }
     finally { setSaving(false); }
   }
 

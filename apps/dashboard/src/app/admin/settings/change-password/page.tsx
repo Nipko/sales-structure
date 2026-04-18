@@ -271,7 +271,7 @@ export default function ChangePasswordPage() {
                             ) : (
                                 <Lock size={18} />
                             )}
-                            {saving ? "Guardando..." : "Cambiar contrasena"}
+                            {saving ? t("saving") || "..." : "Cambiar contrasena"}
                         </Button>
                     </form>
                 </CardContent>

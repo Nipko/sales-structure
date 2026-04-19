@@ -25,7 +25,9 @@ src/
       pipeline/         — Kanban board
       conversations/    — Global conversation view
       automation/       — Rules wizard (4-step)
-      agent/            — AI agent config (6-step wizard + custom prompt mode)
+      agent/              — AI agent list (multi-agent management)
+      agent/[agentId]/    — Agent editor (hub card grid + channel assignment)
+      agent/_components/  — 9 extracted components (ConfigCard, IdentitySection, etc.)
       agent-analytics/  — Reports (4 tabs: Overview/Agents/Channels/CSAT)
       ai/               — LLM router config
       broadcast/        — Campaign manager
@@ -33,6 +35,8 @@ src/
       channels/whatsapp/ — WhatsApp Embedded Signup
       channels/instagram/ — Instagram DM setup
       channels/messenger/ — Messenger setup
+      channels/telegram/ — Telegram bot setup
+      channels/sms/      — SMS/Twilio setup
       identity/         — Merge suggestions (approve/reject)
       knowledge/        — RAG document management
       analytics/        — Platform analytics
@@ -73,12 +77,25 @@ src/
 - Pages under `/admin/` are protected by AuthContext redirect
 - WebSocket via socket.io-client for real-time inbox updates (namespace `/inbox`)
 - Socket URL: strips `/api/v1` from `NEXT_PUBLIC_API_URL` before connecting
-- Styling: inline CSS with CSS variables (dark theme), NO Tailwind classes in most pages
+- Styling: Tailwind CSS + shadcn/ui components, dark/light/system themes via next-themes
 - Icons: lucide-react throughout
 - Forms: useState objects + onChange handlers + toast notifications
 - Modals: fixed overlay, backdrop blur, click-outside dismiss
 - Notification bell in TopBar: WebSocket-driven, 7 categories (chat, handoff, compliance, appointments, automation, orders, system)
 - Media URLs: API_URL.replace('/api/v1', '') + file.url (CORP header for cross-origin)
+- Navigation: PageHeader (all pages), TabNav (sub-navigation), Breadcrumbs (detail pages), SkeletonLoader (loading states)
+- i18n: next-intl with 4 languages (es/en/pt/fr), cookie-based locale switching, 0 hardcoded Spanish
+- Multi-agent: Agent list → template picker → agent editor with channel assignment
+
+## Shared UI Components
+```
+components/
+  ui/tab-nav.tsx         — Stripe underline tabs (ARIA tablist)
+  ui/page-header.tsx     — h1 + subtitle + icon + badge + action
+  ui/breadcrumbs.tsx     — Detail page navigation
+  ui/skeleton-loader.tsx — Skeleton, SkeletonKPIs, SkeletonTable, SkeletonCards
+  SetupBanner.tsx        — Persistent amber banner for unconfigured agents
+```
 
 ## CSS Variables
 ```
@@ -89,6 +106,7 @@ src/
                          --warning: #ffaa00
                          --danger: #ff4757
 ```
+Design system unified April 2026: neutral-* colors, font-semibold max, rounded-xl cards, transition tokens
 
 ## Environment
 - `NEXT_PUBLIC_API_URL` — API base URL (e.g., https://api.parallly-chat.cloud/api/v1)

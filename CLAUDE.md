@@ -10,7 +10,8 @@ Monorepo with 4 NestJS/Next.js apps, deployed on Hostinger VPS via Docker + Clou
 Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API → WhatsApp Service (port 3002) OR API webhooks
     → API (port 3000) → ConversationsService (orchestrator)
         → IdentityService (resolve/create unified profile)
-        → PersonaService (load agent config) → LLMRouter (select model by tier) → LLM Provider → response
+        → PersonaService (load agent config) → getPersonaForChannel(tenantId, channelType) (select agent by channel)
+            → LLMRouter (select model by tier) → LLM Provider → response
         → OutboundQueueService (BullMQ, priority by plan) → ChannelGatewayService → Channel API → Customer
 
     If handoff triggered:
@@ -18,7 +19,7 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
         → Human agent responds via Dashboard (port 3001) → AgentConsoleService → Channel API
 
     Rate limiting:
-        → TenantThrottleService (per-plan: starter/pro/enterprise) checks Redis before every job
+        → TenantThrottleService (per-plan: starter/pro/enterprise/custom) checks Redis before every job
 
     Session management:
         → Refresh token rotation (Redis-backed) + idle timeout (60min) + BroadcastChannel multi-tab sync
@@ -29,7 +30,7 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
 ```
 apps/
   api/          — NestJS 10, port 3000. Core business logic, 37 modules
-  dashboard/    — Next.js 16, port 3001. Admin panel (45+ pages), React 19, Tailwind + shadcn/ui + recharts
+  dashboard/    — Next.js 16, port 3001. Admin panel (50+ pages), React 19, Tailwind + shadcn/ui + recharts
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud), 4-language i18n
 packages/
@@ -61,16 +62,18 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
 - **i18n**: Every page edit/creation MUST include i18n updates in all 4 JSON files (es/en/pt/fr)
-- **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio)
+- **Multi-agent**: Each tenant can have N agents (plan-gated: starter=1, pro=3, enterprise=10, custom=unlimited). One agent per channel. Pipeline uses getPersonaForChannel() for routing.
+- **Subscription plans**: 4 plans: starter, pro, enterprise, custom — controls agent count, template access, and rate limits
+- **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio). One AI agent per channel (hard rule).
 
-## API modules (36 total)
+## API modules (37 total)
 
 | Category | Modules |
 |----------|---------|
 | **Infrastructure** | prisma, redis, health, throttle, internal |
 | **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + password reset + session management), tenants, settings |
-| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram adapters), conversations, whatsapp, handoff, agent-console |
-| **AI & Config** | ai (router + 5 providers), persona, knowledge, copilot |
+| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram/SMS adapters), conversations, whatsapp, handoff, agent-console |
+| **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
 | **Operations** | broadcast, inventory, orders, compliance, email, email-templates |
@@ -86,7 +89,7 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 WhatsappModule → ConversationsModule → [PersonaModule, AIModule, ChannelsModule, HandoffModule, IdentityModule]
                                                                       ↓ (EventEmitter)
                                                               AgentConsoleModule
-ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, adapters (WA/IG/Messenger/Telegram)
+ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, adapters (WA/IG/Messenger/Telegram/SMS)
 ThrottleModule: @Global — TenantThrottleService available everywhere
 AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsService, ScheduledReportsService, BIApiController
 ```
@@ -138,8 +141,15 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | Email layouts | `email/email-layouts.ts` (verification, reset, 2FA, welcome) |
 | Google OAuth | `auth/google-auth.service.ts` |
 | Sentry | `instrument.ts` (loaded before all modules) |
+| Multi-agent CRUD | `persona/persona.service.ts` (listAgents, createAgent, getPersonaForChannel) |
+| Agent templates | `persona/persona.service.ts` (getBuiltinTemplates, saveAsTemplate, listTemplates) |
+| Plan features | `throttle/tenant-throttle.service.ts` (PLAN_FEATURES, getPlanFeatures) |
+| Agent editor | `dashboard/src/app/admin/agent/[agentId]/page.tsx` |
+| Agent list | `dashboard/src/app/admin/agent/page.tsx` |
+| Setup banner | `dashboard/src/components/SetupBanner.tsx` |
+| SMS adapter | `channels/sms/sms.adapter.ts` |
 
-## Dashboard pages (45+)
+## Dashboard pages (50+)
 
 | Section | Pages |
 |---------|-------|
@@ -147,7 +157,7 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | **Onboarding** | 4-step company wizard |
 | **Core** | Dashboard, Inbox (WhatsApp-style chat + notifications) |
 | **CRM** | Contacts, Lead Detail, Pipeline (Kanban), Segments |
-| **AI** | Agent Config (6-step wizard + custom prompt mode), AI Settings |
+| **AI** | Agent List (multi-agent management, templates), Agent Editor (/agent/[agentId] — hub card grid + channel assignment + custom prompt mode), AI Settings |
 | **Automation** | Rules (4-step wizard), Settings |
 | **Analytics** | Analytics V2 (8 tabs: Overview/AI & Bot/Automation/Campaigns/Channels/CSAT/Anomalies/Cohorts), Agent Performance (legacy 4 tabs) |
 | **Channels** | Overview, WhatsApp Setup, Instagram Setup, Messenger Setup, Telegram Setup, SMS/Twilio Setup |
@@ -228,6 +238,8 @@ alert_history          — Alert trigger history
 scheduled_reports      — Report delivery config (frequency, recipients)
 dashboard_preferences  — Widget config per user
 automation_executions  — Rule execution audit trail
+agent_personas         — Multi-agent config (name, model, system prompt, channel assignment, template_id)
+agent_templates        — Reusable agent templates (builtin + tenant-created)
 ```
 
 ## Auth & Session Management
@@ -269,6 +281,7 @@ automation_executions  — Rule execution audit trail
 - **Dashboard**: next-intl, 4 files in `apps/dashboard/messages/` (es/en/pt/fr), ~700 lines each
 - **Landing**: next-intl via custom LangProvider (React Context), 4 files in `apps/landing/messages/`, 15 sections fully translated
 - **Convention**: Every page edit MUST include i18n updates in all 4 JSON files
+- **Status**: 0 hardcoded Spanish strings remaining as of April 18, 2026. All dashboard strings use next-intl with 4 languages
 
 ## Verification before pushing
 
@@ -314,7 +327,7 @@ See `.env.example`. Key ones:
 
 - Landing: https://parallly-chat.cloud (static, nginx container, 4-language i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui + recharts)
-- API: https://api.parallly-chat.cloud (NestJS, 37 modules)
+- API: https://api.parallly-chat.cloud (NestJS, 37 modules, multi-agent)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)

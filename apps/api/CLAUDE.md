@@ -101,7 +101,38 @@ await this.prisma.executeInTenantSchema(schemaName,
 - `appointments/appointments.controller.ts` — Static routes (availability, blocked-dates, check-slots) BEFORE dynamic :appointmentId routes
 - AI-ready: checkAvailableSlots for agent tool calls
 
+### Multi-Agent System (April 2026)
+
+**Tables (per-tenant schema):**
+- `agent_personas` — Multiple AI agents per tenant with channel assignment, schedule, versioning
+- `agent_templates` — Reusable persona configs (6 built-in + user-saved)
+
+**Key service methods (persona.service.ts):**
+- `getPersonaForChannel(tenantId, channelType)` — Channel-aware agent resolution (3-tier fallback: channel match → default → legacy)
+- `listAgents(tenantId)` — Returns all agents with auto-migration from legacy persona_config
+- `createAgent()`, `updateAgent()`, `deleteAgent()`, `duplicateAgent()` — Full CRUD
+- `saveAsTemplate()`, `listTemplates()` — Template management
+- `ensureMultiAgentTables()` — Lazy table creation for existing tenants
+- `createDefaultAgentFromGoals()` — Maps onboarding goals to best template
+
+**Pipeline change:**
+- `conversations.service.ts` line ~90: `getActivePersona(tenantId)` → `getPersonaForChannel(tenantId, channelType)`
+
+**Subscription plans (tenant-throttle.service.ts):**
+- starter: 1 agent, no custom templates
+- pro: 3 agents, custom templates + prompt
+- enterprise: 10 agents, all features
+- custom: unlimited, all features
+
+**6 built-in templates:** Sales Advisor, Support Agent, FAQ Bot, Appointment Scheduler, Lead Qualifier, Blank
+
+### SMS/Twilio Channel (April 2026)
+- `channels/sms/sms.adapter.ts` — Twilio SMS adapter implementing IChannelAdapter
+- Webhook handling, text message sending
+- Channel management endpoints for connect/disconnect
+
 ## Infrastructure (April 2026)
 - PgBouncer: transaction mode pooler between services and PostgreSQL
 - Sentry: @sentry/nestjs with instrument.ts loaded before all modules
 - Email layouts: email/email-layouts.ts (professional templates for auth flows)
+- Google Calendar integration: `appointments/calendar-integration.service.ts`

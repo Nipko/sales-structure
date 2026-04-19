@@ -1,7 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Info } from "lucide-react";
-import { DAY_LABELS, inputCls, selectCls, labelCls } from "../_types";
+import { inputCls, selectCls, labelCls } from "../_types";
 import type { PersonaConfig } from "../_types";
 
 interface ScheduleCardProps {
@@ -27,7 +28,18 @@ const TIMEZONES = [
   "UTC",
 ];
 
+const DAY_KEYS_TO_I18N: Record<string, string> = {
+  lun: "monday",
+  mar: "tuesday",
+  mie: "wednesday",
+  jue: "thursday",
+  vie: "friday",
+  sab: "saturday",
+  dom: "sunday",
+};
+
 export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
+  const t = useTranslations("agent.schedule");
   const schedule = config.hours.schedule;
 
   const is247 = Object.values(schedule).every(
@@ -90,10 +102,10 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
       <div className="flex items-center justify-between">
         <div>
           <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-            Available 24/7
+            {t("available247")}
           </span>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Agent responds to messages at all times
+            {t("available247Desc")}
           </p>
         </div>
         <button
@@ -120,7 +132,7 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
             {DAY_KEYS.map(key => {
               const daySchedule = schedule[key];
               const isActive = daySchedule !== null;
-              const label = DAY_LABELS[key] || key;
+              const label = t(DAY_KEYS_TO_I18N[key] || "monday");
 
               return (
                 <div
@@ -162,7 +174,7 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
                         onChange={e => updateDayTime(key, "start", e.target.value)}
                         className={`${inputCls} !w-auto !py-1.5 !px-2.5 text-xs`}
                       />
-                      <span className="text-xs text-neutral-400">to</span>
+                      <span className="text-xs text-neutral-400">{t("to")}</span>
                       <input
                         type="time"
                         value={daySchedule.end}
@@ -172,7 +184,7 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
                     </div>
                   ) : (
                     <span className="text-xs text-neutral-400 dark:text-neutral-500 italic">
-                      Closed
+                      {t("closed")}
                     </span>
                   )}
                 </div>
@@ -182,11 +194,11 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
 
           {/* After-hours message */}
           <div>
-            <label className={labelCls}>After-hours message</label>
+            <label className={labelCls}>{t("afterHoursMessage")}</label>
             <textarea
               value={config.hours.afterHoursMessage}
               onChange={e => updateAfterHoursMessage(e.target.value)}
-              placeholder="Message sent when a customer writes outside business hours..."
+              placeholder={t("afterHoursPlaceholder")}
               rows={3}
               className={`${inputCls} resize-none`}
             />
@@ -196,7 +208,7 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
 
       {/* Timezone */}
       <div>
-        <label className={labelCls}>Timezone</label>
+        <label className={labelCls}>{t("timezone")}</label>
         <select
           value={config.hours.timezone}
           onChange={e => updateTimezone(e.target.value)}
@@ -212,7 +224,7 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
       <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/60">
         <Info size={14} className="text-neutral-400 shrink-0 mt-0.5" />
         <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-          These hours control when this agent responds to messages on its assigned channels.
+          {t("infoNote")}
         </p>
       </div>
     </div>

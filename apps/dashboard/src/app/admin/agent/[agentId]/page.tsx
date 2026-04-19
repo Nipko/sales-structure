@@ -219,16 +219,16 @@ export default function AgentEditorPage() {
       const res = await api.saveAgentAsTemplate(
         activeTenantId,
         agentId,
-        `${config.persona.name || "Agent"} Template`,
-        `Template based on ${config.persona.name || "agent"}`
+        t("templateName", { name: config.persona.name || "Agent" }),
+        t("templateDescription", { name: config.persona.name || "agent" })
       );
       if (res?.success) {
         setToast(t("templateSaved"));
       } else {
-        setToast((res as any)?.error || "Error saving template");
+        setToast((res as any)?.error || t("errorSavingTemplate"));
       }
     } catch {
-      setToast("Error saving template");
+      setToast(t("errorSavingTemplate"));
     }
     setMenuOpen(false);
   }
@@ -244,7 +244,7 @@ export default function AgentEditorPage() {
         setToast(t("defaultUpdated"));
       }
     } catch {
-      setToast("Error updating agent");
+      setToast(t("errorUpdatingAgent"));
     }
     setMenuOpen(false);
   }
@@ -257,32 +257,34 @@ export default function AgentEditorPage() {
 
   const toolCount = config.tools?.appointments?.enabled ? 1 : 0;
 
+  const te = useTranslations("agent.editor");
+
   const identitySummary = config.persona.name
-    ? `${config.persona.name} - ${config.persona.role || "No role"}`
-    : "Name, role, greeting, language...";
+    ? `${config.persona.name} - ${config.persona.role || te("noRoleSummary")}`
+    : te("identitySummary");
 
   const personalitySummary = `${config.persona.personality.tone} tone, ${config.persona.personality.formality}`;
 
   const behaviorSummary = ruleCount > 0
-    ? `${config.behavior.rules.filter(Boolean).length} rules, ${config.behavior.forbiddenTopics.filter(Boolean).length} forbidden, ${config.behavior.handoffTriggers.filter(Boolean).length} triggers`
-    : "Rules, forbidden topics, handoff triggers...";
+    ? `${te("rulesSummary", { count: config.behavior.rules.filter(Boolean).length })}, ${te("forbiddenSummary", { count: config.behavior.forbiddenTopics.filter(Boolean).length })}, ${te("triggersSummary", { count: config.behavior.handoffTriggers.filter(Boolean).length })}`
+    : te("behaviorSummary");
 
-  const aiModelSummary = `Temperature ${config.llm.temperature}, max ${config.llm.maxTokens} tokens`;
+  const aiModelSummary = te("temperatureSummary", { value: config.llm.temperature, tokens: config.llm.maxTokens });
 
   const capabilitiesSummary = toolCount > 0
-    ? `${toolCount} tool${toolCount > 1 ? "s" : ""} active`
-    : "No tools enabled";
+    ? te("toolsActiveSummary", { count: toolCount })
+    : te("noToolsEnabled");
 
   const is247 = Object.values(config.hours.schedule).every(
     v => v !== null && (v as { start: string; end: string }).start === "00:00" && (v as { start: string; end: string }).end === "23:59"
   );
   const scheduleSummary = is247
-    ? "24/7 - Always available"
+    ? te("always247")
     : (() => {
         const activeDays = Object.entries(config.hours.schedule)
           .filter(([, v]) => v !== null)
           .length;
-        return `${activeDays} day${activeDays !== 1 ? "s" : ""} active, ${config.hours.timezone}`;
+        return te("daysActive", { count: activeDays, timezone: config.hours.timezone });
       })();
 
   // ── Loading state ──────────────────────────────────────────
@@ -429,7 +431,7 @@ export default function AgentEditorPage() {
             <ConfigCard
               icon={User}
               iconColor="text-indigo-500 bg-indigo-500/10"
-              title="Identity"
+              title={te("identityTitle")}
               summary={identitySummary}
               expanded={expandedSection === "identity"}
               onToggle={() => toggleSection("identity")}
@@ -440,7 +442,7 @@ export default function AgentEditorPage() {
             <ConfigCard
               icon={Smile}
               iconColor="text-violet-500 bg-violet-500/10"
-              title="Personality"
+              title={te("personalityTitle")}
               summary={personalitySummary}
               expanded={expandedSection === "personality"}
               onToggle={() => toggleSection("personality")}
@@ -451,7 +453,7 @@ export default function AgentEditorPage() {
             <ConfigCard
               icon={Shield}
               iconColor="text-rose-500 bg-rose-500/10"
-              title="Behavior"
+              title={te("behaviorTitle")}
               summary={behaviorSummary}
               expanded={expandedSection === "behavior"}
               onToggle={() => toggleSection("behavior")}
@@ -462,7 +464,7 @@ export default function AgentEditorPage() {
             <ConfigCard
               icon={Clock}
               iconColor="text-amber-500 bg-amber-500/10"
-              title="Schedule"
+              title={te("scheduleTitle")}
               summary={scheduleSummary}
               expanded={expandedSection === "schedule"}
               onToggle={() => toggleSection("schedule")}
@@ -473,7 +475,7 @@ export default function AgentEditorPage() {
             <ConfigCard
               icon={Cpu}
               iconColor="text-cyan-500 bg-cyan-500/10"
-              title="AI Model"
+              title={te("aiModelTitle")}
               summary={aiModelSummary}
               expanded={expandedSection === "ai-model"}
               onToggle={() => toggleSection("ai-model")}
@@ -484,7 +486,7 @@ export default function AgentEditorPage() {
             <ConfigCard
               icon={Wrench}
               iconColor="text-amber-500 bg-amber-500/10"
-              title="Capabilities"
+              title={te("capabilitiesTitle")}
               summary={capabilitiesSummary}
               expanded={expandedSection === "capabilities"}
               onToggle={() => toggleSection("capabilities")}
@@ -533,13 +535,13 @@ export default function AgentEditorPage() {
                       </label>
                       {owner && !isAssigned && (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500 shrink-0">
-                          {t("assignedTo")} {owner.name || "Unnamed"}
+                          {t("assignedTo")} {owner.name || t("unnamedAgent")}
                         </span>
                       )}
                       {owner && isAssigned && (
                         <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0 flex items-center gap-1">
                           <AlertTriangle size={12} />
-                          {t("willReassignFrom")} {owner.name || "Unnamed"}
+                          {t("willReassignFrom")} {owner.name || t("unnamedAgent")}
                         </span>
                       )}
                     </div>

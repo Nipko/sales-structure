@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +10,8 @@ interface SetupBannerProps {
 }
 
 export function SetupBanner({ show, onAction }: SetupBannerProps) {
+  const t = useTranslations("agent");
+
   if (!show) return null;
 
   return (
@@ -24,10 +27,10 @@ export function SetupBanner({ show, onAction }: SetupBannerProps) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-            Your agent is using the default configuration.
+            {t("setupBannerTitle")}
           </p>
           <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5">
-            Set up a specialized agent for better results.
+            {t("setupBannerDesc")}
           </p>
         </div>
         <button
@@ -40,7 +43,7 @@ export function SetupBanner({ show, onAction }: SetupBannerProps) {
             "transition-colors cursor-pointer flex items-center gap-1.5"
           )}
         >
-          Configure now <ArrowRight size={14} />
+          {t("configureNow")} <ArrowRight size={14} />
         </button>
       </div>
     </div>

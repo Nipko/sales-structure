@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Calendar, Wrench, AlertTriangle, CheckCircle } from "lucide-react";
@@ -13,13 +14,14 @@ interface CapabilitiesSectionProps {
 }
 
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
+  const t = useTranslations("agent.capabilities");
   const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
   const apt = tools.appointments || { enabled: false, canBook: true, canCancel: true };
 
   const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
   const missingItems: string[] = [];
-  if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push("services");
-  if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push("availability schedule");
+  if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push(t("servicesLabel"));
+  if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push(t("availabilityScheduleLabel"));
   const toggleBlocked = !canEnableAppointments && !apt.enabled;
 
   function updateTools(updates: Partial<typeof apt>) {
@@ -33,19 +35,19 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
   if (apt.enabled && canEnableAppointments) {
     statusBadge = (
       <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 text-[11px]">
-        Ready
+        {t("ready")}
       </Badge>
     );
   } else if (apt.enabled && !canEnableAppointments) {
     statusBadge = (
       <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 text-[11px]">
-        Setup needed
+        {t("setupNeeded")}
       </Badge>
     );
   } else {
     statusBadge = (
       <Badge variant="secondary" className="text-[11px]">
-        Disabled
+        {t("disabled")}
       </Badge>
     );
   }
@@ -62,12 +64,12 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             <div>
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                  Appointment Scheduling
+                  {t("appointmentScheduling")}
                 </h4>
                 {statusBadge}
               </div>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                Check availability, schedule and cancel appointments
+                {t("appointmentDesc")}
               </p>
             </div>
           </div>
@@ -75,7 +77,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             type="button"
             onClick={() => { if (!toggleBlocked) updateTools({ enabled: !apt.enabled }); }}
             disabled={toggleBlocked}
-            title={toggleBlocked ? `Configure ${missingItems.join(" and ")} before activating` : undefined}
+            title={toggleBlocked ? t("configureBeforeActivating", { items: missingItems.join(t("andSeparator")) }) : undefined}
             className={cn(
               "relative w-11 h-6 rounded-full transition-colors shrink-0",
               apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600",
@@ -97,14 +99,14 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
               apptReadiness.services > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400"
             )}>
               {apptReadiness.services > 0 ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-              Services ({apptReadiness.services})
+              {t("services")} ({apptReadiness.services})
             </span>
             <span className={cn(
               "flex items-center gap-1",
               apptReadiness.slots > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-400"
             )}>
               {apptReadiness.slots > 0 ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-              Availability ({apptReadiness.slots})
+              {t("availability")} ({apptReadiness.slots})
             </span>
           </div>
         )}
@@ -121,11 +123,11 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             <div className="flex-1">
               <p className={cn("text-xs font-medium", apt.enabled ? "text-red-700 dark:text-red-300" : "text-neutral-600 dark:text-neutral-300")}>
                 {apt.enabled
-                  ? `This tool is active but missing ${missingItems.join(" and ")}. The bot will respond with "no availability" until you complete the configuration.`
-                  : `First configure ${missingItems.join(" and ")} in Appointments.`}
+                  ? t("activeButMissing", { items: missingItems.join(t("andSeparator")) })
+                  : t("configureBefore", { items: missingItems.join(t("andSeparator")) })}
               </p>
               <Link href="/admin/appointments" className="inline-block mt-1.5 text-xs font-semibold text-indigo-500 hover:underline">
-                Go to Appointments →
+                {t("goToAppointments")} →
               </Link>
             </div>
           </div>
@@ -142,8 +144,8 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
               />
               <div>
-                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Create appointments</span>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">Schedule new appointments with customer confirmation</p>
+                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("createAppointments")}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("createAppointmentsDesc")}</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
@@ -154,8 +156,8 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
               />
               <div>
-                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Cancel appointments</span>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">Cancel appointments for the same customer who requests it</p>
+                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("cancelAppointments")}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("cancelAppointmentsDesc")}</p>
               </div>
             </label>
           </div>
@@ -169,8 +171,8 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             <Wrench size={18} className="text-neutral-400" />
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-neutral-400">More tools coming soon</h4>
-            <p className="text-xs text-neutral-400">Catalog, CRM, payments and more</p>
+            <h4 className="text-sm font-semibold text-neutral-400">{t("moreToolsSoon")}</h4>
+            <p className="text-xs text-neutral-400">{t("moreToolsDesc")}</p>
           </div>
         </div>
       </div>

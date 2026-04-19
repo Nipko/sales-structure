@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +13,10 @@ interface AgentProfileCardProps {
 }
 
 export function AgentProfileCard({ config, toolCount, ruleCount }: AgentProfileCardProps) {
-  const name = config.persona.name || "Not configured";
-  const role = config.persona.role || "No role defined";
+  const t = useTranslations("agent.profile");
+  const te = useTranslations("agent.editor");
+  const name = config.persona.name || t("notConfigured");
+  const role = config.persona.role || t("noRoleDefined");
   const hasName = !!config.persona.name;
 
   return (
@@ -42,7 +45,7 @@ export function AgentProfileCard({ config, toolCount, ruleCount }: AgentProfileC
                   : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
               )}
             >
-              {config.isActive ? "Active" : "Inactive"}
+              {config.isActive ? t("active") : t("inactive")}
             </Badge>
           </div>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -63,7 +66,7 @@ export function AgentProfileCard({ config, toolCount, ruleCount }: AgentProfileC
             </span>
           )}
           <span className="text-xs text-neutral-400 dark:text-neutral-500 ml-1">
-            {ruleCount} rules, {toolCount} tools active
+            {te("rulesToolsSummary", { rules: ruleCount, tools: toolCount })}
           </span>
         </div>
       </div>

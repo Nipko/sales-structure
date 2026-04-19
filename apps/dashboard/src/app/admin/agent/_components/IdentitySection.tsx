@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { inputCls, selectCls, labelCls } from "../_types";
 import type { PersonaConfig } from "../_types";
@@ -10,6 +11,8 @@ interface IdentitySectionProps {
 }
 
 export function IdentitySection({ config, onChange }: IdentitySectionProps) {
+  const t = useTranslations("agent.identity");
+
   function updatePersona(field: string, value: string) {
     onChange({ persona: { ...config.persona, [field]: value } });
   }
@@ -17,67 +20,67 @@ export function IdentitySection({ config, onChange }: IdentitySectionProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
       <div>
-        <label className={labelCls}>Agent name</label>
+        <label className={labelCls}>{t("agentName")}</label>
         <input
           className={inputCls}
-          placeholder="E.g.: Sofia Henao"
+          placeholder={t("agentNamePlaceholder")}
           value={config.persona.name}
           onChange={e => updatePersona("name", e.target.value)}
         />
       </div>
       <div>
-        <label className={labelCls}>Role</label>
+        <label className={labelCls}>{t("role")}</label>
         <input
           className={inputCls}
-          placeholder="E.g.: Sales advisor"
+          placeholder={t("rolePlaceholder")}
           value={config.persona.role}
           onChange={e => updatePersona("role", e.target.value)}
         />
       </div>
       <div className="sm:col-span-2">
-        <label className={labelCls}>Welcome message</label>
+        <label className={labelCls}>{t("welcomeMessage")}</label>
         <textarea
           className={cn(inputCls, "min-h-20 resize-y")}
-          placeholder="Write the greeting the agent will send when starting a conversation..."
+          placeholder={t("welcomePlaceholder")}
           value={config.persona.greeting}
           onChange={e => updatePersona("greeting", e.target.value)}
         />
       </div>
       <div className="sm:col-span-2">
-        <label className={labelCls}>Message when unable to respond</label>
+        <label className={labelCls}>{t("fallbackMessage")}</label>
         <textarea
           className={cn(inputCls, "min-h-20 resize-y")}
-          placeholder="Fallback message when the agent doesn't know how to respond..."
+          placeholder={t("fallbackPlaceholder")}
           value={config.persona.fallbackMessage}
           onChange={e => updatePersona("fallbackMessage", e.target.value)}
         />
       </div>
       <div>
-        <label className={labelCls}>Language</label>
+        <label className={labelCls}>{t("language")}</label>
         <select
           className={selectCls}
           value={config.language}
           onChange={e => onChange({ language: e.target.value })}
         >
-          <option value="es-CO">Spanish (Colombia)</option>
-          <option value="es-MX">Spanish (Mexico)</option>
-          <option value="en-US">English (US)</option>
-          <option value="pt-BR">Portuguese (Brazil)</option>
+          <option value="es-CO">{t("langEsCO")}</option>
+          <option value="es-MX">{t("langEsMX")}</option>
+          <option value="en-US">{t("langEnUS")}</option>
+          <option value="pt-BR">{t("langPtBR")}</option>
         </select>
       </div>
       <div>
-        <label className={labelCls}>Industry</label>
+        <label className={labelCls}>{t("industry")}</label>
         <select
           className={selectCls}
           value={config.industry}
           onChange={e => onChange({ industry: e.target.value })}
         >
-          <option value="general">General</option>
-          <option value="tourism">Tourism</option>
-          <option value="education">Education</option>
-          <option value="ecommerce">E-commerce</option>
-          <option value="health">Health</option>
-          <option value="services">Services</option>
+          <option value="general">{t("industryGeneral")}</option>
+          <option value="tourism">{t("industryTourism")}</option>
+          <option value="education">{t("industryEducation")}</option>
+          <option value="ecommerce">{t("industryEcommerce")}</option>
+          <option value="health">{t("industryHealth")}</option>
+          <option value="services">{t("industryServices")}</option>
         </select>
       </div>
     </div>

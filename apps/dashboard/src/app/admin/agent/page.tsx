@@ -68,7 +68,7 @@ export default function AgentListPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(STARTER_LIMITS);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -148,10 +148,10 @@ export default function AgentListPage() {
         setShowTemplatePicker(false);
         router.push(`/admin/agent/${res.data.id}`);
       } else {
-        setToast((res as any)?.error || "Error creating agent");
+        setToast({ message: (res as any)?.error || t("errorCreatingAgent"), type: "error" });
       }
     } catch {
-      setToast("Error creating agent");
+      setToast({ message: t("errorCreatingAgent"), type: "error" });
     }
   }
 
@@ -164,13 +164,13 @@ export default function AgentListPage() {
     try {
       const res = await api.duplicateAgent(activeTenantId, agentId);
       if (res?.success) {
-        setToast("Agent duplicated");
+        setToast({ message: t("agentDuplicated"), type: "success" });
         loadData();
       } else {
-        setToast((res as any)?.error || "Error duplicating agent");
+        setToast({ message: (res as any)?.error || t("errorDuplicatingAgent"), type: "error" });
       }
     } catch {
-      setToast("Error duplicating agent");
+      setToast({ message: t("errorDuplicatingAgent"), type: "error" });
     }
     setMenuOpen(null);
   }
@@ -180,11 +180,11 @@ export default function AgentListPage() {
     try {
       const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true });
       if (res?.success) {
-        setToast("Default agent updated");
+        setToast({ message: t("defaultUpdated"), type: "success" });
         loadData();
       }
     } catch {
-      setToast("Error updating agent");
+      setToast({ message: t("errorUpdatingAgent"), type: "error" });
     }
     setMenuOpen(null);
   }
@@ -193,20 +193,20 @@ export default function AgentListPage() {
     if (!activeTenantId) return;
     const agent = agents.find(a => a.id === agentId);
     if (agent?.is_default) {
-      setToast("Cannot delete the default agent");
+      setToast({ message: t("cannotDeleteDefault"), type: "error" });
       setMenuOpen(null);
       return;
     }
     try {
       const res = await api.deleteAgent(activeTenantId, agentId);
       if (res?.success) {
-        setToast("Agent deleted");
+        setToast({ message: t("agentDeleted"), type: "success" });
         loadData();
       } else {
-        setToast((res as any)?.error || "Error deleting agent");
+        setToast({ message: (res as any)?.error || t("errorDeletingAgent"), type: "error" });
       }
     } catch {
-      setToast("Error deleting agent");
+      setToast({ message: t("errorDeletingAgent"), type: "error" });
     }
     setMenuOpen(null);
   }
@@ -218,17 +218,17 @@ export default function AgentListPage() {
       const res = await api.saveAgentAsTemplate(
         activeTenantId,
         agentId,
-        `${agent?.name || "Agent"} Template`,
-        `Template based on ${agent?.name || "agent"}`
+        t("templateName", { name: agent?.name || t("title") }),
+        t("templateDescription", { name: agent?.name || t("title") })
       );
       if (res?.success) {
-        setToast("Template saved");
+        setToast({ message: t("templateSaved"), type: "success" });
         setTemplates([]); // reset cache
       } else {
-        setToast((res as any)?.error || "Error saving template");
+        setToast({ message: (res as any)?.error || t("errorSavingTemplate"), type: "error" });
       }
     } catch {
-      setToast("Error saving template");
+      setToast({ message: t("errorSavingTemplate"), type: "error" });
     }
     setMenuOpen(null);
   }
@@ -253,10 +253,10 @@ export default function AgentListPage() {
       });
       if (allSame) {
         const sample = Object.values(schedule).find((v: any) => v !== null) as any;
-        return `Daily ${sample.start}-${sample.end}`;
+        return t("scheduleDaily", { start: sample.start, end: sample.end });
       }
     }
-    return `${activeDays} days/week`;
+    return t("scheduleDaysPerWeek", { count: activeDays });
   }
 
   // ── Loading state ──────────────────────────────────────────
@@ -437,15 +437,11 @@ export default function AgentListPage() {
         <div
           className={cn(
             "fixed bottom-6 right-6 px-5 py-3 rounded-lg text-white text-sm font-semibold shadow-lg z-[9999] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2",
-            toast.includes("Error") || toast.includes("error") || toast.includes("Cannot")
-              ? "bg-red-500"
-              : "bg-emerald-500"
+            toast.type === "error" ? "bg-red-500" : "bg-emerald-500"
           )}
         >
-          {toast.includes("Error") || toast.includes("error") || toast.includes("Cannot")
-            ? <AlertTriangle size={16} />
-            : <CheckCircle size={16} />}
-          {toast}
+          {toast.type === "error" ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+          {toast.message}
         </div>
       )}
     </div>
@@ -490,7 +486,7 @@ function AgentCard({
               )}
             />
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
-              {agent.name || "Unnamed agent"}
+              {agent.name || t("unnamedAgent")}
             </h3>
             {agent.is_default && (
               <Badge

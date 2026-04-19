@@ -139,8 +139,10 @@ export default function AgentEditorPage() {
       api.getAvailability(activeTenantId).catch(() => null),
     ]).then(([svcRes, availRes]: any[]) => {
       if (cancelled) return;
-      const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false).length : 0;
-      const slots = Array.isArray(availRes?.data?.slots) ? availRes.data.slots.length : 0;
+      const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false && s.is_active !== false).length : 0;
+      const slotsData = availRes?.data;
+      const slots = Array.isArray(slotsData) ? slotsData.filter((s: any) => s.is_active !== false).length
+                  : Array.isArray(slotsData?.slots) ? slotsData.slots.length : 0;
       setApptReadiness({ services, slots, loaded: true });
     });
     return () => { cancelled = true; };

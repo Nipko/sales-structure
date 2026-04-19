@@ -300,12 +300,10 @@ export class PersonaService {
             )
         `);
 
-        // Create indexes (safe with IF NOT EXISTS)
-        await this.prisma.$executeRawUnsafe(`
-            CREATE INDEX IF NOT EXISTS "idx_agent_personas_active" ON "${schemaName}"."agent_personas" ("is_active");
-            CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels" ON "${schemaName}"."agent_personas" USING GIN ("channels");
-            CREATE INDEX IF NOT EXISTS "idx_agent_personas_default" ON "${schemaName}"."agent_personas" ("is_default") WHERE "is_default" = true;
-        `);
+        // Create indexes (one per call — Prisma doesn't allow multiple statements)
+        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_active_${schemaName}" ON "${schemaName}"."agent_personas" ("is_active")`);
+        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channels")`);
+        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_default_${schemaName}" ON "${schemaName}"."agent_personas" ("is_default") WHERE "is_default" = true`);
     }
 
     private async ensureTablesForTenant(tenantId: string): Promise<void> {

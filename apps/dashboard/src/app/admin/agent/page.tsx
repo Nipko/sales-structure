@@ -1,1047 +1,332 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-    Bot, User, MessageSquare, Brain, Clock, Cpu, CheckCircle,
-    ChevronLeft, ChevronRight, Plus, X, Save, Sparkles,
-    Shield, AlertTriangle, Smile, Globe, Calendar, Thermometer, Wrench,
+  Bot, User, Smile, Shield, Cpu, Wrench, Brain, Sparkles,
+  Save, CheckCircle, AlertTriangle,
 } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
-// ── Types ──────────────────────────────────────────────────────
+import type { PersonaConfig } from "./_types";
+import { defaultConfig } from "./_types";
+import { AgentProfileCard } from "./_components/AgentProfileCard";
+import { ConfigCard } from "./_components/ConfigCard";
+import { IdentitySection } from "./_components/IdentitySection";
+import { PersonalitySection } from "./_components/PersonalitySection";
+import { BehaviorSection } from "./_components/BehaviorSection";
+import { ScheduleCard } from "./_components/ScheduleCard";
+import { AIModelSection } from "./_components/AIModelSection";
+import { CapabilitiesSection } from "./_components/CapabilitiesSection";
+import { CustomPromptMode } from "./_components/CustomPromptMode";
 
-interface PersonaConfig {
-    persona: {
-        name: string;
-        role: string;
-        personality: { tone: string; formality: string; emojiUsage: string; humor: string };
-        greeting: string;
-        fallbackMessage: string;
-    };
-    behavior: {
-        rules: string[];
-        forbiddenTopics: string[];
-        handoffTriggers: string[];
-        requiredFields: Record<string, any>;
-    };
-    hours: {
-        timezone: string;
-        schedule: Record<string, { start: string; end: string } | null>;
-        afterHoursMessage: string;
-    };
-    llm: {
-        temperature: number;
-        maxTokens: number;
-        routing: any;
-        memory: { shortTerm: number; longTerm: boolean; summaryAfter: number };
-    };
-    rag: {
-        enabled: boolean;
-        chunkSize: number;
-        chunkOverlap: number;
-        topK: number;
-        similarityThreshold: number;
-    };
-    tools?: {
-        appointments?: {
-            enabled: boolean;
-            canBook: boolean;
-            canCancel: boolean;
-        };
-    };
-    industry: string;
-    language: string;
-    name: string;
-    slug: string;
-    id: string;
-    isActive: boolean;
+// ── Helpers ──────────────────────────────────────────────────
+
+function deepMerge(target: any, source: any): any {
+  const output = { ...target };
+  for (const key of Object.keys(source)) {
+    if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key]) && target[key]) {
+      output[key] = deepMerge(target[key], source[key]);
+    } else if (source[key] !== undefined) {
+      output[key] = source[key];
+    }
+  }
+  return output;
 }
 
-// ── Default config ─────────────────────────────────────────────
-
-const defaultConfig: PersonaConfig = {
-    persona: {
-        name: "",
-        role: "",
-        personality: { tone: "friendly", formality: "casual-professional", emojiUsage: "minimal", humor: "" },
-        greeting: "",
-        fallbackMessage: "",
-    },
-    behavior: {
-        rules: [],
-        forbiddenTopics: [],
-        handoffTriggers: [],
-        requiredFields: {},
-    },
-    hours: {
-        timezone: "America/Bogota",
-        schedule: {
-            lun: { start: "08:00", end: "18:00" },
-            mar: { start: "08:00", end: "18:00" },
-            mie: { start: "08:00", end: "18:00" },
-            jue: { start: "08:00", end: "18:00" },
-            vie: { start: "08:00", end: "18:00" },
-            sab: { start: "08:00", end: "14:00" },
-            dom: null,
-        },
-        afterHoursMessage: "",
-    },
-    llm: {
-        temperature: 0.7,
-        maxTokens: 800,
-        routing: {
-            tiers: {
-                tier_1_premium: { models: ["gpt-4o"], costLevel: "high" },
-                tier_2_standard: { models: ["gpt-4o-mini"], costLevel: "medium" },
-                tier_3_efficient: { models: ["gpt-4o-mini"], costLevel: "low" },
-                tier_4_budget: { models: ["gpt-4o-mini"], costLevel: "very_low" },
-            },
-            factors: {},
-            fallback: "auto_upgrade",
-        },
-        memory: { shortTerm: 20, longTerm: false, summaryAfter: 30 },
-    },
-    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
-    tools: { appointments: { enabled: false, canBook: true, canCancel: true } },
-    industry: "general",
-    language: "es-CO",
-    name: "",
-    slug: "",
-    id: "",
-    isActive: true,
-};
-
-// ── Steps ──────────────────────────────────────────────────────
-
-const STEPS = [
-    { label: "Identity", icon: User },
-    { label: "Personality", icon: Smile },
-    { label: "Behavior", icon: Shield },
-    { label: "Schedule", icon: Calendar },
-    { label: "AI Model", icon: Cpu },
-    { label: "Tools", icon: Wrench },
-    { label: "Summary", icon: CheckCircle },
-];
-
-const DAY_LABELS: Record<string, string> = {
-    lun: "Monday",
-    mar: "Tuesday",
-    mie: "Wednesday",
-    jue: "Thursday",
-    vie: "Friday",
-    sab: "Saturday",
-    dom: "Sunday",
-};
-
-// ── Shared class constants ────────────────────────────────────
-
-const inputCls = "w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm outline-none";
-const selectCls = "w-full px-3.5 py-2.5 pr-8 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2712%27%20height=%2712%27%20fill=%27%239898b0%27%20viewBox=%270%200%2024%2024%27%3E%3Cpath%20d=%27M7%2010l5%205%205-5z%27/%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]";
-const labelCls = "block text-[13px] font-semibold text-[var(--text-secondary)] mb-1.5";
-const cardCls = "p-6 rounded-[14px] bg-[var(--bg-secondary)] border border-border";
-
-// ── Component ──────────────────────────────────────────────────
+// ── Component ────────────────────────────────────────────────
 
 export default function AgentConfigPage() {
-    const t = useTranslations('agent');
-    const tc = useTranslations("common");
-    const { activeTenantId } = useTenant();
-    const [mode, setMode] = useState<"wizard" | "prompt">("wizard");
-    const [step, setStep] = useState(0);
-    const [config, setConfig] = useState<PersonaConfig>(structuredClone(defaultConfig));
-    const [customPrompt, setCustomPrompt] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [toast, setToast] = useState<string | null>(null);
-    // Gates the appointments toggle in step 5. Until these are non-zero the
-    // backend will reject enabling the tool (persona.service.ts), so we also
-    // reflect that in the UI so the operator cannot save a broken state.
-    const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({ services: 0, slots: 0, loaded: false });
+  const t = useTranslations("agent");
+  const tc = useTranslations("common");
+  const { activeTenantId } = useTenant();
 
-    // Load existing config
-    useEffect(() => {
-        if (!activeTenantId) return;
-        setLoading(true);
-        api.getPersonaConfig(activeTenantId)
-            .then((res: any) => {
-                if (res?.success && res.data) {
-                    const data = res.data;
-                    setConfig(deepMerge(structuredClone(defaultConfig), data));
-                    // If a custom prompt was saved, load it and switch to prompt mode
-                    if (data._customPrompt) {
-                        setCustomPrompt(data._customPrompt);
-                        setMode("prompt");
-                    }
-                }
-            })
-            .catch(() => {})
-            .finally(() => setLoading(false));
-    }, [activeTenantId]);
+  const [mode, setMode] = useState<"guided" | "prompt">("guided");
+  const [config, setConfig] = useState<PersonaConfig>(structuredClone(defaultConfig));
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [expandedSection, setExpandedSection] = useState<string | null>("identity");
+  const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({
+    services: 0,
+    slots: 0,
+    loaded: false,
+  });
 
-    // Load appointments readiness (services + availability_slots counts)
-    useEffect(() => {
-        if (!activeTenantId) return;
-        let cancelled = false;
-        Promise.all([
-            api.getServices(activeTenantId).catch(() => null),
-            api.getAvailability(activeTenantId).catch(() => null),
-        ]).then(([svcRes, availRes]: any[]) => {
-            if (cancelled) return;
-            const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false).length : 0;
-            const slots = Array.isArray(availRes?.data?.slots) ? availRes.data.slots.length : 0;
-            setApptReadiness({ services, slots, loaded: true });
-        });
-        return () => { cancelled = true; };
-    }, [activeTenantId]);
+  // ── Load existing config ────────────────────────────────────
 
-    // Toast auto-dismiss
-    useEffect(() => {
-        if (!toast) return;
-        const t = setTimeout(() => setToast(null), 2500);
-        return () => clearTimeout(t);
-    }, [toast]);
-
-    // ── Helpers ────────────────────────────────────────────────
-
-    function deepMerge(target: any, source: any): any {
-        const output = { ...target };
-        for (const key of Object.keys(source)) {
-            if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key]) && target[key]) {
-                output[key] = deepMerge(target[key], source[key]);
-            } else if (source[key] !== undefined) {
-                output[key] = source[key];
-            }
+  useEffect(() => {
+    if (!activeTenantId) return;
+    setLoading(true);
+    api.getPersonaConfig(activeTenantId)
+      .then((res: any) => {
+        if (res?.success && res.data) {
+          const data = res.data;
+          setConfig(deepMerge(structuredClone(defaultConfig), data));
+          if (data._customPrompt) {
+            setCustomPrompt(data._customPrompt);
+            setMode("prompt");
+          }
         }
-        return output;
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [activeTenantId]);
+
+  // ── Load appointments readiness ─────────────────────────────
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+    let cancelled = false;
+    Promise.all([
+      api.getServices(activeTenantId).catch(() => null),
+      api.getAvailability(activeTenantId).catch(() => null),
+    ]).then(([svcRes, availRes]: any[]) => {
+      if (cancelled) return;
+      const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false).length : 0;
+      const slots = Array.isArray(availRes?.data?.slots) ? availRes.data.slots.length : 0;
+      setApptReadiness({ services, slots, loaded: true });
+    });
+    return () => { cancelled = true; };
+  }, [activeTenantId]);
+
+  // ── Toast auto-dismiss ──────────────────────────────────────
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  // ── Update helper (merges partial updates into config) ──────
+
+  const updateConfig = useCallback((updates: Partial<PersonaConfig>) => {
+    setConfig(prev => deepMerge(prev, updates));
+  }, []);
+
+  // ── Toggle section ──────────────────────────────────────────
+
+  const toggleSection = useCallback((section: string) => {
+    setExpandedSection(prev => (prev === section ? null : section));
+  }, []);
+
+  // ── Save ────────────────────────────────────────────────────
+
+  async function handleSave() {
+    if (!activeTenantId) return;
+    setSaving(true);
+    try {
+      let payload: any;
+      if (mode === "prompt") {
+        payload = { ...config, _customPrompt: customPrompt, _mode: "prompt" };
+      } else {
+        payload = { ...config, _customPrompt: undefined, _mode: "wizard" };
+      }
+      const res = await api.savePersonaConfig(activeTenantId, payload);
+      if (res?.success) {
+        setToast("Configuration saved successfully");
+      } else {
+        setToast((res as any)?.error || tc("errorSaving"));
+      }
+    } catch {
+      setToast(tc("errorSaving"));
+    } finally {
+      setSaving(false);
     }
+  }
 
-    function updatePersona(field: string, value: any) {
-        setConfig(prev => ({ ...prev, persona: { ...prev.persona, [field]: value } }));
-    }
+  // ── Computed values ─────────────────────────────────────────
 
-    function updatePersonality(field: string, value: any) {
-        setConfig(prev => ({
-            ...prev,
-            persona: { ...prev.persona, personality: { ...prev.persona.personality, [field]: value } },
-        }));
-    }
+  const ruleCount = config.behavior.rules.filter(Boolean).length
+    + config.behavior.forbiddenTopics.filter(Boolean).length
+    + config.behavior.handoffTriggers.filter(Boolean).length;
 
-    function updateBehaviorList(field: "rules" | "forbiddenTopics" | "handoffTriggers", index: number, value: string) {
-        setConfig(prev => {
-            const list = [...prev.behavior[field]];
-            list[index] = value;
-            return { ...prev, behavior: { ...prev.behavior, [field]: list } };
-        });
-    }
+  const toolCount = config.tools?.appointments?.enabled ? 1 : 0;
 
-    function addBehaviorItem(field: "rules" | "forbiddenTopics" | "handoffTriggers") {
-        setConfig(prev => ({
-            ...prev,
-            behavior: { ...prev.behavior, [field]: [...prev.behavior[field], ""] },
-        }));
-    }
+  // ── Summaries for collapsed cards ───────────────────────────
 
-    function removeBehaviorItem(field: "rules" | "forbiddenTopics" | "handoffTriggers", index: number) {
-        setConfig(prev => ({
-            ...prev,
-            behavior: { ...prev.behavior, [field]: prev.behavior[field].filter((_, i) => i !== index) },
-        }));
-    }
+  const identitySummary = config.persona.name
+    ? `${config.persona.name} - ${config.persona.role || "No role"}`
+    : "Name, role, greeting, language...";
 
-    function updateScheduleDay(day: string, active: boolean) {
-        setConfig(prev => ({
-            ...prev,
-            hours: {
-                ...prev.hours,
-                schedule: {
-                    ...prev.hours.schedule,
-                    [day]: active ? { start: "08:00", end: "18:00" } : null,
-                },
-            },
-        }));
-    }
+  const personalitySummary = `${config.persona.personality.tone} tone, ${config.persona.personality.formality}`;
 
-    function updateScheduleTime(day: string, field: "start" | "end", value: string) {
-        setConfig(prev => ({
-            ...prev,
-            hours: {
-                ...prev.hours,
-                schedule: {
-                    ...prev.hours.schedule,
-                    [day]: { ...(prev.hours.schedule[day] as any), [field]: value },
-                },
-            },
-        }));
-    }
+  const behaviorSummary = ruleCount > 0
+    ? `${config.behavior.rules.filter(Boolean).length} rules, ${config.behavior.forbiddenTopics.filter(Boolean).length} forbidden, ${config.behavior.handoffTriggers.filter(Boolean).length} triggers`
+    : "Rules, forbidden topics, handoff triggers...";
 
-    async function handleSave() {
-        if (!activeTenantId) return;
-        setSaving(true);
-        try {
-            let payload: any;
-            if (mode === "prompt") {
-                // Save the custom prompt alongside minimal config
-                payload = {
-                    ...config,
-                    _customPrompt: customPrompt,
-                    _mode: "prompt",
-                };
-            } else {
-                payload = { ...config, _customPrompt: undefined, _mode: "wizard" };
-            }
-            const res = await api.savePersonaConfig(activeTenantId, payload);
-            if (res?.success) {
-                setToast("Configuration saved successfully");
-            } else {
-                // Surface backend validation messages (e.g. missing appointments
-                // prerequisites) instead of a generic "error saving".
-                setToast((res as any)?.error || tc("errorSaving"));
-            }
-        } catch {
-            setToast(tc("errorSaving"));
-        } finally {
-            setSaving(false);
-        }
-    }
+  const aiModelSummary = `Temperature ${config.llm.temperature}, max ${config.llm.maxTokens} tokens`;
 
-    // ── Step renderers ─────────────────────────────────────────
+  const capabilitiesSummary = toolCount > 0
+    ? `${toolCount} tool${toolCount > 1 ? "s" : ""} active`
+    : "No tools enabled";
 
-    function renderStep0() {
-        return (
-            <div className={cardCls}>
-                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <User size={20} className="text-primary" /> Agent Identity
-                </h3>
-                <div className="grid grid-cols-2 gap-5">
-                    <div>
-                        <label className={labelCls}>Agent name</label>
-                        <input
-                            className={inputCls}
-                            placeholder="E.g.: Sofia Henao"
-                            value={config.persona.name}
-                            onChange={e => updatePersona("name", e.target.value)}
-                        />
-                    </div>
-                    <div>
-                        <label className={labelCls}>Role</label>
-                        <input
-                            className={inputCls}
-                            placeholder="E.g.: Sales advisor"
-                            value={config.persona.role}
-                            onChange={e => updatePersona("role", e.target.value)}
-                        />
-                    </div>
-                    <div className="col-span-2">
-                        <label className={labelCls}>Welcome message</label>
-                        <textarea
-                            className={cn(inputCls, "min-h-20 resize-y")}
-                            placeholder="Write the greeting the agent will send when starting a conversation..."
-                            value={config.persona.greeting}
-                            onChange={e => updatePersona("greeting", e.target.value)}
-                        />
-                    </div>
-                    <div className="col-span-2">
-                        <label className={labelCls}>Message when unable to respond</label>
-                        <textarea
-                            className={cn(inputCls, "min-h-20 resize-y")}
-                            placeholder="Fallback message when the agent doesn't know how to respond..."
-                            value={config.persona.fallbackMessage}
-                            onChange={e => updatePersona("fallbackMessage", e.target.value)}
-                        />
-                    </div>
-                    <div>
-                        <label className={labelCls}>Language</label>
-                        <select
-                            className={selectCls}
-                            value={config.language}
-                            onChange={e => setConfig(prev => ({ ...prev, language: e.target.value }))}
-                        >
-                            <option value="es-CO">Spanish (Colombia)</option>
-                            <option value="es-MX">Spanish (Mexico)</option>
-                            <option value="en-US">English (US)</option>
-                            <option value="pt-BR">Portuguese (Brazil)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Industry</label>
-                        <select
-                            className={selectCls}
-                            value={config.industry}
-                            onChange={e => setConfig(prev => ({ ...prev, industry: e.target.value }))}
-                        >
-                            <option value="general">General</option>
-                            <option value="tourism">Tourism</option>
-                            <option value="education">Education</option>
-                            <option value="ecommerce">E-commerce</option>
-                            <option value="health">Health</option>
-                            <option value="services">Services</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        );
-    }
+  // ── Loading state ───────────────────────────────────────────
 
-    function renderStep1() {
-        return (
-            <div className={cardCls}>
-                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <Smile size={20} className="text-primary" /> Personality
-                </h3>
-                <div className="grid grid-cols-2 gap-5">
-                    <div>
-                        <label className={labelCls}>Tone</label>
-                        <select
-                            className={selectCls}
-                            value={config.persona.personality.tone}
-                            onChange={e => updatePersonality("tone", e.target.value)}
-                        >
-                            <option value="friendly">Friendly</option>
-                            <option value="profesional">Profesional</option>
-                            <option value="formal">Formal</option>
-                            <option value="casual">Casual</option>
-                            <option value="empatico">Empathetic</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Formality</label>
-                        <select
-                            className={selectCls}
-                            value={config.persona.personality.formality}
-                            onChange={e => updatePersonality("formality", e.target.value)}
-                        >
-                            <option value="formal">Formal</option>
-                            <option value="casual-professional">Casual-Professional</option>
-                            <option value="casual">Casual</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Emoji usage</label>
-                        <select
-                            className={selectCls}
-                            value={config.persona.personality.emojiUsage}
-                            onChange={e => updatePersonality("emojiUsage", e.target.value)}
-                        >
-                            <option value="none">None</option>
-                            <option value="minimal">Minimal</option>
-                            <option value="moderate">Moderate</option>
-                            <option value="heavy">Heavy</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Humor</label>
-                        <input
-                            className={inputCls}
-                            placeholder="E.g.: light, adventure themed"
-                            value={config.persona.personality.humor}
-                            onChange={e => updatePersonality("humor", e.target.value)}
-                        />
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    function renderStep2() {
-        const sections: { key: "rules" | "forbiddenTopics" | "handoffTriggers"; title: string; placeholder: string; icon: any }[] = [
-            { key: "rules", title: "Strict rules", placeholder: "e.g.: Always confirm availability before quoting", icon: Shield },
-            { key: "forbiddenTopics", title: "Forbidden topics", placeholder: "e.g.: Competition, third-party pricing", icon: AlertTriangle },
-            { key: "handoffTriggers", title: "Handoff triggers", placeholder: "e.g.: Customer requests to speak with a human", icon: MessageSquare },
-        ];
-
-        return (
-            <div className="flex flex-col gap-5">
-                {sections.map(section => (
-                    <div key={section.key} className={cardCls}>
-                        <h3 className="text-base font-semibold mt-0 mb-3.5 flex items-center gap-2">
-                            <section.icon size={18} className="text-primary" /> {section.title}
-                        </h3>
-                        <div className="flex flex-col gap-2.5">
-                            {config.behavior[section.key].map((item, idx) => (
-                                <div key={idx} className="flex gap-2 items-center">
-                                    <input
-                                        className={cn(inputCls, "flex-1")}
-                                        placeholder={section.placeholder}
-                                        value={item}
-                                        onChange={e => updateBehaviorList(section.key, idx, e.target.value)}
-                                    />
-                                    <button
-                                        onClick={() => removeBehaviorItem(section.key, idx)}
-                                        className="w-9 h-9 rounded-lg border border-border bg-[var(--bg-primary)] text-[var(--danger)] cursor-pointer flex items-center justify-center shrink-0"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </div>
-                            ))}
-                            <button
-                                onClick={() => addBehaviorItem(section.key)}
-                                className="px-4 py-2 rounded-lg border border-dashed border-border bg-transparent text-primary cursor-pointer text-[13px] font-semibold flex items-center gap-1.5 self-start"
-                            >
-                                <Plus size={14} /> Add
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        );
-    }
-
-    function renderStep3() {
-        const timezones = [
-            { value: "America/Bogota", label: "Bogota (GMT-5)" },
-            { value: "America/Mexico_City", label: "Ciudad de Mexico (GMT-6)" },
-            { value: "America/Lima", label: "Lima (GMT-5)" },
-            { value: "America/Santiago", label: "Santiago (GMT-4)" },
-            { value: "America/Buenos_Aires", label: "Buenos Aires (GMT-3)" },
-        ];
-
-        const is247 = Object.values(config.hours.schedule).every(v => v !== null) &&
-            Object.values(config.hours.schedule).every(v => v === null || ((v as any).start === '00:00' && (v as any).end === '23:59'));
-
-        const toggle247 = (enabled: boolean) => {
-            if (enabled) {
-                const allDay = { start: '00:00', end: '23:59' };
-                setConfig(prev => ({
-                    ...prev,
-                    hours: {
-                        ...prev.hours,
-                        schedule: { lun: allDay, mar: allDay, mie: allDay, jue: allDay, vie: allDay, sab: allDay, dom: allDay },
-                        afterHoursMessage: '',
-                    },
-                }));
-            } else {
-                setConfig(prev => ({
-                    ...prev,
-                    hours: {
-                        ...prev.hours,
-                        schedule: {
-                            lun: { start: '08:00', end: '18:00' },
-                            mar: { start: '08:00', end: '18:00' },
-                            mie: { start: '08:00', end: '18:00' },
-                            jue: { start: '08:00', end: '18:00' },
-                            vie: { start: '08:00', end: '18:00' },
-                            sab: { start: '08:00', end: '14:00' },
-                            dom: null,
-                        },
-                    },
-                }));
-            }
-        };
-
-        return (
-            <div className={cardCls}>
-                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <Calendar size={20} className="text-primary" /> Agent Schedule
-                </h3>
-
-                {/* Timezone */}
-                <div className="mb-5">
-                    <label className={labelCls}>Timezone</label>
-                    <select
-                        className={cn(selectCls, "max-w-80")}
-                        value={config.hours.timezone}
-                        onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, timezone: e.target.value } }))}
-                    >
-                        {timezones.map(tz => (
-                            <option key={tz.value} value={tz.value}>{tz.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* 24/7 Toggle */}
-                <div className="flex items-center justify-between p-4 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 mb-5">
-                    <div>
-                        <p className="text-sm font-semibold text-foreground">Available 24/7</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">The agent is available 24/7</p>
-                    </div>
-                    <button
-                        onClick={() => toggle247(!is247)}
-                        className={cn(
-                            "w-12 h-7 rounded-full border-none cursor-pointer relative transition-colors duration-200",
-                            is247 ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20"
-                        )}
-                    >
-                        <div
-                            className="w-5 h-5 rounded-full bg-white absolute top-1 transition-[left] duration-200 shadow-sm"
-                            style={{ left: is247 ? 26 : 4 }}
-                        />
-                    </button>
-                </div>
-
-                {/* Per-day schedule (hidden when 24/7) */}
-                {!is247 && (
-                    <>
-                        <div className="flex flex-col gap-2.5 mb-5">
-                            {Object.entries(DAY_LABELS).map(([key, label]) => {
-                                const daySchedule = config.hours.schedule[key];
-                                const isActive = daySchedule !== null;
-                                return (
-                                    <div key={key} className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-[10px] bg-[var(--bg-primary)] border border-border">
-                                        <button
-                                            onClick={() => updateScheduleDay(key, !isActive)}
-                                            className={cn(
-                                                "w-[42px] h-6 rounded-xl border-none cursor-pointer relative transition-colors duration-200",
-                                                isActive ? "bg-[var(--success)]" : "bg-border"
-                                            )}
-                                        >
-                                            <div
-                                                className="w-[18px] h-[18px] rounded-full bg-white absolute top-[3px] transition-[left] duration-200"
-                                                style={{ left: isActive ? 21 : 3 }}
-                                            />
-                                        </button>
-                                        <span className={cn(
-                                            "w-[90px] text-sm font-semibold",
-                                            isActive ? "text-foreground" : "text-[var(--text-secondary)]"
-                                        )}>
-                                            {label}
-                                        </span>
-                                        {isActive ? (
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="time"
-                                                    className={cn(inputCls, "w-[130px]")}
-                                                    value={(daySchedule as any).start}
-                                                    onChange={e => updateScheduleTime(key, "start", e.target.value)}
-                                                />
-                                                <span className="text-[var(--text-secondary)] text-[13px]">to</span>
-                                                <input
-                                                    type="time"
-                                                    className={cn(inputCls, "w-[130px]")}
-                                                    value={(daySchedule as any).end}
-                                                    onChange={e => updateScheduleTime(key, "end", e.target.value)}
-                                                />
-                                            </div>
-                                        ) : (
-                                            <span className="text-[13px] text-[var(--text-secondary)] italic">Closed</span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <div>
-                            <label className={labelCls}>After-hours message</label>
-                            <textarea
-                                className={cn(inputCls, "min-h-[70px] resize-y")}
-                                placeholder="Message sent outside business hours..."
-                                value={config.hours.afterHoursMessage}
-                                onChange={e => setConfig(prev => ({ ...prev, hours: { ...prev.hours, afterHoursMessage: e.target.value } }))}
-                            />
-                        </div>
-                    </>
-                )}
-            </div>
-        );
-    }
-
-    function renderStep4() {
-        return (
-            <div className={cardCls}>
-                <h3 className="text-lg font-semibold mt-0 mb-5 flex items-center gap-2">
-                    <Cpu size={20} className="text-primary" /> AI Model
-                </h3>
-                <div className="grid grid-cols-2 gap-6">
-                    <div>
-                        <label className={labelCls}>Temperature: {config.llm.temperature}</label>
-                        <input
-                            type="range"
-                            min={0} max={1} step={0.1}
-                            value={config.llm.temperature}
-                            onChange={e => setConfig(prev => ({ ...prev, llm: { ...prev.llm, temperature: parseFloat(e.target.value) } }))}
-                            className="w-full accent-primary"
-                        />
-                        <div className="flex justify-between text-[11px] text-[var(--text-secondary)] mt-1">
-                            <span>Precise (0)</span>
-                            <span>Creative (1)</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Max tokens</label>
-                        <input
-                            type="number"
-                            className={inputCls}
-                            min={100} max={4000}
-                            value={config.llm.maxTokens}
-                            onChange={e => setConfig(prev => ({ ...prev, llm: { ...prev.llm, maxTokens: parseInt(e.target.value) || 800 } }))}
-                        />
-                    </div>
-                </div>
-                <div className="mt-5 p-4 rounded-[10px] bg-[var(--accent-glow)] border border-primary">
-                    <div className="flex items-start gap-2.5">
-                        <Sparkles size={18} className="text-primary mt-0.5 shrink-0" />
-                        <div className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-                            <strong className="text-foreground">Temperature</strong> controls the creativity of responses.
-                            Low values (0-0.3) produce consistent and predictable responses.
-                            High values (0.7-1) generate more varied and creative responses.<br />
-                            <strong className="text-foreground">Max tokens</strong> limits the maximum length of each response.
-                            800 tokens approximately equal 2-3 paragraphs.
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    function renderStep5() {
-        const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
-        const apt = tools.appointments || { enabled: false, canBook: true, canCancel: true };
-
-        const updateTools = (updates: Partial<typeof apt>) => {
-            setConfig({
-                ...config,
-                tools: { ...tools, appointments: { ...apt, ...updates } },
-            });
-        };
-
-        const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
-        const missingItems: string[] = [];
-        if (apptReadiness.loaded && apptReadiness.services === 0) missingItems.push('services');
-        if (apptReadiness.loaded && apptReadiness.slots === 0) missingItems.push('availability schedule');
-        const toggleBlocked = !canEnableAppointments && !apt.enabled;
-
-        return (
-            <div>
-                <h3 className="text-lg font-semibold mb-1">Agent Tools</h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                    Activate the tools your AI agent can use during conversations.
-                </p>
-
-                {/* Appointments Tool */}
-                <div className={cn(cardCls, "mb-4")}>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-                                <Calendar size={20} className="text-indigo-500" />
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-semibold">Appointment Scheduling</h4>
-                                <p className="text-xs text-muted-foreground">Allows the agent to check availability, schedule and cancel appointments</p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => { if (!toggleBlocked) updateTools({ enabled: !apt.enabled }); }}
-                            disabled={toggleBlocked}
-                            title={toggleBlocked ? `Configure ${missingItems.join(' and ')} before activating` : undefined}
-                            className={cn(
-                                "relative w-11 h-6 rounded-full transition-colors",
-                                apt.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-white/20",
-                                toggleBlocked && "opacity-40 cursor-not-allowed"
-                            )}
-                        >
-                            <div className={cn(
-                                "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
-                                apt.enabled ? "translate-x-[22px]" : "translate-x-0.5"
-                            )} />
-                        </button>
-                    </div>
-
-                    {/* Prerequisites warning — shown whenever services/slots are missing,
-                        regardless of toggle state. Red when the tool is already enabled
-                        (broken state), neutral when disabled (guidance). */}
-                    {apptReadiness.loaded && !canEnableAppointments && (
-                        <div className={cn(
-                            "flex items-start gap-2 p-3 rounded-lg border mb-3",
-                            apt.enabled
-                                ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30"
-                                : "bg-neutral-100 dark:bg-white/5 border-neutral-200 dark:border-white/10"
-                        )}>
-                            <AlertTriangle size={14} className={cn("shrink-0 mt-0.5", apt.enabled ? "text-red-500" : "text-muted-foreground")} />
-                            <div className="flex-1">
-                                <p className={cn("text-xs font-medium", apt.enabled ? "text-red-700 dark:text-red-300" : "text-foreground")}>
-                                    {apt.enabled
-                                        ? `This tool is active but missing ${missingItems.join(' and ')}. The bot will respond with "no availability" until you complete the configuration.`
-                                        : `First configure ${missingItems.join(' and ')} in Appointments.`}
-                                </p>
-                                <Link href="/admin/appointments" className="inline-block mt-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
-                                    Go to Appointments →
-                                </Link>
-                            </div>
-                        </div>
-                    )}
-
-                    {apt.enabled && (
-                        <div className="pl-13 space-y-3 border-t border-neutral-200 dark:border-white/10 pt-4">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input type="checkbox" checked={apt.canBook} onChange={(e) => updateTools({ canBook: e.target.checked })}
-                                    className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
-                                <div>
-                                    <span className="text-sm font-medium">Create appointments</span>
-                                    <p className="text-xs text-muted-foreground">The agent can schedule new appointments with customer confirmation</p>
-                                </div>
-                            </label>
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input type="checkbox" checked={apt.canCancel} onChange={(e) => updateTools({ canCancel: e.target.checked })}
-                                    className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500" />
-                                <div>
-                                    <span className="text-sm font-medium">Cancel appointments</span>
-                                    <p className="text-xs text-muted-foreground">The agent can cancel appointments for the same customer who requests it</p>
-                                </div>
-                            </label>
-                        </div>
-                    )}
-                </div>
-
-                {/* Future tools placeholder */}
-                <div className={cn(cardCls, "opacity-50")}>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center">
-                            <Wrench size={20} className="text-muted-foreground" />
-                        </div>
-                        <div>
-                            <h4 className="text-sm font-semibold text-muted-foreground">More tools coming soon</h4>
-                            <p className="text-xs text-muted-foreground">Catalog, CRM, payments and more</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    function renderStep6() {
-        const summarySection = (title: string, icon: any, items: { label: string; value: string }[]) => (
-            <div className={cn(cardCls, "mb-4")}>
-                <h4 className="text-[15px] font-semibold mt-0 mb-3.5 flex items-center gap-2">
-                    {icon} {title}
-                </h4>
-                <div className="grid grid-cols-2 gap-2.5">
-                    {items.map((item, i) => (
-                        <div key={i}>
-                            <div className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
-                                {item.label}
-                            </div>
-                            <div className="text-sm text-foreground mt-0.5">
-                                {item.value || "\u2014"}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-
-        const activeDays = Object.entries(config.hours.schedule)
-            .filter(([, v]) => v !== null)
-            .map(([k, v]) => `${DAY_LABELS[k]} ${(v as any).start}-${(v as any).end}`)
-            .join(", ");
-
-        return (
-            <div>
-                {summarySection("Identity", <User size={16} className="text-primary" />, [
-                    { label: "Name", value: config.persona.name },
-                    { label: "Role", value: config.persona.role },
-                    { label: "Language", value: config.language },
-                    { label: "Industry", value: config.industry },
-                    { label: "Greeting", value: config.persona.greeting },
-                    { label: "Fallback", value: config.persona.fallbackMessage },
-                ])}
-                {summarySection("Personality", <Smile size={16} className="text-primary" />, [
-                    { label: "Tone", value: config.persona.personality.tone },
-                    { label: "Formality", value: config.persona.personality.formality },
-                    { label: "Emojis", value: config.persona.personality.emojiUsage },
-                    { label: "Humor", value: config.persona.personality.humor },
-                ])}
-                {summarySection("Behavior", <Shield size={16} className="text-primary" />, [
-                    { label: "Rules", value: config.behavior.rules.filter(Boolean).join("; ") },
-                    { label: "Forbidden topics", value: config.behavior.forbiddenTopics.filter(Boolean).join("; ") },
-                    { label: "Handoff triggers", value: config.behavior.handoffTriggers.filter(Boolean).join("; ") },
-                ])}
-                {summarySection("Schedule", <Calendar size={16} className="text-primary" />, [
-                    { label: "Timezone", value: config.hours.timezone },
-                    { label: "Active days", value: activeDays },
-                    { label: "After hours message", value: config.hours.afterHoursMessage },
-                ])}
-                {summarySection("AI Model", <Cpu size={16} className="text-primary" />, [
-                    { label: "Temperature", value: String(config.llm.temperature) },
-                    { label: "Max tokens", value: String(config.llm.maxTokens) },
-                ])}
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className={cn(
-                        "w-full py-3.5 px-6 rounded-xl border-none text-white text-base font-semibold cursor-pointer flex items-center justify-center gap-2 transition-colors duration-200",
-                        saving ? "bg-border cursor-not-allowed" : "bg-primary hover:bg-[var(--accent-hover)]"
-                    )}
-                >
-                    <Save size={18} />
-                    {saving ? tc("saving") : tc("saveChanges")}
-                </button>
-            </div>
-        );
-    }
-
-    // ── Render ─────────────────────────────────────────────────
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <div className="text-center">
-                    <Bot size={40} className="text-primary mb-3" />
-                    <div className="text-[var(--text-secondary)] text-sm">Loading agent configuration...</div>
-                </div>
-            </div>
-        );
-    }
-
-    const stepRenderers = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4, renderStep5, renderStep6];
-
+  if (loading) {
     return (
-        <div>
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                    <Bot size={28} className="text-primary" /> {t('title')}
-                </h1>
-                <p className="text-[var(--text-secondary)] mt-1 text-sm">
-                    Configure your conversational agent's behavior
-                </p>
-            </div>
-
-            {/* Mode toggle */}
-            <div className="flex gap-2 mb-6">
-                <button
-                    onClick={() => setMode("wizard")}
-                    className={cn(
-                        "flex-1 py-3.5 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all duration-200",
-                        mode === "wizard"
-                            ? "border-primary bg-[var(--accent-glow)] text-primary"
-                            : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
-                    )}
-                >
-                    <Sparkles size={16} /> Guided Wizard
-                </button>
-                <button
-                    onClick={() => setMode("prompt")}
-                    className={cn(
-                        "flex-1 py-3.5 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all duration-200",
-                        mode === "prompt"
-                            ? "border-primary bg-[var(--accent-glow)] text-primary"
-                            : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
-                    )}
-                >
-                    <Brain size={16} /> Custom Prompt
-                </button>
-            </div>
-
-            {mode === "prompt" ? (
-                /* ── Prompt mode ─────────────────────────── */
-                <>
-                    <div className={cn(cardCls, "mb-6")}>
-                        <h3 className="text-lg font-semibold mt-0 mb-2 flex items-center gap-2">
-                            <Brain size={20} className="text-primary" /> Custom System Prompt
-                        </h3>
-                        <p className="text-[var(--text-secondary)] text-[13px] mb-4">
-                            Write the complete prompt the AI model will receive as system instruction.
-                            This prompt replaces the entire wizard configuration.
-                        </p>
-                        <textarea
-                            value={customPrompt}
-                            onChange={e => setCustomPrompt(e.target.value)}
-                            placeholder={`You are Sofia Henao, a sales advisor at Gecko Extreme Adventure.\n\nYour personality:\n- Friendly and enthusiastic tone\n- Moderate emoji usage\n- Always respond in Colombian Spanish\n\nRules:\n1. Never make up prices\n2. If you can't resolve in 3 messages, offer to speak with a human\n3. Always confirm date and number of people before quoting\n\nSchedule: Monday to Friday 8am-6pm, Saturdays 8am-2pm (Colombia)`}
-                            className="w-full min-h-[400px] p-4 rounded-[10px] border border-border bg-[var(--bg-primary)] text-foreground text-sm leading-relaxed font-mono outline-none resize-y"
-                        />
-                        <div className="flex justify-between items-center mt-3">
-                            <span className="text-[var(--text-secondary)] text-xs">
-                                {customPrompt.length} characters
-                            </span>
-                            <button
-                                onClick={handleSave}
-                                disabled={saving || !customPrompt.trim()}
-                                className={cn(
-                                    "px-6 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5",
-                                    saving || !customPrompt.trim()
-                                        ? "bg-border cursor-not-allowed"
-                                        : "bg-primary"
-                                )}
-                            >
-                                <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
-                            </button>
-                        </div>
-                    </div>
-                </>
-            ) : (
-                /* ── Wizard mode ─────────────────────────── */
-                <>
-                    {/* Step indicator */}
-                    <div className="flex gap-1.5 mb-6 flex-wrap">
-                        {STEPS.map((s, i) => {
-                            const isActive = i === step;
-                            const isDone = i < step;
-                            return (
-                                <button
-                                    key={i}
-                                    onClick={() => setStep(i)}
-                                    className={cn(
-                                        "px-4 py-2 rounded-full border text-[13px] font-semibold cursor-pointer flex items-center gap-1.5 transition-all duration-200",
-                                        isActive
-                                            ? "border-primary bg-primary text-white"
-                                            : isDone
-                                                ? "border-border bg-[var(--accent-glow)] text-primary"
-                                                : "border-border bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
-                                    )}
-                                >
-                                    <s.icon size={14} />
-                                    {s.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Step content */}
-                    <div className="mb-6">
-                        {stepRenderers[step]()}
-                    </div>
-
-                    {/* Navigation */}
-                    <div className="flex justify-between gap-3">
-                        <button
-                            onClick={() => setStep(prev => prev - 1)}
-                            disabled={step === 0}
-                            className={cn(
-                                "px-5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-secondary)] text-sm font-semibold flex items-center gap-1.5",
-                                step === 0
-                                    ? "text-border cursor-not-allowed"
-                                    : "text-foreground cursor-pointer"
-                            )}
-                        >
-                            <ChevronLeft size={16} /> Previous
-                        </button>
-                        {step < 5 ? (
-                            <button
-                                onClick={() => setStep(prev => prev + 1)}
-                                className="px-5 py-2.5 rounded-[10px] border-none bg-primary text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 hover:bg-[var(--accent-hover)]"
-                            >
-                                Next <ChevronRight size={16} />
-                            </button>
-                        ) : (
-                            <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className={cn(
-                                    "px-5 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold flex items-center gap-1.5",
-                                    saving ? "bg-border cursor-not-allowed" : "bg-primary cursor-pointer"
-                                )}
-                            >
-                                <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
-                            </button>
-                        )}
-                    </div>
-                </>
-            )}
-
-            {/* Toast */}
-            {toast && (
-                <div
-                    className={cn(
-                        "fixed bottom-6 right-6 px-5 py-3 rounded-[10px] text-white text-sm font-semibold shadow-[0_4px_20px_rgba(0,0,0,0.3)] z-[9999] flex items-center gap-2 animate-in",
-                        toast.includes("Error") ? "bg-[var(--danger)]" : "bg-[var(--success)]"
-                    )}
-                >
-                    {toast.includes("Error") ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
-                    {toast}
-                </div>
-            )}
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center">
+          <Bot size={40} className="text-indigo-500 mx-auto mb-3" />
+          <div className="text-neutral-500 dark:text-neutral-400 text-sm">Loading agent configuration...</div>
         </div>
+      </div>
     );
+  }
+
+  // ── Render ──────────────────────────────────────────────────
+
+  return (
+    <div>
+      <PageHeader
+        icon={Bot}
+        title={t("title")}
+        subtitle="Configure your conversational agent's behavior"
+        action={
+          mode === "guided" ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className={cn(
+                "px-5 py-2.5 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
+                saving
+                  ? "bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed"
+                  : "bg-indigo-500 hover:bg-indigo-600"
+              )}
+            >
+              <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
+            </button>
+          ) : undefined
+        }
+      />
+
+      {/* Mode toggle */}
+      <div className="flex gap-2 mb-6">
+        <button
+          type="button"
+          onClick={() => setMode("guided")}
+          className={cn(
+            "flex-1 py-3 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all",
+            mode === "guided"
+              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400"
+          )}
+        >
+          <Sparkles size={16} /> Guided Setup
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("prompt")}
+          className={cn(
+            "flex-1 py-3 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all",
+            mode === "prompt"
+              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400"
+          )}
+        >
+          <Brain size={16} /> Custom Prompt
+        </button>
+      </div>
+
+      {mode === "prompt" ? (
+        <CustomPromptMode
+          customPrompt={customPrompt}
+          onChangePrompt={setCustomPrompt}
+          saving={saving}
+          onSave={handleSave}
+          saveLabel={tc("saveChanges")}
+          savingLabel={tc("saving")}
+        />
+      ) : (
+        <>
+          <AgentProfileCard
+            config={config}
+            toolCount={toolCount}
+            ruleCount={ruleCount}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ConfigCard
+              icon={User}
+              iconColor="text-indigo-500 bg-indigo-500/10"
+              title="Identity"
+              summary={identitySummary}
+              expanded={expandedSection === "identity"}
+              onToggle={() => toggleSection("identity")}
+            >
+              <IdentitySection config={config} onChange={updateConfig} />
+            </ConfigCard>
+
+            <ConfigCard
+              icon={Smile}
+              iconColor="text-violet-500 bg-violet-500/10"
+              title="Personality"
+              summary={personalitySummary}
+              expanded={expandedSection === "personality"}
+              onToggle={() => toggleSection("personality")}
+            >
+              <PersonalitySection config={config} onChange={updateConfig} />
+            </ConfigCard>
+
+            <ConfigCard
+              icon={Shield}
+              iconColor="text-rose-500 bg-rose-500/10"
+              title="Behavior"
+              summary={behaviorSummary}
+              expanded={expandedSection === "behavior"}
+              onToggle={() => toggleSection("behavior")}
+            >
+              <BehaviorSection config={config} onChange={updateConfig} />
+            </ConfigCard>
+
+            <ScheduleCard config={config} />
+
+            <ConfigCard
+              icon={Cpu}
+              iconColor="text-cyan-500 bg-cyan-500/10"
+              title="AI Model"
+              summary={aiModelSummary}
+              expanded={expandedSection === "ai-model"}
+              onToggle={() => toggleSection("ai-model")}
+            >
+              <AIModelSection config={config} onChange={updateConfig} />
+            </ConfigCard>
+
+            <ConfigCard
+              icon={Wrench}
+              iconColor="text-amber-500 bg-amber-500/10"
+              title="Capabilities"
+              summary={capabilitiesSummary}
+              expanded={expandedSection === "capabilities"}
+              onToggle={() => toggleSection("capabilities")}
+            >
+              <CapabilitiesSection
+                config={config}
+                onChange={updateConfig}
+                apptReadiness={apptReadiness}
+              />
+            </ConfigCard>
+          </div>
+        </>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className={cn(
+            "fixed bottom-6 right-6 px-5 py-3 rounded-lg text-white text-sm font-semibold shadow-lg z-[9999] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2",
+            toast.includes("Error") || toast.includes("error") ? "bg-red-500" : "bg-emerald-500"
+          )}
+        >
+          {toast.includes("Error") || toast.includes("error") ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+          {toast}
+        </div>
+      )}
+    </div>
+  );
 }

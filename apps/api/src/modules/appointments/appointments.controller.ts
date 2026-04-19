@@ -169,10 +169,12 @@ export class AppointmentsController {
     @ApiOperation({ summary: 'Save availability slots for a user' })
     async saveAvailability(
         @Param('tenantId') tenantId: string,
-        @Body() body: { userId: string; slots: { dayOfWeek: number; startTime: string; endTime: string; isActive?: boolean }[] },
+        @Body() body: { userId?: string; slots: { dayOfWeek: number; startTime: string; endTime: string; isActive?: boolean }[] },
         @CurrentUser() user: any,
     ) {
-        const data = await this.service.saveAvailability(user.schemaName, body.userId, body.slots);
+        // Use current user's ID if no userId specified (e.g., tenant admin configuring global schedule)
+        const userId = body.userId || user.sub || user.id;
+        const data = await this.service.saveAvailability(user.schemaName, userId, body.slots);
         return { success: true, data };
     }
 

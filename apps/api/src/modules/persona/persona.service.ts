@@ -192,6 +192,21 @@ export class PersonaService {
     }
 
     /**
+     * Deep merge two config objects (template overrides default).
+     */
+    private deepMergeConfig(target: any, source: any): any {
+        const output = { ...target };
+        for (const key of Object.keys(source)) {
+            if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) && target[key]) {
+                output[key] = this.deepMergeConfig(target[key], source[key]);
+            } else if (source[key] !== undefined) {
+                output[key] = source[key];
+            }
+        }
+        return output;
+    }
+
+    /**
      * Build a sensible default persona for tenants that haven't configured one yet.
      * Uses the tenant name from the DB if available.
      */
@@ -456,12 +471,20 @@ export class PersonaService {
             }
         }
 
+        // Merge template config with default persona so all required fields exist
+        const defaultBase = this.buildDefaultPersona(tenantId);
+        const mergedConfig = this.deepMergeConfig(defaultBase, data.configJson || {});
+        // Override persona name/role with the agent name
+        if (data.name && mergedConfig.persona) {
+            mergedConfig.persona.name = mergedConfig.persona.name || data.name;
+        }
+
         const rows = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schemaName}".agent_personas (name, template_id, config_json, channels, schedule_mode, is_default, created_by)
              VALUES ($1, $2, $3::jsonb, $4::text[], $5, $6, $7) RETURNING *`,
             data.name,
             data.templateId || null,
-            JSON.stringify(data.configJson),
+            JSON.stringify(mergedConfig),
             data.channels || [],
             data.scheduleMode || '24_7',
             data.isDefault || false,
@@ -799,7 +822,7 @@ export class PersonaService {
                  VALUES ($1, $2, $3::jsonb, true, true, $4::text[], '24_7', $5)`,
                 template.name,
                 template.id,
-                JSON.stringify(template.config_json),
+                JSON.stringify(this.deepMergeConfig(this.buildDefaultPersona(tenantId), template.config_json)),
                 ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
                 createdBy || 'onboarding',
             );

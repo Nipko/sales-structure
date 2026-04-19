@@ -141,17 +141,27 @@ export default function AgentListPage() {
       const res = await api.createAgent(activeTenantId, {
         name: template.name,
         templateId: template.id,
-        configJson: template.config_json,
+        configJson: template.config_json || {},
+        channels: agents.length === 0 ? ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'] : [],
         isDefault: agents.length === 0,
       });
-      if (res?.success && res.data?.id) {
-        setShowTemplatePicker(false);
-        router.push(`/admin/agent/${res.data.id}`);
+      if (res?.success && res.data) {
+        const newId = res.data.id || res.data[0]?.id;
+        if (newId) {
+          setShowTemplatePicker(false);
+          router.push(`/admin/agent/${newId}`);
+        } else {
+          // Agent created but no ID returned — reload list
+          setShowTemplatePicker(false);
+          loadData();
+          setToast({ message: t("agentCreated") || "Agent created", type: "success" });
+        }
       } else {
-        setToast({ message: (res as any)?.error || t("errorCreatingAgent"), type: "error" });
+        setToast({ message: (res as any)?.error || (res as any)?.message || t("errorCreatingAgent"), type: "error" });
       }
-    } catch {
-      setToast({ message: t("errorCreatingAgent"), type: "error" });
+    } catch (err: any) {
+      console.error("Create agent error:", err);
+      setToast({ message: err?.message || t("errorCreatingAgent"), type: "error" });
     }
   }
 
@@ -235,7 +245,16 @@ export default function AgentListPage() {
 
   // ── Setup banner check ─────────────────────────────────────
 
-  const needsSetup = agents.length === 0 || agents.every(a => !a.name && !a.role);
+  const TEMPLATE_NAMES = [
+    "Sales Advisor", "Support Agent", "FAQ Assistant",
+    "Scheduling Assistant", "Qualification Assistant", "Blank Agent",
+    "Default Agent",
+  ];
+  const needsPersonalization = agents.length > 0 && agents.every(a => {
+    const name = a.name || a.config_json?.persona?.name || "";
+    return TEMPLATE_NAMES.includes(name) || name === "";
+  });
+  const needsSetup = agents.length === 0 || needsPersonalization;
 
   // ── Schedule summary ───────────────────────────────────────
 
@@ -712,7 +731,21 @@ interface TemplateCardProps {
   t: ReturnType<typeof useTranslations>;
 }
 
+// Map built-in template IDs to i18n keys
+const TPL_I18N: Record<string, { name: string; desc: string }> = {
+  tpl_sales: { name: "tplSalesName", desc: "tplSalesDesc" },
+  tpl_support: { name: "tplSupportName", desc: "tplSupportDesc" },
+  tpl_faq: { name: "tplFaqName", desc: "tplFaqDesc" },
+  tpl_appointments: { name: "tplAppointmentsName", desc: "tplAppointmentsDesc" },
+  tpl_lead_qualifier: { name: "tplLeadQualifierName", desc: "tplLeadQualifierDesc" },
+  tpl_blank: { name: "tplBlankName", desc: "tplBlankDesc" },
+};
+
 function TemplateCard({ template, onSelect, onDelete, t }: TemplateCardProps) {
+  const i18nKeys = template.is_builtin ? TPL_I18N[template.id] : null;
+  const displayName = i18nKeys ? t(i18nKeys.name) : template.name;
+  const displayDesc = i18nKeys ? t(i18nKeys.desc) : template.description;
+
   return (
     <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-4 hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors">
       <div className="flex items-start justify-between mb-2">
@@ -731,11 +764,11 @@ function TemplateCard({ template, onSelect, onDelete, t }: TemplateCardProps) {
         )}
       </div>
       <h5 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-0.5">
-        {template.name}
+        {displayName}
       </h5>
-      {template.description && (
+      {displayDesc && (
         <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 line-clamp-2">
-          {template.description}
+          {displayDesc}
         </p>
       )}
       <button

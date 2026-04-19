@@ -600,14 +600,18 @@ export class PersonaService {
      * List templates (built-in + user-saved)
      */
     async listTemplates(tenantId: string): Promise<any[]> {
-        const schemaName = await this.tenantsService.getSchemaName(tenantId);
+        const builtins = this.getBuiltinTemplates();
+        let userTemplates: any[] = [];
         try {
-            return await this.prisma.$queryRawUnsafe(
-                `SELECT * FROM "${schemaName}".agent_templates ORDER BY is_builtin DESC, created_at ASC`,
+            await this.ensureTablesForTenant(tenantId);
+            const schemaName = await this.tenantsService.getSchemaName(tenantId);
+            userTemplates = await this.prisma.$queryRawUnsafe(
+                `SELECT * FROM "${schemaName}".agent_templates WHERE is_builtin = false ORDER BY created_at ASC`,
             ) as any[];
         } catch {
-            return this.getBuiltinTemplates();
+            // Table doesn't exist yet — just return builtins
         }
+        return [...builtins, ...userTemplates];
     }
 
     /**

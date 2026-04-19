@@ -139,10 +139,24 @@ export default function AgentEditorPage() {
       api.getAvailability(activeTenantId).catch(() => null),
     ]).then(([svcRes, availRes]: any[]) => {
       if (cancelled) return;
-      const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false && s.is_active !== false).length : 0;
-      const slotsData = availRes?.data;
-      const slots = Array.isArray(slotsData) ? slotsData.filter((s: any) => s.is_active !== false).length
-                  : Array.isArray(slotsData?.slots) ? slotsData.slots.length : 0;
+      // Services: count all returned (API already filters by is_active in query)
+      let services = 0;
+      if (Array.isArray(svcRes?.data)) services = svcRes.data.length;
+      else if (svcRes?.data?.services && Array.isArray(svcRes.data.services)) services = svcRes.data.services.length;
+
+      // Availability: count all returned slots
+      let slots = 0;
+      if (Array.isArray(availRes?.data)) slots = availRes.data.length;
+      else if (Array.isArray(availRes?.data?.slots)) slots = availRes.data.slots.length;
+      else if (typeof availRes?.data === 'object' && availRes?.data) {
+        // Could be { [userId]: slots[] } format
+        const vals = Object.values(availRes.data);
+        if (vals.length > 0 && Array.isArray(vals[0])) {
+          slots = vals.reduce((sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+        }
+      }
+
+      console.log('[Agent] Readiness:', { svcResponse: svcRes, availResponse: availRes, services, slots });
       setApptReadiness({ services, slots, loaded: true });
     });
     return () => { cancelled = true; };

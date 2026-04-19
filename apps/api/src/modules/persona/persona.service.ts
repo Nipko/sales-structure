@@ -138,8 +138,9 @@ export class PersonaService {
             prompt += '\n';
         }
 
-        // Required fields
-        if (behavior.requiredFields) {
+        // Required fields — skip when appointments tool is active (tool has its own flow)
+        const appointmentsEnabled = (config as any)?.tools?.appointments?.enabled === true;
+        if (behavior.requiredFields && Object.keys(behavior.requiredFields).length > 0 && !appointmentsEnabled) {
             prompt += `## Información que DEBES recopilar\n`;
             for (const [context, fields] of Object.entries(behavior.requiredFields)) {
                 prompt += `### Para ${context}:\n`;

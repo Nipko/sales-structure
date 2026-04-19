@@ -208,6 +208,38 @@ export class CalendarIntegrationService {
             .map((i: any) => ({ start: i.start?.dateTime || '', end: i.end?.dateTime || '' }));
     }
 
+    /**
+     * Get all busy slots for a given date across all active calendar integrations.
+     * Optionally filter by staffId (user_id). Used by AIToolExecutorService
+     * to exclude Google/Microsoft calendar conflicts from availability.
+     */
+    async getFreeBusyForDate(schemaName: string, date: string, staffId?: string): Promise<FreeBusySlot[]> {
+        let sql = `SELECT user_id FROM calendar_integrations WHERE is_active = true`;
+        const params: any[] = [];
+        if (staffId) {
+            sql += ` AND user_id = $1::uuid`;
+            params.push(staffId);
+        }
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
+        if (!rows?.length) return [];
+
+        const timeMin = `${date}T00:00:00Z`;
+        const timeMax = `${date}T23:59:59Z`;
+        const allBusy: FreeBusySlot[] = [];
+
+        for (const row of rows) {
+            try {
+                const busy = await this.getFreeBusy(schemaName, row.user_id, timeMin, timeMax);
+                allBusy.push(...busy);
+            } catch (e: any) {
+                this.logger.warn(`FreeBusy check failed for user ${row.user_id}: ${e.message}`);
+            }
+        }
+
+        return allBusy;
+    }
+
     // ── List external calendar events ──────────────────────────────
 
     async listExternalEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {

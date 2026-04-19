@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -9,7 +10,10 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AIToolExecutorService {
     private readonly logger = new Logger(AIToolExecutorService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private calendarIntegration: CalendarIntegrationService,
+    ) { }
 
     /**
      * Execute a single tool call and return the result.
@@ -123,6 +127,14 @@ export class AIToolExecutorService {
             date,
         );
 
+        // Check Google/Microsoft Calendar busy times
+        let googleBusy: { start: string; end: string }[] = [];
+        try {
+            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, staffId);
+        } catch {
+            // Calendar not connected or table doesn't exist — continue without
+        }
+
         // Generate available time slots
         const availableSlots: any[] = [];
 
@@ -149,7 +161,14 @@ export class AIToolExecutorService {
                     return slotStart < aptEnd && slotEnd > aptStart;
                 });
 
-                if (!hasConflict) {
+                // Check conflicts with external calendar (Google/Microsoft) busy times
+                const calendarConflict = googleBusy.some(busy => {
+                    const busyStart = new Date(busy.start);
+                    const busyEnd = new Date(busy.end);
+                    return slotStart < busyEnd && slotEnd > busyStart;
+                });
+
+                if (!hasConflict && !calendarConflict) {
                     availableSlots.push({
                         time: timeStr,
                         endTime: endTimeStr,

@@ -437,13 +437,12 @@ export class ConversationsService {
         this.logger.log(`Routing Factors - Complexity: ${complexity}, Sentiment: ${sentiment}, Stage: ${stageScore}`);
 
         // 2. Build Prompt (with optional RAG context)
-        let systemPrompt = this.personaService.buildSystemPrompt(config);
-
-        // 2a. Inject temporal context so the LLM has a real "today" reference.
-        // Without this the model anchors on its training cutoff and invents
-        // dates like 2023-10-06 when the customer mentions "hoy" or asks for
-        // the next available slot.
-        systemPrompt += '\n' + (await this.buildTemporalContext(tenantId));
+        // 2a. Inject temporal context FIRST so the LLM sees the current date
+        // before any persona instructions. Without this the model anchors on
+        // its training cutoff and invents dates like 2023-10-06 when the
+        // customer mentions "hoy" or asks for the next available slot.
+        const temporalContext = await this.buildTemporalContext(tenantId);
+        let systemPrompt = temporalContext + '\n\n' + this.personaService.buildSystemPrompt(config);
 
         // 2b. Inject AI tools prompt if appointments tool is enabled
         const toolsConfig = (config as any)?.tools?.appointments;
@@ -697,10 +696,10 @@ export class ConversationsService {
         const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
         const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(now);
 
-        return `## Current context
-- Today's date: ${date} (${weekday})
-- Current local time: ${time}
-- Tenant timezone: ${tz}
-When the customer references "today" / "hoy", "tomorrow" / "mañana", days of the week, or any relative date, compute it from the values above. Never use any other reference date.`;
+        return `## CURRENT DATE AND TIME (USE THIS AS GROUND TRUTH)
+- Today: ${date} (${weekday})
+- Current time: ${time} (${tz})
+- IMPORTANT: When a customer says "next Monday", "tomorrow", "this week", etc., calculate the EXACT date relative to today's date above. Never guess or use dates from your training data.
+`;
     }
 }

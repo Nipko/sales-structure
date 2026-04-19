@@ -157,7 +157,7 @@ export class ConversationsService {
         this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
-        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config);
+        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
         // Track AI response event
@@ -422,7 +422,7 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
-    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig): Promise<string> {
+    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any): Promise<string> {
         if (msg.content.type !== 'text') {
             return `He recibido tu mensaje multimedia, pero por ahora solo puedo procesar texto. ¿Puedes describirlo?`;
         }
@@ -452,6 +452,18 @@ export class ConversationsService {
         if (toolsEnabled) {
             systemPrompt += '\n' + APPOINTMENT_SYSTEM_PROMPT;
             tools = [...APPOINTMENT_TOOLS];
+
+            // Inject known customer profile so AI doesn't re-ask for data we already have
+            const profileLines: string[] = ['\n## Customer Profile (data you already have — DO NOT ask for these again):'];
+            if (contact?.name) profileLines.push(`- Name: ${contact.name}`);
+            if (contact?.email) profileLines.push(`- Email: ${contact.email}`);
+            if (contact?.phone) profileLines.push(`- Phone: ${contact.phone}`);
+            if (lead?.first_name || lead?.firstName) profileLines.push(`- First name: ${lead.first_name || lead.firstName}`);
+            if (profileLines.length > 1) {
+                systemPrompt += profileLines.join('\n');
+            } else {
+                systemPrompt += '\n## Customer Profile: NEW CUSTOMER (no prior data — collect name and email)';
+            }
 
             // Inject tool context from previous turns (persisted in conversation metadata)
             const prevContext = (conversation.metadata as any)?.toolContext;

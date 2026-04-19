@@ -204,6 +204,18 @@ export const api = {
     savePersonaConfig: (tenantId: string, config: any) =>
         apiPut(`/persona/${tenantId}`, config),
 
+    // --- Multi-Agent ---
+    listAgents: (tenantId: string) => apiGet(`/persona/${tenantId}/agents`),
+    getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),
+    createAgent: (tenantId: string, data: any) => apiPost(`/persona/${tenantId}/agents`, data),
+    updateAgent: (tenantId: string, agentId: string, data: any) => apiPut(`/persona/${tenantId}/agents/${agentId}`, data),
+    deleteAgent: (tenantId: string, agentId: string) => apiDelete(`/persona/${tenantId}/agents/${agentId}`),
+    duplicateAgent: (tenantId: string, agentId: string) => apiPost(`/persona/${tenantId}/agents/${agentId}/duplicate`, {}),
+    saveAgentAsTemplate: (tenantId: string, agentId: string, name: string, description: string) => apiPost(`/persona/${tenantId}/agents/${agentId}/save-template`, { name, description }),
+    listAgentTemplates: (tenantId: string) => apiGet(`/persona/${tenantId}/agent-templates`),
+    deleteAgentTemplate: (tenantId: string, templateId: string) => apiDelete(`/persona/${tenantId}/agent-templates/${templateId}`),
+    getPlanFeatures: (tenantId: string) => apiGet(`/persona/${tenantId}/plan-features`),
+
     // --- Agent Availability ---
     updateAgentStatus: (userId: string, status: string) =>
         apiPut(`/agent-console/status/${userId}`, { status }),

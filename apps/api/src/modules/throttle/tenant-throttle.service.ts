@@ -30,6 +30,13 @@ const PLAN_LIMITS: Record<string, PlanLimits> = {
     enterprise: { automation: 5000, outbound: 20000, broadcast: 50000,  priority: 1, maxPendingJobs: 1000 },
 };
 
+const PLAN_FEATURES: Record<string, { maxAgents: number; templates: boolean; customPrompt: boolean }> = {
+    starter:    { maxAgents: 1,  templates: false, customPrompt: false },
+    pro:        { maxAgents: 3,  templates: true,  customPrompt: true },
+    enterprise: { maxAgents: 10, templates: true,  customPrompt: true },
+    custom:     { maxAgents: 999, templates: true, customPrompt: true },
+};
+
 const DEFAULT_PLAN = 'starter';
 const WINDOW_SECONDS = 3600; // 1 hour
 const PLAN_CACHE_TTL = 300;  // 5 minutes
@@ -93,6 +100,14 @@ export class TenantThrottleService {
         const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
         const current = Number(await this.redis.get(key) || 0);
         return { current, limit: limits[action], plan };
+    }
+
+    /**
+     * Get plan feature limits (max agents, templates, custom prompt)
+     */
+    async getPlanFeatures(tenantId: string): Promise<typeof PLAN_FEATURES[string]> {
+        const plan = await this.getTenantPlan(tenantId);
+        return PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
     }
 
     /**

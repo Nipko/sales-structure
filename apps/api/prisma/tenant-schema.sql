@@ -1270,3 +1270,39 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."dashboard_preferences" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "dp_user_idx" ON "{{SCHEMA_NAME}}"."dashboard_preferences" ("user_id");
+
+-- ============================================
+-- PARALLLY — Multi-Agent System
+-- ============================================
+
+-- ---- Agent Personas (multi-agent per tenant) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_personas" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "name" VARCHAR(255) NOT NULL,
+    "template_id" VARCHAR(100),
+    "is_active" BOOLEAN DEFAULT true,
+    "is_default" BOOLEAN DEFAULT false,
+    "config_json" JSONB NOT NULL,
+    "channels" TEXT[] DEFAULT '{}',
+    "schedule_mode" VARCHAR(20) DEFAULT '24_7',
+    "version" INTEGER DEFAULT 1,
+    "created_by" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "idx_agent_personas_active" ON "{{SCHEMA_NAME}}"."agent_personas" ("is_active");
+CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels" ON "{{SCHEMA_NAME}}"."agent_personas" USING GIN ("channels");
+CREATE INDEX IF NOT EXISTS "idx_agent_personas_default" ON "{{SCHEMA_NAME}}"."agent_personas" ("is_default") WHERE "is_default" = true;
+
+-- ---- Agent Templates (reusable persona configs) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_templates" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "icon" VARCHAR(50) DEFAULT 'bot',
+    "config_json" JSONB NOT NULL,
+    "is_builtin" BOOLEAN DEFAULT false,
+    "created_by" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW()
+);

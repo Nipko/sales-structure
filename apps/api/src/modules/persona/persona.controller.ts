@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Req, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Req, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
@@ -125,5 +125,79 @@ export class PersonaController {
         const config = await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
         this.logger.log(`Persona config saved for tenant ${tenantId} by ${createdBy}`);
         return { success: true, data: config };
+    }
+
+    // ── Multi-Agent CRUD ──────────────────────────────────────
+
+    @Get(':tenantId/agents')
+    @ApiOperation({ summary: 'List all agent personas for a tenant' })
+    async listAgents(@Param('tenantId') tenantId: string) {
+        const agents = await this.personaService.listAgents(tenantId);
+        return { success: true, data: agents };
+    }
+
+    @Get(':tenantId/agent-templates')
+    @ApiOperation({ summary: 'List agent templates (built-in + user-saved)' })
+    async listTemplates(@Param('tenantId') tenantId: string) {
+        const templates = await this.personaService.listTemplates(tenantId);
+        return { success: true, data: templates };
+    }
+
+    @Delete(':tenantId/agent-templates/:templateId')
+    @ApiOperation({ summary: 'Delete a user-created agent template' })
+    async deleteTemplate(@Param('tenantId') tenantId: string, @Param('templateId') templateId: string) {
+        await this.personaService.deleteTemplate(tenantId, templateId);
+        return { success: true };
+    }
+
+    @Get(':tenantId/agents/:agentId')
+    @ApiOperation({ summary: 'Get a single agent persona by ID' })
+    async getAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string) {
+        const agent = await this.personaService.getAgent(tenantId, agentId);
+        if (!agent) return { success: false, error: 'Agent not found' };
+        return { success: true, data: agent };
+    }
+
+    @Post(':tenantId/agents')
+    @ApiOperation({ summary: 'Create a new agent persona' })
+    async createAgent(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
+        const agent = await this.personaService.createAgent(tenantId, {
+            name: body.name,
+            templateId: body.templateId,
+            configJson: body.configJson,
+            channels: body.channels,
+            scheduleMode: body.scheduleMode,
+            isDefault: body.isDefault,
+            createdBy: req.user?.email || 'system',
+        });
+        return { success: true, data: agent };
+    }
+
+    @Put(':tenantId/agents/:agentId')
+    @ApiOperation({ summary: 'Update an existing agent persona' })
+    async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+        const agent = await this.personaService.updateAgent(tenantId, agentId, body);
+        return { success: true, data: agent };
+    }
+
+    @Delete(':tenantId/agents/:agentId')
+    @ApiOperation({ summary: 'Soft-delete an agent persona (set inactive)' })
+    async deleteAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string) {
+        await this.personaService.deleteAgent(tenantId, agentId);
+        return { success: true };
+    }
+
+    @Post(':tenantId/agents/:agentId/duplicate')
+    @ApiOperation({ summary: 'Duplicate an agent persona' })
+    async duplicateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Req() req: any) {
+        const agent = await this.personaService.duplicateAgent(tenantId, agentId, req.user?.email);
+        return { success: true, data: agent };
+    }
+
+    @Post(':tenantId/agents/:agentId/save-template')
+    @ApiOperation({ summary: 'Save an agent config as a reusable template' })
+    async saveAsTemplate(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any, @Req() req: any) {
+        const template = await this.personaService.saveAsTemplate(tenantId, agentId, body.name, body.description, req.user?.email);
+        return { success: true, data: template };
     }
 }

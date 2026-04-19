@@ -87,7 +87,7 @@ export class ConversationsService {
         );
 
         // 2. Load Persona & Check Business Hours
-        const config = await this.personaService.getActivePersona(tenantId);
+        const config = await this.personaService.getPersonaForChannel(tenantId, channelType);
         this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
 
         if (!config) {

@@ -2,99 +2,105 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  Bot, User, Smile, Shield, Cpu, Wrench, Brain, Sparkles,
-  Save, CheckCircle, AlertTriangle,
+  Bot, Plus, Copy, MoreVertical, Star, Trash2,
+  MessageSquare, Instagram, Facebook, Send, Phone,
+  Clock, Shield, Wrench, BookmarkPlus, CheckCircle, AlertTriangle, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { SetupBanner } from "@/components/SetupBanner";
+import { Badge } from "@/components/ui/badge";
 
-import type { PersonaConfig } from "./_types";
-import { defaultConfig } from "./_types";
-import { AgentProfileCard } from "./_components/AgentProfileCard";
-import { ConfigCard } from "./_components/ConfigCard";
-import { IdentitySection } from "./_components/IdentitySection";
-import { PersonalitySection } from "./_components/PersonalitySection";
-import { BehaviorSection } from "./_components/BehaviorSection";
-import { ScheduleCard } from "./_components/ScheduleCard";
-import { AIModelSection } from "./_components/AIModelSection";
-import { CapabilitiesSection } from "./_components/CapabilitiesSection";
-import { CustomPromptMode } from "./_components/CustomPromptMode";
+// ── Channel metadata ────────────────────────────────────────
 
-// ── Helpers ──────────────────────────────────────────────────
+const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  whatsapp:  { label: "WhatsApp",  icon: MessageSquare, color: "text-emerald-500" },
+  instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
+  messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
+  telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
+  sms:       { label: "SMS",       icon: Phone,         color: "text-violet-500" },
+};
 
-function deepMerge(target: any, source: any): any {
-  const output = { ...target };
-  for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key]) && target[key]) {
-      output[key] = deepMerge(target[key], source[key]);
-    } else if (source[key] !== undefined) {
-      output[key] = source[key];
-    }
-  }
-  return output;
+// ── Types ───────────────────────────────────────────────────
+
+interface Agent {
+  id: string;
+  name: string;
+  role?: string;
+  is_active: boolean;
+  is_default: boolean;
+  channels: string[];
+  schedule_mode?: string;
+  config_json?: any;
+  rule_count?: number;
+  tool_count?: number;
 }
 
-// ── Component ────────────────────────────────────────────────
+interface PlanFeatures {
+  maxAgents: number;
+  templates: boolean;
+  customPrompt: boolean;
+}
 
-export default function AgentConfigPage() {
+interface AgentTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  config_json?: any;
+  is_builtin: boolean;
+}
+
+const STARTER_LIMITS: PlanFeatures = { maxAgents: 1, templates: false, customPrompt: false };
+
+// ── Component ───────────────────────────────────────────────
+
+export default function AgentListPage() {
   const t = useTranslations("agent");
   const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
+  const router = useRouter();
 
-  const [mode, setMode] = useState<"guided" | "prompt">("guided");
-  const [config, setConfig] = useState<PersonaConfig>(structuredClone(defaultConfig));
-  const [customPrompt, setCustomPrompt] = useState("");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(STARTER_LIMITS);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [expandedSection, setExpandedSection] = useState<string | null>("identity");
-  const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({
-    services: 0,
-    slots: 0,
-    loaded: false,
-  });
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
 
-  // ── Load existing config ────────────────────────────────────
+  // ── Load agents + plan ─────────────────────────────────────
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!activeTenantId) return;
     setLoading(true);
-    api.getPersonaConfig(activeTenantId)
-      .then((res: any) => {
-        if (res?.success && res.data) {
-          const data = res.data;
-          setConfig(deepMerge(structuredClone(defaultConfig), data));
-          if (data._customPrompt) {
-            setCustomPrompt(data._customPrompt);
-            setMode("prompt");
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    try {
+      const [agentsRes, planRes] = await Promise.all([
+        api.listAgents(activeTenantId),
+        api.getPlanFeatures(activeTenantId).catch(() => null),
+      ]);
+      if (agentsRes?.success && Array.isArray(agentsRes.data)) {
+        setAgents(agentsRes.data);
+      }
+      if (planRes?.success && planRes.data) {
+        setPlanFeatures(planRes.data);
+      }
+    } catch {
+      // fallback: empty state
+    } finally {
+      setLoading(false);
+    }
   }, [activeTenantId]);
 
-  // ── Load appointments readiness ─────────────────────────────
+  useEffect(() => { loadData(); }, [loadData]);
 
-  useEffect(() => {
-    if (!activeTenantId) return;
-    let cancelled = false;
-    Promise.all([
-      api.getServices(activeTenantId).catch(() => null),
-      api.getAvailability(activeTenantId).catch(() => null),
-    ]).then(([svcRes, availRes]: any[]) => {
-      if (cancelled) return;
-      const services = Array.isArray(svcRes?.data) ? svcRes.data.filter((s: any) => s.isActive !== false).length : 0;
-      const slots = Array.isArray(availRes?.data?.slots) ? availRes.data.slots.length : 0;
-      setApptReadiness({ services, slots, loaded: true });
-    });
-    return () => { cancelled = true; };
-  }, [activeTenantId]);
-
-  // ── Toast auto-dismiss ──────────────────────────────────────
+  // ── Toast auto-dismiss ─────────────────────────────────────
 
   useEffect(() => {
     if (!toast) return;
@@ -102,217 +108,328 @@ export default function AgentConfigPage() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // ── Update helper (merges partial updates into config) ──────
+  // ── Actions ────────────────────────────────────────────────
 
-  const updateConfig = useCallback((updates: Partial<PersonaConfig>) => {
-    setConfig(prev => deepMerge(prev, updates));
-  }, []);
+  function handleNewAgent() {
+    if (agents.length >= planFeatures.maxAgents) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    openTemplatePicker();
+  }
 
-  // ── Toggle section ──────────────────────────────────────────
-
-  const toggleSection = useCallback((section: string) => {
-    setExpandedSection(prev => (prev === section ? null : section));
-  }, []);
-
-  // ── Save ────────────────────────────────────────────────────
-
-  async function handleSave() {
-    if (!activeTenantId) return;
-    setSaving(true);
-    try {
-      let payload: any;
-      if (mode === "prompt") {
-        payload = { ...config, _customPrompt: customPrompt, _mode: "prompt" };
-      } else {
-        payload = { ...config, _customPrompt: undefined, _mode: "wizard" };
+  async function openTemplatePicker() {
+    setShowTemplatePicker(true);
+    if (templates.length === 0 && activeTenantId) {
+      setTemplatesLoading(true);
+      try {
+        const res = await api.listAgentTemplates(activeTenantId);
+        if (res?.success && Array.isArray(res.data)) {
+          setTemplates(res.data);
+        }
+      } catch {
+        // no templates available
+      } finally {
+        setTemplatesLoading(false);
       }
-      const res = await api.savePersonaConfig(activeTenantId, payload);
-      if (res?.success) {
-        setToast("Configuration saved successfully");
-      } else {
-        setToast((res as any)?.error || tc("errorSaving"));
-      }
-    } catch {
-      setToast(tc("errorSaving"));
-    } finally {
-      setSaving(false);
     }
   }
 
-  // ── Computed values ─────────────────────────────────────────
+  async function handleCreateFromTemplate(template: AgentTemplate) {
+    if (!activeTenantId) return;
+    try {
+      const res = await api.createAgent(activeTenantId, {
+        name: template.name,
+        templateId: template.id,
+        configJson: template.config_json,
+        isDefault: agents.length === 0,
+      });
+      if (res?.success && res.data?.id) {
+        setShowTemplatePicker(false);
+        router.push(`/admin/agent/${res.data.id}`);
+      } else {
+        setToast((res as any)?.error || "Error creating agent");
+      }
+    } catch {
+      setToast("Error creating agent");
+    }
+  }
 
-  const ruleCount = config.behavior.rules.filter(Boolean).length
-    + config.behavior.forbiddenTopics.filter(Boolean).length
-    + config.behavior.handoffTriggers.filter(Boolean).length;
+  async function handleDuplicate(agentId: string) {
+    if (!activeTenantId) return;
+    if (agents.length >= planFeatures.maxAgents) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    try {
+      const res = await api.duplicateAgent(activeTenantId, agentId);
+      if (res?.success) {
+        setToast("Agent duplicated");
+        loadData();
+      } else {
+        setToast((res as any)?.error || "Error duplicating agent");
+      }
+    } catch {
+      setToast("Error duplicating agent");
+    }
+    setMenuOpen(null);
+  }
 
-  const toolCount = config.tools?.appointments?.enabled ? 1 : 0;
+  async function handleSetDefault(agentId: string) {
+    if (!activeTenantId) return;
+    try {
+      const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true });
+      if (res?.success) {
+        setToast("Default agent updated");
+        loadData();
+      }
+    } catch {
+      setToast("Error updating agent");
+    }
+    setMenuOpen(null);
+  }
 
-  // ── Summaries for collapsed cards ───────────────────────────
+  async function handleDelete(agentId: string) {
+    if (!activeTenantId) return;
+    const agent = agents.find(a => a.id === agentId);
+    if (agent?.is_default) {
+      setToast("Cannot delete the default agent");
+      setMenuOpen(null);
+      return;
+    }
+    try {
+      const res = await api.deleteAgent(activeTenantId, agentId);
+      if (res?.success) {
+        setToast("Agent deleted");
+        loadData();
+      } else {
+        setToast((res as any)?.error || "Error deleting agent");
+      }
+    } catch {
+      setToast("Error deleting agent");
+    }
+    setMenuOpen(null);
+  }
 
-  const identitySummary = config.persona.name
-    ? `${config.persona.name} - ${config.persona.role || "No role"}`
-    : "Name, role, greeting, language...";
+  async function handleSaveAsTemplate(agentId: string) {
+    if (!activeTenantId) return;
+    const agent = agents.find(a => a.id === agentId);
+    try {
+      const res = await api.saveAgentAsTemplate(
+        activeTenantId,
+        agentId,
+        `${agent?.name || "Agent"} Template`,
+        `Template based on ${agent?.name || "agent"}`
+      );
+      if (res?.success) {
+        setToast("Template saved");
+        setTemplates([]); // reset cache
+      } else {
+        setToast((res as any)?.error || "Error saving template");
+      }
+    } catch {
+      setToast("Error saving template");
+    }
+    setMenuOpen(null);
+  }
 
-  const personalitySummary = `${config.persona.personality.tone} tone, ${config.persona.personality.formality}`;
+  // ── Setup banner check ─────────────────────────────────────
 
-  const behaviorSummary = ruleCount > 0
-    ? `${config.behavior.rules.filter(Boolean).length} rules, ${config.behavior.forbiddenTopics.filter(Boolean).length} forbidden, ${config.behavior.handoffTriggers.filter(Boolean).length} triggers`
-    : "Rules, forbidden topics, handoff triggers...";
+  const needsSetup = agents.length === 0 || agents.every(a => !a.name && !a.role);
 
-  const aiModelSummary = `Temperature ${config.llm.temperature}, max ${config.llm.maxTokens} tokens`;
+  // ── Schedule summary ───────────────────────────────────────
 
-  const capabilitiesSummary = toolCount > 0
-    ? `${toolCount} tool${toolCount > 1 ? "s" : ""} active`
-    : "No tools enabled";
+  function getScheduleSummary(agent: Agent): string {
+    if (agent.schedule_mode === "24/7" || !agent.config_json?.hours?.schedule) {
+      return "24/7";
+    }
+    const schedule = agent.config_json.hours.schedule;
+    const activeDays = Object.values(schedule).filter((v: any) => v !== null).length;
+    if (activeDays === 7) {
+      const allSame = Object.values(schedule).every((v: any) => {
+        if (!v) return false;
+        const first = Object.values(schedule).find((f: any) => f !== null) as any;
+        return v && (v as any).start === first.start && (v as any).end === first.end;
+      });
+      if (allSame) {
+        const sample = Object.values(schedule).find((v: any) => v !== null) as any;
+        return `Daily ${sample.start}-${sample.end}`;
+      }
+    }
+    return `${activeDays} days/week`;
+  }
 
-  // ── Loading state ───────────────────────────────────────────
+  // ── Loading state ──────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
           <Bot size={40} className="text-indigo-500 mx-auto mb-3" />
-          <div className="text-neutral-500 dark:text-neutral-400 text-sm">Loading agent configuration...</div>
+          <div className="text-neutral-500 dark:text-neutral-400 text-sm">
+            {t("loading")}
+          </div>
         </div>
       </div>
     );
   }
 
-  // ── Render ──────────────────────────────────────────────────
+  // ── Empty state ────────────────────────────────────────────
+
+  if (agents.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          icon={Bot}
+          title={t("listTitle")}
+          subtitle={t("listSubtitle")}
+        />
+        <SetupBanner show onAction={handleNewAgent} />
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-4">
+            <Bot size={32} className="text-indigo-500" />
+          </div>
+          <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+            {t("noAgents")}
+          </h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 text-center max-w-md">
+            {t("noAgentsDesc")}
+          </p>
+          <button
+            type="button"
+            onClick={handleNewAgent}
+            className="px-5 py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
+          >
+            <Plus size={16} /> {t("createFirst")}
+          </button>
+        </div>
+
+        {/* Template picker modal */}
+        {showTemplatePicker && (
+          <TemplatePickerModal
+            templates={templates}
+            loading={templatesLoading}
+            onSelect={handleCreateFromTemplate}
+            onClose={() => setShowTemplatePicker(false)}
+            onDeleteTemplate={async (id) => {
+              if (!activeTenantId) return;
+              await api.deleteAgentTemplate(activeTenantId, id);
+              setTemplates(prev => prev.filter(t => t.id !== id));
+            }}
+            t={t}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────────────────
 
   return (
     <div>
       <PageHeader
         icon={Bot}
-        title={t("title")}
-        subtitle="Configure your conversational agent's behavior"
+        title={t("listTitle")}
+        subtitle={t("listSubtitle")}
         action={
-          mode === "guided" ? (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className={cn(
-                "px-5 py-2.5 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
-                saving
-                  ? "bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed"
-                  : "bg-indigo-500 hover:bg-indigo-600"
-              )}
-            >
-              <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
-            </button>
-          ) : undefined
+          <button
+            type="button"
+            onClick={handleNewAgent}
+            className="px-4 py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
+          >
+            <Plus size={16} /> {t("newAgent")}
+          </button>
         }
       />
 
-      {/* Mode toggle */}
-      <div className="flex gap-2 mb-6">
-        <button
-          type="button"
-          onClick={() => setMode("guided")}
-          className={cn(
-            "flex-1 py-3 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all",
-            mode === "guided"
-              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400"
-          )}
-        >
-          <Sparkles size={16} /> Guided Setup
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("prompt")}
-          className={cn(
-            "flex-1 py-3 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all",
-            mode === "prompt"
-              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400"
-          )}
-        >
-          <Brain size={16} /> Custom Prompt
-        </button>
+      <SetupBanner show={needsSetup} onAction={() => {
+        const first = agents[0];
+        if (first) router.push(`/admin/agent/${first.id}`);
+        else handleNewAgent();
+      }} />
+
+      {/* Agent count */}
+      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+        {agents.length} {t("of")} {planFeatures.maxAgents} {t("agentsCount")}
+      </p>
+
+      {/* Agent grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {agents.map(agent => (
+          <AgentCard
+            key={agent.id}
+            agent={agent}
+            scheduleSummary={getScheduleSummary(agent)}
+            menuOpen={menuOpen === agent.id}
+            onMenuToggle={() => setMenuOpen(prev => prev === agent.id ? null : agent.id)}
+            onEdit={() => router.push(`/admin/agent/${agent.id}`)}
+            onDuplicate={() => handleDuplicate(agent.id)}
+            onSetDefault={() => handleSetDefault(agent.id)}
+            onSaveAsTemplate={() => handleSaveAsTemplate(agent.id)}
+            onDelete={() => handleDelete(agent.id)}
+            t={t}
+          />
+        ))}
       </div>
 
-      {mode === "prompt" ? (
-        <CustomPromptMode
-          customPrompt={customPrompt}
-          onChangePrompt={setCustomPrompt}
-          saving={saving}
-          onSave={handleSave}
-          saveLabel={tc("saveChanges")}
-          savingLabel={tc("saving")}
+      {/* Template picker modal */}
+      {showTemplatePicker && (
+        <TemplatePickerModal
+          templates={templates}
+          loading={templatesLoading}
+          onSelect={handleCreateFromTemplate}
+          onClose={() => setShowTemplatePicker(false)}
+          onDeleteTemplate={async (id) => {
+            if (!activeTenantId) return;
+            await api.deleteAgentTemplate(activeTenantId, id);
+            setTemplates(prev => prev.filter(t => t.id !== id));
+          }}
+          t={t}
         />
-      ) : (
-        <>
-          <AgentProfileCard
-            config={config}
-            toolCount={toolCount}
-            ruleCount={ruleCount}
-          />
+      )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ConfigCard
-              icon={User}
-              iconColor="text-indigo-500 bg-indigo-500/10"
-              title="Identity"
-              summary={identitySummary}
-              expanded={expandedSection === "identity"}
-              onToggle={() => toggleSection("identity")}
-            >
-              <IdentitySection config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ConfigCard
-              icon={Smile}
-              iconColor="text-violet-500 bg-violet-500/10"
-              title="Personality"
-              summary={personalitySummary}
-              expanded={expandedSection === "personality"}
-              onToggle={() => toggleSection("personality")}
-            >
-              <PersonalitySection config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ConfigCard
-              icon={Shield}
-              iconColor="text-rose-500 bg-rose-500/10"
-              title="Behavior"
-              summary={behaviorSummary}
-              expanded={expandedSection === "behavior"}
-              onToggle={() => toggleSection("behavior")}
-            >
-              <BehaviorSection config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ScheduleCard config={config} />
-
-            <ConfigCard
-              icon={Cpu}
-              iconColor="text-cyan-500 bg-cyan-500/10"
-              title="AI Model"
-              summary={aiModelSummary}
-              expanded={expandedSection === "ai-model"}
-              onToggle={() => toggleSection("ai-model")}
-            >
-              <AIModelSection config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ConfigCard
-              icon={Wrench}
-              iconColor="text-amber-500 bg-amber-500/10"
-              title="Capabilities"
-              summary={capabilitiesSummary}
-              expanded={expandedSection === "capabilities"}
-              onToggle={() => toggleSection("capabilities")}
-            >
-              <CapabilitiesSection
-                config={config}
-                onChange={updateConfig}
-                apptReadiness={apptReadiness}
-              />
-            </ConfigCard>
+      {/* Upgrade modal */}
+      {showUpgradeModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowUpgradeModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6 max-w-sm w-full mx-4 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle size={24} className="text-amber-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                {t("agentLimitReached")}
+              </h3>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-5">
+                {t("agentLimitDesc")}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm font-semibold text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  {tc("cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUpgradeModal(false);
+                    router.push("/admin/settings");
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold cursor-pointer transition-colors"
+                >
+                  {t("upgradePlan")}
+                </button>
+              </div>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Toast */}
@@ -320,13 +437,318 @@ export default function AgentConfigPage() {
         <div
           className={cn(
             "fixed bottom-6 right-6 px-5 py-3 rounded-lg text-white text-sm font-semibold shadow-lg z-[9999] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2",
-            toast.includes("Error") || toast.includes("error") ? "bg-red-500" : "bg-emerald-500"
+            toast.includes("Error") || toast.includes("error") || toast.includes("Cannot")
+              ? "bg-red-500"
+              : "bg-emerald-500"
           )}
         >
-          {toast.includes("Error") || toast.includes("error") ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+          {toast.includes("Error") || toast.includes("error") || toast.includes("Cannot")
+            ? <AlertTriangle size={16} />
+            : <CheckCircle size={16} />}
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Agent Card ───────────────────────────────────────────────
+
+interface AgentCardProps {
+  agent: Agent;
+  scheduleSummary: string;
+  menuOpen: boolean;
+  onMenuToggle: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onSetDefault: () => void;
+  onSaveAsTemplate: () => void;
+  onDelete: () => void;
+  t: ReturnType<typeof useTranslations>;
+}
+
+function AgentCard({
+  agent, scheduleSummary, menuOpen,
+  onMenuToggle, onEdit, onDuplicate, onSetDefault, onSaveAsTemplate, onDelete, t,
+}: AgentCardProps) {
+  const ruleCount = agent.rule_count ?? 0;
+  const hasAppointments = agent.config_json?.tools?.appointments?.enabled;
+
+  return (
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors">
+      {/* Top row: status + name + default badge */}
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shrink-0 mt-0.5">
+          <Bot size={20} className="text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={cn(
+                "w-2 h-2 rounded-full shrink-0",
+                agent.is_active ? "bg-emerald-500" : "bg-neutral-400"
+              )}
+            />
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+              {agent.name || "Unnamed agent"}
+            </h3>
+            {agent.is_default && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400"
+              >
+                {t("default")}
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
+            {agent.role || t("noRole")}
+          </p>
+        </div>
+      </div>
+
+      {/* Channel pills */}
+      {agent.channels && agent.channels.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {agent.channels.map(ch => {
+            const meta = CHANNEL_META[ch];
+            if (!meta) return null;
+            const Icon = meta.icon;
+            return (
+              <span
+                key={ch}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-600 dark:text-neutral-300"
+              >
+                <Icon size={12} className={meta.color} />
+                {meta.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Summary row */}
+      <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+        <span className="flex items-center gap-1">
+          <Clock size={12} /> {scheduleSummary}
+        </span>
+        <span className="flex items-center gap-1">
+          <Shield size={12} /> {ruleCount} {t("rules")}
+        </span>
+        {hasAppointments && (
+          <span className="flex items-center gap-1">
+            <Wrench size={12} /> {t("appointmentsOn")}
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex-1 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm font-semibold text-neutral-700 dark:text-neutral-200 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-center"
+        >
+          {t("edit")}
+        </button>
+        <button
+          type="button"
+          onClick={onDuplicate}
+          className="px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          title={t("duplicate")}
+        >
+          <Copy size={16} />
+        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={onMenuToggle}
+            className="px-2 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <MoreVertical size={16} />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={onMenuToggle} />
+              <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg py-1">
+                <button
+                  type="button"
+                  onClick={onSaveAsTemplate}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left"
+                >
+                  <BookmarkPlus size={14} /> {t("saveAsTemplate")}
+                </button>
+                {!agent.is_default && (
+                  <button
+                    type="button"
+                    onClick={onSetDefault}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left"
+                  >
+                    <Star size={14} /> {t("setAsDefault")}
+                  </button>
+                )}
+                {!agent.is_default && (
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 cursor-pointer text-left"
+                  >
+                    <Trash2 size={14} /> {t("deleteAgent")}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Template Picker Modal ────────────────────────────────────
+
+interface TemplatePickerModalProps {
+  templates: AgentTemplate[];
+  loading: boolean;
+  onSelect: (template: AgentTemplate) => void;
+  onClose: () => void;
+  onDeleteTemplate: (id: string) => Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}
+
+function TemplatePickerModal({
+  templates, loading, onSelect, onClose, onDeleteTemplate, t,
+}: TemplatePickerModalProps) {
+  const builtIn = templates.filter(tp => tp.is_builtin);
+  const userTemplates = templates.filter(tp => !tp.is_builtin);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 max-w-2xl w-full mx-4 shadow-xl max-h-[80vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+          <div>
+            <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {t("chooseTemplate")}
+            </h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              {t("chooseTemplateDesc")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-sm text-neutral-500 dark:text-neutral-400">
+                {t("loading")}
+              </div>
+            </div>
+          ) : (
+            <>
+              {builtIn.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
+                    {t("builtInTemplates")}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {builtIn.map(tp => (
+                      <TemplateCard key={tp.id} template={tp} onSelect={onSelect} t={t} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {userTemplates.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
+                    {t("myTemplates")}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {userTemplates.map(tp => (
+                      <TemplateCard
+                        key={tp.id}
+                        template={tp}
+                        onSelect={onSelect}
+                        onDelete={() => onDeleteTemplate(tp.id)}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {templates.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    {t("noTemplates")}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Template Card ────────────────────────────────────────────
+
+interface TemplateCardProps {
+  template: AgentTemplate;
+  onSelect: (template: AgentTemplate) => void;
+  onDelete?: () => void;
+  t: ReturnType<typeof useTranslations>;
+}
+
+function TemplateCard({ template, onSelect, onDelete, t }: TemplateCardProps) {
+  return (
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-4 hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors">
+      <div className="flex items-start justify-between mb-2">
+        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+          <Bot size={16} className="text-indigo-500" />
+        </div>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            className="p-1 rounded text-neutral-400 hover:text-red-500 cursor-pointer transition-colors"
+            title={t("deleteTemplate")}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+      <h5 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-0.5">
+        {template.name}
+      </h5>
+      {template.description && (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 line-clamp-2">
+          {template.description}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => onSelect(template)}
+        className="w-full px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold cursor-pointer transition-colors"
+      >
+        {t("useTemplate")}
+      </button>
     </div>
   );
 }

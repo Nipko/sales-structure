@@ -13,6 +13,7 @@ import { TenantConfig } from '@parallext/shared';
 @Injectable()
 export class PersonaService {
     private readonly logger = new Logger(PersonaService.name);
+    private initializedTenants = new Set<string>();
 
     constructor(
         private prisma: PrismaService,
@@ -260,6 +261,59 @@ export class PersonaService {
         if (!config.behavior?.rules) throw new Error('Behavior rules are required');
     }
 
+    // ── Multi-Agent Table Migration ─────────────────────────────
+
+    /**
+     * Ensure agent_personas and agent_templates tables exist in tenant schema.
+     * Called lazily on first multi-agent access. Safe to call multiple times (IF NOT EXISTS).
+     */
+    async ensureMultiAgentTables(tenantId: string): Promise<void> {
+        const schemaName = await this.tenantsService.getSchemaName(tenantId);
+
+        await this.prisma.$executeRawUnsafe(`
+            CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_personas" (
+                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                "name" VARCHAR(255) NOT NULL,
+                "template_id" VARCHAR(100),
+                "is_active" BOOLEAN DEFAULT true,
+                "is_default" BOOLEAN DEFAULT false,
+                "config_json" JSONB NOT NULL,
+                "channels" TEXT[] DEFAULT '{}',
+                "schedule_mode" VARCHAR(20) DEFAULT '24_7',
+                "version" INTEGER DEFAULT 1,
+                "created_by" VARCHAR(255),
+                "created_at" TIMESTAMP DEFAULT NOW(),
+                "updated_at" TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await this.prisma.$executeRawUnsafe(`
+            CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_templates" (
+                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                "name" VARCHAR(255) NOT NULL,
+                "description" TEXT,
+                "icon" VARCHAR(50) DEFAULT 'bot',
+                "config_json" JSONB NOT NULL,
+                "is_builtin" BOOLEAN DEFAULT false,
+                "created_by" VARCHAR(255),
+                "created_at" TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Create indexes (safe with IF NOT EXISTS)
+        await this.prisma.$executeRawUnsafe(`
+            CREATE INDEX IF NOT EXISTS "idx_agent_personas_active" ON "${schemaName}"."agent_personas" ("is_active");
+            CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels" ON "${schemaName}"."agent_personas" USING GIN ("channels");
+            CREATE INDEX IF NOT EXISTS "idx_agent_personas_default" ON "${schemaName}"."agent_personas" ("is_default") WHERE "is_default" = true;
+        `);
+    }
+
+    private async ensureTablesForTenant(tenantId: string): Promise<void> {
+        if (this.initializedTenants.has(tenantId)) return;
+        await this.ensureMultiAgentTables(tenantId);
+        this.initializedTenants.add(tenantId);
+    }
+
     // ── Multi-Agent System ──────────────────────────────────────
 
     /**
@@ -272,6 +326,7 @@ export class PersonaService {
         const cached = await this.redis.getJson<TenantConfig>(cacheKey);
         if (cached) return cached;
 
+        await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
         // 1. Find agent assigned to this channel
@@ -309,20 +364,51 @@ export class PersonaService {
     }
 
     /**
-     * List all agent personas for a tenant
+     * List all agent personas for a tenant.
+     * Auto-migrates from legacy persona_config if no agents exist yet.
      */
     async listAgents(tenantId: string): Promise<any[]> {
+        await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
-        return this.prisma.$queryRawUnsafe(
+
+        let agents = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, template_id, is_active, is_default, config_json, channels, schedule_mode, version, created_by, created_at, updated_at
              FROM "${schemaName}".agent_personas ORDER BY is_default DESC, created_at ASC`,
-        ) as Promise<any[]>;
+        ) as any[];
+
+        // Auto-migrate from legacy persona_config if no agents exist
+        if (agents.length === 0) {
+            const legacy = await this.prisma.$queryRawUnsafe(
+                `SELECT config_json FROM "${schemaName}".persona_config WHERE is_active = true ORDER BY version DESC LIMIT 1`,
+            ) as any[];
+
+            if (legacy.length > 0) {
+                const config = legacy[0].config_json;
+                await this.prisma.$executeRawUnsafe(
+                    `INSERT INTO "${schemaName}".agent_personas (name, config_json, is_active, is_default, channels, schedule_mode, created_by)
+                     VALUES ($1, $2::jsonb, true, true, $3::text[], '24_7', 'migration')`,
+                    config?.persona?.name || 'Default Agent',
+                    JSON.stringify(config),
+                    ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+                );
+
+                agents = await this.prisma.$queryRawUnsafe(
+                    `SELECT id, name, template_id, is_active, is_default, config_json, channels, schedule_mode, version, created_by, created_at, updated_at
+                     FROM "${schemaName}".agent_personas ORDER BY is_default DESC, created_at ASC`,
+                ) as any[];
+
+                this.logger.log(`Auto-migrated legacy persona_config to agent_personas for tenant ${tenantId}`);
+            }
+        }
+
+        return agents;
     }
 
     /**
      * Get a single agent by ID
      */
     async getAgent(tenantId: string, agentId: string): Promise<any> {
+        await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".agent_personas WHERE id = $1::uuid`,
@@ -343,6 +429,7 @@ export class PersonaService {
         isDefault?: boolean;
         createdBy?: string;
     }): Promise<any> {
+        await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
         // If setting as default, unset other defaults
@@ -668,6 +755,56 @@ export class PersonaService {
                 },
             },
         ];
+    }
+
+    /**
+     * Create a default agent persona based on the user's selected onboarding goals.
+     * Called once after tenant schema creation during onboarding.
+     */
+    async createDefaultAgentFromGoals(tenantId: string, goals: string[], createdBy?: string): Promise<void> {
+        const schemaName = await this.tenantsService.getSchemaName(tenantId);
+
+        // Check if agents already exist (idempotent)
+        try {
+            const existing = await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".agent_personas`,
+            ) as any[];
+            if (Number(existing[0]?.cnt || 0) > 0) return;
+        } catch (e: any) {
+            this.logger.warn(`Could not check agent_personas for tenant ${tenantId}: ${e.message}`);
+            return;
+        }
+
+        // Select template based on goals (priority order)
+        const templates = this.getBuiltinTemplates();
+        let template = templates.find(t => t.id === 'tpl_sales')!; // default
+
+        if (goals.includes('appointments')) {
+            template = templates.find(t => t.id === 'tpl_appointments') || template;
+        } else if (goals.includes('support')) {
+            template = templates.find(t => t.id === 'tpl_support') || template;
+        } else if (goals.includes('faq')) {
+            template = templates.find(t => t.id === 'tpl_faq') || template;
+        } else if (goals.includes('lead_qualification')) {
+            template = templates.find(t => t.id === 'tpl_lead_qualifier') || template;
+        } else if (goals.includes('sales')) {
+            template = templates.find(t => t.id === 'tpl_sales') || template;
+        }
+
+        try {
+            await this.prisma.$executeRawUnsafe(
+                `INSERT INTO "${schemaName}".agent_personas (name, template_id, config_json, is_active, is_default, channels, schedule_mode, created_by)
+                 VALUES ($1, $2, $3::jsonb, true, true, $4::text[], '24_7', $5)`,
+                template.name,
+                template.id,
+                JSON.stringify(template.config_json),
+                ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+                createdBy || 'onboarding',
+            );
+            this.logger.log(`Default agent "${template.name}" created for tenant ${tenantId} (goals: ${goals.join(', ')})`);
+        } catch (e: any) {
+            this.logger.error(`Failed to create default agent for tenant ${tenantId}: ${e.message}`);
+        }
     }
 
     private async assertAppointmentsPrerequisites(tenantId: string, schemaName: string): Promise<void> {

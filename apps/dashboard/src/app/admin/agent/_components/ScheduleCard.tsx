@@ -1,73 +1,219 @@
 "use client";
 
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import { Clock, ArrowRight, Info } from "lucide-react";
-import { DAY_LABELS } from "../_types";
+import { Info } from "lucide-react";
+import { DAY_LABELS, inputCls, selectCls, labelCls } from "../_types";
 import type { PersonaConfig } from "../_types";
 
 interface ScheduleCardProps {
   config: PersonaConfig;
+  onChange: (updates: Partial<PersonaConfig>) => void;
 }
 
-export function ScheduleCard({ config }: ScheduleCardProps) {
+const DAY_KEYS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
+
+const TIMEZONES = [
+  "America/Bogota",
+  "America/Mexico_City",
+  "America/Lima",
+  "America/Santiago",
+  "America/Buenos_Aires",
+  "America/Sao_Paulo",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Europe/Madrid",
+  "Europe/London",
+  "UTC",
+];
+
+export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
   const schedule = config.hours.schedule;
 
-  // Check if 24/7
   const is247 = Object.values(schedule).every(
-    v => v !== null && (v as { start: string; end: string }).start === "00:00" && (v as { start: string; end: string }).end === "23:59"
+    v => v !== null && v.start === "00:00" && v.end === "23:59"
   );
 
-  // Build compact summary
-  let summary: string;
-  if (is247) {
-    summary = "24/7 - Always available";
-  } else {
-    const activeDays = Object.entries(schedule)
-      .filter(([, v]) => v !== null)
-      .map(([key, v]) => {
-        const day = DAY_LABELS[key]?.slice(0, 3) ?? key;
-        const s = v as { start: string; end: string };
-        return `${day} ${s.start}-${s.end}`;
-      });
-    summary = activeDays.length > 0 ? activeDays.join(", ") : "No schedule configured";
+  function toggle247(on: boolean) {
+    if (on) {
+      const allDay: Record<string, { start: string; end: string }> = {};
+      for (const key of DAY_KEYS) {
+        allDay[key] = { start: "00:00", end: "23:59" };
+      }
+      onChange({ hours: { ...config.hours, schedule: allDay } });
+    } else {
+      // Reset to default business hours
+      const businessHours: Record<string, { start: string; end: string } | null> = {};
+      for (const key of DAY_KEYS) {
+        if (key === "dom") {
+          businessHours[key] = null;
+        } else if (key === "sab") {
+          businessHours[key] = { start: "08:00", end: "14:00" };
+        } else {
+          businessHours[key] = { start: "08:00", end: "18:00" };
+        }
+      }
+      onChange({ hours: { ...config.hours, schedule: businessHours } });
+    }
+  }
+
+  function toggleDay(dayKey: string) {
+    const current = schedule[dayKey];
+    const newSchedule = { ...schedule };
+    if (current === null) {
+      newSchedule[dayKey] = { start: "08:00", end: "18:00" };
+    } else {
+      newSchedule[dayKey] = null;
+    }
+    onChange({ hours: { ...config.hours, schedule: newSchedule } });
+  }
+
+  function updateDayTime(dayKey: string, field: "start" | "end", value: string) {
+    const current = schedule[dayKey];
+    if (!current) return;
+    const newSchedule = { ...schedule };
+    newSchedule[dayKey] = { ...current, [field]: value };
+    onChange({ hours: { ...config.hours, schedule: newSchedule } });
+  }
+
+  function updateTimezone(tz: string) {
+    onChange({ hours: { ...config.hours, timezone: tz } });
+  }
+
+  function updateAfterHoursMessage(msg: string) {
+    onChange({ hours: { ...config.hours, afterHoursMessage: msg } });
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
-      <div className="px-5 py-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-amber-500/10">
-            <Clock size={18} className="text-amber-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              Schedule
-            </span>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
-              {summary}
-            </p>
-          </div>
-        </div>
-
-        {/* Info note */}
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/60 mb-3">
-          <Info size={14} className="text-neutral-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            Controls when your agent responds to messages. Manage your business hours in Settings.
+    <div className="mt-3 space-y-5">
+      {/* 24/7 toggle */}
+      <div className="flex items-center justify-between">
+        <div>
+          <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Available 24/7
+          </span>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            Agent responds to messages at all times
           </p>
         </div>
-
-        {/* Link to business hours */}
-        <Link
-          href="/admin/settings"
-          className={cn(
-            "inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-500 hover:text-indigo-600",
-            "dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
-          )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={is247}
+          onClick={() => toggle247(!is247)}
+          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border-2 border-transparent transition-colors cursor-pointer ${
+            is247 ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-700"
+          }`}
         >
-          Configure hours <ArrowRight size={14} />
-        </Link>
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+              is247 ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+
+      {!is247 && (
+        <>
+          {/* Per-day schedule */}
+          <div className="space-y-2">
+            {DAY_KEYS.map(key => {
+              const daySchedule = schedule[key];
+              const isActive = daySchedule !== null;
+              const label = DAY_LABELS[key] || key;
+
+              return (
+                <div
+                  key={key}
+                  className="flex items-center gap-3 py-2 px-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/50"
+                >
+                  {/* Day toggle */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isActive}
+                    onClick={() => toggleDay(key)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors cursor-pointer ${
+                      isActive ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                        isActive ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+
+                  {/* Day label */}
+                  <span className={`text-sm w-24 shrink-0 ${
+                    isActive
+                      ? "text-neutral-900 dark:text-neutral-100 font-medium"
+                      : "text-neutral-400 dark:text-neutral-500"
+                  }`}>
+                    {label}
+                  </span>
+
+                  {/* Time inputs or "Closed" */}
+                  {isActive ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="time"
+                        value={daySchedule.start}
+                        onChange={e => updateDayTime(key, "start", e.target.value)}
+                        className={`${inputCls} !w-auto !py-1.5 !px-2.5 text-xs`}
+                      />
+                      <span className="text-xs text-neutral-400">to</span>
+                      <input
+                        type="time"
+                        value={daySchedule.end}
+                        onChange={e => updateDayTime(key, "end", e.target.value)}
+                        className={`${inputCls} !w-auto !py-1.5 !px-2.5 text-xs`}
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                      Closed
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* After-hours message */}
+          <div>
+            <label className={labelCls}>After-hours message</label>
+            <textarea
+              value={config.hours.afterHoursMessage}
+              onChange={e => updateAfterHoursMessage(e.target.value)}
+              placeholder="Message sent when a customer writes outside business hours..."
+              rows={3}
+              className={`${inputCls} resize-none`}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Timezone */}
+      <div>
+        <label className={labelCls}>Timezone</label>
+        <select
+          value={config.hours.timezone}
+          onChange={e => updateTimezone(e.target.value)}
+          className={selectCls}
+        >
+          {TIMEZONES.map(tz => (
+            <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Info note */}
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800/60">
+        <Info size={14} className="text-neutral-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+          These hours control when this agent responds to messages on its assigned channels.
+        </p>
       </div>
     </div>
   );

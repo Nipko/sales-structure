@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   Bot, User, Smile, Shield, Cpu, Wrench, Brain, Sparkles,
   Save, CheckCircle, AlertTriangle, ArrowLeft, MoreVertical,
-  BookmarkPlus, Star, Radio,
+  BookmarkPlus, Star, Radio, Clock,
   MessageSquare, Instagram, Facebook, Send, Phone,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -273,6 +273,18 @@ export default function AgentEditorPage() {
     ? `${toolCount} tool${toolCount > 1 ? "s" : ""} active`
     : "No tools enabled";
 
+  const is247 = Object.values(config.hours.schedule).every(
+    v => v !== null && (v as { start: string; end: string }).start === "00:00" && (v as { start: string; end: string }).end === "23:59"
+  );
+  const scheduleSummary = is247
+    ? "24/7 - Always available"
+    : (() => {
+        const activeDays = Object.entries(config.hours.schedule)
+          .filter(([, v]) => v !== null)
+          .length;
+        return `${activeDays} day${activeDays !== 1 ? "s" : ""} active, ${config.hours.timezone}`;
+      })();
+
   // ── Loading state ──────────────────────────────────────────
 
   if (loading) {
@@ -447,7 +459,16 @@ export default function AgentEditorPage() {
               <BehaviorSection config={config} onChange={updateConfig} />
             </ConfigCard>
 
-            <ScheduleCard config={config} />
+            <ConfigCard
+              icon={Clock}
+              iconColor="text-amber-500 bg-amber-500/10"
+              title="Schedule"
+              summary={scheduleSummary}
+              expanded={expandedSection === "schedule"}
+              onToggle={() => toggleSection("schedule")}
+            >
+              <ScheduleCard config={config} onChange={updateConfig} />
+            </ConfigCard>
 
             <ConfigCard
               icon={Cpu}

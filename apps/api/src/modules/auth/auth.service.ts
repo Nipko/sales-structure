@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RedisService } from '../redis/redis.service';
 import { GoogleAuthService } from './google-auth.service';
+import { PersonaService } from '../persona/persona.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
@@ -26,6 +27,7 @@ export class AuthService {
         private googleAuthService: GoogleAuthService,
         private emailService: EmailService,
         private redis: RedisService,
+        private personaService: PersonaService,
     ) { }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -880,7 +882,19 @@ export class AuthService {
             console.error(`[Onboarding] Failed to create schema "${result.tenant.schemaName}":`, error);
         }
 
-        // 5. Generate new JWT tokens (now includes tenantId)
+        // 5. Create default AI agent based on onboarding goals
+        const goals: string[] = Array.isArray(chatReasons) ? chatReasons : [];
+        try {
+            await this.personaService.createDefaultAgentFromGoals(
+                result.tenant.id,
+                goals,
+                user.email || 'onboarding',
+            );
+        } catch (error) {
+            console.error(`[Onboarding] Failed to create default agent for "${result.tenant.schemaName}":`, error);
+        }
+
+        // 6. Generate new JWT tokens (now includes tenantId)
         const payload: JwtPayload = {
             sub: result.user.id,
             email: result.user.email,

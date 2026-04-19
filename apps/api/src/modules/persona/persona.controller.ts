@@ -5,6 +5,7 @@ import { PersonaService } from './persona.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
 
@@ -18,6 +19,7 @@ export class PersonaController {
     constructor(
         private readonly personaService: PersonaService,
         private readonly prisma: PrismaService,
+        private readonly throttleService: TenantThrottleService,
     ) {}
 
     // ── Templates for Setup Wizard ──
@@ -95,6 +97,13 @@ export class PersonaController {
                 setupWizardChannels: settings.setupWizardChannels || [],
             },
         };
+    }
+
+    @Get(':tenantId/plan-features')
+    @ApiOperation({ summary: 'Get plan feature limits for multi-agent system' })
+    async getPlanFeatures(@Param('tenantId') tenantId: string) {
+        const features = await this.throttleService.getPlanFeatures(tenantId);
+        return { success: true, data: features };
     }
 
     // ── Existing endpoints ──

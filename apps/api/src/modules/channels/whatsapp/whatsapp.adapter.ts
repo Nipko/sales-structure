@@ -258,8 +258,109 @@ export class WhatsAppAdapter implements IChannelAdapter {
                     text: message.location?.name || `${message.location?.latitude},${message.location?.longitude}`,
                 };
 
+            case 'interactive':
+                // User selected a list item or button
+                if (message.interactive?.type === 'list_reply') {
+                    return {
+                        type: 'text' as const,
+                        text: message.interactive.list_reply.id, // The ID we set
+                        interactiveReply: {
+                            type: 'list_reply',
+                            id: message.interactive.list_reply.id,
+                            title: message.interactive.list_reply.title,
+                            description: message.interactive.list_reply.description,
+                        },
+                    };
+                }
+                if (message.interactive?.type === 'button_reply') {
+                    return {
+                        type: 'text' as const,
+                        text: message.interactive.button_reply.id,
+                        interactiveReply: {
+                            type: 'button_reply',
+                            id: message.interactive.button_reply.id,
+                            title: message.interactive.button_reply.title,
+                        },
+                    };
+                }
+                return { type: 'text' as const, text: '[Interactive message]' };
+
             default:
                 return { type: 'text' as const, text: `[Unsupported message type: ${message.type}]` };
         }
+    }
+
+    /**
+     * Send an interactive list message (up to 10 rows)
+     */
+    async sendListMessage(
+        to: string,
+        phoneNumberId: string,
+        accessToken: string,
+        body: string,
+        buttonText: string,
+        sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
+    ): Promise<string> {
+        const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to,
+                type: 'interactive',
+                interactive: {
+                    type: 'list',
+                    body: { text: body },
+                    action: { button: buttonText, sections },
+                },
+            }),
+        });
+        const data = await response.json() as any;
+        if (!response.ok) {
+            this.logger.error(`WhatsApp list message failed: ${JSON.stringify(data)}`);
+            throw new Error(data.error?.message || 'List message failed');
+        }
+        return data.messages?.[0]?.id || '';
+    }
+
+    /**
+     * Send reply buttons (up to 3 buttons)
+     */
+    async sendButtonMessage(
+        to: string,
+        phoneNumberId: string,
+        accessToken: string,
+        body: string,
+        buttons: Array<{ id: string; title: string }>,
+    ): Promise<string> {
+        const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to,
+                type: 'interactive',
+                interactive: {
+                    type: 'button',
+                    body: { text: body },
+                    action: {
+                        buttons: buttons.map(b => ({
+                            type: 'reply',
+                            reply: { id: b.id, title: b.title.slice(0, 20) },
+                        })),
+                    },
+                },
+            }),
+        });
+        const data = await response.json() as any;
+        if (!response.ok) {
+            this.logger.error(`WhatsApp button message failed: ${JSON.stringify(data)}`);
+            throw new Error(data.error?.message || 'Button message failed');
+        }
+        return data.messages?.[0]?.id || '';
     }
 }

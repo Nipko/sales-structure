@@ -501,49 +501,63 @@ export class ConversationsService {
             this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
 
             if (engineResult.handled) {
-                // Booking engine handled it — use LLM only to polish the response
-                // Pass the structured response to the LLM for natural language polishing
-                const personaName = config.persona?.name || 'Asistente';
-                const tone = config.persona?.personality?.tone || 'friendly';
-                // Language and regional context from persona config
-                const language = (config as any).language || 'es-CO';
-                const langMap: Record<string, string> = {
-                    'es-CO': 'Colombian Spanish (use "usted" or friendly "tú", local expressions like "con gusto", "a la orden")',
-                    'es-MX': 'Mexican Spanish (use "usted" in formal, "tú" in casual, expressions like "con mucho gusto", "¿mande?")',
-                    'es-ES': 'Spain Spanish (use "tú", expressions like "vale", "genial", "estupendo")',
-                    'es-AR': 'Argentine Spanish (use "vos", expressions like "dale", "bárbaro", "genial")',
-                    'es-CL': 'Chilean Spanish (use "tú", expressions like "ya po", "bacán", "dale")',
-                    'en-US': 'American English (friendly, professional)',
-                    'en-GB': 'British English (polite, formal)',
-                    'pt-BR': 'Brazilian Portuguese (use "você", expressions like "com prazer", "tudo bem", "maravilha")',
-                    'pt-PT': 'European Portuguese (use "o senhor/a senhora" formally)',
-                    'fr-FR': 'French (use "vous" formally, "tu" casually, expressions like "avec plaisir", "bien sûr")',
-                };
-                const langContext = langMap[language] || langMap['es-CO'];
+                this.logger.log(`[Pipeline] Booking engine handled (step: ${bookingState.step})`);
 
-                systemPrompt += `\n\n## TASK: Rewrite the following message in ${langContext} as ${personaName} with a ${tone} tone.\nRules:\n- Keep ALL data exactly (dates, times, prices, names)\n- Do NOT add extra questions (no email, no name unless the text asks)\n- Be concise (2-3 sentences)\n- Use natural regional expressions, not robotic translations\n- Format prices according to the local convention\n\nMessage to rewrite:\n${engineResult.response}`;
-                // No tools needed — engine already handled everything
-                tools = [];
-                this.logger.log(`[Pipeline] Booking engine handled message (step: ${bookingState.step})`);
-            } else {
-                // Not booking-related — let LLM handle with tools available
-                tools = [...APPOINTMENT_TOOLS];
+                // Try to send interactive message (WhatsApp only for now)
+                const channelType = msg.channelType;
+                const accessToken = await this.resolveAccessToken(tenantId, channelType);
+                const waAdapter = this.channelGateway.getAdapter('whatsapp') as any;
 
-                // Tell LLM about available services so it doesn't ask redundant questions
-                if (bookingState.services?.length) {
-                    const svcList = bookingState.services.map(s => `${s.name} (${s.duration}min, ${s.price} ${s.currency})`).join(', ');
-                    systemPrompt += `\n\nAvailable services: ${svcList}. Do NOT ask for email or personal info during general conversation. Only collect booking info when the customer explicitly wants to book.`;
+                if (channelType === 'whatsapp' && waAdapter && accessToken) {
+                    const phoneNumberId = (msg.metadata as any)?.phoneNumberId || msg.channelAccountId;
+                    const to = msg.contactId;
+
+                    try {
+                        if (engineResult.listMessage) {
+                            await waAdapter.sendListMessage(to, phoneNumberId, accessToken,
+                                engineResult.listMessage.body,
+                                engineResult.listMessage.buttonText,
+                                engineResult.listMessage.sections,
+                            );
+                            // Persist state + save AI message + return empty to skip LLM
+                            await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                            await this.saveAiMessage(tenantId, conversation.id, engineResult.text || engineResult.listMessage.body);
+                            return '';
+                        }
+
+                        if (engineResult.buttonMessage) {
+                            await waAdapter.sendButtonMessage(to, phoneNumberId, accessToken,
+                                engineResult.buttonMessage.body,
+                                engineResult.buttonMessage.buttons,
+                            );
+                            await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                            await this.saveAiMessage(tenantId, conversation.id, engineResult.text || engineResult.buttonMessage.body);
+                            return '';
+                        }
+                    } catch (e: any) {
+                        this.logger.warn(`[Pipeline] Interactive message failed, falling back to text: ${e.message}`);
+                        // Fall through to text-based response below
+                    }
                 }
 
-                this.logger.log(`[Pipeline] Message not booking-related, passing to LLM with tools`);
-            }
+                // Fallback: use LLM to polish the text response for the right language
+                const personaName = config.persona?.name || 'Assistant';
+                const tone = config.persona?.personality?.tone || 'friendly';
+                const language = (config as any).language || 'es-CO';
+                systemPrompt += `\n\n## Rewrite this in ${language} as ${personaName} (${tone} tone). Keep ALL data exactly. Be concise:\n\n${engineResult.text}`;
+                tools = [];
 
-            // ALWAYS persist booking state (even for non-handled messages — services were loaded)
-            const metadataUpdate = { bookingState: engineResult.state, bookingStateUpdatedAt: new Date().toISOString() };
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                [conversation.id, JSON.stringify(metadataUpdate)],
-            );
+                await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+            } else {
+                // Not booking-related — let LLM handle
+                tools = [...APPOINTMENT_TOOLS];
+                if (bookingState.services?.length) {
+                    const svcList = bookingState.services.map(s => `${s.name} (${s.duration}min, ${s.price} ${s.currency})`).join(', ');
+                    systemPrompt += `\n\nAvailable services: ${svcList}. Do NOT ask for email or personal info during casual conversation.`;
+                }
+                this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
+                await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+            }
         }
 
         // 2c. Inject knowledge base context if available
@@ -702,6 +716,18 @@ export class ConversationsService {
     }
 
     /** Helper to resolve tenant schema name (cached in Redis) */
+    private async persistBookingState(schemaName: string, conversationId: string, state: any): Promise<void> {
+        try {
+            const update = { bookingState: state, bookingStateUpdatedAt: new Date().toISOString() };
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                [conversationId, JSON.stringify(update)],
+            );
+        } catch (e: any) {
+            this.logger.warn(`Failed to persist booking state: ${e.message}`);
+        }
+    }
+
     private async tenantSchema(tenantId: string): Promise<string> {
         const cacheKey = `tenant:${tenantId}:schema`;
         const cached = await this.redis.get(cacheKey);

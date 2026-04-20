@@ -3,18 +3,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 
 /**
- * Deterministic Booking Engine.
+ * Deterministic Booking Engine with Interactive Message support.
  *
- * Controls the ENTIRE appointment booking flow without relying on LLM decisions.
- * All response templates are in ENGLISH — the LLM adapts them to the customer's
- * language and regional tone (Colombian Spanish, Mexican Spanish, Brazilian
- * Portuguese, French, etc.) based on the persona configuration.
+ * When the channel supports interactive messages (WhatsApp, Telegram),
+ * sends structured list/button messages for reliable data collection.
+ * For text-only channels (SMS), falls back to numbered options.
  *
- * Intent detection keywords support: Spanish, English, Portuguese, French.
+ * The LLM is NEVER used for booking flow decisions.
  */
 
 export interface BookingState {
-    step: 'greeting' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_info' | 'confirm' | 'booked' | 'idle';
+    step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked';
     services?: Array<{ id: string; name: string; duration: number; price: number; currency: string }>;
     serviceId?: string;
     serviceName?: string;
@@ -26,13 +25,25 @@ export interface BookingState {
     customerPhone?: string;
 }
 
-interface EngineResult {
-    /** Response template in English — LLM will adapt to customer's language */
-    response: string;
-    /** Updated booking state to persist */
-    state: BookingState;
-    /** Whether the booking engine handled this message */
+/** What kind of response to send */
+export interface EngineResult {
+    /** If true, the engine handled this — send the interactive or text response directly, don't call the LLM */
     handled: boolean;
+    /** Updated state to persist */
+    state: BookingState;
+    /** Plain text response (for LLM polishing or text-only channels) */
+    text?: string;
+    /** Interactive list message (WhatsApp) */
+    listMessage?: {
+        body: string;
+        buttonText: string;
+        sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>;
+    };
+    /** Interactive button message (WhatsApp) */
+    buttonMessage?: {
+        body: string;
+        buttons: Array<{ id: string; title: string }>;
+    };
 }
 
 @Injectable()
@@ -44,9 +55,6 @@ export class BookingEngineService {
         private toolExecutor: AIToolExecutorService,
     ) {}
 
-    /**
-     * Process a user message through the deterministic booking engine.
-     */
     async process(
         schemaName: string,
         tenantId: string,
@@ -59,53 +67,125 @@ export class BookingEngineService {
         const text = userText.toLowerCase().trim();
         const state = { ...currentState };
 
-        // ── Load services if needed ──
+        // ── Pre-load services ──
         if (!state.services?.length) {
-            const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'list_services', {});
-            if (result?.services?.length) {
-                state.services = result.services;
-                this.logger.log(`[BookingEngine] Loaded ${result.services.length} services`);
+            try {
+                const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'list_services', {});
+                if (result?.services?.length) state.services = result.services;
+            } catch {}
+        }
+
+        // ── Check if this is an interactive reply (button/list selection) ──
+        const isInteractiveReply = text.startsWith('svc_') || text.startsWith('slot_') || text === 'confirm_yes' || text === 'confirm_no';
+
+        // ── HANDLE INTERACTIVE REPLIES (from button/list clicks) ──
+        if (isInteractiveReply) {
+            // Service selection
+            if (text.startsWith('svc_') && state.services?.length) {
+                const svc = state.services.find(s => s.id === text.replace('svc_', ''));
+                if (svc) {
+                    state.serviceId = svc.id;
+                    state.serviceName = svc.name;
+                    state.step = 'ask_date';
+                    return {
+                        handled: true, state,
+                        text: `${svc.name}, great choice! What date would you like? You can say "today", "tomorrow", or a specific date.`,
+                    };
+                }
+            }
+
+            // Time slot selection
+            if (text.startsWith('slot_') && state.slots?.length) {
+                const time = text.replace('slot_', '');
+                const slot = state.slots.find(s => s.time === time);
+                if (slot) {
+                    state.time = slot.time;
+                    if (!state.customerName) {
+                        state.step = 'ask_name';
+                        return { handled: true, state, text: `${state.time}, perfect! What is your full name?` };
+                    }
+                    if (!state.customerEmail) {
+                        state.step = 'ask_email';
+                        return { handled: true, state, text: `Thanks ${state.customerName}! I need your email to send the calendar invitation.` };
+                    }
+                    // All data collected — show confirmation
+                    return this.buildConfirmation(state);
+                }
+            }
+
+            // Confirmation
+            if (text === 'confirm_yes') {
+                return this.createBooking(schemaName, tenantId, contactId, state);
+            }
+            if (text === 'confirm_no') {
+                state.step = 'idle';
+                state.serviceId = undefined; state.serviceName = undefined;
+                state.date = undefined; state.slots = undefined; state.time = undefined;
+                return { handled: true, state, text: 'No problem! Would you like to try a different time or service?' };
             }
         }
 
-        // ── Parse user message ──
+        // ── DETECT INTENT FROM FREE TEXT ──
         const wantsServices = this.detectServiceListIntent(text);
         const wantsBooking = this.detectBookingIntent(text);
-        const mentionedService = state.services ? this.matchService(text, state.services) : null;
-        const mentionedDate = this.extractDate(text, todayDate);
-        const mentionedTime = state.slots ? this.matchTime(text, state.slots) : null;
+        const matchedService = state.services ? this.matchService(text, state.services) : null;
+        const detectedDate = this.extractDate(text, todayDate);
+        const detectedEmail = this.extractEmail(text);
         const isConfirm = this.isConfirmation(text);
-        const mentionedName = this.extractName(text, state);
-        const mentionedEmail = this.extractEmail(text);
 
-        // ── Update state with new data ──
-        if (mentionedService && !state.serviceId) {
-            state.serviceId = mentionedService.id;
-            state.serviceName = mentionedService.name;
+        // Update state with detected data
+        if (matchedService && !state.serviceId) {
+            state.serviceId = matchedService.id;
+            state.serviceName = matchedService.name;
         }
-        if (mentionedDate) state.date = mentionedDate;
-        if (mentionedTime) state.time = mentionedTime;
-        if (mentionedName) state.customerName = mentionedName;
-        if (mentionedEmail) state.customerEmail = mentionedEmail;
+        if (detectedDate) state.date = detectedDate;
+        if (detectedEmail) state.customerEmail = detectedEmail;
         if (customerProfile.name && !state.customerName) state.customerName = customerProfile.name;
         if (customerProfile.email && !state.customerEmail) state.customerEmail = customerProfile.email;
         if (customerProfile.phone && !state.customerPhone) state.customerPhone = customerProfile.phone;
 
-        this.logger.log(`[BookingEngine] Parse: service=${mentionedService?.name || '-'} date=${mentionedDate || '-'} time=${mentionedTime || '-'} confirm=${isConfirm}`);
+        // Extract name if we're in ask_name step
+        if (state.step === 'ask_name' && !state.customerName && !isConfirm && !wantsBooking && !wantsServices) {
+            const possibleName = this.extractName(text);
+            if (possibleName) {
+                state.customerName = possibleName;
+                if (!state.customerEmail) {
+                    state.step = 'ask_email';
+                    return { handled: true, state, text: `Thanks ${state.customerName}! I need your email to send the calendar invitation.` };
+                }
+                return this.buildConfirmation(state);
+            }
+        }
 
-        // ── Show services ──
-        if (wantsServices && state.services?.length) {
+        // Extract email if we're in ask_email step
+        if (state.step === 'ask_email' && detectedEmail) {
+            return this.buildConfirmation(state);
+        }
+
+        this.logger.log(`[BookingEngine] svc=${matchedService?.name || '-'} date=${detectedDate || '-'} step=${state.step}`);
+
+        // ── SHOW SERVICES (interactive list) ──
+        if ((wantsServices || (wantsBooking && !state.serviceId)) && state.services?.length) {
             state.step = 'show_services';
-            const serviceList = state.services.map((s, i) =>
-                `${i + 1}. ${s.name} (${s.duration} min) - ${s.price.toLocaleString()} ${s.currency}`
-            ).join('\n');
             return {
-                response: `[SERVICES_LIST]\nThese are our available services:\n${serviceList}\n\nWhich one interests you?`,
-                state, handled: true,
+                handled: true, state,
+                text: `Here are our services:\n${state.services.map((s, i) => `${i + 1}. ${s.name} (${s.duration}min - ${s.price.toLocaleString()} ${s.currency})`).join('\n')}\n\nWhich one interests you?`,
+                listMessage: {
+                    body: 'Here are our available services. Tap to select:',
+                    buttonText: 'View services',
+                    sections: [{
+                        title: 'Services',
+                        rows: state.services.map(s => ({
+                            id: `svc_${s.id}`,
+                            title: s.name.slice(0, 24),
+                            description: `${s.duration}min - ${s.price.toLocaleString()} ${s.currency}`.slice(0, 72),
+                        })),
+                    }],
+                },
             };
         }
 
-        // ── Have service + date → get availability ──
+        // ── SERVICE SELECTED + DATE DETECTED → GET AVAILABILITY ──
         if (state.serviceId && state.date && (!state.slots || state.slots.length === 0)) {
             this.logger.log(`[BookingEngine] Checking availability: ${state.serviceName} on ${state.date}`);
             const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'check_availability', {
@@ -113,243 +193,176 @@ export class BookingEngineService {
             });
 
             if (result?.available && result.slots?.length) {
-                state.slots = result.slots.slice(0, 5);
+                state.slots = result.slots.slice(0, 10); // WhatsApp list max 10
                 state.step = 'show_slots';
-                const slotList = (state.slots || []).map(s => `${s.time} - ${s.endTime}`).join(', ');
+                const slotList = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
                 return {
-                    response: `[SHOW_SLOTS]\nFor ${state.serviceName} on ${state.date}, these times are available: ${slotList}. Which one do you prefer?`,
-                    state, handled: true,
+                    handled: true, state,
+                    text: `For ${state.serviceName} on ${state.date}: ${slotList}. Which time do you prefer?`,
+                    listMessage: {
+                        body: `Available times for ${state.serviceName} on ${state.date}:`,
+                        buttonText: 'See times',
+                        sections: [{
+                            title: 'Available',
+                            rows: (state.slots || []).map(s => ({
+                                id: `slot_${s.time}`,
+                                title: `${s.time} - ${s.endTime}`,
+                            })),
+                        }],
+                    },
                 };
             } else {
                 state.date = undefined;
                 state.step = 'ask_date';
-                return {
-                    response: `[NO_AVAILABILITY]\nThere is no availability for ${state.date}. Would you like to try a different date?`,
-                    state, handled: true,
-                };
+                return { handled: true, state, text: 'No availability for that date. Would you like to try a different day?' };
             }
         }
 
-        // ── Have service + date + time → collect info or confirm ──
-        if (state.serviceId && state.date && state.time) {
-            if (!state.customerName) {
-                state.step = 'ask_info';
-                return {
-                    response: `[ASK_NAME]\n${state.serviceName} on ${state.date} at ${state.time}. What is your full name?`,
-                    state, handled: true,
-                };
-            }
-            if (!state.customerEmail) {
-                state.step = 'ask_info';
-                return {
-                    response: `[ASK_EMAIL]\nThank you ${state.customerName}. I need your email address to send you the calendar invitation.`,
-                    state, handled: true,
-                };
-            }
-
-            // All info collected → confirm or book
-            if (isConfirm || state.step === 'confirm') {
-                this.logger.log(`[BookingEngine] Creating appointment: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
-                const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'create_appointment', {
-                    serviceId: state.serviceId, date: state.date, time: state.time,
-                    customerName: state.customerName, customerEmail: state.customerEmail,
-                    customerPhone: state.customerPhone,
-                });
-
-                if (result?.success) {
-                    state.step = 'booked';
-                    return {
-                        response: `[BOOKED]\nYour appointment is confirmed!\nService: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\nA calendar invitation will be sent to ${state.customerEmail}.\nIs there anything else I can help you with?`,
-                        state, handled: true,
-                    };
-                } else {
-                    return {
-                        response: `[BOOKING_ERROR]\nThere was a problem creating the appointment: ${result?.error || 'Unknown error'}. Would you like to try a different time?`,
-                        state, handled: true,
-                    };
-                }
-            }
-
-            // Show confirmation summary
-            state.step = 'confirm';
-            return {
-                response: `[CONFIRM]\nPlease confirm the booking details:\nService: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\nEmail: ${state.customerEmail}\nShall I confirm this reservation?`,
-                state, handled: true,
-            };
-        }
-
-        // ── Have service but no date ──
+        // ── SERVICE SELECTED BUT NO DATE ──
         if (state.serviceId && !state.date) {
             state.step = 'ask_date';
-            return {
-                response: `[ASK_DATE]\n${state.serviceName}, great choice. What date would you like to schedule?`,
-                state, handled: true,
-            };
+            return { handled: true, state, text: `${state.serviceName}, great choice! What date works for you?` };
         }
 
-        // ── Booking intent without specific service ──
-        if (wantsBooking && state.services?.length && !state.serviceId) {
-            state.step = 'show_services';
-            const serviceList = state.services.map((s, i) =>
-                `${i + 1}. ${s.name} (${s.duration} min) - ${s.price.toLocaleString()} ${s.currency}`
-            ).join('\n');
-            return {
-                response: `[BOOKING_START]\nI'd be happy to help you schedule. Here are our services:\n${serviceList}\n\nWhich one would you like?`,
-                state, handled: true,
-            };
+        // ── HAS TIME BUT MISSING INFO ──
+        if (state.serviceId && state.date && state.time) {
+            if (!state.customerName) {
+                state.step = 'ask_name';
+                return { handled: true, state, text: `${state.time}, perfect! What is your full name?` };
+            }
+            if (!state.customerEmail) {
+                state.step = 'ask_email';
+                return { handled: true, state, text: `Thanks ${state.customerName}! I need your email for the calendar invitation.` };
+            }
+            if (isConfirm) {
+                return this.createBooking(schemaName, tenantId, contactId, state);
+            }
+            return this.buildConfirmation(state);
         }
 
-        // ── Not booking-related ──
-        return { response: '', state, handled: false };
+        // ── SLOT SELECTED FROM TEXT (not interactive) ──
+        if (state.step === 'show_slots' && state.slots?.length) {
+            const matchedTime = this.matchTime(text, state.slots);
+            if (matchedTime) {
+                state.time = matchedTime;
+                if (!state.customerName) {
+                    state.step = 'ask_name';
+                    return { handled: true, state, text: `${state.time}, perfect! What is your full name?` };
+                }
+                if (!state.customerEmail) {
+                    state.step = 'ask_email';
+                    return { handled: true, state, text: `Thanks ${state.customerName}! I need your email for the calendar invitation.` };
+                }
+                return this.buildConfirmation(state);
+            }
+        }
+
+        // ── Not booking-related → let LLM handle ──
+        return { handled: false, state, text: '' };
     }
 
-    // ── Multi-language intent detection ──
+    // ── Build confirmation with buttons ──
+    private buildConfirmation(state: BookingState): EngineResult {
+        state.step = 'confirm';
+        const summary = `Service: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\nEmail: ${state.customerEmail}`;
+        return {
+            handled: true, state,
+            text: `Please confirm your booking:\n${summary}\n\nShall I confirm?`,
+            buttonMessage: {
+                body: `Confirm your booking?\n\n${summary}`,
+                buttons: [
+                    { id: 'confirm_yes', title: 'Confirm' },
+                    { id: 'confirm_no', title: 'Cancel' },
+                ],
+            },
+        };
+    }
 
+    // ── Create the actual booking ──
+    private async createBooking(schemaName: string, tenantId: string, contactId: string, state: BookingState): Promise<EngineResult> {
+        this.logger.log(`[BookingEngine] CREATING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
+        const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'create_appointment', {
+            serviceId: state.serviceId, date: state.date, time: state.time,
+            customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
+        });
+        if (result?.success) {
+            state.step = 'booked';
+            return {
+                handled: true, state,
+                text: `Your appointment is confirmed!\n\nService: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\n\nA calendar invitation will be sent to ${state.customerEmail}.\n\nAnything else I can help with?`,
+            };
+        }
+        return { handled: true, state, text: `There was an issue: ${result?.error || 'Unknown error'}. Try a different time?` };
+    }
+
+    // ── Intent detection (multi-language) ──
     private detectBookingIntent(text: string): boolean {
-        const keywords = [
-            // Spanish
-            'agendar', 'agenda', 'cita', 'reservar', 'reserva', 'turno', 'programar', 'disponib', 'horario',
-            // English
-            'book', 'appointment', 'schedule', 'available', 'slot',
-            // Portuguese
-            'agendar', 'consulta', 'marcar', 'horário', 'horario', 'disponível', 'disponivel',
-            // French
-            'rendez-vous', 'réserver', 'reserver', 'disponible', 'créneau', 'creneau',
-        ];
-        return keywords.some(k => text.includes(k));
+        return /\b(agendar|cita|reservar|turno|programar|disponib|horario|book|appointment|schedule|available|agendar|consulta|marcar|rendez-vous|réserver)\b/i.test(text);
     }
 
     private detectServiceListIntent(text: string): boolean {
-        const patterns = [
-            // Spanish
-            'servicios', 'que ofrecen', 'que tienen', 'que ofreces', 'que tienes', 'catalogo', 'opciones',
-            // English
-            'services', 'what do you offer', 'options', 'catalog', 'what do you have',
-            // Portuguese
-            'serviços', 'servicos', 'o que oferecem', 'o que vocês', 'o que voces', 'opcões', 'opcoes',
-            // French
-            'services', 'que proposez', 'offrez', 'options', 'catalogue',
-        ];
-        return patterns.some(p => text.includes(p));
+        return /\b(servicios|services|que ofrecen|que tienen|que ofreces|que tienes|opciones|serviços|servicos|catalogue|catalogo)\b/i.test(text);
     }
 
-    private matchService(text: string, services: Array<{ id: string; name: string }>): { id: string; name: string } | null {
-        // Exact name match
+    private matchService(text: string, services: Array<{ id: string; name: string }>): typeof services[0] | null {
+        // Normalize accents for comparison
+        const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const normText = norm(text);
         for (const svc of services) {
-            if (text.includes(svc.name.toLowerCase())) return svc;
+            if (normText.includes(norm(svc.name))) return svc;
         }
-        // Word overlap (50%+ of significant words match)
+        // Word overlap (50%+)
         let best: { svc: typeof services[0]; score: number } | null = null;
         for (const svc of services) {
-            const words = svc.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-            const matched = words.filter(w => text.includes(w));
+            const words = norm(svc.name).split(/\s+/).filter(w => w.length > 3);
+            const matched = words.filter(w => normText.includes(w));
             const score = words.length > 0 ? matched.length / words.length : 0;
-            if (score >= 0.5 && (!best || score > best.score)) {
-                best = { svc, score };
-            }
+            if (score >= 0.5 && (!best || score > best.score)) best = { svc, score };
         }
         return best?.svc || null;
     }
 
     private extractDate(text: string, todayDate: string): string | null {
-        // Today: es/en/pt/fr
-        if (/\b(hoy|today|hoje|aujourd'hui|aujourd)\b/.test(text)) return todayDate;
-
-        // Tomorrow
-        if (/\b(mañana|manana|tomorrow|amanhã|amanha|demain)\b/.test(text)) {
-            const d = new Date(todayDate); d.setDate(d.getDate() + 1);
-            return d.toISOString().split('T')[0];
+        if (/\b(hoy|today|hoje|aujourd)/i.test(text)) return todayDate;
+        if (/\b(mañana|manana|tomorrow|amanhã|amanha|demain)\b/i.test(text)) {
+            const d = new Date(todayDate); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0];
         }
-
-        // ISO date: 2026-04-20
-        const iso = text.match(/(\d{4})-(\d{2})-(\d{2})/);
-        if (iso) return iso[0];
-
-        // Slash date: 20/04, 20/04/2026
-        const slash = text.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{4}))?/);
-        if (slash) {
-            const day = parseInt(slash[1]); const month = parseInt(slash[2]);
-            const year = slash[3] ? parseInt(slash[3]) : new Date(todayDate).getFullYear();
-            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
-
-        // Month names (es/en/pt/fr)
+        const iso = text.match(/(\d{4})-(\d{2})-(\d{2})/); if (iso) return iso[0];
         const months: Record<string, number> = {
-            enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
-            julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
-            january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
-            july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
-            janeiro: 1, fevereiro: 2, março: 3, marco: 3, maio: 5, junho: 6,
-            julho: 7, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
-            janvier: 1, février: 2, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6,
-            juillet: 7, août: 8, aout: 8, septembre: 9, octobre: 10, novembre: 11, décembre: 12, decembre: 12,
+            enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+            january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
         };
         for (const [name, num] of Object.entries(months)) {
-            const p1 = new RegExp(`(\\d{1,2})\\s*(?:de\\s+)?${name}`, 'i');
-            const p2 = new RegExp(`${name}\\s*(\\d{1,2})`, 'i');
-            const m = text.match(p1) || text.match(p2);
-            if (m) {
-                const year = new Date(todayDate).getFullYear();
-                return `${year}-${String(num).padStart(2, '0')}-${String(parseInt(m[1])).padStart(2, '0')}`;
-            }
+            const m = text.match(new RegExp(`(\\d{1,2})\\s*(?:de\\s+)?${name}`, 'i')) || text.match(new RegExp(`${name}\\s*(\\d{1,2})`, 'i'));
+            if (m) { const y = new Date(todayDate).getFullYear(); return `${y}-${String(num).padStart(2, '0')}-${String(parseInt(m[1])).padStart(2, '0')}`; }
         }
-
-        // Day names (es/en/pt/fr) → next occurrence
-        const days: Record<string, number> = {
-            domingo: 0, lunes: 1, martes: 2, miercoles: 3, miércoles: 3, jueves: 4, viernes: 5, sabado: 6, sábado: 6,
-            sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
-            dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6,
-        };
+        const days: Record<string, number> = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6, sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
         for (const [name, num] of Object.entries(days)) {
             if (text.includes(name)) {
-                const today = new Date(todayDate);
-                let diff = num - today.getDay();
-                if (diff <= 0) diff += 7;
-                const target = new Date(today); target.setDate(target.getDate() + diff);
-                return target.toISOString().split('T')[0];
+                const today = new Date(todayDate); let diff = num - today.getDay(); if (diff <= 0) diff += 7;
+                const t = new Date(today); t.setDate(t.getDate() + diff); return t.toISOString().split('T')[0];
             }
         }
-
         return null;
     }
 
     private matchTime(text: string, slots: Array<{ time: string; endTime: string }>): string | null {
-        // "9:30", "09:30", "9.30"
-        const exact = text.match(/(\d{1,2})[:\.](\d{2})/);
-        if (exact) {
-            const t = `${String(parseInt(exact[1])).padStart(2, '0')}:${exact[2]}`;
-            if (slots.find(s => s.time === t)) return t;
-        }
-        // "a las 10", "at 10", "às 10", "10am"
-        const hour = text.match(/(?:a las |at |às |as )?(\d{1,2})\s*(?:am|de la|da manhã|du matin)?/i);
-        if (hour) {
-            const t = `${String(parseInt(hour[1])).padStart(2, '0')}:00`;
-            if (slots.find(s => s.time === t)) return t;
-        }
+        const m = text.match(/(\d{1,2})[:\.](\d{2})/);
+        if (m) { const t = `${String(parseInt(m[1])).padStart(2, '0')}:${m[2]}`; if (slots.find(s => s.time === t)) return t; }
+        const h = text.match(/(?:a las |at |las )?(\d{1,2})\s*(?:am|de la)?/i);
+        if (h) { const t = `${String(parseInt(h[1])).padStart(2, '0')}:00`; if (slots.find(s => s.time === t)) return t; }
         return null;
     }
 
     private isConfirmation(text: string): boolean {
-        const words = [
-            // Spanish
-            'si', 'sí', 'confirmo', 'dale', 'listo', 'perfecto', 'de acuerdo', 'claro', 'por supuesto', 'correcto',
-            // English
-            'yes', 'ok', 'confirm', 'sure', 'absolutely', 'go ahead', 'correct', 'right',
-            // Portuguese
-            'sim', 'confirmo', 'pode', 'perfeito', 'com certeza', 'claro', 'certo',
-            // French
-            'oui', 'confirme', 'parfait', "d'accord", 'bien sûr', 'bien sur', 'correct',
-        ];
-        return words.some(w => text === w || text.startsWith(w + ' ') || text.startsWith(w + ',') || text.startsWith(w + '.'));
+        return /^(si|sí|yes|ok|confirmo|dale|listo|perfecto|confirm|sure|oui|sim|claro|correcto|de acuerdo)\b/i.test(text);
     }
 
-    private extractName(text: string, state: BookingState): string | null {
-        if (state.step !== 'ask_info' || state.customerName) return null;
-        const cleaned = text.replace(/[.,!?]/g, '').trim();
-        const words = cleaned.split(/\s+/);
-        const skipWords = /^(si|sí|no|ok|hola|hi|quiero|necesito|para|yes|oui|sim|olá|ola|bonjour|obrigado|gracias|thanks|merci)$/i;
-        if (words.length >= 2 && words.length <= 5 && !cleaned.match(/\d/) && !skipWords.test(words[0])) {
-            return cleaned.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    private extractName(text: string): string | null {
+        const c = text.replace(/[.,!?]/g, '').trim();
+        const w = c.split(/\s+/);
+        if (w.length >= 2 && w.length <= 5 && !/\d/.test(c) && !/^(si|no|ok|hola|quiero|para|yes|oui|sim)\b/i.test(c)) {
+            return w.map(x => x.charAt(0).toUpperCase() + x.slice(1).toLowerCase()).join(' ');
         }
         return null;
     }

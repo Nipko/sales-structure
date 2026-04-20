@@ -577,7 +577,86 @@
     },
     "navProfile": "Profile",
     "navSecurity": "Security",
-    "navTools": "Tools"
+    "navTools": "Tools",
+    "businessInfo": {
+      "title": "Business info",
+      "subtitle": "Data the agent uses to answer questions about your business",
+      "hint": "This info loads into every conversation. Fill in as much as possible so the agent can answer accurately.",
+      "loading": "Loading...",
+      "saving": "Saving...",
+      "save": "Save changes",
+      "saved": "Saved successfully",
+      "sections": {
+        "identity": "Identity",
+        "contact": "Contact",
+        "location": "Location",
+        "social": "Social links"
+      },
+      "fields": {
+        "companyName": "Company name",
+        "industry": "Industry",
+        "about": "About us",
+        "website": "Website",
+        "phone": "Phone",
+        "email": "Email",
+        "address": "Address",
+        "city": "City",
+        "country": "Country",
+        "logoUrl": "Logo URL"
+      },
+      "placeholders": {
+        "industry": "e.g. Tourism, Education, Retail",
+        "about": "A brief description of your business, mission and what you offer"
+      },
+      "social": {
+        "facebook": "Facebook",
+        "instagram": "Instagram",
+        "twitter": "Twitter / X",
+        "linkedin": "LinkedIn",
+        "youtube": "YouTube",
+        "tiktok": "TikTok"
+      },
+      "errors": {
+        "companyNameRequired": "Company name is required",
+        "saveFailed": "Failed to save",
+        "connection": "Connection error"
+      }
+    },
+    "policies": {
+      "title": "Policies",
+      "subtitle": "Official policies the agent cites (never invents)",
+      "hint": "The agent can only reference active policies. Each change creates a new version preserving full history.",
+      "loading": "Loading...",
+      "saved": "Policy saved",
+      "saving": "Saving...",
+      "saveNewVersion": "Save new version",
+      "createPolicy": "Create policy",
+      "viewHistory": "View history",
+      "versionPrefix": "v",
+      "history": "Version history",
+      "active": "Active",
+      "markdownHint": "Basic markdown is supported for formatting",
+      "types": {
+        "shipping": "Shipping",
+        "return": "Return",
+        "warranty": "Warranty",
+        "cancellation": "Cancellation",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      },
+      "fields": {
+        "title": "Title",
+        "content": "Content"
+      },
+      "placeholders": {
+        "content": "Describe the policy in detail. The agent will quote this content when customers ask."
+      },
+      "errors": {
+        "required": "Title and content are required",
+        "saveFailed": "Failed to save",
+        "connection": "Connection error"
+      }
+    }
   },
   "media": {
     "title": "Media Bank",
@@ -1093,7 +1172,8 @@
       "noToolsEnabled": "No tools enabled",
       "always247": "24/7 - Always available",
       "daysActive": "{count} {count, plural, one {day} other {days}} active, {timezone}",
-      "rulesToolsSummary": "{rules} rules, {tools} tools active"
+      "rulesToolsSummary": "{rules} rules, {tools} tools active",
+      "testAgent": "Test agent"
     },
     "schedule": {
       "available247": "Available 24/7",
@@ -1207,13 +1287,67 @@
       "moreToolsDesc": "Catalog, CRM, payments and more",
       "andSeparator": " and ",
       "servicesLabel": "services",
-      "availabilityScheduleLabel": "availability schedule"
+      "availabilityScheduleLabel": "availability schedule",
+      "catalogTitle": "Product catalog",
+      "catalogDesc": "Look up products, prices and stock in real time",
+      "faqsTitle": "FAQs",
+      "faqsDesc": "Search canonical answers from your FAQ library",
+      "policiesTitle": "Business policies",
+      "policiesDesc": "Reference policies (shipping, return, warranty)",
+      "offersTitle": "Active promotions",
+      "offersDesc": "Mention live offers naturally in conversation",
+      "ordersTitle": "Customer order history",
+      "ordersDesc": "Answer about the customer's orders (status, total, date)",
+      "crmTitle": "CRM context",
+      "crmDesc": "Personalize using lead score, tags and pipeline stage",
+      "knowledgeTitle": "Knowledge base (RAG)",
+      "knowledgeDesc": "Semantic search over your documents",
+      "ragTuning": "Search tuning",
+      "topK": "Max results",
+      "topKHint": "How many chunks to return per search",
+      "similarityThreshold": "Relevance threshold",
+      "similarityHint": "Filters out results below this score",
+      "kbTool": "Agent search tool",
+      "kbToolDesc": "Let the agent query the KB as a tool, in addition to auto-context"
     },
     "customPrompt": {
       "title": "Custom System Prompt",
       "description": "Write the complete prompt the AI model will receive as system instruction. This prompt replaces the entire guided configuration.",
       "placeholder": "You are Sofia Henao, a sales advisor at Gecko Extreme Adventure.\n\nYour personality:\n- Friendly and enthusiastic tone\n- Moderate emoji usage\n- Always respond in Colombian Spanish\n\nRules:\n1. Never make up prices\n2. If you can't resolve in 3 messages, offer to speak with a human\n3. Always confirm date and number of people before quoting\n\nSchedule: Monday to Friday 8am-6pm, Saturdays 8am-2pm (Colombia)",
       "characters": "characters"
+    },
+    "test": {
+      "title": "Test agent",
+      "subtitle": "Simulate a conversation and see the full prompt the LLM receives",
+      "reset": "Reset",
+      "startHint": "Type a message to start",
+      "inputPlaceholder": "Type as if you were a customer...",
+      "send": "Send",
+      "toolsUsed": "tools",
+      "selectHint": "Select a reply to see its details",
+      "noTools": "No tools were called",
+      "noRag": "No RAG results",
+      "args": "Arguments",
+      "result": "Result",
+      "tabs": {
+        "prompt": "System Prompt",
+        "tools": "Tools",
+        "rag": "RAG",
+        "metrics": "Metrics",
+        "turn": "Turn Context"
+      },
+      "metric": {
+        "model": "Model",
+        "latency": "Latency",
+        "inputTokens": "Input tokens",
+        "outputTokens": "Output tokens",
+        "cost": "Cost",
+        "toolCalls": "Tool calls"
+      },
+      "errors": {
+        "sendFailed": "Failed to process message",
+        "connection": "Connection error"
+      }
     }
   },
   "knowledge": {
@@ -1228,22 +1362,40 @@
     "processing": "Processing",
     "ready": "Ready",
     "chunks": "Chunks",
-    "subtitle": "Knowledge base, FAQs and documents for AI"
-  },
-  "catalog.hub": {
-    "title": "Catalog",
-    "subtitle": "Products, courses, campaigns and promotions the agent can offer",
-    "courses": {
-      "label": "Courses",
-      "description": "Course and program catalog"
-    },
-    "campaigns": {
-      "label": "Campaigns",
-      "description": "Marketing and outreach campaigns"
-    },
-    "offers": {
-      "label": "Promotions",
-      "description": "Active discounts, promos and bundles"
+    "subtitle": "Knowledge base, FAQs and documents for AI",
+    "faqs": {
+      "title": "FAQs",
+      "subtitle": "Question-answer pairs the agent uses for canonical replies",
+      "loading": "Loading...",
+      "empty": "No FAQs yet. Create the first one to give the agent precise answers.",
+      "newFaq": "New FAQ",
+      "newTitle": "New FAQ",
+      "editTitle": "Edit FAQ",
+      "uncategorized": "Uncategorized",
+      "views": "views",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "confirmDelete": "Delete this FAQ? This cannot be undone.",
+      "fields": {
+        "question": "Question",
+        "answer": "Answer",
+        "category": "Category",
+        "tags": "Tags (comma-separated)",
+        "order": "Order",
+        "published": "Published (visible to agent)"
+      },
+      "placeholders": {
+        "question": "What is your return policy?",
+        "answer": "We accept returns within the first 30 days...",
+        "category": "Sales, Support, Shipping",
+        "tags": "return, refund"
+      },
+      "errors": {
+        "required": "Question and answer are required",
+        "saveFailed": "Failed to save"
+      }
     }
   },
   "identity": {
@@ -1600,210 +1752,58 @@
       "min": "~{n} min"
     }
   },
-  "agent.capabilities": {
-    "catalogTitle": "Product catalog",
-    "catalogDesc": "Look up products, prices and stock in real time",
-    "faqsTitle": "FAQs",
-    "faqsDesc": "Search canonical answers from your FAQ library",
-    "policiesTitle": "Business policies",
-    "policiesDesc": "Reference policies (shipping, return, warranty)",
-    "offersTitle": "Active promotions",
-    "offersDesc": "Mention live offers naturally in conversation",
-    "ordersTitle": "Customer order history",
-    "ordersDesc": "Answer about the customer's orders (status, total, date)",
-    "crmTitle": "CRM context",
-    "crmDesc": "Personalize using lead score, tags and pipeline stage",
-    "knowledgeTitle": "Knowledge base (RAG)",
-    "knowledgeDesc": "Semantic search over your documents",
-    "ragTuning": "Search tuning",
-    "topK": "Max results",
-    "topKHint": "How many chunks to return per search",
-    "similarityThreshold": "Relevance threshold",
-    "similarityHint": "Filters out results below this score",
-    "kbTool": "Agent search tool",
-    "kbToolDesc": "Let the agent query the KB as a tool, in addition to auto-context"
-  },
-  "agent.test": {
-    "title": "Test agent",
-    "subtitle": "Simulate a conversation and see the full prompt the LLM receives",
-    "reset": "Reset",
-    "startHint": "Type a message to start",
-    "inputPlaceholder": "Type as if you were a customer...",
-    "send": "Send",
-    "toolsUsed": "tools",
-    "selectHint": "Select a reply to see its details",
-    "noTools": "No tools were called",
-    "noRag": "No RAG results",
-    "args": "Arguments",
-    "result": "Result",
-    "tabs": {
-      "prompt": "System Prompt",
-      "tools": "Tools",
-      "rag": "RAG",
-      "metrics": "Metrics",
-      "turn": "Turn Context"
+  "catalog": {
+    "hub": {
+      "title": "Catalog",
+      "subtitle": "Products, courses, campaigns and promotions the agent can offer",
+      "courses": {
+        "label": "Courses",
+        "description": "Course and program catalog"
+      },
+      "campaigns": {
+        "label": "Campaigns",
+        "description": "Marketing and outreach campaigns"
+      },
+      "offers": {
+        "label": "Promotions",
+        "description": "Active discounts, promos and bundles"
+      }
     },
-    "metric": {
-      "model": "Model",
-      "latency": "Latency",
-      "inputTokens": "Input tokens",
-      "outputTokens": "Output tokens",
-      "cost": "Cost",
-      "toolCalls": "Tool calls"
-    },
-    "errors": {
-      "sendFailed": "Failed to process message",
-      "connection": "Connection error"
-    }
-  },
-  "admin.testAgent": "Test agent",
-  "settings.businessInfo": {
-    "title": "Business info",
-    "subtitle": "Data the agent uses to answer questions about your business",
-    "hint": "This info loads into every conversation. Fill in as much as possible so the agent can answer accurately.",
-    "loading": "Loading...",
-    "saving": "Saving...",
-    "save": "Save changes",
-    "saved": "Saved successfully",
-    "sections": {
-      "identity": "Identity",
-      "contact": "Contact",
-      "location": "Location",
-      "social": "Social links"
-    },
-    "fields": {
-      "companyName": "Company name",
-      "industry": "Industry",
-      "about": "About us",
-      "website": "Website",
-      "phone": "Phone",
-      "email": "Email",
-      "address": "Address",
-      "city": "City",
-      "country": "Country",
-      "logoUrl": "Logo URL"
-    },
-    "placeholders": {
-      "industry": "e.g. Tourism, Education, Retail",
-      "about": "A brief description of your business, mission and what you offer"
-    },
-    "social": {
-      "facebook": "Facebook",
-      "instagram": "Instagram",
-      "twitter": "Twitter / X",
-      "linkedin": "LinkedIn",
-      "youtube": "YouTube",
-      "tiktok": "TikTok"
-    },
-    "errors": {
-      "companyNameRequired": "Company name is required",
-      "saveFailed": "Failed to save",
-      "connection": "Connection error"
-    }
-  },
-  "settings.policies": {
-    "title": "Policies",
-    "subtitle": "Official policies the agent cites (never invents)",
-    "hint": "The agent can only reference active policies. Each change creates a new version preserving full history.",
-    "loading": "Loading...",
-    "saved": "Policy saved",
-    "saving": "Saving...",
-    "saveNewVersion": "Save new version",
-    "createPolicy": "Create policy",
-    "viewHistory": "View history",
-    "versionPrefix": "v",
-    "history": "Version history",
-    "active": "Active",
-    "markdownHint": "Basic markdown is supported for formatting",
-    "types": {
-      "shipping": "Shipping",
-      "return": "Return",
-      "warranty": "Warranty",
-      "cancellation": "Cancellation",
-      "terms": "Terms",
-      "privacy": "Privacy"
-    },
-    "fields": {
-      "title": "Title",
-      "content": "Content"
-    },
-    "placeholders": {
-      "content": "Describe the policy in detail. The agent will quote this content when customers ask."
-    },
-    "errors": {
-      "required": "Title and content are required",
-      "saveFailed": "Failed to save",
-      "connection": "Connection error"
-    }
-  },
-  "catalog.offers": {
-    "title": "Promotions",
-    "subtitle": "Active offers the agent can mention to customers",
-    "loading": "Loading...",
-    "empty": "No offers yet. Create the first one.",
-    "newOffer": "New offer",
-    "newTitle": "New offer",
-    "editTitle": "Edit offer",
-    "live": "Live",
-    "inactive": "Inactive",
-    "save": "Save",
-    "cancel": "Cancel",
-    "confirmDelete": "Delete this offer? This cannot be undone.",
-    "conditionsHint": "JSON with conditions (discount %, code, min amount, etc.)",
-    "types": {
-      "discount": "Discount",
-      "promo": "Promotion",
-      "bundle": "Bundle"
-    },
-    "fields": {
-      "type": "Type",
-      "title": "Title",
-      "validFrom": "Valid from",
-      "validTo": "Valid to",
-      "conditions": "Conditions (JSON)",
-      "active": "Active"
-    },
-    "placeholders": {
-      "title": "20% off summer courses"
-    },
-    "errors": {
-      "titleRequired": "Title is required",
-      "conditionsInvalid": "Conditions must be valid JSON",
-      "saveFailed": "Failed to save"
-    }
-  },
-  "knowledge.faqs": {
-    "title": "FAQs",
-    "subtitle": "Question-answer pairs the agent uses for canonical replies",
-    "loading": "Loading...",
-    "empty": "No FAQs yet. Create the first one to give the agent precise answers.",
-    "newFaq": "New FAQ",
-    "newTitle": "New FAQ",
-    "editTitle": "Edit FAQ",
-    "uncategorized": "Uncategorized",
-    "views": "views",
-    "edit": "Edit",
-    "delete": "Delete",
-    "save": "Save",
-    "cancel": "Cancel",
-    "confirmDelete": "Delete this FAQ? This cannot be undone.",
-    "fields": {
-      "question": "Question",
-      "answer": "Answer",
-      "category": "Category",
-      "tags": "Tags (comma-separated)",
-      "order": "Order",
-      "published": "Published (visible to agent)"
-    },
-    "placeholders": {
-      "question": "What is your return policy?",
-      "answer": "We accept returns within the first 30 days...",
-      "category": "Sales, Support, Shipping",
-      "tags": "return, refund"
-    },
-    "errors": {
-      "required": "Question and answer are required",
-      "saveFailed": "Failed to save"
+    "offers": {
+      "title": "Promotions",
+      "subtitle": "Active offers the agent can mention to customers",
+      "loading": "Loading...",
+      "empty": "No offers yet. Create the first one.",
+      "newOffer": "New offer",
+      "newTitle": "New offer",
+      "editTitle": "Edit offer",
+      "live": "Live",
+      "inactive": "Inactive",
+      "save": "Save",
+      "cancel": "Cancel",
+      "confirmDelete": "Delete this offer? This cannot be undone.",
+      "conditionsHint": "JSON with conditions (discount %, code, min amount, etc.)",
+      "types": {
+        "discount": "Discount",
+        "promo": "Promotion",
+        "bundle": "Bundle"
+      },
+      "fields": {
+        "type": "Type",
+        "title": "Title",
+        "validFrom": "Valid from",
+        "validTo": "Valid to",
+        "conditions": "Conditions (JSON)",
+        "active": "Active"
+      },
+      "placeholders": {
+        "title": "20% off summer courses"
+      },
+      "errors": {
+        "titleRequired": "Title is required",
+        "conditionsInvalid": "Conditions must be valid JSON",
+        "saveFailed": "Failed to save"
+      }
     }
   }
 }

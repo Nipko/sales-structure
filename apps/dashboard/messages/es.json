@@ -577,7 +577,86 @@
     },
     "navProfile": "Perfil",
     "navSecurity": "Seguridad",
-    "navTools": "Herramientas"
+    "navTools": "Herramientas",
+    "businessInfo": {
+      "title": "Información del negocio",
+      "subtitle": "Datos que el agente usa para responder sobre tu empresa",
+      "hint": "Esta información se carga automáticamente en cada conversación. Completa lo máximo posible para que el agente pueda responder con precisión.",
+      "loading": "Cargando...",
+      "saving": "Guardando...",
+      "save": "Guardar cambios",
+      "saved": "Guardado correctamente",
+      "sections": {
+        "identity": "Identidad",
+        "contact": "Contacto",
+        "location": "Ubicación",
+        "social": "Redes sociales"
+      },
+      "fields": {
+        "companyName": "Nombre de la empresa",
+        "industry": "Industria",
+        "about": "Sobre nosotros",
+        "website": "Sitio web",
+        "phone": "Teléfono",
+        "email": "Email",
+        "address": "Dirección",
+        "city": "Ciudad",
+        "country": "País",
+        "logoUrl": "URL del logo"
+      },
+      "placeholders": {
+        "industry": "Ej: Turismo, Educación, Retail",
+        "about": "Breve descripción de tu negocio, misión y qué ofreces"
+      },
+      "social": {
+        "facebook": "Facebook",
+        "instagram": "Instagram",
+        "twitter": "Twitter / X",
+        "linkedin": "LinkedIn",
+        "youtube": "YouTube",
+        "tiktok": "TikTok"
+      },
+      "errors": {
+        "companyNameRequired": "El nombre de la empresa es obligatorio",
+        "saveFailed": "Error al guardar",
+        "connection": "Error de conexión"
+      }
+    },
+    "policies": {
+      "title": "Políticas",
+      "subtitle": "Políticas oficiales que el agente consulta (nunca inventa)",
+      "hint": "El agente solo puede referenciar políticas activas. Cada cambio crea una nueva versión manteniendo el historial completo.",
+      "loading": "Cargando...",
+      "saved": "Política guardada",
+      "saving": "Guardando...",
+      "saveNewVersion": "Guardar nueva versión",
+      "createPolicy": "Crear política",
+      "viewHistory": "Ver historial",
+      "versionPrefix": "v",
+      "history": "Historial de versiones",
+      "active": "Activa",
+      "markdownHint": "Puedes usar markdown básico para formato",
+      "types": {
+        "shipping": "Envío",
+        "return": "Devolución",
+        "warranty": "Garantía",
+        "cancellation": "Cancelación",
+        "terms": "Términos",
+        "privacy": "Privacidad"
+      },
+      "fields": {
+        "title": "Título",
+        "content": "Contenido"
+      },
+      "placeholders": {
+        "content": "Describe la política en detalle. El agente citará esta información textual cuando los clientes pregunten."
+      },
+      "errors": {
+        "required": "Título y contenido son obligatorios",
+        "saveFailed": "Error al guardar",
+        "connection": "Error de conexión"
+      }
+    }
   },
   "media": {
     "title": "Banco de Imágenes",
@@ -1093,7 +1172,8 @@
       "noToolsEnabled": "Sin herramientas activas",
       "always247": "24/7 - Siempre disponible",
       "daysActive": "{count} {count, plural, one {día} other {días}} activos, {timezone}",
-      "rulesToolsSummary": "{rules} reglas, {tools} herramientas activas"
+      "rulesToolsSummary": "{rules} reglas, {tools} herramientas activas",
+      "testAgent": "Probar agente"
     },
     "schedule": {
       "available247": "Disponible 24/7",
@@ -1207,13 +1287,67 @@
       "moreToolsDesc": "Catálogo, CRM, pagos y más",
       "andSeparator": " y ",
       "servicesLabel": "servicios",
-      "availabilityScheduleLabel": "horario de disponibilidad"
+      "availabilityScheduleLabel": "horario de disponibilidad",
+      "catalogTitle": "Catálogo de productos",
+      "catalogDesc": "Consultar productos, precios y stock en tiempo real",
+      "faqsTitle": "Preguntas frecuentes",
+      "faqsDesc": "Buscar respuestas oficiales en tu base de FAQs",
+      "policiesTitle": "Políticas del negocio",
+      "policiesDesc": "Consultar políticas (envío, devolución, garantía)",
+      "offersTitle": "Promociones activas",
+      "offersDesc": "Mencionar ofertas vigentes durante la conversación",
+      "ordersTitle": "Historial de órdenes",
+      "ordersDesc": "Responder sobre pedidos del cliente (estado, total, fecha)",
+      "crmTitle": "Contexto CRM",
+      "crmDesc": "Personalizar usando lead score, tags y etapa del cliente",
+      "knowledgeTitle": "Base de conocimiento (RAG)",
+      "knowledgeDesc": "Búsqueda semántica en tus documentos",
+      "ragTuning": "Afinamiento de búsqueda",
+      "topK": "Resultados máximos",
+      "topKHint": "Cuántos fragmentos devolver por búsqueda",
+      "similarityThreshold": "Umbral de relevancia",
+      "similarityHint": "Filtra resultados por debajo de esta puntuación",
+      "kbTool": "Herramienta de búsqueda al agente",
+      "kbToolDesc": "Permite al agente consultar la KB como tool además del contexto automático"
     },
     "customPrompt": {
       "title": "Prompt de sistema personalizado",
       "description": "Escribe el prompt completo que el modelo de IA recibirá como instrucción del sistema. Este prompt reemplaza toda la configuración guiada.",
       "placeholder": "Eres Sofía Henao, asesora de ventas en Gecko Extreme Adventure.\n\nTu personalidad:\n- Tono amigable y entusiasta\n- Uso moderado de emojis\n- Siempre responde en español colombiano\n\nReglas:\n1. Nunca inventar precios\n2. Si no puedes resolver en 3 mensajes, ofrecer hablar con un humano\n3. Siempre confirmar fecha y número de personas antes de cotizar\n\nHorario: Lunes a viernes 8am-6pm, sábados 8am-2pm (Colombia)",
       "characters": "caracteres"
+    },
+    "test": {
+      "title": "Probar agente",
+      "subtitle": "Simula una conversación y ve el prompt completo que recibe el LLM",
+      "reset": "Reiniciar",
+      "startHint": "Escribe un mensaje para comenzar",
+      "inputPlaceholder": "Escribe como si fueras un cliente...",
+      "send": "Enviar",
+      "toolsUsed": "tools",
+      "selectHint": "Selecciona una respuesta para ver sus detalles",
+      "noTools": "No se llamaron tools",
+      "noRag": "Sin resultados de RAG",
+      "args": "Argumentos",
+      "result": "Resultado",
+      "tabs": {
+        "prompt": "System Prompt",
+        "tools": "Tools",
+        "rag": "RAG",
+        "metrics": "Métricas",
+        "turn": "Turn Context"
+      },
+      "metric": {
+        "model": "Modelo",
+        "latency": "Latencia",
+        "inputTokens": "Tokens entrada",
+        "outputTokens": "Tokens salida",
+        "cost": "Costo",
+        "toolCalls": "Tool calls"
+      },
+      "errors": {
+        "sendFailed": "Error al procesar el mensaje",
+        "connection": "Error de conexión"
+      }
     }
   },
   "knowledge": {
@@ -1228,22 +1362,40 @@
       "library": "Biblioteca",
       "faqs": "FAQs",
       "search": "Buscar en contexto"
-    }
-  },
-  "catalog.hub": {
-    "title": "Catálogo",
-    "subtitle": "Productos, cursos, campañas y promociones que el agente puede ofrecer",
-    "courses": {
-      "label": "Cursos",
-      "description": "Catálogo de cursos y programas"
     },
-    "campaigns": {
-      "label": "Campañas",
-      "description": "Campañas de marketing y difusión"
-    },
-    "offers": {
-      "label": "Promociones",
-      "description": "Descuentos, promos y paquetes activos"
+    "faqs": {
+      "title": "Preguntas frecuentes",
+      "subtitle": "Pares pregunta-respuesta que el agente usa para dar respuestas canónicas",
+      "loading": "Cargando...",
+      "empty": "Aún no hay FAQs. Crea la primera para darle respuestas precisas al agente.",
+      "newFaq": "Nueva FAQ",
+      "newTitle": "Nueva FAQ",
+      "editTitle": "Editar FAQ",
+      "uncategorized": "Sin categoría",
+      "views": "vistas",
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "confirmDelete": "¿Eliminar esta FAQ? No se puede deshacer.",
+      "fields": {
+        "question": "Pregunta",
+        "answer": "Respuesta",
+        "category": "Categoría",
+        "tags": "Tags (separados por coma)",
+        "order": "Orden",
+        "published": "Publicada (visible al agente)"
+      },
+      "placeholders": {
+        "question": "¿Cuál es la política de devoluciones?",
+        "answer": "Aceptamos devoluciones dentro de los primeros 30 días...",
+        "category": "Ventas, Soporte, Envíos",
+        "tags": "devolucion, reembolso"
+      },
+      "errors": {
+        "required": "Pregunta y respuesta son obligatorias",
+        "saveFailed": "Error al guardar"
+      }
     }
   },
   "identity": {
@@ -1600,210 +1752,58 @@
       "min": "~{n} min"
     }
   },
-  "agent.capabilities": {
-    "catalogTitle": "Catálogo de productos",
-    "catalogDesc": "Consultar productos, precios y stock en tiempo real",
-    "faqsTitle": "Preguntas frecuentes",
-    "faqsDesc": "Buscar respuestas oficiales en tu base de FAQs",
-    "policiesTitle": "Políticas del negocio",
-    "policiesDesc": "Consultar políticas (envío, devolución, garantía)",
-    "offersTitle": "Promociones activas",
-    "offersDesc": "Mencionar ofertas vigentes durante la conversación",
-    "ordersTitle": "Historial de órdenes",
-    "ordersDesc": "Responder sobre pedidos del cliente (estado, total, fecha)",
-    "crmTitle": "Contexto CRM",
-    "crmDesc": "Personalizar usando lead score, tags y etapa del cliente",
-    "knowledgeTitle": "Base de conocimiento (RAG)",
-    "knowledgeDesc": "Búsqueda semántica en tus documentos",
-    "ragTuning": "Afinamiento de búsqueda",
-    "topK": "Resultados máximos",
-    "topKHint": "Cuántos fragmentos devolver por búsqueda",
-    "similarityThreshold": "Umbral de relevancia",
-    "similarityHint": "Filtra resultados por debajo de esta puntuación",
-    "kbTool": "Herramienta de búsqueda al agente",
-    "kbToolDesc": "Permite al agente consultar la KB como tool además del contexto automático"
-  },
-  "agent.test": {
-    "title": "Probar agente",
-    "subtitle": "Simula una conversación y ve el prompt completo que recibe el LLM",
-    "reset": "Reiniciar",
-    "startHint": "Escribe un mensaje para comenzar",
-    "inputPlaceholder": "Escribe como si fueras un cliente...",
-    "send": "Enviar",
-    "toolsUsed": "tools",
-    "selectHint": "Selecciona una respuesta para ver sus detalles",
-    "noTools": "No se llamaron tools",
-    "noRag": "Sin resultados de RAG",
-    "args": "Argumentos",
-    "result": "Resultado",
-    "tabs": {
-      "prompt": "System Prompt",
-      "tools": "Tools",
-      "rag": "RAG",
-      "metrics": "Métricas",
-      "turn": "Turn Context"
+  "catalog": {
+    "hub": {
+      "title": "Catálogo",
+      "subtitle": "Productos, cursos, campañas y promociones que el agente puede ofrecer",
+      "courses": {
+        "label": "Cursos",
+        "description": "Catálogo de cursos y programas"
+      },
+      "campaigns": {
+        "label": "Campañas",
+        "description": "Campañas de marketing y difusión"
+      },
+      "offers": {
+        "label": "Promociones",
+        "description": "Descuentos, promos y paquetes activos"
+      }
     },
-    "metric": {
-      "model": "Modelo",
-      "latency": "Latencia",
-      "inputTokens": "Tokens entrada",
-      "outputTokens": "Tokens salida",
-      "cost": "Costo",
-      "toolCalls": "Tool calls"
-    },
-    "errors": {
-      "sendFailed": "Error al procesar el mensaje",
-      "connection": "Error de conexión"
-    }
-  },
-  "admin.testAgent": "Probar agente",
-  "settings.businessInfo": {
-    "title": "Información del negocio",
-    "subtitle": "Datos que el agente usa para responder sobre tu empresa",
-    "hint": "Esta información se carga automáticamente en cada conversación. Completa lo máximo posible para que el agente pueda responder con precisión.",
-    "loading": "Cargando...",
-    "saving": "Guardando...",
-    "save": "Guardar cambios",
-    "saved": "Guardado correctamente",
-    "sections": {
-      "identity": "Identidad",
-      "contact": "Contacto",
-      "location": "Ubicación",
-      "social": "Redes sociales"
-    },
-    "fields": {
-      "companyName": "Nombre de la empresa",
-      "industry": "Industria",
-      "about": "Sobre nosotros",
-      "website": "Sitio web",
-      "phone": "Teléfono",
-      "email": "Email",
-      "address": "Dirección",
-      "city": "Ciudad",
-      "country": "País",
-      "logoUrl": "URL del logo"
-    },
-    "placeholders": {
-      "industry": "Ej: Turismo, Educación, Retail",
-      "about": "Breve descripción de tu negocio, misión y qué ofreces"
-    },
-    "social": {
-      "facebook": "Facebook",
-      "instagram": "Instagram",
-      "twitter": "Twitter / X",
-      "linkedin": "LinkedIn",
-      "youtube": "YouTube",
-      "tiktok": "TikTok"
-    },
-    "errors": {
-      "companyNameRequired": "El nombre de la empresa es obligatorio",
-      "saveFailed": "Error al guardar",
-      "connection": "Error de conexión"
-    }
-  },
-  "settings.policies": {
-    "title": "Políticas",
-    "subtitle": "Políticas oficiales que el agente consulta (nunca inventa)",
-    "hint": "El agente solo puede referenciar políticas activas. Cada cambio crea una nueva versión manteniendo el historial completo.",
-    "loading": "Cargando...",
-    "saved": "Política guardada",
-    "saving": "Guardando...",
-    "saveNewVersion": "Guardar nueva versión",
-    "createPolicy": "Crear política",
-    "viewHistory": "Ver historial",
-    "versionPrefix": "v",
-    "history": "Historial de versiones",
-    "active": "Activa",
-    "markdownHint": "Puedes usar markdown básico para formato",
-    "types": {
-      "shipping": "Envío",
-      "return": "Devolución",
-      "warranty": "Garantía",
-      "cancellation": "Cancelación",
-      "terms": "Términos",
-      "privacy": "Privacidad"
-    },
-    "fields": {
-      "title": "Título",
-      "content": "Contenido"
-    },
-    "placeholders": {
-      "content": "Describe la política en detalle. El agente citará esta información textual cuando los clientes pregunten."
-    },
-    "errors": {
-      "required": "Título y contenido son obligatorios",
-      "saveFailed": "Error al guardar",
-      "connection": "Error de conexión"
-    }
-  },
-  "catalog.offers": {
-    "title": "Promociones",
-    "subtitle": "Ofertas activas que el agente puede mencionar a los clientes",
-    "loading": "Cargando...",
-    "empty": "Aún no hay ofertas. Crea la primera promoción.",
-    "newOffer": "Nueva oferta",
-    "newTitle": "Nueva oferta",
-    "editTitle": "Editar oferta",
-    "live": "Activa",
-    "inactive": "Inactiva",
-    "save": "Guardar",
-    "cancel": "Cancelar",
-    "confirmDelete": "¿Eliminar esta oferta? No se puede deshacer.",
-    "conditionsHint": "JSON con condiciones (descuento %, código, monto mínimo, etc.)",
-    "types": {
-      "discount": "Descuento",
-      "promo": "Promoción",
-      "bundle": "Paquete"
-    },
-    "fields": {
-      "type": "Tipo",
-      "title": "Título",
-      "validFrom": "Válido desde",
-      "validTo": "Válido hasta",
-      "conditions": "Condiciones (JSON)",
-      "active": "Activa"
-    },
-    "placeholders": {
-      "title": "20% de descuento en cursos de verano"
-    },
-    "errors": {
-      "titleRequired": "El título es obligatorio",
-      "conditionsInvalid": "Las condiciones deben ser JSON válido",
-      "saveFailed": "Error al guardar"
-    }
-  },
-  "knowledge.faqs": {
-    "title": "Preguntas frecuentes",
-    "subtitle": "Pares pregunta-respuesta que el agente usa para dar respuestas canónicas",
-    "loading": "Cargando...",
-    "empty": "Aún no hay FAQs. Crea la primera para darle respuestas precisas al agente.",
-    "newFaq": "Nueva FAQ",
-    "newTitle": "Nueva FAQ",
-    "editTitle": "Editar FAQ",
-    "uncategorized": "Sin categoría",
-    "views": "vistas",
-    "edit": "Editar",
-    "delete": "Eliminar",
-    "save": "Guardar",
-    "cancel": "Cancelar",
-    "confirmDelete": "¿Eliminar esta FAQ? No se puede deshacer.",
-    "fields": {
-      "question": "Pregunta",
-      "answer": "Respuesta",
-      "category": "Categoría",
-      "tags": "Tags (separados por coma)",
-      "order": "Orden",
-      "published": "Publicada (visible al agente)"
-    },
-    "placeholders": {
-      "question": "¿Cuál es la política de devoluciones?",
-      "answer": "Aceptamos devoluciones dentro de los primeros 30 días...",
-      "category": "Ventas, Soporte, Envíos",
-      "tags": "devolucion, reembolso"
-    },
-    "errors": {
-      "required": "Pregunta y respuesta son obligatorias",
-      "saveFailed": "Error al guardar"
+    "offers": {
+      "title": "Promociones",
+      "subtitle": "Ofertas activas que el agente puede mencionar a los clientes",
+      "loading": "Cargando...",
+      "empty": "Aún no hay ofertas. Crea la primera promoción.",
+      "newOffer": "Nueva oferta",
+      "newTitle": "Nueva oferta",
+      "editTitle": "Editar oferta",
+      "live": "Activa",
+      "inactive": "Inactiva",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "confirmDelete": "¿Eliminar esta oferta? No se puede deshacer.",
+      "conditionsHint": "JSON con condiciones (descuento %, código, monto mínimo, etc.)",
+      "types": {
+        "discount": "Descuento",
+        "promo": "Promoción",
+        "bundle": "Paquete"
+      },
+      "fields": {
+        "type": "Tipo",
+        "title": "Título",
+        "validFrom": "Válido desde",
+        "validTo": "Válido hasta",
+        "conditions": "Condiciones (JSON)",
+        "active": "Activa"
+      },
+      "placeholders": {
+        "title": "20% de descuento en cursos de verano"
+      },
+      "errors": {
+        "titleRequired": "El título es obligatorio",
+        "conditionsInvalid": "Las condiciones deben ser JSON válido",
+        "saveFailed": "Error al guardar"
+      }
     }
   }
 }

@@ -14,7 +14,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 
 export interface BookingState {
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked';
-    services?: Array<{ id: string; name: string; duration: number; price: number; currency: string }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; price: number; currency: string }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -169,7 +169,7 @@ export class BookingEngineService {
             state.step = 'show_services';
             return {
                 handled: true, state,
-                text: `Here are our services:\n${state.services.map((s, i) => `${i + 1}. ${s.name} (${s.duration}min - ${s.price.toLocaleString()} ${s.currency})`).join('\n')}\n\nWhich one interests you?`,
+                text: `Here are our services:\n${state.services.map((s, i) => `${i + 1}. ${s.name} (${s.durationMinutes}min - ${s.price.toLocaleString()} ${s.currency})`).join('\n')}\n\nWhich one interests you?`,
                 listMessage: {
                     body: 'Here are our available services. Tap to select:',
                     buttonText: 'View services',
@@ -178,7 +178,7 @@ export class BookingEngineService {
                         rows: state.services.map(s => ({
                             id: `svc_${s.id}`,
                             title: s.name.slice(0, 24),
-                            description: `${s.duration}min - ${s.price.toLocaleString()} ${s.currency}`.slice(0, 72),
+                            description: `${s.durationMinutes}min - ${s.price.toLocaleString()} ${s.currency}`.slice(0, 72),
                         })),
                     }],
                 },

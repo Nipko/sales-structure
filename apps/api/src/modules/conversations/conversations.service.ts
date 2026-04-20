@@ -540,11 +540,12 @@ export class ConversationsService {
                     }
                 }
 
-                // Fallback: use LLM to polish the text response for the right language
+                // Fallback: REPLACE the entire system prompt with a translation task
                 const personaName = config.persona?.name || 'Assistant';
                 const tone = config.persona?.personality?.tone || 'friendly';
                 const language = (config as any).language || 'es-CO';
-                systemPrompt += `\n\n## Rewrite this in ${language} as ${personaName} (${tone} tone). Keep ALL data exactly. Be concise:\n\n${engineResult.text}`;
+                // Override system prompt completely — only job is to translate
+                systemPrompt = `You are ${personaName}. Your ONLY task is to rewrite the following message in ${language} with a ${tone} tone. Keep ALL data (names, dates, times, prices) exactly as shown. Be natural and concise (2-3 sentences). Do NOT add any questions about email or personal info.\n\nMessage to rewrite:\n${engineResult.text}`;
                 tools = [];
 
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
@@ -552,8 +553,9 @@ export class ConversationsService {
                 // Not booking-related — let LLM handle
                 tools = [...APPOINTMENT_TOOLS];
                 if (bookingState.services?.length) {
-                    const svcList = bookingState.services.map(s => `${s.name} (${s.duration}min, ${s.price} ${s.currency})`).join(', ');
-                    systemPrompt += `\n\nAvailable services: ${svcList}. Do NOT ask for email or personal info during casual conversation.`;
+                    const svcList = bookingState.services.map(s => `${s.name} (${s.durationMinutes || '?'}min, ${s.price} ${s.currency})`).join(', ');
+                    // Inject at the BEGINNING of the prompt to ensure LLM follows it
+                    systemPrompt = `CRITICAL RULE: NEVER ask for email, phone, or personal information unless the customer is booking an appointment. During general conversation, just be helpful and answer questions.\n\nAvailable services: ${svcList}\n\n` + systemPrompt;
                 }
                 this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);

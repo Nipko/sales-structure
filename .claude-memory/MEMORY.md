@@ -21,4 +21,6 @@
 - [Critical Fix History](critical_fix_history.md) — isBlocked broke outbound (removed from processor), business hours 24/7 fix, analytics tracking wired
 - [Multi-Agent Design](project_multi_agent_design.md) — 4 plans (starter/pro/enterprise/custom), agent-per-channel, user templates, schedule per agent
 - [Session Apr 17-18](project_session_apr17_18.md) — Multi-agent system, design unification, i18n completion, critical fixes, Google Calendar
-- [Pending Tasks](project_pending_tasks.md) — Public booking integration, outbound verification, billing system, Google Calendar verification
+- [Session Apr 19-20](project_session_apr19_20.md) — Booking engine refactor (15+ iterations), WhatsApp Interactive Messages, deterministic flow
+- [Pending Tasks](project_pending_tasks.md) — Booking agent verification, public booking, outbound, billing, Google Calendar
+- [Critical Booking Refactor](critical_booking_refactor.md) — LLM cannot be trusted for flow decisions, use deterministic engine + interactive messages

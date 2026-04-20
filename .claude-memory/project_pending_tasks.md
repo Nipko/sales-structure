@@ -18,6 +18,15 @@ originSessionId: d5aaa220-582d-4f39-aed4-0a7831ce3013
 - Critical pipeline was fixed (ComplianceService removed from processor, isBlocked removed from reply path)
 - Needs production testing to confirm messages reach customers
 
+## Booking Agent — Critical (April 20)
+- WhatsApp Interactive Messages implemented but NOT verified working in production
+- Need to check API logs for sendListMessage errors
+- If interactive messages fail, investigate WhatsApp API format requirements
+- **Fallback**: LLM translation now isolated (system prompt replaced, no history)
+- **Consider**: Parlant framework for dynamic context assembly
+- **Consider**: tool_choice: "required" + strict: true for forced tool calling
+- **Consider**: Switching to GPT-4o or Claude for tool calling (99.3% vs ~75%)
+
 ## Agent Templates — Content Enhancement
 - 6 built-in templates upgraded with SPIN/BANT methodology (done April 18)
 - **Pending:** Allow templates to include channel-specific greeting variations (WhatsApp vs Instagram vs SMS)

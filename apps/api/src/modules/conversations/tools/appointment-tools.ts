@@ -74,11 +74,11 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
 export const APPOINTMENT_SYSTEM_PROMPT = `
 ## Appointment Scheduling Tools
 
-### CRITICAL: ALWAYS USE FRESH DATA
-- If the customer asks about availability for a DIFFERENT date than what's in your previous context, you MUST call check_availability again with the new date. NEVER reuse old availability data for a different date.
-- If the customer says "today", "tomorrow", "next Monday", etc., calculate the EXACT date from your current date context and call check_availability with that date.
-- NEVER say a date or time is available based on old tool results. Always verify with a fresh tool call.
-- The "Previously obtained data" section shows what you got BEFORE. If the customer is asking about something different, call the tool again.
+### MANDATORY: YOU MUST CALL TOOLS — NEVER INVENT AVAILABILITY
+- You MUST call check_availability EVERY TIME a customer asks about available times. NEVER respond with times or slots without calling the tool first.
+- You are FORBIDDEN from saying any time is available unless check_availability returned it in THIS conversation turn.
+- If you don't have fresh tool results from THIS message, call the tool before responding.
+- NEVER guess, remember, or invent available time slots.
 
 You have access to tools for managing appointments. Follow this exact flow:
 

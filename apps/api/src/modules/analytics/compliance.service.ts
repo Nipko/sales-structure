@@ -8,10 +8,11 @@ const OPT_OUT_WORDS = ['stop', 'baja', 'parar', 'salir', 'quitar', 'unsubscribe'
 
 // Phrases: matched as substring (they're specific enough to avoid false positives)
 const OPT_OUT_PHRASES = [
-    'no quiero', 'no me contactes', 'no contactar', 'no me escribas', 'no me escriban',
+    'no quiero recibir', 'no quiero que me contacten', 'no quiero mensajes',
+    'no me contactes', 'no contactar', 'no me escribas', 'no me escriban',
     'darme de baja', 'cancelar suscripcion', 'quiero salir',
     'eliminar mis datos', 'borrar mis datos', 'desuscribir', 'desuscribirme',
-    'remove me', 'do not contact', 'opt out',
+    'remove me', 'do not contact', 'opt out', 'stop messaging',
 ];
 
 // Build regex patterns once (word-boundary for single words)

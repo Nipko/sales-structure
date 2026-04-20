@@ -566,12 +566,11 @@ export class ConversationsService {
         );
 
         let messages: Array<{ role: string; content: string }>;
-        if (isNewSession && history && history.length > 0) {
-            // For new sessions, only include last 2 messages for brief context
-            const lastMessages = (history || []).slice(-2);
-            messages = this.truncateHistory(lastMessages, userText);
-            systemPrompt += '\n\n## Previous Session Context\nThe customer previously interacted with you. Here is a brief summary of the last exchange for reference, but treat this as a NEW conversation — greet them freshly.\n';
-            this.logger.log(`[Pipeline] New session: trimmed history from ${history.length} to ${lastMessages.length} messages`);
+        if (isNewSession) {
+            // New session: send ONLY the current message — no history at all.
+            // Old history contaminates the LLM into continuing a stale conversation.
+            messages = [{ role: 'user', content: userText }];
+            this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
         } else {
             messages = this.truncateHistory(history || [], userText);
         }

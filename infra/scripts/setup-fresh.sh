@@ -194,6 +194,7 @@ if [ -n "$TENANT_SCHEMAS" ]; then
                 $DB 2>/dev/null || echo "    [WARN] Some statements failed for $schema (may already exist)"
             echo "    [OK] $schema"
         done
+        echo "  ✓ Applied tenant-schema.sql (includes agent_personas, agent_templates, calendar_integrations)"
     fi
 else
     echo "  No tenants found — schemas will be created when tenants sign up"

@@ -269,6 +269,7 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
       - loki_data:/loki
+      - ../loki/local-config.yaml:/etc/loki/local-config.yaml:ro
     ports:
       - "127.0.0.1:3100:3100"
     mem_limit: 384m

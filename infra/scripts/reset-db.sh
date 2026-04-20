@@ -52,8 +52,17 @@ echo "===> Step 5: Seed admin user..."
 docker compose -f $COMPOSE_FILE run --rm api npm run db:seed 2>/dev/null || echo "  [WARN] Seed script failed — may need manual seeding"
 
 echo ""
-echo "===> Step 6: Run tenant migrations..."
-docker compose -f $COMPOSE_FILE run --rm api npm run migrate:tenants 2>/dev/null || echo "  [WARN] No tenants to migrate yet"
+echo "===> Step 6: Apply tenant schema to existing tenants..."
+TENANT_SCHEMAS=$(docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -t -c "SELECT schema_name FROM tenants WHERE is_active = true" | tr -d ' ' | grep -v '^$')
+if [ -n "$TENANT_SCHEMAS" ]; then
+    for schema in $TENANT_SCHEMAS; do
+        echo "  → Migrating schema: $schema"
+        cat apps/api/prisma/tenant-schema.sql | sed "s/{{SCHEMA_NAME}}/$schema/g" | docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME
+    done
+    echo "  ✓ All tenant schemas migrated"
+else
+    echo "  → No active tenants found, skipping"
+fi
 
 echo ""
 echo "===> Step 7: Restart services..."

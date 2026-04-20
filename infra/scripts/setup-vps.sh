@@ -18,7 +18,7 @@ echo "=========================================="
 echo ""
 
 # ---- 1. Generate secrets ----
-echo "===> [1/6] Generating secrets..."
+echo "===> [1/7] Generating secrets..."
 JWT_SECRET=$(openssl rand -base64 48)
 JWT_REFRESH_SECRET=$(openssl rand -base64 48)
 INTERNAL_JWT_SECRET=$(openssl rand -base64 48)
@@ -31,7 +31,7 @@ META_VERIFY_TOKEN=$(openssl rand -hex 32)
 echo "  [OK] Secrets generated"
 
 # ---- 2. Create production .env ----
-echo "===> [2/6] Creating .env..."
+echo "===> [2/7] Creating .env..."
 cat > .env << EOF
 # ============================================
 # Parallly — Production Configuration
@@ -104,6 +104,11 @@ MEDIA_STORAGE_PATH=/data/media
 # ---- Observability ----
 BULL_BOARD_TOKEN=${BULL_BOARD_TOKEN}
 GRAFANA_PASSWORD=${GRAFANA_PASSWORD}
+LOG_LEVEL=info
+
+# ---- Calendar Integrations ----
+GOOGLE_CALENDAR_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/calendar/google/callback
+MS_CALENDAR_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/calendar/microsoft/callback
 EOF
 
 chmod 600 .env
@@ -114,8 +119,37 @@ echo "    nano /opt/parallext-engine/.env"
 echo ""
 read -p "  Press Enter after editing .env to continue..."
 
-# ---- 3. Start infrastructure ----
-echo "===> [3/6] Starting PostgreSQL and Redis..."
+# ---- 3. Create Cloudflare Tunnel config template ----
+echo "===> [3/7] Creating Cloudflare Tunnel config template..."
+mkdir -p /opt/cloudflared
+cat > /opt/cloudflared/config.yml << 'TUNNELCFG'
+# Cloudflare Tunnel configuration
+# Replace TUNNEL_ID with your actual tunnel ID
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /opt/cloudflared/credentials.json
+
+ingress:
+  - hostname: parallly-chat.cloud
+    service: http://landing:80
+  - hostname: admin.parallly-chat.cloud
+    service: http://dashboard:3000
+  - hostname: api.parallly-chat.cloud
+    service: http://api:3000
+  - hostname: wa.parallly-chat.cloud
+    service: http://whatsapp:3002
+  - hostname: logs.parallly-chat.cloud
+    service: http://dozzle:8080
+  - hostname: status.parallly-chat.cloud
+    service: http://uptime-kuma:3001
+  - hostname: grafana.parallly-chat.cloud
+    service: http://grafana:3000
+  - service: http_status:404
+TUNNELCFG
+echo "  ✓ Cloudflare Tunnel config template created at /opt/cloudflared/config.yml"
+echo "    → Edit this file with your actual tunnel ID and credentials"
+
+# ---- 4. Start infrastructure ----
+echo "===> [4/7] Starting PostgreSQL and Redis..."
 docker compose -f infra/docker/docker-compose.prod.yml up -d postgres redis
 echo "  Waiting for PostgreSQL..."
 for i in $(seq 1 30); do
@@ -127,12 +161,12 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# ---- 4. Run fresh database setup ----
-echo "===> [4/6] Running fresh database setup..."
+# ---- 5. Run fresh database setup ----
+echo "===> [5/7] Running fresh database setup..."
 bash infra/scripts/setup-fresh.sh
 
-# ---- 5. Start all services ----
-echo "===> [5/6] Starting all services (app + observability)..."
+# ---- 6. Start all services ----
+echo "===> [6/7] Starting all services (app + observability)..."
 docker compose -f infra/docker/docker-compose.prod.yml up -d
 
 # Wait for API health
@@ -146,7 +180,7 @@ for i in $(seq 1 60); do
     sleep 1
 done
 
-# ---- 6. Print summary ----
+# ---- 7. Print summary ----
 echo ""
 echo "=========================================="
 echo "  SETUP COMPLETE"

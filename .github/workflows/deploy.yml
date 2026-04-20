@@ -275,8 +275,8 @@ jobs:
             echo "# Parallext Engine - Production Configuration" >> .env
             echo "NODE_ENV=production" >> .env
             echo "LOG_LEVEL=info" >> .env
-            echo "DATABASE_URL=${PROD_DATABASE_URL}" >> .env
-            echo "DIRECT_DATABASE_URL=${PROD_DATABASE_URL}" >> .env
+            echo "DATABASE_URL=postgresql://parallext:${PROD_DB_PASSWORD}@pgbouncer:6432/parallext_engine" >> .env
+            echo "DIRECT_DATABASE_URL=postgresql://parallext:${PROD_DB_PASSWORD}@postgres:5432/parallext_engine" >> .env
             echo "DB_PASSWORD=${PROD_DB_PASSWORD}" >> .env
             echo "REDIS_HOST=${PROD_REDIS_HOST}" >> .env
             echo "REDIS_PORT=6379" >> .env

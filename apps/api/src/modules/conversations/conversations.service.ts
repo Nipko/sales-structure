@@ -16,7 +16,8 @@ import { NurturingService } from '../automation/nurturing.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { APPOINTMENT_TOOLS, buildBookingPrompt, updateBookingState, advanceStateFromMessage, type BookingState } from './tools/appointment-tools';
+import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
+import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 
@@ -44,6 +45,7 @@ export class ConversationsService {
         private nurturingService: NurturingService,
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
+        private bookingEngine: BookingEngineService,
         private complianceService: AnalyticsComplianceService,
         private analyticsService: AnalyticsService,
     ) {}
@@ -475,60 +477,51 @@ export class ConversationsService {
             }
         }
 
-        // Inject AI tools if appointments tool is enabled
+        // ── Deterministic Booking Engine ──
         const toolsConfig = (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
-
-        // Booking state machine — tracks where we are in the booking flow
         let bookingState: BookingState = (conversation.metadata as any)?.bookingState || { step: 'idle' };
 
         if (toolsEnabled) {
-            tools = [...APPOINTMENT_TOOLS];
-
-            // Pre-load services if state doesn't have them yet (avoids depending on LLM to call list_services)
-            if (!bookingState.services?.length) {
-                try {
-                    const svcResult = await this.toolExecutor.execute(schemaName, tenantId, '', 'list_services', {});
-                    if (svcResult?.services?.length) {
-                        bookingState.services = svcResult.services;
-                        bookingState.step = svcResult.services.length === 1 ? 'has_service' : 'has_services';
-                        if (svcResult.services.length === 1) {
-                            bookingState.serviceId = svcResult.services[0].id;
-                            bookingState.serviceName = svcResult.services[0].name;
-                        }
-                        this.logger.log(`[Pipeline] Pre-loaded ${svcResult.services.length} services into booking state`);
-                    }
-                } catch {}
-            }
-
-            // Advance state from user message (detect service/time/confirmation mentions)
-            const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-            bookingState = advanceStateFromMessage(bookingState, userText, bookingState.services, todayISO);
-
-            // If user mentioned a service and we have the list, auto-select it
-            if (bookingState.step === 'has_services' && bookingState.services?.length) {
-                const textLower = userText.toLowerCase();
-                for (const svc of bookingState.services) {
-                    if (textLower.includes(svc.name.toLowerCase()) || svc.name.toLowerCase().includes(textLower)) {
-                        bookingState.step = 'has_service';
-                        bookingState.serviceId = svc.id;
-                        bookingState.serviceName = svc.name;
-                        this.logger.log(`[Pipeline] Auto-matched service: ${svc.name}`);
-                        break;
-                    }
-                }
-            }
-
-            // Build concise, state-aware booking prompt
+            const todayISO = new Date().toISOString().split('T')[0];
             const customerProfile = {
                 name: contact?.name || lead?.first_name || lead?.firstName,
                 email: contact?.email,
                 phone: contact?.phone,
             };
-            systemPrompt += '\n' + buildBookingPrompt(bookingState, customerProfile);
 
+            // Run the deterministic booking engine BEFORE the LLM
+            const engineResult = await this.bookingEngine.process(
+                schemaName, tenantId, conversation.contact_id || '',
+                userText, bookingState, customerProfile, todayISO,
+            );
+
+            bookingState = engineResult.state;
             this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
+
+            if (engineResult.handled) {
+                // Booking engine handled it — use LLM only to polish the response
+                // Pass the structured response to the LLM for natural language polishing
+                const personaName = config.persona?.name || 'Asistente';
+                const tone = config.persona?.personality?.tone || 'friendly';
+                systemPrompt += `\n\n## IMPORTANT: Rewrite the following response in a natural, ${tone} way as ${personaName}. Keep ALL data exactly as shown (dates, times, prices, names). Do not add questions about email or name unless the text already asks for them. Keep it concise (2-3 sentences max):\n\n${engineResult.response}`;
+                // No tools needed — engine already handled everything
+                tools = [];
+
+                // Persist booking state
+                const metadataUpdate = { bookingState, bookingStateUpdatedAt: new Date().toISOString() };
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                    [conversation.id, JSON.stringify(metadataUpdate)],
+                );
+
+                this.logger.log(`[Pipeline] Booking engine handled message (step: ${bookingState.step})`);
+            } else {
+                // Not booking-related — let LLM handle with tools available
+                tools = [...APPOINTMENT_TOOLS];
+                this.logger.log(`[Pipeline] Message not booking-related, passing to LLM with tools`);
+            }
         }
 
         // 2c. Inject knowledge base context if available
@@ -606,10 +599,9 @@ export class ConversationsService {
                             schemaName, tenantId, contactId, tc.function.name, args,
                         );
 
-                        // Update booking state machine based on tool result
+                        // Log tool result
                         if (toolsEnabled) {
-                            bookingState = updateBookingState(bookingState, tc.function.name, args, result);
-                            this.logger.log(`[Pipeline] Booking state after ${tc.function.name}: ${bookingState.step}`);
+                            this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
                         }
 
                         currentMessages.push({
@@ -627,8 +619,8 @@ export class ConversationsService {
                 break;
             }
 
-            // Persist booking state for subsequent turns
-            if (toolsEnabled) {
+            // Persist booking state for LLM-handled turns (engine-handled already persisted above)
+            if (toolsEnabled && !(conversation.metadata as any)?._bookingEngineHandled) {
                 const metadataUpdate = {
                     bookingState,
                     bookingStateUpdatedAt: new Date().toISOString(),

@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { BookingEngineService } from './booking-engine.service';
 import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
@@ -38,7 +39,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService],
     controllers: [ConversationsController],
     exports: [ConversationsService, ConversationsGateway],
 })

@@ -505,7 +505,23 @@ export class ConversationsService {
                 // Pass the structured response to the LLM for natural language polishing
                 const personaName = config.persona?.name || 'Asistente';
                 const tone = config.persona?.personality?.tone || 'friendly';
-                systemPrompt += `\n\n## IMPORTANT: Rewrite the following response in a natural, ${tone} way as ${personaName}. Keep ALL data exactly as shown (dates, times, prices, names). Do not add questions about email or name unless the text already asks for them. Keep it concise (2-3 sentences max):\n\n${engineResult.response}`;
+                // Language and regional context from persona config
+                const language = (config as any).language || 'es-CO';
+                const langMap: Record<string, string> = {
+                    'es-CO': 'Colombian Spanish (use "usted" or friendly "tú", local expressions like "con gusto", "a la orden")',
+                    'es-MX': 'Mexican Spanish (use "usted" in formal, "tú" in casual, expressions like "con mucho gusto", "¿mande?")',
+                    'es-ES': 'Spain Spanish (use "tú", expressions like "vale", "genial", "estupendo")',
+                    'es-AR': 'Argentine Spanish (use "vos", expressions like "dale", "bárbaro", "genial")',
+                    'es-CL': 'Chilean Spanish (use "tú", expressions like "ya po", "bacán", "dale")',
+                    'en-US': 'American English (friendly, professional)',
+                    'en-GB': 'British English (polite, formal)',
+                    'pt-BR': 'Brazilian Portuguese (use "você", expressions like "com prazer", "tudo bem", "maravilha")',
+                    'pt-PT': 'European Portuguese (use "o senhor/a senhora" formally)',
+                    'fr-FR': 'French (use "vous" formally, "tu" casually, expressions like "avec plaisir", "bien sûr")',
+                };
+                const langContext = langMap[language] || langMap['es-CO'];
+
+                systemPrompt += `\n\n## TASK: Rewrite the following message in ${langContext} as ${personaName} with a ${tone} tone.\nRules:\n- Keep ALL data exactly (dates, times, prices, names)\n- Do NOT add extra questions (no email, no name unless the text asks)\n- Be concise (2-3 sentences)\n- Use natural regional expressions, not robotic translations\n- Format prices according to the local convention\n\nMessage to rewrite:\n${engineResult.response}`;
                 // No tools needed — engine already handled everything
                 tools = [];
 

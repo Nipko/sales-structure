@@ -16,7 +16,6 @@ type Tab = "library" | "search";
 
 const iconMap: Record<string, any> = { manual: FileText, pdf: File, url: Globe };
 const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ecc71", archived: "#95a5a6" };
-const statusLabels: Record<string, string> = { draft: "Draft", approved: "Approved", archived: "Archived" };
 
 export default function KnowledgePage() {
     const t = useTranslations('knowledge');
@@ -104,24 +103,24 @@ export default function KnowledgePage() {
                                         </div>
                                         <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
                                             <span className="uppercase">{r.type}</span> • {new Date(r.created_at).toLocaleDateString()}
-                                            {r.content_hash && <span>• Hash: {r.content_hash.substring(0, 8)}</span>}
+                                            {r.content_hash && <span>• {t("hash")}: {r.content_hash.substring(0, 8)}</span>}
                                         </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ color: statusColors[r.status] || undefined, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
-                                        {statusLabels[r.status] || r.status}
+                                        {t(`status.${r.status}`)}
                                     </span>
                                     {r.status === "draft" && (
                                         <button onClick={() => handleApprove(r.id)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border-none bg-emerald-500 text-white font-semibold text-xs cursor-pointer">
-                                            <CheckCircle size={14} /> Approve
+                                            <CheckCircle size={14} /> {t("approve")}
                                         </button>
                                     )}
                                 </div>
                             </div>
                         );
                     })}
-                    {resources.length === 0 && <div className="text-center py-10 text-muted-foreground">No resources in the knowledge base.</div>}
+                    {resources.length === 0 && <div className="text-center py-10 text-muted-foreground">{t("empty.library")}</div>}
                 </div>
             )}
 
@@ -130,21 +129,21 @@ export default function KnowledgePage() {
                     <div className="flex gap-2.5 mb-5">
                         <div className="flex-1 relative">
                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="Search knowledge as the AI would..." className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border" />
+                            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder={t("searchPlaceholder")} className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border" />
                         </div>
-                        <button onClick={handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">Search</button>
+                        <button onClick={handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">{t("searchButton")}</button>
                     </div>
                     <div className="flex flex-col gap-2.5">
                         {searchResults.map(s => (
                             <div key={s.id} className="p-4 rounded-xl border border-border bg-card">
                                 <div className="flex items-center gap-1.5 mb-2">
                                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">{s.resource_title}</span>
-                                    <span className="text-[11px] text-muted-foreground">Chunk #{s.chunk_index}</span>
+                                    <span className="text-[11px] text-muted-foreground">{t("chunk")} #{s.chunk_index}</span>
                                 </div>
-                                <p className="text-sm text-foreground m-0 leading-relaxed">"{s.content}"</p>
+                                <p className="text-sm text-foreground m-0 leading-relaxed">&ldquo;{s.content}&rdquo;</p>
                             </div>
                         ))}
-                        {searchResults.length === 0 && searchQuery && <div className="text-center py-10 text-muted-foreground">No matches found.</div>}
+                        {searchResults.length === 0 && searchQuery && <div className="text-center py-10 text-muted-foreground">{t("empty.search")}</div>}
                     </div>
                 </div>
             )}
@@ -153,19 +152,19 @@ export default function KnowledgePage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">New Knowledge Resource</h2>
+                            <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Resource Title</label>
-                            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="FAQ Curso React Native..." className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.titleLabel")}</label>
+                            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder={t("modal.titlePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Text Content</label>
-                            <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={10} placeholder="Paste document content..." className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.contentLabel")}</label>
+                            <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={10} placeholder={t("modal.contentPlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
                         </div>
                         <div className="flex gap-2.5 mt-6">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">Cancel</button>
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
                             <button onClick={handleCreate} disabled={saving || !form.title || !form.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>

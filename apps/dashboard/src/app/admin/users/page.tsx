@@ -12,16 +12,27 @@ import {
     Users, UserPlus, Shield, Mail, Phone, Building2, Search, MoreVertical, ChevronDown, Eye, EyeOff, Plus, X,
 } from "lucide-react";
 
-const roleConfig: Record<string, { label: string; color: string; icon: string }> = {
-    super_admin: { label: "Super Admin", color: "#e74c3c", icon: "🛡️" },
-    tenant_admin: { label: "Tenant Admin", color: "#9b59b6", icon: "👑" },
-    tenant_agent: { label: "Agent", color: "#3498db", icon: "🎧" },
+const roleStyle: Record<string, { color: string; icon: string }> = {
+    super_admin: { color: "#e74c3c", icon: "🛡️" },
+    tenant_admin: { color: "#9b59b6", icon: "👑" },
+    tenant_agent: { color: "#3498db", icon: "🎧" },
 };
 
 export default function UsersPage() {
     const t = useTranslations('users');
     const tc = useTranslations("common");
+    const tRoles = useTranslations("roles");
     const { user } = useAuth();
+
+    const roleLabel = (role: string): string => {
+        switch (role) {
+            case "super_admin": return tRoles("superAdmin");
+            case "tenant_admin": return tRoles("admin");
+            case "tenant_agent": return tRoles("agent");
+            case "tenant_viewer": return tRoles("viewer");
+            default: return role;
+        }
+    };
     const { activeTenantId } = useTenant();
     const [users, setUsers] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
@@ -62,7 +73,7 @@ export default function UsersPage() {
             setUsers(prev => [...prev, { id: `u${Date.now()}`, email: newUser.email, firstName: newUser.firstName, lastName: newUser.lastName, role: newUser.role as any, tenantName: "—", isActive: true, createdAt: new Date().toISOString().split("T")[0] }]);
             setShowNewUser(false);
             setNewUser({ email: "", password: "", firstName: "", lastName: "", role: "tenant_agent", tenantId: "" });
-            setToast("User created successfully"); setTimeout(() => setToast(null), 2000);
+            setToast(t("toast.created")); setTimeout(() => setToast(null), 2000);
         } catch { setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000); }
         finally { setSaving(false); }
     }
@@ -72,7 +83,7 @@ export default function UsersPage() {
             <div>
                 <PageHeader
                     title={t('title')}
-                    subtitle={`${stats.total} ${tc("noData") !== tc("noData") ? '' : 'users'} · ${stats.active} active · ${stats.agents} agents`}
+                    subtitle={t('subtitleStats', { total: stats.total, active: stats.active, agents: stats.agents })}
                     icon={Users}
                     badge={<DataSourceBadge isLive={isLive} />}
                     action={
@@ -83,16 +94,16 @@ export default function UsersPage() {
                 />
 
                 <div className="grid grid-cols-4 gap-4 mb-6">
-                    {[
-                        { label: "Total", value: stats.total, color: "#6c5ce7", icon: Users },
-                        { label: "Admins", value: stats.admins, color: "#9b59b6", icon: Shield },
-                        { label: "Agents", value: stats.agents, color: "#3498db", icon: Users },
-                        { label: "Active", value: stats.active, color: "#2ecc71", icon: Users },
-                    ].map(stat => (
-                        <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
+                    {([
+                        { key: "total", value: stats.total, color: "#6c5ce7", icon: Users },
+                        { key: "admins", value: stats.admins, color: "#9b59b6", icon: Shield },
+                        { key: "agents", value: stats.agents, color: "#3498db", icon: Users },
+                        { key: "active", value: stats.active, color: "#2ecc71", icon: Users },
+                    ] as const).map(stat => (
+                        <div key={stat.key} className="p-5 rounded-[14px] bg-card border border-border">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
+                                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t(`stats.${stat.key}`)}</div>
                                     <div className="text-[28px] font-semibold mt-1">{stat.value}</div>
                                 </div>
                                 <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
@@ -109,10 +120,10 @@ export default function UsersPage() {
                         <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                     </div>
                     <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
-                        <option value="all">All roles</option>
-                        <option value="super_admin">Super Admin</option>
-                        <option value="tenant_admin">Tenant Admin</option>
-                        <option value="tenant_agent">Agent</option>
+                        <option value="all">{t("filter.allRoles")}</option>
+                        <option value="super_admin">{tRoles("superAdmin")}</option>
+                        <option value="tenant_admin">{tRoles("admin")}</option>
+                        <option value="tenant_agent">{tRoles("agent")}</option>
                     </select>
                 </div>
 
@@ -120,14 +131,14 @@ export default function UsersPage() {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-card">
-                                {["User", "Email", "Role", "Tenant", "Status", "Registered"].map(h => (
-                                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
+                                {(["user", "email", "role", "tenant", "status", "registered"] as const).map(k => (
+                                    <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{t(`headers.${k}`)}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {filtered.map(u => {
-                                const rc = roleConfig[u.role] || roleConfig.tenant_agent;
+                                const rc = roleStyle[u.role] || roleStyle.tenant_agent;
                                 return (
                                     <tr key={u.id} className="border-b border-border">
                                         <td className="px-4 py-3">
@@ -140,7 +151,7 @@ export default function UsersPage() {
                                         </td>
                                         <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.email}</td>
                                         <td className="px-4 py-3">
-                                            <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>{rc.icon} {rc.label}</span>
+                                            <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>{rc.icon} {roleLabel(u.role)}</span>
                                         </td>
                                         <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.tenantName}</td>
                                         <td className="px-4 py-3">
@@ -161,46 +172,46 @@ export default function UsersPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowNewUser(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[460px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">New User</h2>
+                            <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
                             <button onClick={() => setShowNewUser(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="grid grid-cols-2 gap-3 mb-3.5">
                             <div>
-                                <label className="block text-xs font-semibold text-muted-foreground mb-1">First name</label>
-                                <input value={newUser.firstName} onChange={e => setNewUser(p => ({ ...p, firstName: e.target.value }))} placeholder="John" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.firstName")}</label>
+                                <input value={newUser.firstName} onChange={e => setNewUser(p => ({ ...p, firstName: e.target.value }))} placeholder={t("modal.firstNamePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold text-muted-foreground mb-1">Last name</label>
-                                <input value={newUser.lastName} onChange={e => setNewUser(p => ({ ...p, lastName: e.target.value }))} placeholder="Doe" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.lastName")}</label>
+                                <input value={newUser.lastName} onChange={e => setNewUser(p => ({ ...p, lastName: e.target.value }))} placeholder={t("modal.lastNamePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                             </div>
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Email</label>
-                            <input value={newUser.email} onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} placeholder="john@company.com" type="email" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.email")}</label>
+                            <input value={newUser.email} onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} placeholder={t("modal.emailPlaceholder")} type="email" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Password</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.password")}</label>
                             <div className="relative">
-                                <input value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} placeholder="Minimum 6 characters" type={showPassword ? "text" : "password"} className="w-full px-3 py-2.5 pr-9 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                                <input value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} placeholder={t("modal.passwordPlaceholder")} type={showPassword ? "text" : "password"} className="w-full px-3 py-2.5 pr-9 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                                 <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-none text-muted-foreground cursor-pointer">
                                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
                             </div>
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Role</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.role")}</label>
                             <select value={newUser.role} onChange={e => setNewUser(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
-                                <option value="tenant_agent">🎧 Agent</option>
-                                <option value="tenant_admin">👑 Tenant Admin</option>
-                                {user?.role === 'super_admin' && <option value="super_admin">🛡️ Super Admin</option>}
+                                <option value="tenant_agent">🎧 {tRoles("agent")}</option>
+                                <option value="tenant_admin">👑 {tRoles("admin")}</option>
+                                {user?.role === 'super_admin' && <option value="super_admin">🛡️ {tRoles("superAdmin")}</option>}
                             </select>
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Tenant ID (optional)</label>
-                            <input value={newUser.tenantId} onChange={e => setNewUser(p => ({ ...p, tenantId: e.target.value }))} placeholder="Tenant UUID" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.tenantIdLabel")}</label>
+                            <input value={newUser.tenantId} onChange={e => setNewUser(p => ({ ...p, tenantId: e.target.value }))} placeholder={t("modal.tenantIdPlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowNewUser(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
+                            <button onClick={() => setShowNewUser(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
                             <button onClick={handleCreateUser} disabled={saving || !newUser.email || !newUser.password || !newUser.firstName} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
                                 {saving ? tc("saving") : tc("create")}
                             </button>

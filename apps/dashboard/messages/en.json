@@ -1539,7 +1539,8 @@
         "sendFailed": "Failed to process message",
         "connection": "Connection error"
       }
-    }
+    },
+    "testAgent": "Test agent"
   },
   "knowledge": {
     "title": "Knowledge Base",
@@ -1587,6 +1588,27 @@
         "required": "Question and answer are required",
         "saveFailed": "Failed to save"
       }
+    },
+    "hash": "Hash",
+    "approve": "Approve",
+    "chunk": "Chunk",
+    "searchPlaceholder": "Search knowledge as the AI would...",
+    "searchButton": "Search",
+    "empty": {
+      "library": "No resources in the knowledge base.",
+      "search": "No matches found."
+    },
+    "status": {
+      "draft": "Draft",
+      "approved": "Approved",
+      "archived": "Archived"
+    },
+    "modal": {
+      "title": "New knowledge resource",
+      "titleLabel": "Resource title",
+      "titlePlaceholder": "Course FAQ...",
+      "contentLabel": "Text content",
+      "contentPlaceholder": "Paste document content..."
     }
   },
   "identity": {
@@ -1595,8 +1617,29 @@
     "approve": "Approve",
     "reject": "Reject",
     "confidence": "Confidence",
-    "matchType": "Match type",
-    "subtitle": "Manage cross-channel customer identity"
+    "matchType": {
+      "phone": "Phone",
+      "email": "Email"
+    },
+    "subtitle": "Manage cross-channel customer identity",
+    "loading": "Loading identity suggestions...",
+    "pendingTitle": "Pending suggestions",
+    "suggestionCount": "{count, plural, one {# suggestion} other {# suggestions}}",
+    "contactA": "Contact A",
+    "contactB": "Contact B",
+    "stats": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "empty": {
+      "title": "No pending suggestions",
+      "description": "When the system detects duplicate contacts across channels, they will appear here."
+    },
+    "toast": {
+      "merged": "Contacts merged successfully.",
+      "rejected": "Suggestion rejected."
+    }
   },
   "users": {
     "title": "Users",
@@ -1605,7 +1648,42 @@
     "status": "Status",
     "lastLogin": "Last login",
     "resetPassword": "Reset password",
-    "subtitle": "Manage users, roles and permissions"
+    "subtitle": "Manage users, roles and permissions",
+    "subtitleStats": "{total} users · {active} active · {agents} agents",
+    "stats": {
+      "total": "Total",
+      "admins": "Admins",
+      "agents": "Agents",
+      "active": "Active"
+    },
+    "filter": {
+      "allRoles": "All roles"
+    },
+    "headers": {
+      "user": "User",
+      "email": "Email",
+      "role": "Role",
+      "tenant": "Tenant",
+      "status": "Status",
+      "registered": "Registered"
+    },
+    "modal": {
+      "title": "New user",
+      "firstName": "First name",
+      "firstNamePlaceholder": "John",
+      "lastName": "Last name",
+      "lastNamePlaceholder": "Doe",
+      "email": "Email",
+      "emailPlaceholder": "john@company.com",
+      "password": "Password",
+      "passwordPlaceholder": "Minimum 6 characters",
+      "role": "Role",
+      "tenantIdLabel": "Tenant ID (optional)",
+      "tenantIdPlaceholder": "Tenant UUID"
+    },
+    "toast": {
+      "created": "User created successfully"
+    }
   },
   "orders": {
     "title": "Orders",

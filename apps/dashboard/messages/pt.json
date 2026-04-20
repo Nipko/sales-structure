@@ -1539,7 +1539,8 @@
         "sendFailed": "Falha ao processar mensagem",
         "connection": "Erro de conexão"
       }
-    }
+    },
+    "testAgent": "Testar agente"
   },
   "knowledge": {
     "title": "Base de Conhecimento",
@@ -1587,6 +1588,27 @@
         "required": "Pergunta e resposta são obrigatórias",
         "saveFailed": "Falha ao salvar"
       }
+    },
+    "hash": "Hash",
+    "approve": "Aprovar",
+    "chunk": "Fragmento",
+    "searchPlaceholder": "Busque no conhecimento como a IA faria...",
+    "searchButton": "Buscar",
+    "empty": {
+      "library": "Sem recursos na base de conhecimento.",
+      "search": "Sem resultados."
+    },
+    "status": {
+      "draft": "Rascunho",
+      "approved": "Aprovado",
+      "archived": "Arquivado"
+    },
+    "modal": {
+      "title": "Novo recurso",
+      "titleLabel": "Título do recurso",
+      "titlePlaceholder": "FAQ do curso...",
+      "contentLabel": "Conteúdo de texto",
+      "contentPlaceholder": "Cole o conteúdo do documento..."
     }
   },
   "identity": {
@@ -1595,8 +1617,29 @@
     "approve": "Aprovar",
     "reject": "Rejeitar",
     "confidence": "Confiança",
-    "matchType": "Tipo de correspondência",
-    "subtitle": "Gerencie a identidade de clientes entre canais"
+    "matchType": {
+      "phone": "Telefone",
+      "email": "Email"
+    },
+    "subtitle": "Gerencie a identidade de clientes entre canais",
+    "loading": "Carregando sugestões...",
+    "pendingTitle": "Sugestões pendentes",
+    "suggestionCount": "{count, plural, one {# sugestão} other {# sugestões}}",
+    "contactA": "Contato A",
+    "contactB": "Contato B",
+    "stats": {
+      "pending": "Pendentes",
+      "approved": "Aprovadas",
+      "rejected": "Rejeitadas"
+    },
+    "empty": {
+      "title": "Sem sugestões pendentes",
+      "description": "Quando o sistema detectar contatos duplicados entre canais, aparecerão aqui."
+    },
+    "toast": {
+      "merged": "Contatos mesclados com sucesso.",
+      "rejected": "Sugestão rejeitada."
+    }
   },
   "users": {
     "title": "Usuários",
@@ -1605,7 +1648,42 @@
     "status": "Status",
     "lastLogin": "Ultimo acesso",
     "resetPassword": "Redefinir senha",
-    "subtitle": "Gerencie usuarios, funcoes e permissoes"
+    "subtitle": "Gerencie usuarios, funcoes e permissoes",
+    "subtitleStats": "{total} usuários · {active} ativos · {agents} agentes",
+    "stats": {
+      "total": "Total",
+      "admins": "Administradores",
+      "agents": "Agentes",
+      "active": "Ativos"
+    },
+    "filter": {
+      "allRoles": "Todos os papéis"
+    },
+    "headers": {
+      "user": "Usuário",
+      "email": "Email",
+      "role": "Papel",
+      "tenant": "Empresa",
+      "status": "Status",
+      "registered": "Registrado"
+    },
+    "modal": {
+      "title": "Novo usuário",
+      "firstName": "Nome",
+      "firstNamePlaceholder": "João",
+      "lastName": "Sobrenome",
+      "lastNamePlaceholder": "Silva",
+      "email": "Email",
+      "emailPlaceholder": "joao@empresa.com",
+      "password": "Senha",
+      "passwordPlaceholder": "Mínimo 6 caracteres",
+      "role": "Papel",
+      "tenantIdLabel": "ID da empresa (opcional)",
+      "tenantIdPlaceholder": "UUID da empresa"
+    },
+    "toast": {
+      "created": "Usuário criado com sucesso"
+    }
   },
   "orders": {
     "title": "Pedidos",

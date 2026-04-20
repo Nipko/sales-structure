@@ -1539,7 +1539,8 @@
         "sendFailed": "Échec du traitement du message",
         "connection": "Erreur de connexion"
       }
-    }
+    },
+    "testAgent": "Tester l'agent"
   },
   "knowledge": {
     "title": "Base de connaissances",
@@ -1587,6 +1588,27 @@
         "required": "Question et réponse requises",
         "saveFailed": "Échec de l'enregistrement"
       }
+    },
+    "hash": "Hash",
+    "approve": "Approuver",
+    "chunk": "Fragment",
+    "searchPlaceholder": "Recherchez dans la connaissance comme l'IA le ferait...",
+    "searchButton": "Rechercher",
+    "empty": {
+      "library": "Aucune ressource dans la base de connaissances.",
+      "search": "Aucun résultat."
+    },
+    "status": {
+      "draft": "Brouillon",
+      "approved": "Approuvé",
+      "archived": "Archivé"
+    },
+    "modal": {
+      "title": "Nouvelle ressource",
+      "titleLabel": "Titre de la ressource",
+      "titlePlaceholder": "FAQ du cours...",
+      "contentLabel": "Contenu texte",
+      "contentPlaceholder": "Collez le contenu du document..."
     }
   },
   "identity": {
@@ -1595,8 +1617,29 @@
     "approve": "Approuver",
     "reject": "Rejeter",
     "confidence": "Confiance",
-    "matchType": "Type de correspondance",
-    "subtitle": "Gerez l identite client inter-canaux"
+    "matchType": {
+      "phone": "Téléphone",
+      "email": "Email"
+    },
+    "subtitle": "Gerez l identite client inter-canaux",
+    "loading": "Chargement des suggestions...",
+    "pendingTitle": "Suggestions en attente",
+    "suggestionCount": "{count, plural, one {# suggestion} other {# suggestions}}",
+    "contactA": "Contact A",
+    "contactB": "Contact B",
+    "stats": {
+      "pending": "En attente",
+      "approved": "Approuvées",
+      "rejected": "Rejetées"
+    },
+    "empty": {
+      "title": "Aucune suggestion en attente",
+      "description": "Lorsque le système détecte des contacts en double entre canaux, ils apparaîtront ici."
+    },
+    "toast": {
+      "merged": "Contacts fusionnés avec succès.",
+      "rejected": "Suggestion rejetée."
+    }
   },
   "users": {
     "title": "Utilisateurs",
@@ -1605,7 +1648,42 @@
     "status": "Statut",
     "lastLogin": "Dernière connexion",
     "resetPassword": "Réinitialiser le mot de passe",
-    "subtitle": "Gerez les utilisateurs, roles et permissions"
+    "subtitle": "Gerez les utilisateurs, roles et permissions",
+    "subtitleStats": "{total} utilisateurs · {active} actifs · {agents} agents",
+    "stats": {
+      "total": "Total",
+      "admins": "Administrateurs",
+      "agents": "Agents",
+      "active": "Actifs"
+    },
+    "filter": {
+      "allRoles": "Tous les rôles"
+    },
+    "headers": {
+      "user": "Utilisateur",
+      "email": "Email",
+      "role": "Rôle",
+      "tenant": "Entreprise",
+      "status": "Statut",
+      "registered": "Inscrit"
+    },
+    "modal": {
+      "title": "Nouvel utilisateur",
+      "firstName": "Prénom",
+      "firstNamePlaceholder": "Jean",
+      "lastName": "Nom",
+      "lastNamePlaceholder": "Dupont",
+      "email": "Email",
+      "emailPlaceholder": "jean@entreprise.com",
+      "password": "Mot de passe",
+      "passwordPlaceholder": "Minimum 6 caractères",
+      "role": "Rôle",
+      "tenantIdLabel": "ID entreprise (optionnel)",
+      "tenantIdPlaceholder": "UUID de l'entreprise"
+    },
+    "toast": {
+      "created": "Utilisateur créé avec succès"
+    }
   },
   "orders": {
     "title": "Commandes",

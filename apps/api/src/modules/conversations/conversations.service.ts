@@ -514,6 +514,7 @@ export class ConversationsService {
 
                     try {
                         if (engineResult.listMessage) {
+                            this.logger.log(`[Pipeline] Sending WhatsApp list message to ${to} via ${phoneNumberId}`);
                             await waAdapter.sendListMessage(to, phoneNumberId, accessToken,
                                 engineResult.listMessage.body,
                                 engineResult.listMessage.buttonText,
@@ -545,8 +546,10 @@ export class ConversationsService {
                 const tone = config.persona?.personality?.tone || 'friendly';
                 const language = (config as any).language || 'es-CO';
                 // Override system prompt completely — only job is to translate
-                systemPrompt = `You are ${personaName}. Your ONLY task is to rewrite the following message in ${language} with a ${tone} tone. Keep ALL data (names, dates, times, prices) exactly as shown. Be natural and concise (2-3 sentences). Do NOT add any questions about email or personal info.\n\nMessage to rewrite:\n${engineResult.text}`;
+                systemPrompt = `You are ${personaName}. Rewrite the message below in ${language} with a ${tone} tone. Keep ALL data exactly. Be concise. Do NOT add questions about email or personal info.`;
                 tools = [];
+                // Set flag so history/RAG sections are skipped and messages only contain the template
+                (conversation as any)._engineText = engineResult.text;
 
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
             } else {
@@ -562,8 +565,9 @@ export class ConversationsService {
             }
         }
 
-        // 2c. Inject knowledge base context if available
+        // 2c. Inject knowledge base context if available (skip when engine handled)
         try {
+            if ((conversation as any)._engineText) throw new Error('skip-rag'); // Engine handled, no RAG needed
             const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
             if (hasKnowledge) {
                 const ragResults = await this.knowledgeService.searchRelevant(tenantId, userText, 5);
@@ -584,9 +588,12 @@ export class ConversationsService {
         );
 
         let messages: Array<{ role: string; content: string }>;
-        if (isNewSession) {
-            // New session: send ONLY the current message — no history at all.
-            // Old history contaminates the LLM into continuing a stale conversation.
+        const engineText = (conversation as any)._engineText;
+        if (engineText) {
+            // Engine handled — LLM only needs to translate/polish this text
+            messages = [{ role: 'user', content: `Rewrite naturally:\n${engineText}` }];
+            this.logger.log(`[Pipeline] Engine handled: LLM will translate/polish`);
+        } else if (isNewSession) {
             messages = [{ role: 'user', content: userText }];
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
         } else {

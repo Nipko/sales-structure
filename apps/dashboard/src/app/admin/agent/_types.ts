@@ -36,6 +36,28 @@ export interface PersonaConfig {
       canBook: boolean;
       canCancel: boolean;
     };
+    catalog?: {
+      enabled: boolean;
+      canCheckStock?: boolean;
+    };
+    faqs?: {
+      enabled: boolean;
+    };
+    policies?: {
+      enabled: boolean;
+    };
+    knowledge?: {
+      enabled: boolean;
+    };
+    orders?: {
+      enabled: boolean;
+    };
+    offers?: {
+      enabled: boolean;
+    };
+    crm?: {
+      enabled: boolean;
+    };
   };
   industry: string;
   language: string;

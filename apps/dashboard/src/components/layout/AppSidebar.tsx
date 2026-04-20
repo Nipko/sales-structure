@@ -32,6 +32,9 @@ import {
   Building2,
   CalendarDays,
   Bell,
+  Package,
+  Boxes,
+  ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -68,6 +71,9 @@ const sectionDefs: NavSectionDef[] = [
       { labelKey: "automation", href: "/admin/automation", icon: Workflow },
       { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
+      { labelKey: "catalog", href: "/admin/catalog", icon: Package },
+      { labelKey: "inventory", href: "/admin/inventory", icon: Boxes },
+      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart },
       { labelKey: "channels", href: "/admin/channels", icon: Phone },
     ],
   },
@@ -76,7 +82,6 @@ const sectionDefs: NavSectionDef[] = [
     items: [
       { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
       { labelKey: "reports", href: "/admin/agent-analytics", icon: BarChart3 },
-      { labelKey: "alerts", href: "/admin/settings/alerts", icon: Bell },
       { labelKey: "compliance", href: "/admin/compliance", icon: Shield },
     ],
   },

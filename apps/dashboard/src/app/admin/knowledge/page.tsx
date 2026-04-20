@@ -7,8 +7,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import {
-    BookOpen, Search, Plus, CheckCircle, Clock, X, FileText, Globe, Key, File
+    BookOpen, Search, Plus, CheckCircle, Clock, X, FileText, Globe, Key, File, HelpCircle,
 } from "lucide-react";
 
 type Tab = "library" | "search";
@@ -74,12 +75,15 @@ export default function KnowledgePage() {
                 ) : undefined}
             />
 
-            <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-[300px]">
-                <button onClick={() => setTab("library")} className={cn("flex-1 px-3 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <BookOpen size={16} /> Library
+            <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit">
+                <button onClick={() => setTab("library")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                    <BookOpen size={16} /> {t("tabs.library")}
                 </button>
-                <button onClick={() => setTab("search")} className={cn("flex-1 px-3 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "search" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
-                    <Search size={16} /> Search in Context
+                <Link href="/admin/knowledge/faqs" className="px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200 bg-transparent text-muted-foreground hover:text-foreground">
+                    <HelpCircle size={16} /> {t("tabs.faqs")}
+                </Link>
+                <button onClick={() => setTab("search")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "search" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                    <Search size={16} /> {t("tabs.search")}
                 </button>
             </div>
 

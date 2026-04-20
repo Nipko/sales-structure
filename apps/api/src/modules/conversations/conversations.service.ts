@@ -13,11 +13,17 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
-import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
+import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
+import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
+import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
+import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
+import { PromptAssemblerService } from './prompt-assembler.service';
+import { LanguageDetectorService } from './language-detector.service';
+import { BusinessInfoService } from '../business-info/business-info.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 
@@ -48,6 +54,9 @@ export class ConversationsService {
         private bookingEngine: BookingEngineService,
         private complianceService: AnalyticsComplianceService,
         private analyticsService: AnalyticsService,
+        private promptAssembler: PromptAssemblerService,
+        private languageDetector: LanguageDetectorService,
+        private businessInfoService: BusinessInfoService,
     ) {}
 
     /**
@@ -442,33 +451,21 @@ export class ConversationsService {
 
         this.logger.log(`Routing Factors - Complexity: ${complexity}, Sentiment: ${sentiment}, Stage: ${stageScore}`);
 
-        // 2. Build Prompt (with optional RAG context)
-        // 2a. Inject temporal context FIRST so the LLM sees the current date
-        // before any persona instructions. Without this the model anchors on
-        // its training cutoff and invents dates like 2023-10-06 when the
-        // customer mentions "hoy" or asks for the next available slot.
-        const temporalContext = await this.buildTemporalContext(tenantId);
-        let systemPrompt = temporalContext + '\n\n' + this.personaService.buildSystemPrompt(config);
-
-        // 2b. Resolve schema + detect new sessions before tool context injection
+        // 2. Resolve schema + new-session detection (must happen before engine/tools)
         const schemaName = await this.tenantSchema(tenantId);
 
-        // Detect if this is a new session (message after 30+ min gap)
-        // Uses previousMessageAt captured BEFORE saveMessage() updated the timestamp
         const lastMsgTime = previousMessageAt || conversation.updated_at || conversation.created_at;
         const timeSinceLastMessage = Date.now() - new Date(lastMsgTime).getTime();
         const isNewSession = timeSinceLastMessage > 30 * 60 * 1000; // 30 minutes
 
         if (isNewSession) {
             this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
-            // Clear stale tool context from DB AND in-memory object
             try {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' - 'bookingState' - 'bookingStateUpdatedAt' WHERE id = $1::uuid`,
                     [conversation.id],
                 );
             } catch {}
-            // Also clear in-memory so the prompt builder below doesn't use stale data
             if (conversation.metadata) {
                 delete (conversation.metadata as any).toolContext;
                 delete (conversation.metadata as any).toolContextUpdatedAt;
@@ -477,21 +474,75 @@ export class ConversationsService {
             }
         }
 
-        // ── Deterministic Booking Engine ──
-        const toolsConfig = (config as any)?.tools?.appointments;
+        // 3. Start building TURN CONTEXT (Layer 3 of prompt assembly).
+        // Prompt is composed later by PromptAssemblerService: Layer 1 (contract) +
+        // Layer 2 (persona from config) + Layer 3 (this turn context).
+        // Language: default from config, then auto-detect from the inbound text
+        // so we follow the customer when they switch languages mid-conversation.
+        const configuredLanguage = config.language || 'es-CO';
+        const detectedLanguage = this.languageDetector.detect(userText, configuredLanguage);
+        const userLanguage = detectedLanguage;
+        const tz = config.hours?.timezone || 'America/Bogota';
+        const now = new Date();
+        const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config) ? 'open' : 'closed';
+
+        const turnContext: TurnContext = {
+            language: userLanguage,
+            timezone: tz,
+            now: now.toISOString(),
+            upcomingDays: this.promptAssembler.computeUpcomingDays(now, tz, 8),
+            businessHoursStatus,
+        };
+
+        if (contact) {
+            const contactName = contact.name || lead?.first_name || lead?.firstName;
+            turnContext.contact = {
+                name: contactName,
+                email: contact.email,
+                phone: contact.phone,
+                isKnown: !!(contactName || contact.email),
+                knownSince: contact.first_contact_at || contact.created_at,
+            };
+        }
+
+        // Business identity — the "who we are" data the agent uses to answer
+        // questions about the company. Cached in Redis inside BusinessInfoService.
+        try {
+            const businessIdentity = await this.businessInfoService.getPrimary(tenantId);
+            if (businessIdentity) {
+                turnContext.business = {
+                    companyName: businessIdentity.companyName,
+                    industry: businessIdentity.industry,
+                    about: businessIdentity.about,
+                    phone: businessIdentity.phone,
+                    email: businessIdentity.email,
+                    website: businessIdentity.website,
+                    address: businessIdentity.address,
+                    city: businessIdentity.city,
+                    country: businessIdentity.country,
+                    socialLinks: businessIdentity.socialLinks,
+                };
+            }
+        } catch (e: any) {
+            this.logger.warn(`Business identity lookup failed (non-fatal): ${e.message}`);
+        }
+
+        // 4. Deterministic Booking Engine (runs BEFORE the LLM — emits interactive
+        // messages directly for WhatsApp, or produces text for the LLM to voice).
+        const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
         let bookingState: BookingState = (conversation.metadata as any)?.bookingState || { step: 'idle' };
+        let engineProducedText: string | null = null;
 
         if (toolsEnabled) {
-            const todayISO = new Date().toISOString().split('T')[0];
+            const todayISO = now.toISOString().split('T')[0];
             const customerProfile = {
                 name: contact?.name || lead?.first_name || lead?.firstName,
                 email: contact?.email,
                 phone: contact?.phone,
             };
 
-            // Run the deterministic booking engine BEFORE the LLM
             const engineResult = await this.bookingEngine.process(
                 schemaName, tenantId, conversation.contact_id || '',
                 userText, bookingState, customerProfile, todayISO,
@@ -503,7 +554,6 @@ export class ConversationsService {
             if (engineResult.handled) {
                 this.logger.log(`[Pipeline] Booking engine handled (step: ${bookingState.step})`);
 
-                // Try to send interactive message (WhatsApp only for now)
                 const channelType = msg.channelType;
                 const accessToken = await this.resolveAccessToken(tenantId, channelType);
                 const waAdapter = this.channelGateway.getAdapter('whatsapp') as any;
@@ -520,7 +570,6 @@ export class ConversationsService {
                                 engineResult.listMessage.buttonText,
                                 engineResult.listMessage.sections,
                             );
-                            // Persist state + save AI message + return empty to skip LLM
                             await this.persistBookingState(schemaName, conversation.id, engineResult.state);
                             await this.saveAiMessage(tenantId, conversation.id, engineResult.text || engineResult.listMessage.body);
                             return '';
@@ -537,49 +586,105 @@ export class ConversationsService {
                         }
                     } catch (e: any) {
                         this.logger.warn(`[Pipeline] Interactive message failed, falling back to text: ${e.message}`);
-                        // Fall through to text-based response below
                     }
                 }
 
-                // Fallback: REPLACE the entire system prompt with a translation task
-                const personaName = config.persona?.name || 'Assistant';
-                const tone = config.persona?.personality?.tone || 'friendly';
-                const language = (config as any).language || 'es-CO';
-                // Override system prompt completely — only job is to translate
-                systemPrompt = `You are ${personaName}. Rewrite the message below in ${language} with a ${tone} tone. Keep ALL data exactly. Be concise. Do NOT add questions about email or personal info.`;
+                // Fallback text path: LLM voices the engine output using the FULL
+                // assembled prompt (persona tone + language + turn context). No
+                // prompt override — the engine text goes in the user message so
+                // the LLM's only job is to rewrite it naturally.
+                engineProducedText = engineResult.text || null;
                 tools = [];
-                // Set flag so history/RAG sections are skipped and messages only contain the template
-                (conversation as any)._engineText = engineResult.text;
-
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
             } else {
-                // Not booking-related — let LLM handle
+                // Not booking-related — LLM handles; expose services as structured data
                 tools = [...APPOINTMENT_TOOLS];
                 if (bookingState.services?.length) {
-                    const svcList = bookingState.services.map(s => `${s.name} (${s.durationMinutes || '?'}min, ${s.price} ${s.currency})`).join(', ');
-                    // Inject at the BEGINNING of the prompt to ensure LLM follows it
-                    systemPrompt = `CRITICAL RULE: NEVER ask for email, phone, or personal information unless the customer is booking an appointment. During general conversation, just be helpful and answer questions.\n\nAvailable services: ${svcList}\n\n` + systemPrompt;
+                    turnContext.availableServices = bookingState.services.map(s => ({
+                        id: s.id,
+                        name: s.name,
+                        durationMinutes: s.durationMinutes,
+                        price: s.price,
+                        currency: s.currency,
+                    }));
                 }
                 this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
             }
         }
 
-        // 2c. Inject knowledge base context if available (skip when engine handled)
-        try {
-            if ((conversation as any)._engineText) throw new Error('skip-rag'); // Engine handled, no RAG needed
-            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
-            if (hasKnowledge) {
-                const ragResults = await this.knowledgeService.searchRelevant(tenantId, userText, 5);
-                if (ragResults.length > 0) {
-                    const contextBlock = ragResults.map(r => r.chunk_text).join('\n\n');
-                    systemPrompt = `${systemPrompt}\n\n[Contexto de base de conocimiento]\n${contextBlock}\n[Fin del contexto]`;
-                    this.logger.log(`RAG: Injected ${ragResults.length} chunks for tenant ${tenantId}`);
-                }
-            }
-        } catch (ragError: any) {
-            this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
+        // Register catalog + knowledge + CRM tools based on feature flags on the agent.
+        const cfgTools = (config.tools ?? (config as any)?.tools) as any;
+        if (cfgTools?.catalog?.enabled === true) {
+            tools = [...tools, ...CATALOG_TOOLS];
         }
+        if (cfgTools?.faqs?.enabled === true) {
+            tools = [...tools, FAQ_TOOL];
+        }
+        if (cfgTools?.policies?.enabled === true) {
+            tools = [...tools, POLICY_TOOL];
+        }
+        if (cfgTools?.knowledge?.enabled === true) {
+            tools = [...tools, KB_TOOL];
+        }
+        if (cfgTools?.offers?.enabled === true) {
+            tools = [...tools, OFFER_TOOL];
+        }
+        if (cfgTools?.orders?.enabled === true) {
+            tools = [...tools, ORDER_TOOL];
+        }
+        if (cfgTools?.crm?.enabled === true) {
+            tools = [...tools, CUSTOMER_CONTEXT_TOOL];
+        }
+
+        if (bookingState.step && bookingState.step !== 'idle') {
+            const selectedService = bookingState.serviceId
+                ? bookingState.services?.find(s => s.id === bookingState.serviceId)
+                : undefined;
+            turnContext.bookingState = {
+                step: bookingState.step,
+                service: bookingState.serviceId ? {
+                    id: bookingState.serviceId,
+                    name: bookingState.serviceName || selectedService?.name || '',
+                    durationMinutes: selectedService?.durationMinutes,
+                } : undefined,
+                date: bookingState.date,
+                slot: bookingState.time,
+            };
+        }
+
+        // 5. Knowledge retrieval — STRUCTURED items in turn context, not prose.
+        // Respects the agent's rag config (topK + similarityThreshold) which
+        // was previously dead code. Hybrid search handles the rest.
+        if (!engineProducedText) {
+            try {
+                const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
+                const ragConfig = config.rag;
+                const ragEnabled = ragConfig?.enabled !== false;
+                if (hasKnowledge && ragEnabled) {
+                    const topK = ragConfig?.topK ?? 5;
+                    const similarityThreshold = ragConfig?.similarityThreshold ?? 0;
+                    const ragResults = await this.knowledgeService.searchRelevant(
+                        tenantId, userText, topK, { similarityThreshold },
+                    );
+                    if (ragResults.length > 0) {
+                        turnContext.retrievedKnowledge = ragResults.map((r: any, idx: number) => ({
+                            source: 'kb_article' as const,
+                            id: String(r.id ?? r.document_id ?? idx),
+                            score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                            title: r.title,
+                            content: r.chunk_text,
+                        })) as RetrievedKnowledgeItem[];
+                        this.logger.log(`RAG: Injected ${ragResults.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
+                    }
+                }
+            } catch (ragError: any) {
+                this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
+            }
+        }
+
+        // 6. Assemble the final system prompt: Layer 1 (contract) + Layer 2 (persona) + Layer 3 (turn).
+        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
 
         // 3. Get Conversation History with smart truncation
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -588,11 +693,11 @@ export class ConversationsService {
         );
 
         let messages: Array<{ role: string; content: string }>;
-        const engineText = (conversation as any)._engineText;
-        if (engineText) {
-            // Engine handled — LLM only needs to translate/polish this text
-            messages = [{ role: 'user', content: `Rewrite naturally:\n${engineText}` }];
-            this.logger.log(`[Pipeline] Engine handled: LLM will translate/polish`);
+        if (engineProducedText) {
+            // Engine produced deterministic text — LLM voices it in the persona's
+            // tone and language (taken from <persona> + <turn><language>).
+            messages = [{ role: 'user', content: `Rewrite the following message naturally, keeping ALL data exactly as-is:\n${engineProducedText}` }];
+            this.logger.log(`[Pipeline] Engine handled: LLM will voice the engine output`);
         } else if (isNewSession) {
             messages = [{ role: 'user', content: userText }];
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
@@ -746,49 +851,4 @@ export class ConversationsService {
         return schema;
     }
 
-    private async buildTemporalContext(tenantId: string): Promise<string> {
-        let tz = 'America/Bogota';
-        try {
-            const cacheKey = `tenant:${tenantId}:timezone`;
-            const cached = await this.redis.get(cacheKey);
-            if (cached) {
-                tz = cached;
-            } else {
-                const tenant = await this.prisma.tenant.findUnique({
-                    where: { id: tenantId },
-                    select: { settings: true },
-                });
-                const configured = (tenant?.settings as any)?.timezone;
-                if (typeof configured === 'string' && configured.length > 0) tz = configured;
-                await this.redis.set(cacheKey, tz, 600);
-            }
-        } catch {
-            // fall through with default
-        }
-
-        const now = new Date();
-        const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-        const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
-        const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(now);
-
-        // Pre-calculate next 7 days to eliminate LLM date math errors
-        const upcomingDays: string[] = [];
-        for (let i = 0; i <= 7; i++) {
-            const d = new Date(now);
-            d.setDate(d.getDate() + i);
-            const dayDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-            const dayName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(d);
-            const label = i === 0 ? '(today)' : i === 1 ? '(tomorrow)' : '';
-            upcomingDays.push(`  - ${dayName} ${dayDate} ${label}`);
-        }
-
-        return `## CURRENT DATE AND TIME (GROUND TRUTH — USE THIS FOR ALL DATE CALCULATIONS)
-- Today: ${date} (${weekday})
-- Current time: ${time} (${tz})
-- Upcoming days:
-${upcomingDays.join('\n')}
-- IMPORTANT: When the customer says "next Monday", "tomorrow", "this Friday", etc., look up the EXACT date from the list above. Do NOT calculate dates yourself — use this reference.
-- "Next [day]" means the NEXT occurrence of that day FROM TODAY. If today is Saturday and they say "next Monday", it's the Monday in the list above.
-`;
-    }
 }

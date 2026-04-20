@@ -21,6 +21,8 @@ import {
     Phone,
     Settings,
     ArrowRight,
+    Info,
+    Scale,
     type LucideIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -61,6 +63,8 @@ export default function SettingsHub() {
             title: t("company"), description: t("companyDesc"), adminOnly: true,
             cards: [
                 { label: t("general"), description: t("generalDesc"), href: "/admin/settings/company", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
+                { label: t("businessInfoCard"), description: t("businessInfoCardDesc"), href: "/admin/settings/business-info", icon: Info, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+                { label: t("policiesCard"), description: t("policiesCardDesc"), href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
                 { label: t("localization"), description: t("localizationDesc"), href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
                 { label: t("businessHours"), description: t("businessHoursDesc"), href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10" },
             ],
@@ -86,6 +90,12 @@ export default function SettingsHub() {
             cards: [
                 { label: t("llmProviders"), description: t("llmProvidersDesc"), href: "/admin/settings/ai-providers", icon: Brain, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
                 { label: t("aiConfig"), description: t("aiConfigDesc"), href: "/admin/settings/ai-config", icon: SlidersHorizontal, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
+            ],
+        },
+        {
+            title: t("monitoring"), description: t("monitoringDesc"), adminOnly: true,
+            cards: [
+                { label: t("alertsCard"), description: t("alertsCardDesc"), href: "/admin/settings/alerts", icon: Bell, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
             ],
         },
         {

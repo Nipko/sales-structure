@@ -24,3 +24,4 @@
 - [Session Apr 19-20](project_session_apr19_20.md) — Booking engine refactor (15+ iterations), WhatsApp Interactive Messages, deterministic flow
 - [Pending Tasks](project_pending_tasks.md) — Booking agent verification, public booking, outbound, billing, Google Calendar
 - [Critical Booking Refactor](critical_booking_refactor.md) — LLM cannot be trusted for flow decisions, use deterministic engine + interactive messages
+- [Big Refactor Apr 20](project_big_refactor_apr20.md) — 3-layer prompt + 5-tier knowledge + Test Agent shipped. All contamination removed.

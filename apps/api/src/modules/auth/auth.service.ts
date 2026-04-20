@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { RedisService } from '../redis/redis.service';
 import { GoogleAuthService } from './google-auth.service';
 import { PersonaService } from '../persona/persona.service';
+import { BusinessInfoService } from '../business-info/business-info.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
@@ -28,6 +29,7 @@ export class AuthService {
         private emailService: EmailService,
         private redis: RedisService,
         private personaService: PersonaService,
+        private businessInfoService: BusinessInfoService,
     ) { }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -892,6 +894,26 @@ export class AuthService {
             );
         } catch (error) {
             console.error(`[Onboarding] Failed to create default agent for "${result.tenant.schemaName}":`, error);
+        }
+
+        // 6. Persist Business Identity so the agent has company context from
+        // day one — otherwise <turn.business> would be empty until the user
+        // manually filled Settings → Business Info.
+        try {
+            const phone = company.phone || data.phone;
+            const email = company.email || data.businessEmail;
+            const about = company.about || data.about;
+            await this.businessInfoService.upsertPrimary(result.tenant.id, {
+                companyName,
+                industry: industry || undefined,
+                website: website || undefined,
+                phone: phone || undefined,
+                email: email || undefined,
+                about: about || undefined,
+                socialLinks: socialLinks || undefined,
+            });
+        } catch (error) {
+            console.error(`[Onboarding] Failed to persist business identity for "${result.tenant.schemaName}":`, error);
         }
 
         // 6. Generate new JWT tokens (now includes tenantId)

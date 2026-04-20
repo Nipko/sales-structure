@@ -108,78 +108,119 @@ export class PersonaService {
     }
 
     /**
-     * Build the system prompt from persona config
+     * Build Layer 2 of the system prompt: the PERSONA block.
+     *
+     * Returns ONLY the <persona>...</persona> section. The universal Contract
+     * (Layer 1) and dynamic Turn Context (Layer 3) are composed separately in
+     * PromptAssemblerService — this method must NOT include date, language, RAG,
+     * global rules, or anything that varies per turn.
+     *
+     * In `editorMode: 'prompt'`, the user's custom prompt replaces the guided
+     * body but is still wrapped in <persona> tags so Layer 1 + Layer 3 can
+     * still be applied by the assembler.
      */
     buildSystemPrompt(config: TenantConfig): string {
-        // If a custom prompt was provided, use it directly
-        const customPrompt = (config as any)._customPrompt;
-        if (customPrompt && (config as any)._mode === 'prompt') {
-            return customPrompt;
+        const editorMode = (config.editorMode ?? (config as any)._mode) as 'guided' | 'prompt' | undefined;
+        const customPrompt = config.customPrompt ?? (config as any)._customPrompt;
+
+        if (editorMode === 'prompt' && typeof customPrompt === 'string' && customPrompt.trim().length > 0) {
+            return `<persona>\n${customPrompt.trim()}\n</persona>`;
         }
 
+        return this.buildGuidedPersonaBlock(config);
+    }
+
+    /**
+     * Build the guided persona block from the structured config.
+     * All fields come from the user's agent config — no hardcoded rules.
+     */
+    private buildGuidedPersonaBlock(config: TenantConfig): string {
         const persona = config.persona;
         const behavior = config.behavior;
+        const hours = config.hours;
+        const lines: string[] = ['<persona>'];
 
-        let prompt = `Eres ${persona.name}, ${persona.role}.\n\n`;
+        // Identity
+        lines.push('  <identity>');
+        lines.push(`    <name>${persona.name || ''}</name>`);
+        lines.push(`    <role>${persona.role || ''}</role>`);
+        if (persona.greeting) lines.push(`    <greeting>${persona.greeting}</greeting>`);
+        if (persona.fallbackMessage) lines.push(`    <fallback_message>${persona.fallbackMessage}</fallback_message>`);
+        lines.push('  </identity>');
 
         // Personality
-        prompt += `## Tu Personalidad\n`;
-        prompt += `- Tono: ${persona.personality.tone}\n`;
-        prompt += `- Formalidad: ${persona.personality.formality}\n`;
-        prompt += `- Uso de emojis: ${persona.personality.emojiUsage}\n`;
-        prompt += `- Humor: ${persona.personality.humor}\n\n`;
-
-        // Rules
-        if (behavior.rules?.length > 0) {
-            prompt += `## Reglas Estrictas (DEBES seguir siempre)\n`;
-            behavior.rules.forEach((rule, i) => {
-                prompt += `${i + 1}. ${rule}\n`;
-            });
-            prompt += '\n';
+        const p = persona.personality;
+        if (p) {
+            lines.push('  <personality>');
+            if (p.tone) lines.push(`    <tone>${p.tone}</tone>`);
+            if (p.formality) lines.push(`    <formality>${p.formality}</formality>`);
+            if (p.emojiUsage) lines.push(`    <emoji_usage>${p.emojiUsage}</emoji_usage>`);
+            if (p.humor) lines.push(`    <humor>${p.humor}</humor>`);
+            lines.push('  </personality>');
         }
 
-        // Required fields — skip when appointments tool is active (tool has its own flow)
-        const appointmentsEnabled = (config as any)?.tools?.appointments?.enabled === true;
-        if (behavior.requiredFields && Object.keys(behavior.requiredFields).length > 0 && !appointmentsEnabled) {
-            prompt += `## Información que DEBES recopilar\n`;
-            for (const [context, fields] of Object.entries(behavior.requiredFields)) {
-                prompt += `### Para ${context}:\n`;
-                fields.forEach((f) => {
-                    prompt += `- ${f.field}: "${f.question}"\n`;
-                });
-            }
-            prompt += '\n';
+        // Rules (persona-defined, NOT global)
+        if (behavior?.rules?.length > 0) {
+            lines.push('  <rules>');
+            behavior.rules.forEach((rule) => {
+                lines.push(`    <rule>${rule}</rule>`);
+            });
+            lines.push('  </rules>');
         }
 
         // Forbidden topics
-        if (behavior.forbiddenTopics?.length > 0) {
-            prompt += `## Temas PROHIBIDOS (nunca hablar de esto)\n`;
-            behavior.forbiddenTopics.forEach((t) => {
-                prompt += `- ${t}\n`;
+        if (behavior?.forbiddenTopics?.length > 0) {
+            lines.push('  <forbidden_topics>');
+            behavior.forbiddenTopics.forEach((topic) => {
+                lines.push(`    <topic>${topic}</topic>`);
             });
-            prompt += '\n';
+            lines.push('  </forbidden_topics>');
         }
 
         // Handoff triggers
-        if (behavior.handoffTriggers?.length > 0) {
-            prompt += `## Escalar a agente humano cuando:\n`;
-            behavior.handoffTriggers.forEach((t) => {
-                prompt += `- ${t}\n`;
+        if (behavior?.handoffTriggers?.length > 0) {
+            lines.push('  <handoff_triggers>');
+            behavior.handoffTriggers.forEach((trigger) => {
+                lines.push(`    <trigger>${trigger}</trigger>`);
             });
-            prompt += '\n';
+            lines.push('  </handoff_triggers>');
         }
 
-        // Business hours
-        if (config.hours) {
-            prompt += `## Horario del negocio\n`;
-            prompt += `Zona horaria: ${config.hours.timezone}\n`;
-            for (const [day, hours] of Object.entries(config.hours.schedule)) {
-                prompt += `- ${day}: ${hours}\n`;
+        // Required fields — only when appointments tool is NOT active
+        const toolsCfg = (config.tools ?? (config as any)?.tools) as any;
+        const appointmentsEnabled = toolsCfg?.appointments?.enabled === true;
+        if (behavior?.requiredFields && Object.keys(behavior.requiredFields).length > 0 && !appointmentsEnabled) {
+            lines.push('  <required_information>');
+            for (const [context, fields] of Object.entries(behavior.requiredFields)) {
+                lines.push(`    <context name="${context}">`);
+                fields.forEach((f) => {
+                    lines.push(`      <field name="${f.field}">${f.question}</field>`);
+                });
+                lines.push('    </context>');
             }
-            prompt += '\n';
+            lines.push('  </required_information>');
         }
 
-        return prompt;
+        // Business hours schedule (static config — the COMPUTED open/closed goes in Layer 3)
+        if (hours?.schedule && Object.keys(hours.schedule).length > 0) {
+            lines.push('  <business_hours>');
+            if (hours.timezone) lines.push(`    <timezone>${hours.timezone}</timezone>`);
+            for (const [day, value] of Object.entries(hours.schedule)) {
+                if (typeof value === 'string') {
+                    lines.push(`    <day name="${day}">${value}</day>`);
+                } else if (value && typeof value === 'object') {
+                    const v = value as any;
+                    lines.push(`    <day name="${day}" start="${v.start ?? ''}" end="${v.end ?? ''}" />`);
+                }
+            }
+            if (hours.afterHoursMessage) {
+                lines.push(`    <after_hours_message>${hours.afterHoursMessage}</after_hours_message>`);
+            }
+            lines.push('  </business_hours>');
+        }
+
+        lines.push('</persona>');
+        return lines.join('\n');
     }
 
     /**

@@ -92,25 +92,68 @@ export class KnowledgeService {
 
     // ─── Vector Search ───────────────────────────────────────────────────────
 
-    async searchRelevant(tenantId: string, query: string, topK = 5): Promise<any[]> {
+    /**
+     * Hybrid retrieval: vector similarity + keyword ILIKE, merged and scored.
+     *
+     * - Vector: pgvector cosine distance → similarity = 1 - distance
+     * - Keyword: ILIKE boost on the chunk text (flat +0.15 per hit, capped)
+     * - Final score = normalized sum, filtered by similarityThreshold
+     *
+     * Options `topK` and `similarityThreshold` come from the agent's
+     * `rag` config — values are respected for the first time here.
+     */
+    async searchRelevant(
+        tenantId: string,
+        query: string,
+        topK = 5,
+        options?: { similarityThreshold?: number; poolSize?: number },
+    ): Promise<any[]> {
         const schema = await this.tenantSchema(tenantId);
+        const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
+        const similarityThreshold = options?.similarityThreshold ?? 0;
+
         const queryEmbedding = await this.generateEmbedding(query);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
+        const keywordPattern = `%${query}%`;
 
+        // Pull a larger pool so we can rerank before truncating to topK.
         const results = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT ke.chunk_text, ke.chunk_index, ke.metadata,
-                    kd.title AS document_title, kd.id AS document_id,
-                    (ke.embedding <=> $1::vector) AS distance
+            `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
+                    kd.title AS title, kd.id AS document_id,
+                    (ke.embedding <=> $1::vector) AS distance,
+                    CASE WHEN ke.chunk_text ILIKE $2 THEN 1 ELSE 0 END AS keyword_hit
              FROM knowledge_embeddings ke
              JOIN knowledge_documents kd ON kd.id = ke.document_id
              WHERE kd.status = 'ready'
              ORDER BY ke.embedding <=> $1::vector
-             LIMIT $2`,
-            [embeddingStr, topK],
+             LIMIT $3`,
+            [embeddingStr, keywordPattern, poolSize],
         );
 
-        return results;
+        const KEYWORD_BOOST = 0.15;
+        const enriched = results
+            .map((r: any) => {
+                const vectorScore = 1 - Number(r.distance ?? 0);
+                const keywordBoost = r.keyword_hit ? KEYWORD_BOOST : 0;
+                const score = Math.min(1, Math.max(0, vectorScore + keywordBoost));
+                return {
+                    id: r.chunk_id,
+                    document_id: r.document_id,
+                    title: r.title,
+                    chunk_text: r.chunk_text,
+                    chunk_index: r.chunk_index,
+                    metadata: r.metadata,
+                    similarity: vectorScore,
+                    keywordHit: !!r.keyword_hit,
+                    score,
+                };
+            })
+            .filter(r => r.score >= similarityThreshold)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topK);
+
+        return enriched;
     }
 
     // ─── Document Management ─────────────────────────────────────────────────

@@ -46,6 +46,9 @@
       "automation": "Automatisation",
       "campaigns": "Campagnes",
       "appointments": "Rendez-vous",
+      "catalog": "Catalogue",
+      "inventory": "Inventaire",
+      "orders": "Commandes",
       "channels": "Canaux",
       "analytics": "Analyses",
       "reports": "Rapports",
@@ -364,6 +367,14 @@
     "platformSectionDesc": "Parametres avances de la plateforme",
     "advanced": "Avance",
     "advancedDesc": "Nom de la plateforme, limites et fonctionnalites",
+    "businessInfoCard": "Infos de l'entreprise",
+    "businessInfoCardDesc": "Données que l'agent utilise pour répondre sur votre entreprise",
+    "policiesCard": "Politiques",
+    "policiesCardDesc": "Livraison, retour, garantie, annulation, conditions et confidentialité",
+    "monitoring": "Surveillance",
+    "monitoringDesc": "Alertes, rapports planifiés et supervision",
+    "alertsCard": "Alertes et rapports",
+    "alertsCardDesc": "Règles d'alerte par métriques et emails planifiés",
     "save": "Enregistrer les modifications",
     "saved": "Enregistre !",
     "saving": "Enregistrement...",
@@ -1155,7 +1166,16 @@
       "forbiddenPlaceholder": "ex. : Concurrence, tarifs tiers",
       "handoffTriggers": "Déclencheurs d'escalade",
       "handoffPlaceholder": "ex. : Le client demande à parler à un humain",
-      "add": "Ajouter"
+      "add": "Ajouter",
+      "requiredFields": {
+        "title": "Informations requises par contexte",
+        "hint": "Définissez les données à collecter avant de procéder dans chaque flux (ex: devis nécessite nom et email). Ignoré si l'outil de rendez-vous est actif.",
+        "contextPlaceholder": "nom_du_contexte (ex: devis, support)",
+        "fieldNamePlaceholder": "champ (ex: email)",
+        "questionPlaceholder": "Demander au client (ex: Quel est votre email ?)",
+        "addField": "Ajouter champ",
+        "addContext": "Ajouter contexte"
+      }
     },
     "aiModel": {
       "temperature": "Température",
@@ -1198,12 +1218,33 @@
   },
   "knowledge": {
     "title": "Base de connaissances",
+    "tabs": {
+      "library": "Bibliothèque",
+      "faqs": "FAQ",
+      "search": "Rechercher dans le contexte"
+    },
     "documents": "Documents",
     "upload": "Télécharger un document",
     "processing": "En traitement",
     "ready": "Prêt",
     "chunks": "Fragments",
     "subtitle": "Base de connaissances, FAQ et documents pour IA"
+  },
+  "catalog.hub": {
+    "title": "Catalogue",
+    "subtitle": "Produits, cours, campagnes et promotions que l'agent peut proposer",
+    "courses": {
+      "label": "Cours",
+      "description": "Catalogue de cours et programmes"
+    },
+    "campaigns": {
+      "label": "Campagnes",
+      "description": "Campagnes marketing et diffusion"
+    },
+    "offers": {
+      "label": "Promotions",
+      "description": "Remises, promos et packs actifs"
+    }
   },
   "identity": {
     "title": "Identité",
@@ -1260,6 +1301,13 @@
     "step4": "Référence",
     "companyName": "Nom de l'entreprise",
     "website": "Site web",
+    "businessPhone": "Téléphone",
+    "businessPhonePlaceholder": "+33 1 00 00 00 00",
+    "businessEmail": "Email de contact",
+    "businessEmailPlaceholder": "contact@entreprise.com",
+    "about": "À propos de votre entreprise",
+    "aboutPlaceholder": "Brève description de ce que fait votre entreprise, mission, principaux produits ou services",
+    "aboutHint": "L'agent IA utilisera cela pour répondre aux questions sur votre entreprise",
     "socialMedia": "Réseaux sociaux (optionnel)",
     "industry": "Industrie",
     "companySize": "Taille de l'entreprise",
@@ -1550,6 +1598,212 @@
     },
     "time": {
       "min": "~{n} min"
+    }
+  },
+  "agent.capabilities": {
+    "catalogTitle": "Catalogue produits",
+    "catalogDesc": "Consulter produits, prix et stock en temps réel",
+    "faqsTitle": "FAQ",
+    "faqsDesc": "Rechercher des réponses officielles dans votre bibliothèque FAQ",
+    "policiesTitle": "Politiques de l'entreprise",
+    "policiesDesc": "Référencer les politiques (livraison, retour, garantie)",
+    "offersTitle": "Promotions actives",
+    "offersDesc": "Mentionner les offres en cours pendant la conversation",
+    "ordersTitle": "Historique des commandes",
+    "ordersDesc": "Répondre sur les commandes du client (statut, total, date)",
+    "crmTitle": "Contexte CRM",
+    "crmDesc": "Personnaliser avec le lead score, tags et étape du client",
+    "knowledgeTitle": "Base de connaissances (RAG)",
+    "knowledgeDesc": "Recherche sémantique dans vos documents",
+    "ragTuning": "Réglage de recherche",
+    "topK": "Résultats maximum",
+    "topKHint": "Combien de fragments retourner par recherche",
+    "similarityThreshold": "Seuil de pertinence",
+    "similarityHint": "Filtre les résultats en dessous de ce score",
+    "kbTool": "Outil de recherche agent",
+    "kbToolDesc": "Permet à l'agent d'interroger la KB comme outil, en plus du contexte automatique"
+  },
+  "agent.test": {
+    "title": "Tester l'agent",
+    "subtitle": "Simulez une conversation et voyez le prompt complet que le LLM reçoit",
+    "reset": "Réinitialiser",
+    "startHint": "Saisissez un message pour commencer",
+    "inputPlaceholder": "Saisissez comme si vous étiez un client...",
+    "send": "Envoyer",
+    "toolsUsed": "outils",
+    "selectHint": "Sélectionnez une réponse pour voir les détails",
+    "noTools": "Aucun outil appelé",
+    "noRag": "Aucun résultat RAG",
+    "args": "Arguments",
+    "result": "Résultat",
+    "tabs": {
+      "prompt": "System Prompt",
+      "tools": "Outils",
+      "rag": "RAG",
+      "metrics": "Métriques",
+      "turn": "Turn Context"
+    },
+    "metric": {
+      "model": "Modèle",
+      "latency": "Latence",
+      "inputTokens": "Tokens entrée",
+      "outputTokens": "Tokens sortie",
+      "cost": "Coût",
+      "toolCalls": "Appels outils"
+    },
+    "errors": {
+      "sendFailed": "Échec du traitement du message",
+      "connection": "Erreur de connexion"
+    }
+  },
+  "admin.testAgent": "Tester l'agent",
+  "settings.businessInfo": {
+    "title": "Infos de l'entreprise",
+    "subtitle": "Données que l'agent utilise pour répondre sur votre entreprise",
+    "hint": "Cette info est chargée à chaque conversation. Remplissez au maximum pour que l'agent réponde avec précision.",
+    "loading": "Chargement...",
+    "saving": "Enregistrement...",
+    "save": "Enregistrer",
+    "saved": "Enregistré avec succès",
+    "sections": {
+      "identity": "Identité",
+      "contact": "Contact",
+      "location": "Localisation",
+      "social": "Liens sociaux"
+    },
+    "fields": {
+      "companyName": "Nom de l'entreprise",
+      "industry": "Secteur",
+      "about": "À propos",
+      "website": "Site web",
+      "phone": "Téléphone",
+      "email": "Email",
+      "address": "Adresse",
+      "city": "Ville",
+      "country": "Pays",
+      "logoUrl": "URL du logo"
+    },
+    "placeholders": {
+      "industry": "Ex: Tourisme, Éducation, Commerce",
+      "about": "Brève description de votre entreprise, mission et offre"
+    },
+    "social": {
+      "facebook": "Facebook",
+      "instagram": "Instagram",
+      "twitter": "Twitter / X",
+      "linkedin": "LinkedIn",
+      "youtube": "YouTube",
+      "tiktok": "TikTok"
+    },
+    "errors": {
+      "companyNameRequired": "Le nom de l'entreprise est requis",
+      "saveFailed": "Échec de l'enregistrement",
+      "connection": "Erreur de connexion"
+    }
+  },
+  "settings.policies": {
+    "title": "Politiques",
+    "subtitle": "Politiques officielles citées par l'agent (jamais inventées)",
+    "hint": "L'agent ne peut référencer que les politiques actives. Chaque modification crée une nouvelle version en conservant l'historique complet.",
+    "loading": "Chargement...",
+    "saved": "Politique enregistrée",
+    "saving": "Enregistrement...",
+    "saveNewVersion": "Enregistrer nouvelle version",
+    "createPolicy": "Créer politique",
+    "viewHistory": "Voir l'historique",
+    "versionPrefix": "v",
+    "history": "Historique des versions",
+    "active": "Active",
+    "markdownHint": "Markdown basique supporté pour le formatage",
+    "types": {
+      "shipping": "Livraison",
+      "return": "Retour",
+      "warranty": "Garantie",
+      "cancellation": "Annulation",
+      "terms": "Conditions",
+      "privacy": "Confidentialité"
+    },
+    "fields": {
+      "title": "Titre",
+      "content": "Contenu"
+    },
+    "placeholders": {
+      "content": "Décrivez la politique en détail. L'agent citera ce contenu quand les clients demanderont."
+    },
+    "errors": {
+      "required": "Titre et contenu requis",
+      "saveFailed": "Échec de l'enregistrement",
+      "connection": "Erreur de connexion"
+    }
+  },
+  "catalog.offers": {
+    "title": "Promotions",
+    "subtitle": "Offres actives que l'agent peut mentionner aux clients",
+    "loading": "Chargement...",
+    "empty": "Pas encore d'offres. Créez la première promotion.",
+    "newOffer": "Nouvelle offre",
+    "newTitle": "Nouvelle offre",
+    "editTitle": "Modifier l'offre",
+    "live": "Active",
+    "inactive": "Inactive",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "confirmDelete": "Supprimer cette offre ? Cette action est irréversible.",
+    "conditionsHint": "JSON avec conditions (remise %, code, montant min, etc.)",
+    "types": {
+      "discount": "Remise",
+      "promo": "Promotion",
+      "bundle": "Pack"
+    },
+    "fields": {
+      "type": "Type",
+      "title": "Titre",
+      "validFrom": "Valide du",
+      "validTo": "Valide jusqu'au",
+      "conditions": "Conditions (JSON)",
+      "active": "Active"
+    },
+    "placeholders": {
+      "title": "20% de remise sur les cours d'été"
+    },
+    "errors": {
+      "titleRequired": "Le titre est requis",
+      "conditionsInvalid": "Les conditions doivent être du JSON valide",
+      "saveFailed": "Échec de l'enregistrement"
+    }
+  },
+  "knowledge.faqs": {
+    "title": "FAQ",
+    "subtitle": "Paires question-réponse que l'agent utilise pour réponses canoniques",
+    "loading": "Chargement...",
+    "empty": "Pas encore de FAQ. Créez la première pour donner des réponses précises à l'agent.",
+    "newFaq": "Nouvelle FAQ",
+    "newTitle": "Nouvelle FAQ",
+    "editTitle": "Modifier FAQ",
+    "uncategorized": "Sans catégorie",
+    "views": "vues",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "confirmDelete": "Supprimer cette FAQ ? Cette action est irréversible.",
+    "fields": {
+      "question": "Question",
+      "answer": "Réponse",
+      "category": "Catégorie",
+      "tags": "Tags (séparés par virgule)",
+      "order": "Ordre",
+      "published": "Publiée (visible à l'agent)"
+    },
+    "placeholders": {
+      "question": "Quelle est votre politique de retour ?",
+      "answer": "Nous acceptons les retours dans les 30 premiers jours...",
+      "category": "Ventes, Support, Livraisons",
+      "tags": "retour, remboursement"
+    },
+    "errors": {
+      "required": "Question et réponse requises",
+      "saveFailed": "Échec de l'enregistrement"
     }
   }
 }

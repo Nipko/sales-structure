@@ -11,6 +11,8 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
     → API (port 3000) → ConversationsService (orchestrator)
         → IdentityService (resolve/create unified profile)
         → PersonaService (load agent config) → getPersonaForChannel(tenantId, channelType) (select agent by channel)
+            → BusinessInfoService (tenant identity) + KnowledgeService (RAG hybrid) + BookingEngine
+            → PromptAssemblerService.assemble(config, turnContext) → L1 contract + L2 persona + L3 turn
             → LLMRouter (select model by tier) → LLM Provider → response
         → OutboundQueueService (BullMQ, priority by plan) → ChannelGatewayService → Channel API → Customer
 
@@ -65,6 +67,32 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Multi-agent**: Each tenant can have N agents (plan-gated: starter=1, pro=3, enterprise=10, custom=unlimited). One agent per channel. Pipeline uses getPersonaForChannel() for routing.
 - **Subscription plans**: 4 plans: starter, pro, enterprise, custom — controls agent count, template access, and rate limits
 - **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio). One AI agent per channel (hard rule).
+
+## Prompt Architecture (3 layers — Apr 2026 refactor)
+
+The system prompt is ASSEMBLED per turn by `PromptAssemblerService`:
+
+- **Layer 1 (Contract)** — hardcoded universal rules. Defines that backend controls flow, LLM is the voice, must cite retrieved knowledge, must use `<turn><language>`, must never leak context tags. Identical for every agent.
+- **Layer 2 (Persona)** — `<persona>…</persona>` from `PersonaService.buildSystemPrompt(config)`. 100% user configuration (name, role, personality, rules, forbidden topics, handoff triggers, business hours). In `editorMode: 'prompt'`, the user's free-form prompt replaces the guided body but STILL wrapped in `<persona>` so L1/L3 apply.
+- **Layer 3 (Turn Context)** — `<turn>…</turn>` structured XML for this specific turn: language (auto-detected), timezone, now, upcoming_days, business_hours_status, business identity, contact profile, booking_state, available_services, retrieved_knowledge (from RAG + tools).
+
+**No prose instructions are mixed with user config.** Dates, language, business info, RAG hits — all appear as structured data inside `<turn>`, never as prepended/appended prose.
+
+## 5-Tier Knowledge Architecture (Apr 2026)
+
+1. **Business Identity** — inline in `<turn><business>` (always loaded, ~200 tokens). Managed in Settings → Business Info (extends `companies` table).
+2. **Catalog / Inventory** — tools (`search_products`, `get_product`, `check_stock`). Registered when `config.tools.catalog.enabled`.
+3. **FAQs** — dedicated `faqs` table + tool `search_faqs`. Full-text TSVECTOR search with ILIKE fallback. Managed in Knowledge → FAQs.
+4. **Policies** — versioned `policies` table (unique active per type: shipping/return/warranty/cancellation/terms/privacy) + tool `get_policy`. Never hallucinated. Managed in Settings → Policies.
+5. **Knowledge Base (RAG++)** — hybrid search (vector cosine + keyword ILIKE boost) with rerank and configurable `topK` + `similarityThreshold`. Citations in replies: `[FAQ #id]`, `[Policy: type]`, `[Article: title]`.
+
+## Test Agent
+
+Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The endpoint `POST /api/v1/agent-test/:tenantId/:agentId` processes a message through the full pipeline (no persistence) and returns `reply + debug { systemPrompt, toolCalls, ragHits, tokens, cost, model, latencyMs, turnContext }`. Debug panel has 5 tabs: System Prompt, Tools, RAG, Metrics, Turn Context.
+
+## Language Detection
+
+`LanguageDetectorService` heuristically detects es/en/pt/fr from the inbound message. Default is the configured agent language; auto-override when the customer switches languages mid-conversation. Fed into `<turn><language>` so the LLM answers in the customer's language.
 
 ## API modules (37 total)
 

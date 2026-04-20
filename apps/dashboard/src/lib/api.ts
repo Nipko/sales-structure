@@ -600,7 +600,56 @@ export const api = {
             throw new Error(errorMsg);
         }
         return res.json();
-    }
+    },
+
+    // ─── Business Info (company identity the agent references) ───
+    getBusinessInfo: (tenantId: string) =>
+        apiGet<any>(`/business-info/${tenantId}`),
+    updateBusinessInfo: (tenantId: string, data: any) =>
+        apiPut<any>(`/business-info/${tenantId}`, data),
+
+    // ─── FAQs (first-class Q&A) ───
+    listFaqs: (tenantId: string, opts?: { publishedOnly?: boolean; category?: string }) => {
+        const q = new URLSearchParams();
+        if (opts?.publishedOnly !== undefined) q.set("publishedOnly", String(opts.publishedOnly));
+        if (opts?.category) q.set("category", opts.category);
+        const qs = q.toString();
+        return apiGet<any[]>(`/faqs/${tenantId}${qs ? `?${qs}` : ""}`);
+    },
+    createFaq: (tenantId: string, data: any) =>
+        apiPost<any>(`/faqs/${tenantId}`, data),
+    updateFaq: (tenantId: string, id: string, data: any) =>
+        apiPut<any>(`/faqs/${tenantId}/${id}`, data),
+    deleteFaq: (tenantId: string, id: string) =>
+        apiDelete(`/faqs/${tenantId}/${id}`),
+
+    // ─── Policies (versioned legal/operational) ───
+    listPolicies: (tenantId: string) =>
+        apiGet<any[]>(`/policies/${tenantId}`),
+    getPolicy: (tenantId: string, type: string) =>
+        apiGet<any>(`/policies/${tenantId}/${type}`),
+    listPolicyVersions: (tenantId: string, type: string) =>
+        apiGet<any[]>(`/policies/${tenantId}/${type}/versions`),
+    upsertPolicy: (tenantId: string, data: { type: string; title: string; content: string }) =>
+        apiPost<any>(`/policies/${tenantId}`, data),
+    deletePolicy: (tenantId: string, id: string) =>
+        apiDelete(`/policies/${tenantId}/${id}`),
+
+    // ─── Test Agent (dry-run with debug info) ───
+    testAgent: (tenantId: string, agentId: string, data: { message: string; conversationHistory?: Array<{ role: string; content: string }>; channelType?: string }) =>
+        apiPost<any>(`/agent-test/${tenantId}/${agentId}`, data),
+
+    // ─── Offers / Promotions ───
+    listOffers: (tenantId: string, activeOnly = false) => {
+        const qs = activeOnly ? "?activeOnly=true" : "";
+        return apiGet<any[]>(`/offers/${tenantId}${qs}`);
+    },
+    createOffer: (tenantId: string, data: any) =>
+        apiPost<any>(`/offers/${tenantId}`, data),
+    updateOffer: (tenantId: string, id: string, data: any) =>
+        apiPut<any>(`/offers/${tenantId}/${id}`, data),
+    deleteOffer: (tenantId: string, id: string) =>
+        apiDelete(`/offers/${tenantId}/${id}`),
 };
 
 // ============================================

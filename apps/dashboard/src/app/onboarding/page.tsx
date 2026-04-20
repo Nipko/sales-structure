@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
     Building2, Globe, ChevronLeft, ChevronRight,
     AlertCircle, Instagram, Facebook, Linkedin,
+    Phone, Mail, Info,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,9 @@ export default function OnboardingPage() {
     // Step 1
     const [companyName, setCompanyName] = useState("");
     const [website, setWebsite] = useState("");
+    const [phone, setPhone] = useState("");
+    const [businessEmail, setBusinessEmail] = useState("");
+    const [about, setAbout] = useState("");
     const [instagram, setInstagram] = useState("");
     const [facebook, setFacebook] = useState("");
     const [linkedin, setLinkedin] = useState("");
@@ -126,6 +130,9 @@ export default function OnboardingPage() {
             company: {
                 name: companyName,
                 website: website || undefined,
+                phone: phone || undefined,
+                email: businessEmail || undefined,
+                about: about || undefined,
                 socialMedia: {
                     instagram: instagram || undefined,
                     facebook: facebook || undefined,
@@ -244,7 +251,7 @@ export default function OnboardingPage() {
                             {/* Website */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    Website
+                                    {t('website')}
                                 </label>
                                 <div className="relative">
                                     <Globe size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -256,6 +263,60 @@ export default function OnboardingPage() {
                                         className={inputWithIconClasses}
                                     />
                                 </div>
+                            </div>
+
+                            {/* Business Contact — used by the AI agent when customers ask */}
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                        {t('businessPhone')}
+                                    </label>
+                                    <div className="relative">
+                                        <Phone size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                                        <input
+                                            type="tel"
+                                            value={phone}
+                                            onChange={(e) => setPhone(e.target.value)}
+                                            placeholder={t('businessPhonePlaceholder')}
+                                            className={inputWithIconClasses}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                        {t('businessEmail')}
+                                    </label>
+                                    <div className="relative">
+                                        <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                                        <input
+                                            type="email"
+                                            value={businessEmail}
+                                            onChange={(e) => setBusinessEmail(e.target.value)}
+                                            placeholder={t('businessEmailPlaceholder')}
+                                            className={inputWithIconClasses}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* About — fed into the agent's <turn.business> block */}
+                            <div className="mb-4">
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                    {t('about')}
+                                </label>
+                                <div className="relative">
+                                    <Info size={16} className="absolute left-3.5 top-3 text-muted-foreground/50" />
+                                    <textarea
+                                        value={about}
+                                        onChange={(e) => setAbout(e.target.value)}
+                                        placeholder={t('aboutPlaceholder')}
+                                        rows={3}
+                                        className={cn(inputWithIconClasses, "pt-3 pb-3 resize-y min-h-[80px]")}
+                                    />
+                                </div>
+                                <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+                                    {t('aboutHint')}
+                                </p>
                             </div>
 
                             {/* Social Media */}

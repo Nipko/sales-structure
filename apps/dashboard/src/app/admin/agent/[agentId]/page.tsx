@@ -6,10 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import {
   Bot, User, Smile, Shield, Cpu, Wrench, Brain, Sparkles,
   Save, CheckCircle, AlertTriangle, ArrowLeft, MoreVertical,
-  BookmarkPlus, Star, Radio, Clock,
+  BookmarkPlus, Star, Radio, Clock, TestTube2,
   MessageSquare, Instagram, Facebook, Send, Phone,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -335,6 +336,13 @@ export default function AgentEditorPage() {
         }
         action={
           <div className="flex items-center gap-2">
+            <Link
+              href={`/admin/agent/${agentId}/test`}
+              className="px-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium cursor-pointer flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+              title={t("testAgent")}
+            >
+              <TestTube2 size={16} /> {t("testAgent")}
+            </Link>
             {mode === "guided" && (
               <button
                 type="button"

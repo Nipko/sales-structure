@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
+import { FaqsService } from '../faqs/faqs.service';
+import { PoliciesService } from '../policies/policies.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
+import type { PolicyType } from '@parallext/shared';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -13,6 +17,9 @@ export class AIToolExecutorService {
     constructor(
         private prisma: PrismaService,
         private calendarIntegration: CalendarIntegrationService,
+        private faqsService: FaqsService,
+        private policiesService: PoliciesService,
+        private knowledgeService: KnowledgeService,
     ) { }
 
     /**
@@ -44,12 +51,344 @@ export class AIToolExecutorService {
                 case 'list_customer_appointments':
                     return this.listCustomerAppointments(schemaName, contactId);
 
+                case 'search_products':
+                    return this.searchProducts(schemaName, args.query, args.limit, args.category);
+
+                case 'get_product':
+                    return this.getProduct(schemaName, args.productId);
+
+                case 'check_stock':
+                    return this.checkStock(schemaName, args.productId);
+
+                case 'search_faqs':
+                    return this.searchFaqs(tenantId, args.query, args.limit);
+
+                case 'get_policy':
+                    return this.getPolicy(tenantId, args.type as PolicyType);
+
+                case 'search_knowledge_base':
+                    return this.searchKnowledgeBase(tenantId, args.query, args.limit);
+
+                case 'list_customer_orders':
+                    return this.listCustomerOrders(schemaName, contactId, args.limit, args.status);
+
+                case 'list_active_offers':
+                    return this.listActiveOffers(schemaName, args.limit);
+
+                case 'get_customer_context':
+                    return this.getCustomerContext(schemaName, contactId);
+
                 default:
                     return { error: `Unknown tool: ${toolName}` };
             }
         } catch (error: any) {
             this.logger.error(`[Tool] ${toolName} failed: ${error.message}`);
             return { error: error.message };
+        }
+    }
+
+    // ── Catalog + Inventory tools ─────────────────────────────
+
+    /**
+     * Search products by natural-language query. Hits the `products` table in
+     * the tenant schema. Falls back to courses if products table is empty.
+     */
+    private async searchProducts(schema: string, query: string, limit = 5, category?: string): Promise<any> {
+        const q = `%${query}%`;
+        const conds: string[] = [];
+        const params: any[] = [];
+        conds.push(`(name ILIKE $${params.length + 1} OR description ILIKE $${params.length + 1} OR category ILIKE $${params.length + 1})`);
+        params.push(q);
+        if (category) {
+            conds.push(`category = $${params.length + 1}`);
+            params.push(category);
+        }
+        conds.push(`is_available = true`);
+        params.push(limit);
+        const sql = `SELECT id, name, description, category, price, currency, stock, is_available, images
+                     FROM "${schema}".products
+                     WHERE ${conds.slice(0, -1).join(' AND ')}
+                     ORDER BY name ASC
+                     LIMIT $${params.length}`;
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
+            if (rows.length > 0) {
+                return {
+                    products: rows.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        description: p.description,
+                        category: p.category,
+                        price: Number(p.price || 0),
+                        currency: p.currency || 'COP',
+                        stock: p.stock ?? null,
+                        isAvailable: !!p.is_available,
+                    })),
+                };
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Tool] search_products products table missing or empty: ${e.message}`);
+        }
+        // Fallback: search courses
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, name, description, price, currency, duration_hours, modality
+                 FROM "${schema}".courses
+                 WHERE is_active = true AND (name ILIKE $1 OR description ILIKE $1)
+                 ORDER BY name ASC LIMIT $2`,
+                q, limit,
+            );
+            return {
+                products: rows.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    description: c.description,
+                    category: 'course',
+                    price: Number(c.price || 0),
+                    currency: c.currency || 'COP',
+                    durationHours: c.duration_hours,
+                    modality: c.modality,
+                    isAvailable: true,
+                })),
+            };
+        } catch {
+            return { products: [] };
+        }
+    }
+
+    private async getProduct(schema: string, productIdOrName: string): Promise<any> {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productIdOrName);
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                isUuid
+                    ? `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
+                productIdOrName,
+            );
+            if (rows.length > 0) {
+                const p = rows[0];
+                return {
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    category: p.category,
+                    price: Number(p.price || 0),
+                    currency: p.currency || 'COP',
+                    stock: p.stock ?? null,
+                    isAvailable: !!p.is_available,
+                    images: Array.isArray(p.images) ? p.images : [],
+                };
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_product products lookup failed: ${e.message}`);
+        }
+        return { error: 'Product not found' };
+    }
+
+    private async checkStock(schema: string, productIdOrName: string): Promise<any> {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productIdOrName);
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                isUuid
+                    ? `SELECT id, name, stock, is_available FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT id, name, stock, is_available FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
+                productIdOrName,
+            );
+            if (rows.length > 0) {
+                const p = rows[0];
+                return {
+                    id: p.id,
+                    name: p.name,
+                    stock: p.stock ?? null,
+                    inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,
+                };
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Tool] check_stock failed: ${e.message}`);
+        }
+        return { error: 'Product not found' };
+    }
+
+    // ── Knowledge tools ──────────────────────────────────────
+
+    private async searchFaqs(tenantId: string, query: string, limit = 3): Promise<any> {
+        const faqs = await this.faqsService.search(tenantId, query, limit);
+        // Fire-and-forget: track views
+        for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
+        return {
+            faqs: faqs.map(f => ({
+                id: f.id,
+                question: f.question,
+                answer: f.answer,
+                category: f.category,
+            })),
+        };
+    }
+
+    private async getPolicy(tenantId: string, type: PolicyType): Promise<any> {
+        const policy = await this.policiesService.getActive(tenantId, type);
+        if (!policy) return { error: `No ${type} policy is configured for this business.` };
+        return {
+            type: policy.type,
+            title: policy.title,
+            content: policy.content,
+            version: policy.version,
+        };
+    }
+
+    // ── Orders / Offers / CRM tools ─────────────────────────────
+
+    /**
+     * List recent orders for the current contact. No contactId param — it's
+     * already resolved from the conversation. Returns a compact view.
+     */
+    private async listCustomerOrders(schema: string, contactId: string, limit = 5, status?: string): Promise<any> {
+        if (!contactId) return { orders: [], error: 'No contact resolved for this conversation.' };
+        try {
+            const conds: string[] = ['contact_id = $1::uuid'];
+            const params: any[] = [contactId];
+            if (status) {
+                conds.push(`status = $${params.length + 1}`);
+                params.push(status);
+            }
+            params.push(limit);
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, status, total_amount, currency, payment_status, items, created_at
+                 FROM "${schema}".orders
+                 WHERE ${conds.join(' AND ')}
+                 ORDER BY created_at DESC
+                 LIMIT $${params.length}`,
+                ...params,
+            );
+            return {
+                orders: rows.map(o => ({
+                    id: o.id,
+                    status: o.status,
+                    paymentStatus: o.payment_status,
+                    totalAmount: Number(o.total_amount || 0),
+                    currency: o.currency,
+                    items: Array.isArray(o.items) ? o.items : [],
+                    createdAt: o.created_at,
+                })),
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] list_customer_orders failed: ${e.message}`);
+            return { orders: [] };
+        }
+    }
+
+    /**
+     * Active commercial offers. Filters by active=true and NOW() between
+     * valid_from and valid_to (nulls treated as open-ended).
+     */
+    private async listActiveOffers(schema: string, limit = 5): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT o.id, o.offer_type, o.title, o.conditions_json, o.valid_from, o.valid_to,
+                        c.name AS course_name
+                 FROM "${schema}".commercial_offers o
+                 LEFT JOIN "${schema}".courses c ON c.id = o.course_id
+                 WHERE o.active = true
+                   AND (o.valid_from IS NULL OR o.valid_from <= NOW())
+                   AND (o.valid_to IS NULL OR o.valid_to >= NOW())
+                 ORDER BY o.valid_from DESC NULLS LAST
+                 LIMIT $1`,
+                limit,
+            );
+            return {
+                offers: rows.map(o => ({
+                    id: o.id,
+                    type: o.offer_type,
+                    title: o.title,
+                    conditions: o.conditions_json,
+                    appliesTo: o.course_name ?? null,
+                    validFrom: o.valid_from,
+                    validTo: o.valid_to,
+                })),
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] list_active_offers failed: ${e.message}`);
+            return { offers: [] };
+        }
+    }
+
+    /**
+     * CRM context: lead score, stage, tags, opportunity count, last seen.
+     * Gracefully handles missing tables — a tenant without the leads table
+     * still gets a basic contact profile.
+     */
+    private async getCustomerContext(schema: string, contactId: string): Promise<any> {
+        if (!contactId) return { error: 'No contact resolved for this conversation.' };
+
+        let contact: any = null;
+        try {
+            const cRows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, name, email, phone, tags, first_contact_at, last_contact_at, metadata
+                 FROM "${schema}".contacts WHERE id = $1::uuid LIMIT 1`,
+                contactId,
+            );
+            contact = cRows[0] || null;
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_customer_context contacts lookup failed: ${e.message}`);
+        }
+
+        let lead: any = null;
+        try {
+            const lRows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, stage, score, first_name, last_name, created_at
+                 FROM "${schema}".leads WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+                contactId,
+            );
+            lead = lRows[0] || null;
+        } catch {}
+
+        let opportunitiesCount = 0;
+        try {
+            const oRows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS cnt FROM "${schema}".opportunities WHERE contact_id = $1::uuid`,
+                contactId,
+            );
+            opportunitiesCount = Number(oRows[0]?.cnt || 0);
+        } catch {}
+
+        return {
+            contact: contact ? {
+                id: contact.id,
+                name: contact.name,
+                email: contact.email,
+                phone: contact.phone,
+                tags: Array.isArray(contact.tags) ? contact.tags : [],
+                firstContactAt: contact.first_contact_at,
+                lastContactAt: contact.last_contact_at,
+            } : null,
+            lead: lead ? {
+                stage: lead.stage,
+                score: lead.score,
+                firstName: lead.first_name,
+                lastName: lead.last_name,
+            } : null,
+            opportunitiesCount,
+        };
+    }
+
+    // ── Knowledge tools ─────────────────────────────
+
+    private async searchKnowledgeBase(tenantId: string, query: string, limit = 5): Promise<any> {
+        try {
+            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
+            if (!hasKnowledge) return { chunks: [] };
+            const results = await this.knowledgeService.searchRelevant(tenantId, query, limit);
+            return {
+                chunks: (results || []).map((r: any) => ({
+                    id: r.id ?? r.document_id,
+                    title: r.title,
+                    content: r.chunk_text,
+                    score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                })),
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] search_knowledge_base failed: ${e.message}`);
+            return { chunks: [] };
         }
     }
 

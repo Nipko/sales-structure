@@ -8,10 +8,12 @@ import { JwtStrategy } from './jwt.strategy';
 import { GoogleAuthService } from './google-auth.service';
 import { MicrosoftAuthService } from './microsoft-auth.service';
 import { PersonaModule } from '../persona/persona.module';
+import { BusinessInfoModule } from '../business-info/business-info.module';
 
 @Module({
     imports: [
         PersonaModule,
+        BusinessInfoModule,
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.registerAsync({
             imports: [ConfigModule],

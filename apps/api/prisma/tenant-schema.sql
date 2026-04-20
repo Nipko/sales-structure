@@ -1306,3 +1306,59 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_templates" (
     "created_by" VARCHAR(255),
     "created_at" TIMESTAMP DEFAULT NOW()
 );
+
+-- ============================================
+-- PARALLLY — Business Knowledge (Apr 2026 refactor)
+-- ============================================
+
+-- ---- Business Identity (extends existing companies table) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "phone"         VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "email"         VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "about"         TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "address"       TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "logo_url"      VARCHAR(500);
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "social_links"  JSONB DEFAULT '{}';
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "is_primary"    BOOLEAN DEFAULT false;
+
+-- Only one company per tenant can be marked as primary (the source of truth for the agent).
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_companies_primary" ON "{{SCHEMA_NAME}}"."companies" ("is_primary") WHERE "is_primary" = true;
+
+-- ---- FAQs (first-class Q&A pairs — used by the agent via search_faqs tool) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."faqs" (
+    "id"            UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "question"      TEXT NOT NULL,
+    "answer"        TEXT NOT NULL,
+    "category"      VARCHAR(100),
+    "tags"          TEXT[] DEFAULT '{}',
+    "order_index"   INTEGER DEFAULT 0,
+    "is_published"  BOOLEAN DEFAULT true,
+    "views"         INTEGER DEFAULT 0,
+    "search_tsv"    TSVECTOR,
+    "created_at"    TIMESTAMP DEFAULT NOW(),
+    "updated_at"    TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "idx_faqs_published"    ON "{{SCHEMA_NAME}}"."faqs" ("is_published");
+CREATE INDEX IF NOT EXISTS "idx_faqs_category"     ON "{{SCHEMA_NAME}}"."faqs" ("category");
+CREATE INDEX IF NOT EXISTS "idx_faqs_order"        ON "{{SCHEMA_NAME}}"."faqs" ("order_index");
+CREATE INDEX IF NOT EXISTS "idx_faqs_tsv"          ON "{{SCHEMA_NAME}}"."faqs" USING GIN ("search_tsv");
+CREATE INDEX IF NOT EXISTS "idx_faqs_tags"         ON "{{SCHEMA_NAME}}"."faqs" USING GIN ("tags");
+
+-- ---- Policies (versioned legal / operational policies) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."policies" (
+    "id"              UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "type"            VARCHAR(50) NOT NULL,  -- shipping | return | warranty | cancellation | terms | privacy
+    "title"           VARCHAR(500) NOT NULL,
+    "content"         TEXT NOT NULL,
+    "version"         INTEGER NOT NULL DEFAULT 1,
+    "effective_from"  TIMESTAMP DEFAULT NOW(),
+    "effective_to"    TIMESTAMP,
+    "is_active"       BOOLEAN DEFAULT true,
+    "created_by"      VARCHAR(255),
+    "created_at"      TIMESTAMP DEFAULT NOW(),
+    "updated_at"      TIMESTAMP DEFAULT NOW()
+);
+
+-- Only one active version per policy type
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_policies_active_type" ON "{{SCHEMA_NAME}}"."policies" ("type") WHERE "is_active" = true;
+CREATE INDEX IF NOT EXISTS "idx_policies_type_version" ON "{{SCHEMA_NAME}}"."policies" ("type", "version" DESC);

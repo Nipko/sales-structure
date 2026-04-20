@@ -195,6 +195,7 @@
     "import": "Importer",
     "export": "Exporter",
     "segment": "Segment",
+    "segmentsButton": "Segments",
     "conversations": "Conversations",
     "lifetimeValue": "Valeur (EUR)",
     "lastInteraction": "Dernière interaction",
@@ -207,6 +208,68 @@
       "qualified": "Qualifiés",
       "customer": "Clients",
       "churned": "Perdus"
+    },
+    "importModal": {
+      "title": "Importer des contacts",
+      "downloadTemplate": "Télécharger le modèle CSV",
+      "placeholder": "Collez le CSV ici...\nnom,telephone,email\nJean,+33612345678,jean@email.com",
+      "imported": "Importés",
+      "skipped": "Ignorés",
+      "errors": "Erreurs",
+      "import": "Importer",
+      "importing": "Importation..."
+    },
+    "segmentsPage": {
+      "title": "Segments",
+      "subtitle": "Regroupez les contacts avec des filtres dynamiques",
+      "newSegment": "Nouveau segment",
+      "loading": "Chargement...",
+      "empty": "Pas encore de segments",
+      "contacts": "contacts",
+      "backToSegments": "Retour aux segments",
+      "loadingContacts": "Chargement des contacts...",
+      "noContactsFound": "Aucun contact trouvé",
+      "created": "Segment créé",
+      "fields": {
+        "stage": "Étape",
+        "score": "Score",
+        "phone": "Téléphone",
+        "email": "Email",
+        "source": "Source",
+        "isVip": "VIP",
+        "createdAt": "Date de création"
+      },
+      "operators": {
+        "eq": "égal à",
+        "neq": "différent de",
+        "gt": "supérieur à",
+        "gte": "supérieur ou égal",
+        "lt": "inférieur à",
+        "lte": "inférieur ou égal",
+        "contains": "contient",
+        "in": "l'un de"
+      },
+      "table": {
+        "name": "Nom",
+        "phone": "Téléphone",
+        "email": "Email",
+        "stage": "Étape",
+        "score": "Score"
+      },
+      "form": {
+        "name": "Nom",
+        "namePlaceholder": "ex: Prospects chauds",
+        "description": "Description",
+        "descriptionPlaceholder": "Description optionnelle du segment",
+        "filters": "Filtres",
+        "valuePlaceholder": "Valeur",
+        "valuePlaceholderIn": "val1, val2, val3",
+        "addFilter": "Ajouter filtre",
+        "preview": "Aperçu",
+        "contactsMatch": "contacts correspondent",
+        "cancel": "Annuler",
+        "create": "Créer segment"
+      }
     },
     "subtitle": "Gerez vos contacts, leads et segments"
   },
@@ -375,6 +438,22 @@
     "monitoringDesc": "Alertes, rapports planifiés et supervision",
     "alertsCard": "Alertes et rapports",
     "alertsCardDesc": "Règles d'alerte par métriques et emails planifiés",
+    "profilePage": {
+      "title": "Profil",
+      "subtitle": "Vos informations personnelles et coordonnées",
+      "firstName": "Prénom",
+      "lastName": "Nom",
+      "email": "Email",
+      "emailLocked": "L'email ne peut pas être modifié",
+      "phone": "Téléphone",
+      "phonePlaceholder": "+33 6 12 34 56 78",
+      "jobTitle": "Fonction",
+      "jobTitlePlaceholder": "Directeur commercial"
+    },
+    "superAdminOnly": {
+      "title": "Accès restreint",
+      "description": "Cette section n'est disponible que pour les administrateurs système."
+    },
     "save": "Enregistrer les modifications",
     "saved": "Enregistre !",
     "saving": "Enregistrement...",

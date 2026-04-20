@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
     MessageSquare, Shield, CheckCircle, RefreshCw,
@@ -13,6 +14,8 @@ import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === "super_admin";
     const [status, setStatus] = useState<any>(null);
     const [templates, setTemplates] = useState<any[]>([]);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
@@ -224,7 +227,8 @@ export default function WhatsAppSetupPage() {
                         />
                     </div>
 
-                    {/* Toggle manual connection */}
+                    {/* Toggle manual connection — super_admin only (uses raw Meta credentials) */}
+                    {isSuperAdmin && (
                     <div className="text-center mb-6">
                         <button
                             onClick={() => setShowManual(!showManual)}
@@ -233,9 +237,10 @@ export default function WhatsAppSetupPage() {
                             {showManual ? "Ocultar conexion manual" : "O conectar manualmente con credenciales de Meta"}
                         </button>
                     </div>
+                    )}
 
-                    {/* Manual connection form */}
-                    {showManual && (
+                    {/* Manual connection form — super_admin only */}
+                    {isSuperAdmin && showManual && (
                         <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                             <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                                 <Settings size={18} className="text-primary" />
@@ -321,7 +326,8 @@ export default function WhatsAppSetupPage() {
                         </div>
                     </div>
 
-                    {/* Update Credentials */}
+                    {/* Update Credentials — super_admin only (raw Meta credentials) */}
+                    {isSuperAdmin && (
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <LinkIcon size={18} className="text-primary" />
@@ -354,6 +360,7 @@ export default function WhatsAppSetupPage() {
                             </form>
                         </div>
                     </div>
+                    )}
                 </div>
             )}
 

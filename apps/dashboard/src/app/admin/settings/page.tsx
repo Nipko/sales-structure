@@ -34,6 +34,7 @@ interface SettingsCard {
     icon: LucideIcon;
     iconColor: string;
     iconBg: string;
+    superAdminOnly?: boolean;
 }
 
 interface SettingsSection {
@@ -41,6 +42,7 @@ interface SettingsSection {
     description: string;
     cards: SettingsCard[];
     adminOnly?: boolean;
+    superAdminOnly?: boolean;
 }
 
 export default function SettingsHub() {
@@ -48,6 +50,7 @@ export default function SettingsHub() {
     const { user } = useAuth();
     const t = useTranslations("settings");
     const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
+    const isSuperAdmin = user?.role === "super_admin";
 
     const sections: SettingsSection[] = [
         {
@@ -88,7 +91,7 @@ export default function SettingsHub() {
         {
             title: t("aiModels"), description: t("aiModelsDesc"), adminOnly: true,
             cards: [
-                { label: t("llmProviders"), description: t("llmProvidersDesc"), href: "/admin/settings/ai-providers", icon: Brain, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+                { label: t("llmProviders"), description: t("llmProvidersDesc"), href: "/admin/settings/ai-providers", icon: Brain, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10", superAdminOnly: true },
                 { label: t("aiConfig"), description: t("aiConfigDesc"), href: "/admin/settings/ai-config", icon: SlidersHorizontal, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
             ],
         },
@@ -120,6 +123,9 @@ export default function SettingsHub() {
             {/* Sections */}
             {sections.map((section) => {
                 if (section.adminOnly && !isAdmin) return null;
+                if (section.superAdminOnly && !isSuperAdmin) return null;
+                const visibleCards = section.cards.filter(c => !(c.superAdminOnly && !isSuperAdmin));
+                if (visibleCards.length === 0) return null;
                 return (
                     <div key={section.title}>
                         <div className="mb-3">
@@ -131,7 +137,7 @@ export default function SettingsHub() {
                             </p>
                         </div>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                            {section.cards.map((card) => {
+                            {visibleCards.map((card) => {
                                 const Icon = card.icon;
                                 return (
                                     <button

@@ -195,6 +195,7 @@
     "import": "Import",
     "export": "Export",
     "segment": "Segment",
+    "segmentsButton": "Segments",
     "conversations": "Conversations",
     "lifetimeValue": "Value (USD)",
     "lastInteraction": "Last interaction",
@@ -207,6 +208,68 @@
       "qualified": "Qualified",
       "customer": "Customers",
       "churned": "Churned"
+    },
+    "importModal": {
+      "title": "Import contacts",
+      "downloadTemplate": "Download CSV template",
+      "placeholder": "Paste CSV here...\nname,phone,email\nJohn,+15551234567,john@email.com",
+      "imported": "Imported",
+      "skipped": "Skipped",
+      "errors": "Errors",
+      "import": "Import",
+      "importing": "Importing..."
+    },
+    "segmentsPage": {
+      "title": "Segments",
+      "subtitle": "Group contacts with dynamic filters",
+      "newSegment": "New segment",
+      "loading": "Loading...",
+      "empty": "No segments yet",
+      "contacts": "contacts",
+      "backToSegments": "Back to segments",
+      "loadingContacts": "Loading contacts...",
+      "noContactsFound": "No contacts found",
+      "created": "Segment created",
+      "fields": {
+        "stage": "Stage",
+        "score": "Score",
+        "phone": "Phone",
+        "email": "Email",
+        "source": "Source",
+        "isVip": "VIP",
+        "createdAt": "Creation date"
+      },
+      "operators": {
+        "eq": "equals",
+        "neq": "not equals",
+        "gt": "greater than",
+        "gte": "greater or equal",
+        "lt": "less than",
+        "lte": "less or equal",
+        "contains": "contains",
+        "in": "is one of"
+      },
+      "table": {
+        "name": "Name",
+        "phone": "Phone",
+        "email": "Email",
+        "stage": "Stage",
+        "score": "Score"
+      },
+      "form": {
+        "name": "Name",
+        "namePlaceholder": "e.g. Hot leads",
+        "description": "Description",
+        "descriptionPlaceholder": "Optional segment description",
+        "filters": "Filters",
+        "valuePlaceholder": "Value",
+        "valuePlaceholderIn": "val1, val2, val3",
+        "addFilter": "Add filter",
+        "preview": "Preview",
+        "contactsMatch": "contacts match",
+        "cancel": "Cancel",
+        "create": "Create segment"
+      }
     },
     "subtitle": "Manage your contacts, leads and segments"
   },
@@ -375,6 +438,22 @@
     "monitoringDesc": "Alerts, scheduled reports and oversight",
     "alertsCard": "Alerts & reports",
     "alertsCardDesc": "Metric alert rules and scheduled email reports",
+    "profilePage": {
+      "title": "Profile",
+      "subtitle": "Your personal information and contact details",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "email": "Email",
+      "emailLocked": "Email cannot be changed",
+      "phone": "Phone",
+      "phonePlaceholder": "+1 555 123 4567",
+      "jobTitle": "Job title",
+      "jobTitlePlaceholder": "Sales Director"
+    },
+    "superAdminOnly": {
+      "title": "Restricted access",
+      "description": "This section is only available to system administrators."
+    },
     "save": "Save changes",
     "saved": "Saved!",
     "saving": "Saving...",

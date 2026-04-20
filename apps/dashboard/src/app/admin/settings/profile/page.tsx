@@ -9,6 +9,7 @@ import { User, Mail, Phone, Briefcase, Save, CheckCircle, AlertCircle } from "lu
 
 export default function ProfilePage() {
     const tc = useTranslations("common");
+    const t = useTranslations("settings.profilePage");
     const { user } = useAuth();
     const [form, setForm] = useState({
         firstName: "",
@@ -68,9 +69,9 @@ export default function ProfilePage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Profile</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("title")}</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Your personal information and contact details
+                    {t("subtitle")}
                 </p>
             </div>
 
@@ -102,7 +103,7 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                            First name
+                            {t("firstName")}
                         </label>
                         <div className="relative">
                             <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -116,7 +117,7 @@ export default function ProfilePage() {
                     </div>
                     <div>
                         <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                            Last name
+                            {t("lastName")}
                         </label>
                         <div className="relative">
                             <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -133,7 +134,7 @@ export default function ProfilePage() {
                 {/* Email (read-only) */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Email
+                        {t("email")}
                     </label>
                     <div className="relative">
                         <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -144,13 +145,13 @@ export default function ProfilePage() {
                             className={cn(inputClasses, "pl-9 opacity-60 cursor-not-allowed")}
                         />
                     </div>
-                    <p className="mt-1 text-xs text-neutral-400">Email cannot be changed</p>
+                    <p className="mt-1 text-xs text-neutral-400">{t("emailLocked")}</p>
                 </div>
 
                 {/* Phone */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Phone
+                        {t("phone")}
                     </label>
                     <div className="relative">
                         <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -158,7 +159,7 @@ export default function ProfilePage() {
                             type="tel"
                             value={form.phone}
                             onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                            placeholder="+57 300 123 4567"
+                            placeholder={t("phonePlaceholder")}
                             className={cn(inputClasses, "pl-9")}
                         />
                     </div>
@@ -167,7 +168,7 @@ export default function ProfilePage() {
                 {/* Job Title */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Job title
+                        {t("jobTitle")}
                     </label>
                     <div className="relative">
                         <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -175,7 +176,7 @@ export default function ProfilePage() {
                             type="text"
                             value={form.jobTitle}
                             onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
-                            placeholder="Sales Director"
+                            placeholder={t("jobTitlePlaceholder")}
                             className={cn(inputClasses, "pl-9")}
                         />
                     </div>

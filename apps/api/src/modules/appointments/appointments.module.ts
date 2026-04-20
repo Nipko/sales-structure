@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AppointmentsService } from './appointments.service';
 import { AppointmentsController } from './appointments.controller';
 import { CalendarCallbackController } from './calendar-callback.controller';
@@ -10,7 +10,7 @@ import { AppointmentNotificationsService } from './appointment-notifications.ser
 import { ChannelsModule } from '../channels/channels.module';
 
 @Module({
-    imports: [ChannelsModule],
+    imports: [forwardRef(() => ChannelsModule)],
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [
         AppointmentsService, ServicesService, CalendarIntegrationService,

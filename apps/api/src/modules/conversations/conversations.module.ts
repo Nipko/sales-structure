@@ -29,7 +29,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
         forwardRef(() => AutomationModule),
         IdentityModule,
         AnalyticsModule,
-        AppointmentsModule,
+        forwardRef(() => AppointmentsModule),
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => ({

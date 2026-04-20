@@ -83,9 +83,18 @@ export default function ProfilePage() {
 
             {/* Avatar */}
             <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-2xl font-semibold text-white">
-                    {form.firstName?.charAt(0) || "U"}
-                </div>
+                {user?.picture ? (
+                    <img
+                        src={user.picture}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        className="h-16 w-16 shrink-0 rounded-full object-cover"
+                    />
+                ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-2xl font-semibold text-white">
+                        {form.firstName?.charAt(0) || "U"}
+                    </div>
+                )}
                 <div>
                     <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                         {form.firstName} {form.lastName}

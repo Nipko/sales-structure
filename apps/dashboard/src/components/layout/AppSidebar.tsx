@@ -230,12 +230,22 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           showExpanded ? "flex items-center gap-3" : "flex justify-center"
         )}
       >
-        <div
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold shrink-0"
-          title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
-        >
-          {user?.firstName?.charAt(0) || "U"}
-        </div>
+        {user?.picture ? (
+          <img
+            src={user.picture}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-8 h-8 rounded-full object-cover shrink-0"
+            title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
+          />
+        ) : (
+          <div
+            className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold shrink-0"
+            title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
+          >
+            {user?.firstName?.charAt(0) || "U"}
+          </div>
+        )}
         {showExpanded && (
           <div className="overflow-hidden">
             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">

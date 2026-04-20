@@ -462,6 +462,7 @@ export class AuthService {
                 role: user.role,
                 tenantId: user.tenantId,
                 tenantName: user.tenant?.name,
+                picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,
@@ -474,6 +475,7 @@ export class AuthService {
     async microsoftLogin(microsoftUser: {
         microsoftId: string; email: string;
         firstName: string; lastName: string; displayName: string;
+        picture?: string;
     }, rememberMe = false) {
         let user = await this.prisma.user.findFirst({
             where: {
@@ -496,6 +498,7 @@ export class AuthService {
                     lastName,
                     authProvider: 'microsoft',
                     microsoftId: microsoftUser.microsoftId,
+                    picture: microsoftUser.picture,
                     emailVerified: true,
                     role: 'tenant_admin',
                 },
@@ -504,7 +507,17 @@ export class AuthService {
         } else if (!user.microsoftId) {
             user = await this.prisma.user.update({
                 where: { id: user.id },
-                data: { microsoftId: microsoftUser.microsoftId },
+                data: {
+                    microsoftId: microsoftUser.microsoftId,
+                    picture: microsoftUser.picture || user.picture,
+                },
+                include: { tenant: true },
+            });
+        } else if (microsoftUser.picture && microsoftUser.picture !== user.picture) {
+            // Refresh the stored picture on subsequent logins so it stays fresh.
+            user = await this.prisma.user.update({
+                where: { id: user.id },
+                data: { picture: microsoftUser.picture },
                 include: { tenant: true },
             });
         }
@@ -529,6 +542,7 @@ export class AuthService {
                 firstName: user.firstName, lastName: user.lastName,
                 role: user.role, tenantId: user.tenantId,
                 tenantName: user.tenant?.name,
+                picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
                 onboardingCompleted: effectiveOnboarding,

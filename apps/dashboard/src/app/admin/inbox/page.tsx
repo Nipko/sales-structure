@@ -400,6 +400,11 @@ export default function InboxPage() {
                         contactId: c.contact_id || c.contactId,
                         estimatedValue: c.estimated_ticket_value || 0,
                     }));
+                    // Sort by most recent message first so the order matches
+                    // what the user expects (freshest conversation on top).
+                    convs.sort((a: any, b: any) =>
+                        new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
+                    );
                     setConversations(convs);
                     setSelectedConv(convs[0]);
                     setIsLive(true);
@@ -512,19 +517,27 @@ export default function InboxPage() {
             // Increment unread count if this conversation is not currently selected
             const isViewing = selectedConvIdRef.current === conversationId;
 
-            // Update conversation list with latest message + unread badge
-            setConversations((prev: any[]) => prev.map(c => {
-                 if (c.id === conversationId) {
-                     return {
-                         ...c,
-                         lastMessage: uiMsg.content,
-                         lastMessageAt: formatTime(uiMsg.rawDate),
-                         lastMessageAtRaw: uiMsg.rawDate,
-                         unreadCount: isViewing ? 0 : (c.unreadCount || 0) + 1,
-                     };
-                 }
-                 return c;
-            }));
+            // Update conversation list with latest message + unread badge,
+            // then reorder so the conversation that just received a message
+            // bubbles to the top — users expect the freshest chat on top
+            // without having to reload or navigate away.
+            setConversations((prev: any[]) => {
+                const updated = prev.map(c => {
+                    if (c.id === conversationId) {
+                        return {
+                            ...c,
+                            lastMessage: uiMsg.content,
+                            lastMessageAt: formatTime(uiMsg.rawDate),
+                            lastMessageAtRaw: uiMsg.rawDate,
+                            unreadCount: isViewing ? 0 : (c.unreadCount || 0) + 1,
+                        };
+                    }
+                    return c;
+                });
+                return updated.sort((a: any, b: any) =>
+                    new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
+                );
+            });
 
             // If the selected conversation received a message, append to chat view
             setSelectedConv((prev: any) => {

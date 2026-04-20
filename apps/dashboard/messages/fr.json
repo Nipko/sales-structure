@@ -2108,5 +2108,11 @@
         "saveFailed": "Échec de l'enregistrement"
       }
     }
+  },
+  "roles": {
+    "superAdmin": "Super Admin",
+    "admin": "Administrateur",
+    "agent": "Agent",
+    "viewer": "Observateur"
   }
 }

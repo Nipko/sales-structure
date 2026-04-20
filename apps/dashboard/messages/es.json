@@ -2108,5 +2108,11 @@
         "saveFailed": "Error al guardar"
       }
     }
+  },
+  "roles": {
+    "superAdmin": "Super Admin",
+    "admin": "Administrador",
+    "agent": "Agente",
+    "viewer": "Visor"
   }
 }

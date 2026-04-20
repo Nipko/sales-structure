@@ -2108,5 +2108,11 @@
         "saveFailed": "Falha ao salvar"
       }
     }
+  },
+  "roles": {
+    "superAdmin": "Super Admin",
+    "admin": "Administrador",
+    "agent": "Agente",
+    "viewer": "Visualizador"
   }
 }

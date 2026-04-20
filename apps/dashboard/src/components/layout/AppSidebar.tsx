@@ -108,6 +108,18 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const pathname = usePathname();
   const { user } = useAuth();
   const tNav = useTranslations('nav');
+  const tRoles = useTranslations('roles');
+
+  // Show the tenant/company name + friendly role (hide internal tenant_ prefix).
+  const roleLabel = (() => {
+    switch (user?.role) {
+      case "super_admin": return tRoles("superAdmin");
+      case "tenant_admin": return tRoles("admin");
+      case "tenant_agent": return tRoles("agent");
+      case "tenant_viewer": return tRoles("viewer");
+      default: return user?.role?.replace(/_/g, " ") ?? "";
+    }
+  })();
 
   // Resolve translated sections
   const sections: NavSection[] = sectionDefs.map(s => ({
@@ -249,10 +261,10 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         {showExpanded && (
           <div className="overflow-hidden">
             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-              {user?.firstName} {user?.lastName}
+              {user?.tenantName || `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()}
             </p>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-              {user?.role?.replace(/_/g, " ")}
+              {roleLabel}
             </p>
           </div>
         )}

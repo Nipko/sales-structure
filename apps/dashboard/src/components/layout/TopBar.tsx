@@ -91,9 +91,23 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const socketRef = useRef<Socket | null>(null);
 
   const currentLocale = useLocale();
+  const tRoles = useTranslations("roles");
 
   const isSuperAdmin = user?.role === "super_admin";
   const showTenantSelector = isSuperAdmin && tenants.length > 1;
+
+  // Friendly role label. The raw DB role is tenant_admin / tenant_agent /
+  // super_admin / tenant_viewer — we hide the tenant_ prefix since it's
+  // internal and show what the person actually IS.
+  const roleLabel = (() => {
+    switch (user?.role) {
+      case "super_admin": return tRoles("superAdmin");
+      case "tenant_admin": return tRoles("admin");
+      case "tenant_agent": return tRoles("agent");
+      case "tenant_viewer": return tRoles("viewer");
+      default: return user?.role?.replace(/_/g, " ") ?? "";
+    }
+  })();
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const filteredNotifs = notifTab === "all" ? notifications : notifications.filter(n => n.type === notifTab);
@@ -459,8 +473,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 {user?.email}
               </p>
               <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-                {user?.role?.replace(/_/g, " ")}
-                {user?.tenantName ? ` · ${user.tenantName}` : ""}
+                {user?.tenantName ? `${user.tenantName} · ${roleLabel}` : roleLabel}
               </p>
               </div>
             </div>

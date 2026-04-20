@@ -10,7 +10,18 @@ import { User, Mail, Phone, Briefcase, Save, CheckCircle, AlertCircle } from "lu
 export default function ProfilePage() {
     const tc = useTranslations("common");
     const t = useTranslations("settings.profilePage");
+    const tRoles = useTranslations("roles");
     const { user } = useAuth();
+
+    const roleLabel = (() => {
+        switch (user?.role) {
+            case "super_admin": return tRoles("superAdmin");
+            case "tenant_admin": return tRoles("admin");
+            case "tenant_agent": return tRoles("agent");
+            case "tenant_viewer": return tRoles("viewer");
+            default: return user?.role?.replace(/_/g, " ") ?? "";
+        }
+    })();
     const [form, setForm] = useState({
         firstName: "",
         lastName: "",
@@ -100,8 +111,7 @@ export default function ProfilePage() {
                         {form.firstName} {form.lastName}
                     </p>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {user?.role?.replace(/_/g, " ")}
-                        {user?.tenantName ? ` · ${user.tenantName}` : ""}
+                        {user?.tenantName ? `${user.tenantName} · ${roleLabel}` : roleLabel}
                     </p>
                 </div>
             </div>

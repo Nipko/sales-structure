@@ -1362,3 +1362,19 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."policies" (
 -- Only one active version per policy type
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_policies_active_type" ON "{{SCHEMA_NAME}}"."policies" ("type") WHERE "is_active" = true;
 CREATE INDEX IF NOT EXISTS "idx_policies_type_version" ON "{{SCHEMA_NAME}}"."policies" ("type", "version" DESC);
+
+-- ============================================
+-- PARALLLY — WhatsApp Template seeding (Apr 2026)
+-- ============================================
+-- Extend whatsapp_templates to track Meta's template lifecycle + seeds.
+ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_templates" ADD COLUMN IF NOT EXISTS "meta_template_id"  VARCHAR(100);
+ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_templates" ADD COLUMN IF NOT EXISTS "rejected_reason"   VARCHAR(100);
+ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_templates" ADD COLUMN IF NOT EXISTS "is_seed"           BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_templates" ADD COLUMN IF NOT EXISTS "submitted_at"      TIMESTAMP;
+CREATE INDEX IF NOT EXISTS "idx_wa_templates_meta_id" ON "{{SCHEMA_NAME}}"."whatsapp_templates" ("meta_template_id");
+CREATE INDEX IF NOT EXISTS "idx_wa_templates_pending" ON "{{SCHEMA_NAME}}"."whatsapp_templates" ("approval_status") WHERE "approval_status" = 'PENDING';
+
+-- Idempotency flag on the WABA channel itself — prevents double-seeding if the
+-- embedded signup callback fires twice.
+ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_channels" ADD COLUMN IF NOT EXISTS "seeds_submitted"    BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_channels" ADD COLUMN IF NOT EXISTS "seeds_submitted_at" TIMESTAMP;

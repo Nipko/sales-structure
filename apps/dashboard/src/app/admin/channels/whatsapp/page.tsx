@@ -2,18 +2,21 @@
 
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
-    MessageSquare, Shield, CheckCircle, RefreshCw,
+    MessageSquare, Shield, CheckCircle,
     Link as LinkIcon, Zap, Phone, Copy, ExternalLink,
-    AlertCircle, Settings,
+    AlertCircle, Settings, ArrowRight, Sprout, Clock, XCircle,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
+    const twt = useTranslations("whatsappTemplates");
+    const router = useRouter();
     const { user } = useAuth();
     const isSuperAdmin = user?.role === "super_admin";
     const [status, setStatus] = useState<any>(null);
@@ -27,7 +30,6 @@ export default function WhatsAppSetupPage() {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [syncing, setSyncing] = useState(false);
     const [showManual, setShowManual] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
@@ -82,19 +84,6 @@ export default function WhatsAppSetupPage() {
             setMessage({ type: "error", text: err.message || tc("connectionError") });
         } finally {
             setSaving(false);
-        }
-    };
-
-    const handleSyncTemplates = async () => {
-        setSyncing(true);
-        try {
-            await api.fetch("/channels/whatsapp/templates/sync", { method: "POST" });
-            setMessage({ type: "success", text: "Templates synced." });
-            await loadData();
-        } catch (err: any) {
-            setMessage({ type: "error", text: "Error syncing templates." });
-        } finally {
-            setSyncing(false);
         }
     };
 
@@ -364,70 +353,67 @@ export default function WhatsAppSetupPage() {
                 </div>
             )}
 
-            {/* ======== SECTION 3: TEMPLATES ======== */}
-            {isConnected && (
-                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
-                    <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                            <MessageSquare size={18} className="text-primary" />
-                            <h2 className="text-base font-semibold m-0">Approved Templates (HSM)</h2>
-                            <span className="text-xs text-[var(--text-secondary)]">
-                                {templates.length} template{templates.length !== 1 ? "s" : ""}
-                            </span>
-                        </div>
-                        <button
-                            onClick={handleSyncTemplates}
-                            disabled={syncing}
-                            className={cn(
-                                "flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-[var(--bg-tertiary)] text-foreground text-[13px] font-medium cursor-pointer",
-                                syncing && "opacity-70"
-                            )}
-                        >
-                            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-                            {syncing ? "Syncing..." : "Sync from Meta"}
-                        </button>
-                    </div>
-                    <div>
-                        {templates.length === 0 ? (
-                            <div className="py-10 text-center text-[var(--text-secondary)]">
-                                No synced templates. Click &quot;Sync from Meta&quot; to download them.
+            {/* ======== SECTION 3: TEMPLATES (summary + link to dedicated page) ======== */}
+            {isConnected && (() => {
+                const approvedCount = templates.filter((x: any) => x.approval_status === "APPROVED").length;
+                const pendingCount  = templates.filter((x: any) => x.approval_status === "PENDING").length;
+                const rejectedCount = templates.filter((x: any) => x.approval_status === "REJECTED").length;
+                const seedCount     = templates.filter((x: any) => x.is_seed).length;
+                return (
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                        <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <MessageSquare size={18} className="text-primary" />
+                                <h2 className="text-base font-semibold m-0">{twt("title")}</h2>
+                                <span className="text-xs text-[var(--text-secondary)]">
+                                    {twt("countLabel", { count: templates.length })}
+                                </span>
                             </div>
-                        ) : (
-                            <table className="w-full border-collapse text-[13px]">
-                                <thead>
-                                    <tr className="bg-[var(--bg-tertiary)] border-b border-border text-left">
-                                        <th className="px-6 py-3 font-semibold text-[var(--text-secondary)]">Nombre</th>
-                                        <th className="px-6 py-3 font-semibold text-[var(--text-secondary)]">Categoria</th>
-                                        <th className="px-6 py-3 font-semibold text-[var(--text-secondary)]">Idioma</th>
-                                        <th className="px-6 py-3 font-semibold text-[var(--text-secondary)]">Estado</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {templates.map((t: any) => (
-                                        <tr key={t.id || t.name} className="border-b border-border">
-                                            <td className="px-6 py-4 font-medium">{t.name}</td>
-                                            <td className="px-6 py-4 text-[var(--text-secondary)]">{t.category}</td>
-                                            <td className="px-6 py-4 text-[var(--text-secondary)]">{t.language}</td>
-                                            <td className="px-6 py-4">
-                                                <span
-                                                    className={cn(
-                                                        "px-2 py-1 rounded-xl text-[11px] font-semibold",
-                                                        t.approval_status === "APPROVED"
-                                                            ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71]"
-                                                            : "bg-[rgba(241,196,15,0.1)] text-[#f1c40f]"
-                                                    )}
-                                                >
-                                                    {t.approval_status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
+                            <button
+                                onClick={() => router.push("/admin/channels/whatsapp/templates")}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-[var(--bg-tertiary)] text-foreground text-[13px] font-medium cursor-pointer"
+                            >
+                                {twt("manageTemplates")} <ArrowRight size={14} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <p className="text-[13px] text-[var(--text-secondary)] mb-4 leading-relaxed">
+                                {twt("summaryIntro")}
+                            </p>
+                            <div className="grid grid-cols-4 gap-3">
+                                <div className="rounded-lg border border-border p-3 bg-[var(--bg-tertiary)]">
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                        <CheckCircle size={14} className="text-[#2ecc71]" />
+                                        <span className="text-[11px] text-[var(--text-secondary)] font-medium">{twt("statApproved")}</span>
+                                    </div>
+                                    <div className="text-xl font-semibold">{approvedCount}</div>
+                                </div>
+                                <div className="rounded-lg border border-border p-3 bg-[var(--bg-tertiary)]">
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                        <Clock size={14} className="text-[#f1c40f]" />
+                                        <span className="text-[11px] text-[var(--text-secondary)] font-medium">{twt("statPending")}</span>
+                                    </div>
+                                    <div className="text-xl font-semibold">{pendingCount}</div>
+                                </div>
+                                <div className="rounded-lg border border-border p-3 bg-[var(--bg-tertiary)]">
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                        <XCircle size={14} className="text-[#e74c3c]" />
+                                        <span className="text-[11px] text-[var(--text-secondary)] font-medium">{twt("statRejected")}</span>
+                                    </div>
+                                    <div className="text-xl font-semibold">{rejectedCount}</div>
+                                </div>
+                                <div className="rounded-lg border border-border p-3 bg-[var(--bg-tertiary)]">
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                        <Sprout size={14} className="text-[#25D366]" />
+                                        <span className="text-[11px] text-[var(--text-secondary)] font-medium">{twt("statSeeds")}</span>
+                                    </div>
+                                    <div className="text-xl font-semibold">{seedCount}</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }

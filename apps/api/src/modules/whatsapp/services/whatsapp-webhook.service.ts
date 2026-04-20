@@ -80,6 +80,7 @@ export class WhatsappWebhookService {
     if (payload?.object === 'whatsapp_business_account') {
       const entries = payload?.entry ?? [];
       for (const entry of entries) {
+        const wabaId = entry?.id as string | undefined;
         const changes = entry?.changes ?? [];
         for (const change of changes) {
           if (change?.field === 'messages') {
@@ -90,6 +91,9 @@ export class WhatsappWebhookService {
                await this.processMessageEvent(phoneNumberId, value);
                handled = true;
             }
+          } else if (change?.field === 'message_template_status_update' && wabaId) {
+            await this.processTemplateStatusEvent(wabaId, change.value);
+            handled = true;
           }
         }
       }
@@ -97,6 +101,67 @@ export class WhatsappWebhookService {
 
     if (!handled) {
       this.logger.debug(`Unhandled webhook payload type: ${JSON.stringify(payload)}`);
+    }
+  }
+
+  /**
+   * Handle Meta's `message_template_status_update` field. Resolves the tenant
+   * from the WABA id and delegates to WhatsappTemplateService. Never throws —
+   * webhook processing must always return 200 or Meta will retry.
+   */
+  private async processTemplateStatusEvent(wabaId: string, value: any) {
+    try {
+      const tenantInfo = await this.resolveTenantFromWabaId(wabaId);
+      if (!tenantInfo) {
+        this.logger.warn(`No tenant found for WABA ${wabaId}, skipping template status update`);
+        return;
+      }
+
+      const event = {
+        message_template_id: String(value?.message_template_id || ''),
+        message_template_name: String(value?.message_template_name || ''),
+        message_template_language: String(value?.message_template_language || ''),
+        event: String(value?.event || 'PENDING'),
+        reason: value?.reason ? String(value.reason) : undefined,
+      };
+
+      await this.prisma.executeInTenantSchema(
+        tenantInfo.schemaName,
+        `UPDATE whatsapp_templates
+            SET approval_status = $1,
+                rejected_reason = $2,
+                last_sync_at = NOW(),
+                updated_at = NOW()
+          WHERE meta_template_id = $3
+             OR (name = $4 AND language = $5)`,
+        [event.event, event.reason && event.reason !== 'NONE' ? event.reason : null,
+         event.message_template_id, event.message_template_name, event.message_template_language],
+      );
+      this.logger.log(`Template status applied: ${event.message_template_name} (${event.message_template_language}) → ${event.event}`);
+    } catch (err: any) {
+      this.logger.warn(`Failed to process template status update for WABA ${wabaId}: ${err.message}`);
+    }
+  }
+
+  private async resolveTenantFromWabaId(wabaId: string): Promise<{ tenantId: string; schemaName: string } | null> {
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string; schemaName: string }>>`
+        SELECT id, "schemaName" FROM tenants WHERE is_active = true
+      `;
+      for (const t of rows) {
+        try {
+          const match = await this.prisma.executeInTenantSchema<any[]>(
+            t.schemaName,
+            `SELECT 1 FROM whatsapp_channels WHERE meta_waba_id = $1 LIMIT 1`,
+            [wabaId],
+          );
+          if (match.length > 0) return { tenantId: t.id, schemaName: t.schemaName };
+        } catch {}
+      }
+      return null;
+    } catch (e: any) {
+      this.logger.warn(`resolveTenantFromWabaId failed: ${e.message}`);
+      return null;
     }
   }
 

@@ -105,7 +105,19 @@ export class WhatsappController {
     if (!schemaName || !tenantId) {
       throw new BadRequestException('User does not belong to a tenant');
     }
-    return this.connectionService.saveConnection(schemaName, tenantId, data);
+    const result = await this.connectionService.saveConnection(schemaName, tenantId, data);
+
+    // Fire-and-forget: auto-submit the 3 pre-vetted seed templates so the
+    // tenant doesn't have to go to Meta Business Manager to create them.
+    // Idempotency is handled inside seedTemplates via whatsapp_channels.seeds_submitted.
+    this.templateService.seedTemplates(tenantId).catch((err) => {
+        // Seeding failures should never block a successful connection — the
+        // tenant can retry from the dashboard later.
+        // eslint-disable-next-line no-console
+        console.error(`[seedTemplates] Failed for tenant ${tenantId}:`, err?.message || err);
+    });
+
+    return result;
   }
 
   // ======================== TEMPLATES ========================

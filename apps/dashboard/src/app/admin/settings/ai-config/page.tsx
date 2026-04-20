@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal, Save, CheckCircle } from "lucide-react";
+import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 
 const MODELS = [
     "gpt-4o", "gpt-4o-mini", "gemini-2.0-flash", "gemini-2.0-pro",
@@ -12,6 +13,14 @@ const MODELS = [
 ];
 
 export default function AIConfigPage() {
+    return (
+        <SuperAdminGuard>
+            <AIConfigContent />
+        </SuperAdminGuard>
+    );
+}
+
+function AIConfigContent() {
     const t = useTranslations("settings");
     const [values, setValues] = useState({
         "llm.default_model": "gpt-4o-mini",

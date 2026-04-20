@@ -5,8 +5,17 @@ import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Settings, Save, CheckCircle } from "lucide-react";
+import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 
 export default function PlatformPage() {
+    return (
+        <SuperAdminGuard>
+            <PlatformContent />
+        </SuperAdminGuard>
+    );
+}
+
+function PlatformContent() {
     const t = useTranslations("settings");
     const [values, setValues] = useState({
         "general.platform_name": "Parallext Engine",

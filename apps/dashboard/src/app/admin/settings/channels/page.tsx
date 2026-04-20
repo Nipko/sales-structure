@@ -18,6 +18,7 @@ import {
     Save,
     CheckCircle,
 } from "lucide-react";
+import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 
 const channelTabs = [
     { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, color: "text-green-500", activeBg: "bg-green-500/10", activeBorder: "border-green-500" },
@@ -64,6 +65,14 @@ const fieldsSchema: Record<string, FieldConfig[]> = {
 };
 
 export default function ChannelsSettingsPage() {
+    return (
+        <SuperAdminGuard>
+            <ChannelsSettingsContent />
+        </SuperAdminGuard>
+    );
+}
+
+function ChannelsSettingsContent() {
     const t = useTranslations("settings");
     const [activeTab, setActiveTab] = useState("whatsapp");
     const [values, setValues] = useState<Record<string, string>>({});

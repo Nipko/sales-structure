@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
-import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Key, Eye, EyeOff, Save, CheckCircle, Shield, Lock } from "lucide-react";
+import { Key, Eye, EyeOff, Save, CheckCircle, Shield } from "lucide-react";
+import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 
 const providers = [
     { key: "llm.openai_api_key", label: "OpenAI", description: "GPT-4o y GPT-4o-mini", placeholder: "sk-...", color: "bg-emerald-500" },
@@ -19,26 +18,21 @@ const providers = [
 ];
 
 export default function AIProvidersPage() {
+    return (
+        <SuperAdminGuard>
+            <AIProvidersContent />
+        </SuperAdminGuard>
+    );
+}
+
+function AIProvidersContent() {
     const t = useTranslations("settings");
-    const { user } = useAuth();
-    const router = useRouter();
-    const isSuperAdmin = user?.role === "super_admin";
     const [values, setValues] = useState<Record<string, string>>({});
     const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    // Hard guard: LLM provider keys are platform-wide secrets. Only super_admin
-    // can view or edit them. Non-super_admins are redirected to Settings home
-    // so they never see the keys (even blurred).
     useEffect(() => {
-        if (user && !isSuperAdmin) {
-            router.replace("/admin/settings");
-        }
-    }, [user, isSuperAdmin, router]);
-
-    useEffect(() => {
-        if (!isSuperAdmin) return;
         async function load() {
             const result = await api.getApiKeys();
             if (result.success && result.data) {
@@ -46,24 +40,7 @@ export default function AIProvidersPage() {
             }
         }
         load();
-    }, [isSuperAdmin]);
-
-    if (!user) return null;
-    if (!isSuperAdmin) {
-        return (
-            <div className="max-w-2xl">
-                <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-8 text-center">
-                    <Lock size={32} className="mx-auto text-neutral-400 mb-3" />
-                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                        {t("superAdminOnly.title")}
-                    </h2>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                        {t("superAdminOnly.description")}
-                    </p>
-                </div>
-            </div>
-        );
-    }
+    }, []);
 
     const handleSave = async () => {
         setSaving(true);

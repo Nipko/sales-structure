@@ -83,16 +83,16 @@ export default function SettingsHub() {
             ],
         },
         {
-            title: t("channelsSection"), description: t("channelsSectionDesc"), adminOnly: true,
+            title: t("channelsSection"), description: t("channelsSectionDesc"), adminOnly: true, superAdminOnly: true,
             cards: [
-                { label: t("channelConfig"), description: t("channelConfigDesc"), href: "/admin/settings/channels", icon: Phone, iconColor: "text-green-500", iconBg: "bg-green-500/10" },
+                { label: t("channelConfig"), description: t("channelConfigDesc"), href: "/admin/settings/channels", icon: Phone, iconColor: "text-green-500", iconBg: "bg-green-500/10", superAdminOnly: true },
             ],
         },
         {
-            title: t("aiModels"), description: t("aiModelsDesc"), adminOnly: true,
+            title: t("aiModels"), description: t("aiModelsDesc"), adminOnly: true, superAdminOnly: true,
             cards: [
                 { label: t("llmProviders"), description: t("llmProvidersDesc"), href: "/admin/settings/ai-providers", icon: Brain, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10", superAdminOnly: true },
-                { label: t("aiConfig"), description: t("aiConfigDesc"), href: "/admin/settings/ai-config", icon: SlidersHorizontal, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
+                { label: t("aiConfig"), description: t("aiConfigDesc"), href: "/admin/settings/ai-config", icon: SlidersHorizontal, iconColor: "text-violet-500", iconBg: "bg-violet-500/10", superAdminOnly: true },
             ],
         },
         {
@@ -102,9 +102,9 @@ export default function SettingsHub() {
             ],
         },
         {
-            title: t("platformSection"), description: t("platformSectionDesc"), adminOnly: true,
+            title: t("platformSection"), description: t("platformSectionDesc"), adminOnly: true, superAdminOnly: true,
             cards: [
-                { label: t("advanced"), description: t("advancedDesc"), href: "/admin/settings/platform", icon: Settings, iconColor: "text-neutral-500", iconBg: "bg-neutral-500/10" },
+                { label: t("advanced"), description: t("advancedDesc"), href: "/admin/settings/platform", icon: Settings, iconColor: "text-neutral-500", iconBg: "bg-neutral-500/10", superAdminOnly: true },
             ],
         },
     ];

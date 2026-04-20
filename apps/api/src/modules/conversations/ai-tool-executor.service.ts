@@ -73,10 +73,26 @@ export class AIToolExecutorService {
     }
 
     private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string): Promise<any> {
+        // Resolve serviceId — LLM may pass name instead of UUID
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
+        let resolvedServiceId = serviceId;
+
+        if (!isUUID) {
+            // LLM passed service name — look it up by name (case-insensitive fuzzy match)
+            this.logger.warn(`[Tool] serviceId "${serviceId}" is not a UUID — resolving by name`);
+            const nameMatch: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".services WHERE is_active = true AND LOWER(name) LIKE $1 LIMIT 1`,
+                `%${serviceId.toLowerCase()}%`,
+            );
+            if (!nameMatch.length) return { error: `Service "${serviceId}" not found. Call list_services to get valid service IDs.` };
+            resolvedServiceId = nameMatch[0].id;
+            this.logger.log(`[Tool] Resolved service name "${serviceId}" → UUID ${resolvedServiceId}`);
+        }
+
         // Get service duration
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT duration_minutes, buffer_minutes FROM "${schema}".services WHERE id = $1::uuid`,
-            serviceId,
+            resolvedServiceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
 
@@ -205,6 +221,17 @@ export class AIToolExecutorService {
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
     ): Promise<any> {
+        // Resolve serviceId — LLM may pass name instead of UUID
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
+        if (!isUUID) {
+            const nameMatch: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".services WHERE is_active = true AND LOWER(name) LIKE $1 LIMIT 1`,
+                `%${args.serviceId.toLowerCase()}%`,
+            );
+            if (!nameMatch.length) return { error: `Service "${args.serviceId}" not found` };
+            args.serviceId = nameMatch[0].id;
+        }
+
         // Get service
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,

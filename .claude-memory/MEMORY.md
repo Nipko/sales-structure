@@ -1,0 +1,24 @@
+- [Project Overview](project_overview.md) — Parallext Engine: multi-tenant conversational AI SaaS (NestJS + Next.js + WhatsApp)
+- [Blueprint Reference](blueprint_reference.md) — WhatsApp automation blueprint from prior project, used as implementation reference
+- [No Chatwoot](feedback_no_chatwoot.md) — Chatwoot is NOT part of this project, handoff goes to internal agent console
+- [Architecture Decisions](architecture_decisions.md) — Key refactoring: ChannelTokenService, EventEmitter handoff, BullMQ outbound queue
+- [Production Infrastructure](infra_production.md) — Hostinger VPS, 10 Docker containers, Cloudflare Tunnel, PgBouncer, observability stack
+- [UUID Casts](feedback_uuid_casts.md) — All raw SQL queries comparing UUID columns MUST use ::uuid casts
+- [Column Naming](feedback_column_naming.md) — Raw SQL uses snake_case DB names, not Prisma camelCase. users.name is a generated column
+- [Redis Noeviction](feedback_redis_noeviction.md) — Redis must use noeviction policy, never allkeys-lru (BullMQ jobs get dropped)
+- [Setup Scripts](project_setup_scripts.md) — Three infra scripts: setup-vps.sh, setup-fresh.sh, reset-db.sh
+- [Architecture V2](project_architecture_v2.md) — Priority: automation → channels → identity. BullMQ stays, multi-tenant, wizard UI
+- [Chatwoot Analysis](reference_chatwoot_analysis.md) — Comprehensive feature comparison for CRM roadmap
+- [CRM Features Status](project_crm_features.md) — All 4 CRM blocks implemented (operativo, analytics, CRM avanzado, engagement)
+- [Design System](project_design_system.md) — Tailwind + shadcn/ui + next-themes, 3 modes (dark/light/system), Motion for animations
+- [Landing Page](project_landing.md) — Static Next.js site at parallly-chat.cloud, 12 sections, dark theme, emerald accent
+- [Deploy Testing](feedback_deploy_testing.md) — User always tests in production, never locally
+- [i18n Always](feedback_i18n_always.md) — Every page edit/creation MUST include i18n updates in all 4 JSON files
+- [Scaling Plan](project_scaling_plan.md) — i18n + geo-targeting + infrastructure roadmap (PgBouncer, R2, next-intl, PPP pricing)
+- [Session Apr 12-13](project_session_apr12.md) — Google OAuth, Media/Templates/Appointments modules, email redesign, auth enhancements
+- [i18n Remaining Audit](i18n_remaining_audit.md) — COMPLETED: all 92 Spanish strings eliminated, 4 languages fully populated
+- [Design System Unification](design_system_unification.md) — Completed: 0 gray-*, 0 font-bold, 0 rounded-2xl, shared components (TabNav, PageHeader, Breadcrumbs, SkeletonLoader)
+- [Critical Fix History](critical_fix_history.md) — isBlocked broke outbound (removed from processor), business hours 24/7 fix, analytics tracking wired
+- [Multi-Agent Design](project_multi_agent_design.md) — 4 plans (starter/pro/enterprise/custom), agent-per-channel, user templates, schedule per agent
+- [Session Apr 17-18](project_session_apr17_18.md) — Multi-agent system, design unification, i18n completion, critical fixes, Google Calendar
+- [Pending Tasks](project_pending_tasks.md) — Public booking integration, outbound verification, billing system, Google Calendar verification

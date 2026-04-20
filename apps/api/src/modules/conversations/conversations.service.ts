@@ -524,20 +524,26 @@ export class ConversationsService {
                 systemPrompt += `\n\n## TASK: Rewrite the following message in ${langContext} as ${personaName} with a ${tone} tone.\nRules:\n- Keep ALL data exactly (dates, times, prices, names)\n- Do NOT add extra questions (no email, no name unless the text asks)\n- Be concise (2-3 sentences)\n- Use natural regional expressions, not robotic translations\n- Format prices according to the local convention\n\nMessage to rewrite:\n${engineResult.response}`;
                 // No tools needed — engine already handled everything
                 tools = [];
-
-                // Persist booking state
-                const metadataUpdate = { bookingState, bookingStateUpdatedAt: new Date().toISOString() };
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                    [conversation.id, JSON.stringify(metadataUpdate)],
-                );
-
                 this.logger.log(`[Pipeline] Booking engine handled message (step: ${bookingState.step})`);
             } else {
                 // Not booking-related — let LLM handle with tools available
                 tools = [...APPOINTMENT_TOOLS];
+
+                // Tell LLM about available services so it doesn't ask redundant questions
+                if (bookingState.services?.length) {
+                    const svcList = bookingState.services.map(s => `${s.name} (${s.duration}min, ${s.price} ${s.currency})`).join(', ');
+                    systemPrompt += `\n\nAvailable services: ${svcList}. Do NOT ask for email or personal info during general conversation. Only collect booking info when the customer explicitly wants to book.`;
+                }
+
                 this.logger.log(`[Pipeline] Message not booking-related, passing to LLM with tools`);
             }
+
+            // ALWAYS persist booking state (even for non-handled messages — services were loaded)
+            const metadataUpdate = { bookingState: engineResult.state, bookingStateUpdatedAt: new Date().toISOString() };
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                [conversation.id, JSON.stringify(metadataUpdate)],
+            );
         }
 
         // 2c. Inject knowledge base context if available
@@ -635,18 +641,7 @@ export class ConversationsService {
                 break;
             }
 
-            // Persist booking state for LLM-handled turns (engine-handled already persisted above)
-            if (toolsEnabled && !(conversation.metadata as any)?._bookingEngineHandled) {
-                const metadataUpdate = {
-                    bookingState,
-                    bookingStateUpdatedAt: new Date().toISOString(),
-                };
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                    [conversation.id, JSON.stringify(metadataUpdate)],
-                );
-                this.logger.log(`[Pipeline] Persisted booking state: ${bookingState.step}`);
-            }
+            // Booking state already persisted earlier in the engine block
 
             // Reset failedAttempts on successful AI response
             await this.prisma.executeInTenantSchema(schemaName,

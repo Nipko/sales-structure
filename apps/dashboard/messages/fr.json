@@ -186,7 +186,16 @@
     "modelUsage": "Utilisation des modeles",
     "noActivity": "Aucune activite recente",
     "live": "En direct",
-    "loading": "Chargement..."
+    "loading": "Chargement...",
+    "totalTenants": "Total tenants",
+    "totalUsers": "Total utilisateurs",
+    "systemStatus": "État du système",
+    "online": "En ligne",
+    "noModelUsage": "Aucune donnée d'utilisation des modèles",
+    "routerSavings": "Le router économise ~42% sur les coûts en utilisant Tier 3-4 pour messages simples",
+    "system": "Système",
+    "unknown": "Inconnu",
+    "tierN": "Tier {n}"
   },
   "contacts": {
     "title": "Contacts",

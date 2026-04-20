@@ -97,7 +97,7 @@ export default function AdminDashboard() {
                 if (dashResult.success && dashResult.data) {
                     if (Array.isArray(dashResult.data.recentActivity)) {
                         setActivity(dashResult.data.recentActivity.map((a: any) => ({
-                            tenant: a.tenant_name || a.tenant || 'System',
+                            tenant: a.tenant_name || a.tenant || t('system'),
                             event: a.event || a.description || a.event_type || '',
                             time: a.created_at ? new Date(a.created_at).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' }) : a.time || '',
                             type: a.type || a.event_type || 'conversation',
@@ -106,8 +106,8 @@ export default function AdminDashboard() {
                     if (Array.isArray(dashResult.data.modelUsage)) {
                         const total = dashResult.data.modelUsage.reduce((s: number, m: any) => s + (m.requests || m.count || 0), 0) || 1;
                         setModelUsage(dashResult.data.modelUsage.map((m: any, i: number) => ({
-                            model: m.model || m.llm_model || 'Unknown',
-                            tier: m.tier || `Tier ${i + 1}`,
+                            model: m.model || m.llm_model || t('unknown'),
+                            tier: m.tier || t('tierN', { n: i + 1 }),
                             requests: m.requests || m.count || 0,
                             pct: Math.round(((m.requests || m.count || 0) / total) * 100),
                             colorClass: modelBarColors[i % modelBarColors.length],
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
             <div className="mb-8 flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-                        Dashboard
+                        {t('title')}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
                         {t("welcome", { name: user?.firstName || "Admin" })}
@@ -146,7 +146,7 @@ export default function AdminDashboard() {
                                 <CardContent className="pt-0">
                                     <div className="flex items-start justify-between">
                                         <div>
-                                            <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Tenants</p>
+                                            <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('totalTenants')}</p>
                                             <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.totalTenants}</p>
                                         </div>
                                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500/10">
@@ -160,7 +160,7 @@ export default function AdminDashboard() {
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">Total Users</p>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('totalUsers')}</p>
                                         <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.totalUsers}</p>
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10">
@@ -173,10 +173,10 @@ export default function AdminDashboard() {
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">System Status</p>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('systemStatus')}</p>
                                         <div className="mt-2 flex items-center gap-2">
                                             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                                            <span className="text-sm font-semibold text-emerald-500">Online</span>
+                                            <span className="text-sm font-semibold text-emerald-500">{t('online')}</span>
                                         </div>
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10">
@@ -229,7 +229,7 @@ export default function AdminDashboard() {
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                     <CardHeader>
                         <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-                            Recent Activity
+                            {t('recentActivity')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -300,14 +300,14 @@ export default function AdminDashboard() {
                                 </div>
                             )) : (
                                 <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
-                                    No model usage data available
+                                    {t('noModelUsage')}
                                 </div>
                             )}
                         </div>
                         <div className="mt-5 flex items-center justify-between rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">
                             <span className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                                 <TrendingUp size={14} />
-                                Router saves ~42% on costs by using Tier 3-4 for simple messages
+                                {t('routerSavings')}
                             </span>
                         </div>
                     </CardContent>

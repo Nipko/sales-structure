@@ -18,12 +18,12 @@ interface InventoryOverview { totalProducts: number; activeProducts: number; tot
 
 const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(n);
 const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short" }); } catch { return s; } };
-const getStockStatus = (p: Product) => {
-    if (p.stock === 0) return { label: "Out of stock", color: "#ff4757", bg: "rgba(255,71,87,0.12)" };
-    if (p.stock <= p.minStock) return { label: "Low stock", color: "#ffa502", bg: "rgba(255,165,2,0.12)" };
-    return { label: "Available", color: "#2ecc71", bg: "rgba(46,204,113,0.12)" };
+const stockStatusKey = (p: Product) => p.stock === 0 ? "outOfStock" : (p.stock <= p.minStock ? "lowStock" : "available");
+const stockStatusColor = (p: Product) => {
+    if (p.stock === 0) return { color: "#ff4757", bg: "rgba(255,71,87,0.12)" };
+    if (p.stock <= p.minStock) return { color: "#ffa502", bg: "rgba(255,165,2,0.12)" };
+    return { color: "#2ecc71", bg: "rgba(46,204,113,0.12)" };
 };
-const movementTypeLabel = (t: string) => t === "in" ? "Inbound" : t === "out" ? "Outbound" : "Adjustment";
 const movementTypeColor = (t: string) => t === "in" ? "#2ecc71" : t === "out" ? "#ff4757" : "#ffa502";
 
 export default function InventoryPage() {
@@ -76,22 +76,22 @@ export default function InventoryPage() {
 
             <div className="grid grid-cols-5 gap-4 mb-6">
                 {[
-                    { label: "Total Products", value: data.totalProducts, icon: Package, color: "#6c5ce7", sub: `${data.activeProducts} active` },
-                    { label: "Inventory Value", value: formatCurrency(data.totalValue), icon: BarChart3, color: "#00b4d8", sub: `Margin ~${margin}%` },
-                    { label: "Low Stock", value: data.lowStockAlerts, icon: AlertTriangle, color: "#ffa502", sub: "Need restocking" },
-                    { label: "Out of Stock", value: data.outOfStockCount, icon: Box, color: "#ff4757", sub: tc("noData") },
-                    { label: "Categories", value: data.categories.length, icon: Tag, color: "#2ecc71", sub: `${data.products.length} SKUs` },
-                ].map((kpi, i) => {
+                    { key: "totalProducts", label: t("kpi.totalProducts"), value: data.totalProducts, icon: Package, color: "#6c5ce7", sub: t("kpi.activeCount", { count: data.activeProducts }) },
+                    { key: "inventoryValue", label: t("kpi.inventoryValue"), value: formatCurrency(data.totalValue), icon: BarChart3, color: "#00b4d8", sub: t("kpi.marginAbout", { pct: margin }) },
+                    { key: "lowStock", label: t("kpi.lowStock"), value: data.lowStockAlerts, icon: AlertTriangle, color: "#ffa502", sub: t("kpi.needRestocking") },
+                    { key: "outOfStock", label: t("kpi.outOfStock"), value: data.outOfStockCount, icon: Box, color: "#ff4757", sub: tc("noData") },
+                    { key: "categories", label: t("kpi.categories"), value: data.categories.length, icon: Tag, color: "#2ecc71", sub: t("kpi.skuCount", { count: data.products.length }) },
+                ].map((kpi) => {
                     const Icon = kpi.icon;
                     return (
-                        <div key={i} className="bg-card rounded-xl border border-border p-5">
+                        <div key={kpi.key} className="bg-card rounded-xl border border-border p-5">
                             <div className="flex justify-between mb-3">
                                 <span className="text-[13px] text-muted-foreground">{kpi.label}</span>
                                 <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
                                     <Icon size={18} color={kpi.color} />
                                 </div>
                             </div>
-                            <div className="text-[26px] font-semibold" style={{ color: typeof kpi.value === "number" && ((kpi.label === "Low Stock" || kpi.label === "Out of Stock") && kpi.value > 0) ? kpi.color : undefined }}>
+                            <div className="text-[26px] font-semibold" style={{ color: typeof kpi.value === "number" && ((kpi.key === "lowStock" || kpi.key === "outOfStock") && kpi.value > 0) ? kpi.color : undefined }}>
                                 {kpi.value}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">{kpi.sub}</div>
@@ -102,7 +102,7 @@ export default function InventoryPage() {
 
             <div className="flex gap-4 mb-5">
                 <div className="flex gap-2 flex-1 flex-wrap">
-                    <button onClick={() => setSelectedCategory(null)} className={cn("px-4 py-2 rounded-[10px] font-semibold text-[13px] cursor-pointer", selectedCategory === null ? "border border-primary bg-primary/10 text-primary" : "border border-border bg-transparent text-muted-foreground")}>Todos ({data.totalProducts})</button>
+                    <button onClick={() => setSelectedCategory(null)} className={cn("px-4 py-2 rounded-[10px] font-semibold text-[13px] cursor-pointer", selectedCategory === null ? "border border-primary bg-primary/10 text-primary" : "border border-border bg-transparent text-muted-foreground")}>{t("allCategories")} ({data.totalProducts})</button>
                     {data.categories.map(cat => (
                         <button key={cat.id} onClick={() => setSelectedCategory(cat.name)} className="px-4 py-2 rounded-[10px] font-medium text-[13px] cursor-pointer" style={{ border: selectedCategory === cat.name ? `1px solid ${cat.color}` : "1px solid var(--border)", background: selectedCategory === cat.name ? `${cat.color}15` : "transparent", color: selectedCategory === cat.name ? cat.color : undefined }}>
                             {cat.name} ({cat.productCount})
@@ -117,19 +117,19 @@ export default function InventoryPage() {
 
             <div className="grid grid-cols-[2fr_1fr] gap-4">
                 <div className="bg-card rounded-xl border border-border overflow-hidden">
-                    <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">Products ({filteredProducts.length})</div>
+                    <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">{t("productsTitle")} ({filteredProducts.length})</div>
                     <div className="max-h-[520px] overflow-y-auto">
                         <table className="w-full border-collapse text-sm">
                             <thead>
                                 <tr className="border-b border-border">
-                                    {["Product", "SKU", "Category", "Price", "Stock", "Status", "Actions"].map(h => (
-                                        <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground text-xs uppercase">{h}</th>
+                                    {(["product", "sku", "category", "price", "stock", "status", "actions"] as const).map(k => (
+                                        <th key={k} className="px-4 py-3 text-left font-semibold text-muted-foreground text-xs uppercase">{t(`headers.${k}`)}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredProducts.map(product => {
-                                    const status = getStockStatus(product);
+                                    const s = stockStatusColor(product);
                                     return (
                                         <tr key={product.id} className="border-b border-border">
                                             <td className="px-4 py-3"><div className="font-semibold">{product.name}</div><div className="text-xs text-muted-foreground mt-0.5">{product.description?.slice(0, 40)}</div></td>
@@ -137,23 +137,23 @@ export default function InventoryPage() {
                                             <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg bg-muted text-xs font-medium">{product.category}</span></td>
                                             <td className="px-4 py-3 font-semibold text-primary">{formatCurrency(product.price)}</td>
                                             <td className="px-4 py-3"><span className="font-semibold text-base">{product.stock}</span><span className="text-[11px] text-muted-foreground ml-1">{product.unit}</span></td>
-                                            <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: status.bg, color: status.color }}>{status.label}</span></td>
+                                            <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: s.bg, color: s.color }}>{t(`stockStatus.${stockStatusKey(product)}`)}</span></td>
                                             <td className="px-4 py-3">
                                                 <button onClick={() => setShowStockModal(product)} className="px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground text-xs cursor-pointer flex items-center gap-1">
-                                                    <ArrowUpDown size={14} /> Stock
+                                                    <ArrowUpDown size={14} /> {t("stockButton")}
                                                 </button>
                                             </td>
                                         </tr>
                                     );
                                 })}
-                                {filteredProducts.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">No products found</td></tr>}
+                                {filteredProducts.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">{t("noProducts")}</td></tr>}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
                 <div className="bg-card rounded-xl border border-border">
-                    <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">Recent Movements</div>
+                    <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">{t("recentMovements")}</div>
                     <div className="max-h-[520px] overflow-y-auto">
                         {data.recentMovements.map(m => (
                             <div key={m.id} className="px-5 py-3.5 border-b border-border flex items-start gap-3">
@@ -164,7 +164,7 @@ export default function InventoryPage() {
                                     <div className="font-semibold text-[13px]">{m.productName}</div>
                                     <div className="text-xs text-muted-foreground mt-0.5">{m.reason}</div>
                                     <div className="flex gap-3 mt-1.5">
-                                        <span className="text-xs font-semibold" style={{ color: movementTypeColor(m.type) }}>{movementTypeLabel(m.type)}: {m.type === "in" ? "+" : m.type === "out" ? "-" : ""}{m.quantity}</span>
+                                        <span className="text-xs font-semibold" style={{ color: movementTypeColor(m.type) }}>{t(`movement.${m.type}`)}: {m.type === "in" ? "+" : m.type === "out" ? "-" : ""}{m.quantity}</span>
                                         <span className="text-[11px] text-muted-foreground">{m.previousStock} → {m.newStock}</span>
                                     </div>
                                 </div>
@@ -183,6 +183,7 @@ export default function InventoryPage() {
 
 function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onClose: () => void; categories: Category[]; tenantId: string; onCreated: () => void }) {
     const tc = useTranslations("common");
+    const t = useTranslations("inventory");
     const [form, setForm] = useState({ name: "", sku: "", description: "", categoryId: "", price: "", cost: "", stock: "", unit: "unit" });
     const [saving, setSaving] = useState(false);
 
@@ -197,22 +198,22 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[480px] max-h-[80vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-semibold m-0">New Product</h2>
+                    <h2 className="text-xl font-semibold m-0">{t("createModal.title")}</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="flex flex-col gap-3.5">
-                    {[
-                        { key: "name", label: "Product name", placeholder: "Tour Rafting Rio Fonce" },
-                        { key: "sku", label: "SKU", placeholder: "TOUR-RAFT-001" },
-                        { key: "description", label: "Description", placeholder: "Brief description..." },
-                    ].map(f => (
+                    {([
+                        { key: "name", label: t("createModal.productName"), placeholder: t("createModal.productNamePlaceholder") },
+                        { key: "sku", label: t("createModal.sku"), placeholder: t("createModal.skuPlaceholder") },
+                        { key: "description", label: t("createModal.description"), placeholder: t("createModal.descriptionPlaceholder") },
+                    ] as const).map(f => (
                         <div key={f.key}>
                             <label className="text-[13px] font-semibold block mb-1">{f.label}</label>
                             <input value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                         </div>
                     ))}
                     <div className="grid grid-cols-2 gap-3">
-                        {[{ key: "price", label: "Price", ph: "120000" }, { key: "cost", label: "Cost", ph: "45000" }].map(f => (
+                        {([{ key: "price", label: t("createModal.price"), ph: "120000" }, { key: "cost", label: t("createModal.cost"), ph: "45000" }] as const).map(f => (
                             <div key={f.key}>
                                 <label className="text-[13px] font-semibold block mb-1">{f.label}</label>
                                 <input type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.ph} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
@@ -221,19 +222,19 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-[13px] font-semibold block mb-1">Initial stock</label>
+                            <label className="text-[13px] font-semibold block mb-1">{t("createModal.initialStock")}</label>
                             <input type="number" value={form.stock} onChange={e => setForm(prev => ({ ...prev, stock: e.target.value }))} placeholder="50" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                         </div>
                         <div>
-                            <label className="text-[13px] font-semibold block mb-1">Unidad</label>
+                            <label className="text-[13px] font-semibold block mb-1">{t("createModal.unit")}</label>
                             <select value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
-                                {["unit", "seat", "portion", "trip", "night", "hour", "kg", "litro"].map(u => <option key={u} value={u}>{u}</option>)}
+                                {["unit", "seat", "portion", "trip", "night", "hour", "kg", "litro"].map(u => <option key={u} value={u}>{t(`units.${u}`)}</option>)}
                             </select>
                         </div>
                     </div>
                 </div>
                 <button onClick={handleSubmit} disabled={saving || !form.name || !form.sku || !form.price} className={cn("w-full mt-5 py-3 px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer", (saving || !form.name || !form.sku || !form.price) && "opacity-50")}>
-                    {saving ? "Saving..." : tc("create")}
+                    {saving ? t("createModal.saving") : tc("create")}
                 </button>
             </div>
         </div>
@@ -241,6 +242,7 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
 }
 
 function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product: Product; onClose: () => void; tenantId: string; onAdjusted: () => void }) {
+    const t = useTranslations("inventory");
     const [type, setType] = useState<"in" | "out" | "adjustment">("in");
     const [quantity, setQuantity] = useState("");
     const [reason, setReason] = useState("");
@@ -259,43 +261,43 @@ function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product:
         <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[420px]">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-semibold m-0">Adjust Stock</h2>
+                    <h2 className="text-xl font-semibold m-0">{t("adjustModal.title")}</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="bg-muted rounded-xl p-4 mb-5">
                     <div className="font-semibold">{product.name}</div>
-                    <div className="text-xs text-muted-foreground mt-1">SKU: {product.sku} · Stock actual: <strong>{product.stock} {product.unit}</strong></div>
+                    <div className="text-xs text-muted-foreground mt-1">SKU: {product.sku} · {t("adjustModal.currentStock")}: <strong>{product.stock} {product.unit}</strong></div>
                 </div>
                 <div className="flex gap-2 mb-4">
                     {([
-                        { id: "in" as const, label: "Inbound", icon: Plus, color: "#2ecc71" },
-                        { id: "out" as const, label: "Outbound", icon: Minus, color: "#ff4757" },
-                        { id: "adjustment" as const, label: "Adjustment", icon: ArrowUpDown, color: "#ffa502" },
+                        { id: "in" as const, icon: Plus, color: "#2ecc71" },
+                        { id: "out" as const, icon: Minus, color: "#ff4757" },
+                        { id: "adjustment" as const, icon: ArrowUpDown, color: "#ffa502" },
                     ]).map(opt => {
                         const Icon = opt.icon;
                         return (
                             <button key={opt.id} onClick={() => setType(opt.id)} className="flex-1 py-2.5 rounded-[10px] font-semibold text-[13px] cursor-pointer flex items-center justify-center gap-1.5" style={{ border: type === opt.id ? `2px solid ${opt.color}` : "1px solid var(--border)", background: type === opt.id ? `${opt.color}15` : "transparent", color: type === opt.id ? opt.color : undefined }}>
-                                <Icon size={16} /> {opt.label}
+                                <Icon size={16} /> {t(`movement.${opt.id}`)}
                             </button>
                         );
                     })}
                 </div>
                 <div className="mb-3.5">
-                    <label className="text-[13px] font-semibold block mb-1">Cantidad</label>
-                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder={type === "adjustment" ? "New stock total" : "Quantity"} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-base font-semibold outline-none box-border" />
+                    <label className="text-[13px] font-semibold block mb-1">{t("adjustModal.quantity")}</label>
+                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder={type === "adjustment" ? t("adjustModal.newStockTotal") : t("adjustModal.quantityPlaceholder")} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-base font-semibold outline-none box-border" />
                 </div>
                 <div className="mb-3.5">
-                    <label className="text-[13px] font-semibold block mb-1">Reason</label>
-                    <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g.: Supplier purchase, sale..." className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
+                    <label className="text-[13px] font-semibold block mb-1">{t("adjustModal.reason")}</label>
+                    <input value={reason} onChange={e => setReason(e.target.value)} placeholder={t("adjustModal.reasonPlaceholder")} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                 </div>
                 {quantity && (
                     <div className="bg-muted rounded-[10px] p-3 mb-4 flex justify-between items-center">
-                        <span className="text-[13px] text-muted-foreground">Result:</span>
+                        <span className="text-[13px] text-muted-foreground">{t("adjustModal.result")}:</span>
                         <span className="text-base font-semibold">{product.stock} → <span style={{ color: newStock < product.minStock ? "#ff4757" : "#2ecc71" }}>{newStock}</span> {product.unit}</span>
                     </div>
                 )}
                 <button onClick={handleSubmit} disabled={saving || !quantity || !reason} className={cn("w-full py-3 rounded-xl border-none text-white font-semibold text-sm cursor-pointer flex items-center justify-center gap-1.5", (saving || !quantity || !reason) && "opacity-50")} style={{ background: type === "in" ? "#2ecc71" : type === "out" ? "#ff4757" : "#ffa502" }}>
-                    {saving ? "Processing..." : <><Check size={16} />Confirm {movementTypeLabel(type)}</>}
+                    {saving ? t("adjustModal.processing") : <><Check size={16} />{t("adjustModal.confirm")} {t(`movement.${type}`)}</>}
                 </button>
             </div>
         </div>

@@ -372,16 +372,7 @@
     "subtitle": "Gerencie sua conta, empresa, canais e ferramentas",
     "account": "Minha Conta",
     "accountDesc": "Seu perfil, seguranca e preferencias pessoais",
-    "profile": {
-      "title": "Perfil",
-      "subtitle": "Suas informações pessoais e dados de contato",
-      "firstName": "Nome",
-      "lastName": "Sobrenome",
-      "email": "Email",
-      "emailReadonly": "O email não pode ser alterado",
-      "phone": "Telefone",
-      "jobTitle": "Cargo"
-    },
+    "profile": "Perfil",
     "profileDesc": "Nome, email, avatar e dados pessoais",
     "security": "As chaves de API sao armazenadas criptografadas e exibidas mascaradas.",
     "securityDesc": "Senha, autenticacao de dois fatores",
@@ -1497,23 +1488,135 @@
   },
   "orders": {
     "title": "Pedidos",
-    "newOrder": "Novo pedido",
-    "total": "Total",
-    "status": "Status",
-    "paymentMethod": "Metodo de pagamento",
-    "items": "Itens",
-    "invoice": "Fatura",
-    "subtitle": "Gerencie vendas, pagamentos e reservas"
+    "subtitle": "Gerencie vendas, pagamentos e reservas",
+    "all": "Todos",
+    "noOrders": "Nenhum pedido encontrado",
+    "itemCount": "{count, plural, one {# item} other {# itens}}",
+    "moreItems": "mais",
+    "viewReceipt": "Ver recibo",
+    "kpi": {
+      "totalRevenue": "Receita total (Pagas)",
+      "accountsReceivable": "Contas a receber",
+      "totalOrders": "Total de pedidos",
+      "averageTicket": "Ticket médio",
+      "completedOrders": "{count} pedidos concluídos",
+      "pendingOrders": "{count} pedidos pendentes",
+      "overallHistory": "Histórico geral",
+      "perTransaction": "Por transação"
+    },
+    "status": {
+      "pending": "Pendente",
+      "confirmed": "Confirmado",
+      "paid": "Pago",
+      "cancelled": "Cancelado"
+    },
+    "headers": {
+      "detail": "Detalhe do pedido",
+      "client": "Cliente",
+      "date": "Data",
+      "amount": "Valor",
+      "status": "Status",
+      "quickAction": "Ação rápida"
+    },
+    "paymentMethods": {
+      "cash": "Dinheiro / Na entrega",
+      "transfer": "Transferência bancária",
+      "creditCard": "Cartão de crédito",
+      "link": "Link de pagamento"
+    },
+    "createModal": {
+      "title": "Novo pedido",
+      "client": "Cliente",
+      "endConsumer": "Consumidor final",
+      "status": "Status",
+      "pendingPayment": "Pagamento pendente",
+      "paidCompleted": "Pago / Concluído",
+      "paymentMethod": "Método de pagamento",
+      "addProducts": "Adicionar produtos do estoque",
+      "selectProduct": "Selecione um produto...",
+      "stock": "Estoque",
+      "addedItems": "Itens adicionados:",
+      "each": "cada",
+      "additionalNotes": "Observações adicionais",
+      "notesPlaceholder": "Requisitos especiais, observações...",
+      "orderTotal": "Total do pedido",
+      "create": "Criar pedido"
+    }
   },
   "inventory": {
     "title": "Estoque",
-    "products": "Produtos",
-    "newProduct": "Novo produto",
-    "stock": "Estoque",
-    "price": "Preço",
-    "category": "Categoria",
-    "available": "Disponível",
-    "subtitle": "Gestao de produtos, estoque e movimentos"
+    "subtitle": "Gestão de produtos, estoque e movimentos",
+    "allCategories": "Todos",
+    "productsTitle": "Produtos",
+    "noProducts": "Nenhum produto encontrado",
+    "recentMovements": "Movimentos recentes",
+    "stockButton": "Estoque",
+    "kpi": {
+      "totalProducts": "Total de produtos",
+      "inventoryValue": "Valor do estoque",
+      "lowStock": "Estoque baixo",
+      "outOfStock": "Sem estoque",
+      "categories": "Categorias",
+      "activeCount": "{count} ativos",
+      "marginAbout": "Margem ~{pct}%",
+      "needRestocking": "Precisam reposição",
+      "skuCount": "{count} SKUs"
+    },
+    "stockStatus": {
+      "outOfStock": "Sem estoque",
+      "lowStock": "Estoque baixo",
+      "available": "Disponível"
+    },
+    "headers": {
+      "product": "Produto",
+      "sku": "SKU",
+      "category": "Categoria",
+      "price": "Preço",
+      "stock": "Estoque",
+      "status": "Status",
+      "actions": "Ações"
+    },
+    "movement": {
+      "in": "Entrada",
+      "out": "Saída",
+      "adjustment": "Ajuste"
+    },
+    "units": {
+      "unit": "Unidade",
+      "seat": "Vaga",
+      "portion": "Porção",
+      "trip": "Viagem",
+      "night": "Noite",
+      "hour": "Hora",
+      "kg": "Kg",
+      "litro": "Litro"
+    },
+    "createModal": {
+      "title": "Novo produto",
+      "productName": "Nome do produto",
+      "productNamePlaceholder": "Tour Rafting Rio Fonce",
+      "sku": "SKU",
+      "skuPlaceholder": "TOUR-RAFT-001",
+      "description": "Descrição",
+      "descriptionPlaceholder": "Descrição breve...",
+      "price": "Preço",
+      "cost": "Custo",
+      "initialStock": "Estoque inicial",
+      "unit": "Unidade",
+      "saving": "Salvando..."
+    },
+    "adjustModal": {
+      "title": "Ajustar estoque",
+      "currentStock": "Estoque atual",
+      "quantity": "Quantidade",
+      "quantityPlaceholder": "Quantidade",
+      "newStockTotal": "Novo total de estoque",
+      "reason": "Motivo",
+      "reasonPlaceholder": "ex.: Compra fornecedor, venda...",
+      "result": "Resultado",
+      "processing": "Processando...",
+      "confirm": "Confirmar"
+    }
   },
   "tenants": {
     "title": "Tenants",

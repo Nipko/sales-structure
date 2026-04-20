@@ -444,7 +444,26 @@ export class ConversationsService {
         const temporalContext = await this.buildTemporalContext(tenantId);
         let systemPrompt = temporalContext + '\n\n' + this.personaService.buildSystemPrompt(config);
 
-        // 2b. Inject AI tools prompt if appointments tool is enabled
+        // 2b. Resolve schema + detect new sessions before tool context injection
+        const schemaName = await this.tenantSchema(tenantId);
+
+        // Detect if this is a new session (message after 30+ min gap)
+        const lastMessageTime = conversation.last_message_at || conversation.updated_at;
+        const timeSinceLastMessage = Date.now() - new Date(lastMessageTime).getTime();
+        const isNewSession = timeSinceLastMessage > 30 * 60 * 1000; // 30 minutes
+
+        if (isNewSession) {
+            this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
+            // Clear stale tool context
+            try {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' WHERE id = $1::uuid`,
+                    [conversation.id],
+                );
+            } catch {}
+        }
+
+        // Inject AI tools prompt if appointments tool is enabled
         const toolsConfig = (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
@@ -467,7 +486,24 @@ export class ConversationsService {
 
             // Inject tool context from previous turns (persisted in conversation metadata)
             const prevContext = (conversation.metadata as any)?.toolContext;
-            if (prevContext) {
+            const toolContextAge = (conversation.metadata as any)?.toolContextUpdatedAt;
+
+            // Expire tool context after 30 minutes
+            const TOOL_CONTEXT_TTL_MS = 30 * 60 * 1000;
+            const isToolContextFresh = toolContextAge && (Date.now() - new Date(toolContextAge).getTime()) < TOOL_CONTEXT_TTL_MS;
+
+            if (prevContext && !isToolContextFresh) {
+                this.logger.log(`[Pipeline] Clearing stale toolContext (age: ${toolContextAge || 'unknown'})`);
+                // Clear stale tool context from DB
+                try {
+                    await this.prisma.executeInTenantSchema(schemaName,
+                        `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' WHERE id = $1::uuid`,
+                        [conversation.id],
+                    );
+                } catch {}
+            }
+
+            if (prevContext && isToolContextFresh) {
                 const ctxLines: string[] = ['\n## Previously obtained data (DO NOT re-ask for this):'];
                 if (prevContext.list_services?.services?.length) {
                     ctxLines.push('Available services:');
@@ -514,13 +550,21 @@ export class ConversationsService {
         }
 
         // 3. Get Conversation History with smart truncation
-        const schemaName = await this.tenantSchema(tenantId);
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 30`,
             [conversation.id],
         );
 
-        const messages = this.truncateHistory(history || [], userText);
+        let messages: Array<{ role: string; content: string }>;
+        if (isNewSession && history && history.length > 0) {
+            // For new sessions, only include last 2 messages for brief context
+            const lastMessages = (history || []).slice(-2);
+            messages = this.truncateHistory(lastMessages, userText);
+            systemPrompt += '\n\n## Previous Session Context\nThe customer previously interacted with you. Here is a brief summary of the last exchange for reference, but treat this as a NEW conversation — greet them freshly.\n';
+            this.logger.log(`[Pipeline] New session: trimmed history from ${history.length} to ${lastMessages.length} messages`);
+        } else {
+            messages = this.truncateHistory(history || [], userText);
+        }
 
         // 4. Execute LLM Call using Router (with tool execution loop)
         try {
@@ -601,15 +645,16 @@ export class ConversationsService {
                 }
 
                 if (Object.keys(toolContext).length > 0) {
+                    const metadataUpdate = {
+                        toolContext: {
+                            ...((conversation.metadata as any)?.toolContext || {}),
+                            ...toolContext,
+                        },
+                        toolContextUpdatedAt: new Date().toISOString(),
+                    };
                     await this.prisma.executeInTenantSchema(schemaName,
-                        `UPDATE conversations
-                         SET metadata = jsonb_set(
-                             COALESCE(metadata, '{}'::jsonb),
-                             '{toolContext}',
-                             COALESCE(metadata->'toolContext', '{}'::jsonb) || $2::jsonb
-                         )
-                         WHERE id = $1::uuid`,
-                        [conversation.id, JSON.stringify(toolContext)],
+                        `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                        [conversation.id, JSON.stringify(metadataUpdate)],
                     );
                     this.logger.log(`[Pipeline] Persisted tool context: ${Object.keys(toolContext).join(', ')}`);
                 }
@@ -708,10 +753,24 @@ export class ConversationsService {
         const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
         const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(now);
 
-        return `## CURRENT DATE AND TIME (USE THIS AS GROUND TRUTH)
+        // Pre-calculate next 7 days to eliminate LLM date math errors
+        const upcomingDays: string[] = [];
+        for (let i = 0; i <= 7; i++) {
+            const d = new Date(now);
+            d.setDate(d.getDate() + i);
+            const dayDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+            const dayName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(d);
+            const label = i === 0 ? '(today)' : i === 1 ? '(tomorrow)' : '';
+            upcomingDays.push(`  - ${dayName} ${dayDate} ${label}`);
+        }
+
+        return `## CURRENT DATE AND TIME (GROUND TRUTH — USE THIS FOR ALL DATE CALCULATIONS)
 - Today: ${date} (${weekday})
 - Current time: ${time} (${tz})
-- IMPORTANT: When a customer says "next Monday", "tomorrow", "this week", etc., calculate the EXACT date relative to today's date above. Never guess or use dates from your training data.
+- Upcoming days:
+${upcomingDays.join('\n')}
+- IMPORTANT: When the customer says "next Monday", "tomorrow", "this Friday", etc., look up the EXACT date from the list above. Do NOT calculate dates yourself — use this reference.
+- "Next [day]" means the NEXT occurrence of that day FROM TODAY. If today is Saturday and they say "next Monday", it's the Monday in the list above.
 `;
     }
 }

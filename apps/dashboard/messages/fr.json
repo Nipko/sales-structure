@@ -985,6 +985,40 @@
     "rejectOptOut": "Faux positif",
     "detectedMessage": "Message détecté",
     "reviewedBy": "Examiné par",
+    "channel": "Canal",
+    "version": "Version",
+    "reason": "Motif",
+    "reasonPlaceholder": "Demande de l'utilisateur",
+    "legalTextLabel": "Texte juridique",
+    "legalTextPlaceholder": "J'accepte les conditions générales pour le traitement des données personnelles...",
+    "leadIdPlaceholder": "UUID du lead",
+    "noteOptional": "Note (optionnelle)...",
+    "filterAll": "Tous",
+    "requestedBy": "Demandé par",
+    "system": "Système",
+    "process": "Traiter",
+    "statusBadge": {
+      "confirmed": "Confirmée",
+      "rejected": "Rejetée (faux positif)"
+    },
+    "modal": {
+      "newLegalText": "Nouveau texte juridique",
+      "registerOptOut": "Enregistrer désinscription"
+    },
+    "empty": {
+      "legal": "Aucun texte juridique configuré.",
+      "consents": "Aucun consentement enregistré.",
+      "optOuts": "Aucune désinscription enregistrée.",
+      "optOutsFiltered": "Aucune désinscription avec le statut \"{status}\".",
+      "deletions": "Aucune demande de suppression."
+    },
+    "toast": {
+      "legalCreated": "Texte juridique créé",
+      "optOutRegistered": "Désinscription enregistrée",
+      "requestProcessed": "Demande traitée",
+      "optOutConfirmed": "Désinscription confirmée",
+      "markedFalsePositive": "Marqué comme faux positif"
+    },
     "stats": {
       "pending": "En attente",
       "confirmed": "Confirmés",
@@ -993,6 +1027,15 @@
   },
   "pipeline": {
     "title": "Pipeline",
+    "dragHere": "Glissez les opportunités ici",
+    "loading": "Chargement du pipeline...",
+    "movedTo": "Opportunité déplacée vers {stage}",
+    "kpi": {
+      "totalValue": "Valeur totale",
+      "weighted": "Pondéré",
+      "opportunities": "Opportunités",
+      "average": "Moyen"
+    },
     "stages": "Étapes",
     "deals": "Affaires",
     "newDeal": "Nouvelle affaire",
@@ -1059,16 +1102,85 @@
     "actionDesc": "Definissez les actions a effectuer quand la regle s active",
     "noActions": "Ajoutez au moins une action",
     "addAction": "Ajouter action",
+    "confirmDelete": "Êtes-vous sûr de vouloir supprimer cette règle ?",
+    "loadingRules": "Chargement des règles...",
+    "executionHistory": "Historique d'exécution",
+    "noExecutions": "Aucune exécution enregistrée",
+    "field": "Champ",
+    "operator": "Opérateur",
+    "value": "Valeur",
+    "templateName": "Nom du modèle",
+    "language": "Langue",
+    "stage": "Étape",
+    "tag": "Étiquette",
+    "agentId": "ID de l'agent",
+    "delaySeconds": "Délai (secondes)",
+    "reviewTitle": "Vérifiez et enregistrez votre règle",
+    "rulenamePlaceholder": "ex: Auto-attribuer nouveaux leads",
+    "activateImmediately": "Activer la règle immédiatement",
+    "steps": {
+      "trigger": "Déclencheur",
+      "conditions": "Conditions",
+      "actions": "Actions",
+      "summary": "Résumé"
+    },
+    "empty": {
+      "title": "Aucune règle d'automatisation",
+      "subtitle": "Créez votre première règle pour commencer"
+    },
+    "stats": {
+      "totalRules": "Total règles",
+      "activeRules": "Règles actives",
+      "totalExecutions": "Exécutions totales"
+    },
+    "toast": {
+      "ruleCreated": "Règle créée avec succès",
+      "ruleUpdated": "Règle mise à jour",
+      "ruleDeleted": "Règle supprimée"
+    },
     "subtitle": "Regles automatiques pour optimiser les operations"
   },
   "broadcast": {
     "title": "Campagnes",
     "newCampaign": "Nouvelle campagne",
     "template": "Modèle",
-    "recipients": "Destinataires",
+    "recipients": "destinataires",
+    "delivered": "livré",
+    "read": "lu",
+    "responded": "ont répondu",
+    "scheduledAt": "Programmée: {date}",
+    "draftNotScheduled": "Brouillon — non programmé",
+    "subtitleStats": "{campaigns} campagnes · {recipients} destinataires",
     "scheduled": "Programmée",
     "sent": "Envoyée",
     "draft": "Brouillon",
+    "status": {
+      "draft": "Brouillon",
+      "scheduled": "Programmée",
+      "sending": "En envoi",
+      "sent": "Envoyée",
+      "failed": "Échouée"
+    },
+    "stats": {
+      "campaigns": "Campagnes",
+      "sent": "Envoyées",
+      "scheduled": "Programmées",
+      "responses": "Réponses"
+    },
+    "modal": {
+      "title": "Nouvelle campagne",
+      "nameLabel": "Nom de la campagne",
+      "namePlaceholder": "Promo Été 2026",
+      "templateLabel": "Message modèle",
+      "templateHint": "(utilisez {'{{'}name{'}}'} pour personnaliser)",
+      "templatePlaceholder": "Bonjour {'{{'}name{'}}'}! Nous avons une offre spéciale pour vous...",
+      "sendDateLabel": "Date d'envoi (optionnel)",
+      "leaveEmpty": "Laissez vide pour enregistrer comme brouillon",
+      "preview": "Aperçu du message",
+      "previewEmpty": "Votre message apparaîtra ici...",
+      "schedule": "Programmer",
+      "saveDraft": "Enregistrer brouillon"
+    },
     "subtitle": "Campagnes de masse et messages avec modeles"
   },
   "channels": {

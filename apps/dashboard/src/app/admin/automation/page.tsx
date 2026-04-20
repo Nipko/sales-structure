@@ -78,7 +78,7 @@ const STAGES = [
     { value: "listo_para_cierre", i18n: "stageReadyToClose" },
 ];
 
-const STEP_LABELS = ["Trigger", "Conditions", "Actions", "Summary"];
+const STEP_KEYS = ["trigger", "conditions", "actions", "summary"] as const;
 
 const emptyRuleForm = () => ({
     name: "", trigger_type: "",
@@ -144,12 +144,12 @@ export default function AutomationPage() {
 
     // -- Delete rule --
     async function handleDelete(id: string) {
-        if (!confirm("Are you sure you want to delete this rule?")) return;
+        if (!confirm(t("confirmDelete"))) return;
         setRules(prev => prev.filter(r => r.id !== id));
         if (activeTenantId) {
             try { await api.deleteRule(activeTenantId, id); } catch {}
         }
-        showToast("Rule deleted");
+        showToast(t("toast.ruleDeleted"));
     }
 
     // -- Load executions --
@@ -207,10 +207,10 @@ export default function AutomationPage() {
         try {
             if (editingRuleId) {
                 await api.updateRule(activeTenantId, editingRuleId, payload);
-                showToast("Rule updated");
+                showToast(t("toast.ruleUpdated"));
             } else {
                 await api.createRule(activeTenantId, payload);
-                showToast("Rule created successfully");
+                showToast(t("toast.ruleCreated"));
             }
             setWizardOpen(false);
             setEditingRuleId(null);
@@ -305,13 +305,13 @@ export default function AutomationPage() {
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-3 mb-6">
                     {[
-                        { label: "Total rules", value: rules.length, icon: Shield, color: "#6c5ce7", bg: "bg-indigo-600/10" },
-                        { label: "Active rules", value: activeCount, icon: Zap, color: "#00d68f", bg: "bg-emerald-500/10" },
-                        { label: "Total executions", value: totalExecs, icon: BarChart3, color: "#ffaa00", bg: "bg-amber-500/10" },
+                        { key: "total", label: t("stats.totalRules"), value: rules.length, icon: Shield, color: "#6c5ce7", bg: "bg-indigo-600/10" },
+                        { key: "active", label: t("stats.activeRules"), value: activeCount, icon: Zap, color: "#00d68f", bg: "bg-emerald-500/10" },
+                        { key: "execs", label: t("stats.totalExecutions"), value: totalExecs, icon: BarChart3, color: "#ffaa00", bg: "bg-amber-500/10" },
                     ].map(stat => {
                         const Icon = stat.icon;
                         return (
-                            <Card key={stat.label} className="border-border bg-card">
+                            <Card key={stat.key} className="border-border bg-card">
                                 <CardContent className="flex items-center gap-3.5 p-4">
                                     <div className={cn("w-[42px] h-[42px] rounded-[10px] flex items-center justify-center", stat.bg)}>
                                         <Icon size={20} color={stat.color} />
@@ -328,12 +328,12 @@ export default function AutomationPage() {
 
                 {/* Rules list */}
                 {loading ? (
-                    <div className="text-center p-10 text-muted-foreground">Loading rules...</div>
+                    <div className="text-center p-10 text-muted-foreground">{t("loadingRules")}</div>
                 ) : rules.length === 0 ? (
                     <div className="text-center py-[60px] px-4 rounded-[14px] border border-dashed border-border bg-card text-muted-foreground">
                         <Workflow size={40} className="mb-3 opacity-40 mx-auto" />
-                        <div className="text-base font-semibold mb-1">No automation rules</div>
-                        <div className="text-[13px]">Create your first rule to start automating</div>
+                        <div className="text-base font-semibold mb-1">{t("empty.title")}</div>
+                        <div className="text-[13px]">{t("empty.subtitle")}</div>
                     </div>
                 ) : (
                     <div className="flex flex-col gap-2.5">
@@ -411,18 +411,18 @@ export default function AutomationPage() {
                                     <div className="mx-2 px-4 py-3.5 rounded-b-xl border border-border border-t-0 bg-neutral-100 dark:bg-neutral-800">
                                         <div className="flex justify-between items-center mb-2.5">
                                             <span className="text-[13px] font-semibold text-foreground">
-                                                Execution history
+                                                {t("executionHistory")}
                                             </span>
                                             <button
                                                 onClick={() => { setSelectedRuleExecs(null); setExecRuleId(null); }}
                                                 className="bg-transparent border-none text-muted-foreground cursor-pointer text-xs underline"
                                             >
-                                                Close
+                                                {tc("close")}
                                             </button>
                                         </div>
                                         {selectedRuleExecs.length === 0 ? (
                                             <div className="text-[13px] text-muted-foreground py-2">
-                                                No executions recorded
+                                                {t("noExecutions")}
                                             </div>
                                         ) : (
                                             <div className="flex flex-col gap-1.5">
@@ -584,7 +584,7 @@ export default function AutomationPage() {
                                 {ruleForm.conditions.map((cond, idx) => (
                                     <div key={idx} className="flex gap-2 items-center p-2.5 px-3 rounded-[10px] bg-neutral-100 dark:bg-neutral-800 border border-border">
                                         <div className="flex-1">
-                                            <Label className="text-xs font-semibold text-muted-foreground mb-1">Campo</Label>
+                                            <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("field")}</Label>
                                             <select
                                                 value={cond.field}
                                                 onChange={e => updateCondition(idx, "field", e.target.value)}
@@ -594,7 +594,7 @@ export default function AutomationPage() {
                                             </select>
                                         </div>
                                         <div className="flex-1">
-                                            <Label className="text-xs font-semibold text-muted-foreground mb-1">Operador</Label>
+                                            <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("operator")}</Label>
                                             <select
                                                 value={cond.operator}
                                                 onChange={e => updateCondition(idx, "operator", e.target.value)}
@@ -604,11 +604,11 @@ export default function AutomationPage() {
                                             </select>
                                         </div>
                                         <div className="flex-1">
-                                            <Label className="text-xs font-semibold text-muted-foreground mb-1">Valor</Label>
+                                            <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("value")}</Label>
                                             <Input
                                                 value={cond.value}
                                                 onChange={e => updateCondition(idx, "value", e.target.value)}
-                                                placeholder="Valor"
+                                                placeholder={t("value")}
                                                 className="bg-background border-border"
                                             />
                                         </div>
@@ -671,7 +671,7 @@ export default function AutomationPage() {
                                             {action.type === "send_template" && (
                                                 <>
                                                     <div className="flex-1 min-w-[180px]">
-                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Nombre de plantilla</Label>
+                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("templateName")}</Label>
                                                         <Input
                                                             value={action.config.template_name || ""}
                                                             onChange={e => updateActionConfig(idx, "template_name", e.target.value)}
@@ -680,7 +680,7 @@ export default function AutomationPage() {
                                                         />
                                                     </div>
                                                     <div className="min-w-[120px]">
-                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Idioma</Label>
+                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("language")}</Label>
                                                         <select
                                                             value={action.config.language || "es"}
                                                             onChange={e => updateActionConfig(idx, "language", e.target.value)}
@@ -717,7 +717,7 @@ export default function AutomationPage() {
                                             )}
                                             {action.type === "change_stage" && (
                                                 <div className="flex-1 min-w-[180px]">
-                                                    <Label className="text-xs font-semibold text-muted-foreground mb-1">Etapa</Label>
+                                                    <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("stage")}</Label>
                                                     <select
                                                         value={action.config.stage || ""}
                                                         onChange={e => updateActionConfig(idx, "stage", e.target.value)}
@@ -730,7 +730,7 @@ export default function AutomationPage() {
                                             )}
                                             {action.type === "add_tag" && (
                                                 <div className="flex-1 min-w-[180px]">
-                                                    <Label className="text-xs font-semibold text-muted-foreground mb-1">Etiqueta</Label>
+                                                    <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("tag")}</Label>
                                                     <Input
                                                         value={action.config.tag || ""}
                                                         onChange={e => updateActionConfig(idx, "tag", e.target.value)}
@@ -741,18 +741,18 @@ export default function AutomationPage() {
                                             )}
                                             {action.type === "assign_agent" && (
                                                 <div className="flex-1 min-w-[180px]">
-                                                    <Label className="text-xs font-semibold text-muted-foreground mb-1">ID del agente</Label>
+                                                    <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("agentId")}</Label>
                                                     <Input
                                                         value={action.config.agent_id || ""}
                                                         onChange={e => updateActionConfig(idx, "agent_id", e.target.value)}
-                                                        placeholder="ID del agente"
+                                                        placeholder={t("agentId")}
                                                         className="bg-background border-border"
                                                     />
                                                 </div>
                                             )}
 
                                             <div className="min-w-[120px]">
-                                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Delay (segundos)</Label>
+                                                <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("delaySeconds")}</Label>
                                                 <Input
                                                     type="number"
                                                     value={action.delay}
@@ -779,7 +779,7 @@ export default function AutomationPage() {
                     {wizardStep === 3 && (
                         <div>
                             <h2 className="text-lg font-semibold mb-1">
-                                Review and save your rule
+                                {t("reviewTitle")}
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
                                 Confirm the details before saving
@@ -791,7 +791,7 @@ export default function AutomationPage() {
                                 <Input
                                     value={ruleForm.name}
                                     onChange={e => setRuleForm(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder="Ej: Auto-asignar leads nuevos"
+                                    placeholder={t("rulenamePlaceholder")}
                                     className="text-[15px] bg-background border-border"
                                 />
                             </div>
@@ -810,7 +810,7 @@ export default function AutomationPage() {
                                         ruleForm.active ? "left-[23px]" : "left-[3px]"
                                     )} />
                                 </button>
-                                <span className="text-sm">Activate rule immediately</span>
+                                <span className="text-sm">{t("activateImmediately")}</span>
                             </div>
 
                             {/* Summary cards */}
@@ -874,7 +874,7 @@ export default function AutomationPage() {
                                 : "bg-neutral-200 dark:bg-neutral-700 text-muted-foreground cursor-not-allowed"
                         )}
                     >
-                            Next <ChevronRight size={16} />
+                            {tc("next")} <ChevronRight size={16} />
                     </Button>
                 )}
             </div>

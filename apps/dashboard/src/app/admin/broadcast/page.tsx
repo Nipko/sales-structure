@@ -14,12 +14,12 @@ import {
     FileText, Zap, ChevronRight,
 } from "lucide-react";
 
-const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-    draft: { label: "Draft", color: "#95a5a6", icon: FileText },
-    scheduled: { label: "Scheduled", color: "#f39c12", icon: Calendar },
-    sending: { label: "Sending", color: "#3498db", icon: Zap },
-    sent: { label: "Sent", color: "#2ecc71", icon: CheckCircle2 },
-    failed: { label: "Failed", color: "#e74c3c", icon: AlertCircle },
+const statusStyle: Record<string, { color: string; icon: any }> = {
+    draft: { color: "#95a5a6", icon: FileText },
+    scheduled: { color: "#f39c12", icon: Calendar },
+    sending: { color: "#3498db", icon: Zap },
+    sent: { color: "#2ecc71", icon: CheckCircle2 },
+    failed: { color: "#e74c3c", icon: AlertCircle },
 };
 
 export default function BroadcastPage() {
@@ -90,7 +90,7 @@ export default function BroadcastPage() {
                 {/* Header */}
                 <PageHeader
                     title={t('title')}
-                    subtitle={`${stats.total} campaigns · ${stats.totalRecipients} recipients`}
+                    subtitle={t('subtitleStats', { campaigns: stats.total, recipients: stats.totalRecipients })}
                     icon={Megaphone}
                     badge={<DataSourceBadge isLive={false} />}
                     action={
@@ -103,12 +103,12 @@ export default function BroadcastPage() {
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-4 mb-6">
                     {[
-                        { label: "Campaigns", value: stats.total, color: "#6c5ce7", icon: Megaphone },
-                        { label: "Sent", value: stats.sent, color: "#2ecc71", icon: Send },
-                        { label: "Scheduled", value: stats.scheduled, color: "#f39c12", icon: Calendar },
-                        { label: "Responses", value: stats.totalReplies, color: "#9b59b6", icon: MessageSquare },
+                        { key: "campaigns", label: t('stats.campaigns'), value: stats.total, color: "#6c5ce7", icon: Megaphone },
+                        { key: "sent", label: t('stats.sent'), value: stats.sent, color: "#2ecc71", icon: Send },
+                        { key: "scheduled", label: t('stats.scheduled'), value: stats.scheduled, color: "#f39c12", icon: Calendar },
+                        { key: "responses", label: t('stats.responses'), value: stats.totalReplies, color: "#9b59b6", icon: MessageSquare },
                     ].map(stat => (
-                        <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
+                        <div key={stat.key} className="p-5 rounded-[14px] bg-card border border-border">
                             <div className="flex justify-between items-center">
                                 <div>
                                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{stat.label}</div>
@@ -125,7 +125,7 @@ export default function BroadcastPage() {
                 {/* Campaign List */}
                 <div className="flex flex-col gap-3">
                     {campaigns.map(campaign => {
-                        const sc = statusConfig[campaign.status];
+                        const sc = statusStyle[campaign.status];
                         const Icon = sc.icon;
                         const deliveryRate = campaign.recipientCount > 0 ? Math.round((campaign.deliveredCount / campaign.recipientCount) * 100) : 0;
                         const readRate = campaign.deliveredCount > 0 ? Math.round((campaign.readCount / campaign.deliveredCount) * 100) : 0;
@@ -148,7 +148,7 @@ export default function BroadcastPage() {
                                                 className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex items-center gap-1"
                                                 style={{ background: `${sc.color}15`, color: sc.color }}
                                             >
-                                                <Icon size={12} /> {sc.label}
+                                                <Icon size={12} /> {t(`status.${campaign.status}`)}
                                             </span>
                                         </div>
                                         <div className="text-[13px] text-muted-foreground mb-2.5 leading-snug max-w-[600px]">
@@ -158,21 +158,21 @@ export default function BroadcastPage() {
                                             <div className="flex gap-5 text-xs">
                                                 <span className="flex items-center gap-1">
                                                     <Target size={12} className="text-muted-foreground" />
-                                                    <strong>{campaign.recipientCount}</strong> recipients
+                                                    <strong>{campaign.recipientCount}</strong> {t('recipients')}
                                                 </span>
-                                                <span className="text-emerald-500">📬 {deliveryRate}% delivered</span>
-                                                <span className="text-blue-500">👁️ {readRate}% read</span>
-                                                <span className="text-purple-500">💬 {replyRate}% responded</span>
+                                                <span className="text-emerald-500">📬 {deliveryRate}% {t('delivered')}</span>
+                                                <span className="text-blue-500">👁️ {readRate}% {t('read')}</span>
+                                                <span className="text-purple-500">💬 {replyRate}% {t('responded')}</span>
                                             </div>
                                         )}
                                         {campaign.status === "scheduled" && campaign.scheduledAt && (
                                             <div className="text-xs text-amber-500 flex items-center gap-1">
-                                                <Clock size={12} /> Scheduled: {campaign.scheduledAt}
+                                                <Clock size={12} /> {t('scheduledAt', { date: campaign.scheduledAt })}
                                             </div>
                                         )}
                                         {campaign.status === "draft" && (
                                             <div className="text-xs text-muted-foreground">
-                                                Draft — not scheduled
+                                                {t('draftNotScheduled')}
                                             </div>
                                         )}
                                     </div>
@@ -207,32 +207,32 @@ export default function BroadcastPage() {
                 >
                     <div onClick={e => e.stopPropagation()} className="w-[500px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">New Campaign</h2>
+                            <h2 className="text-xl font-semibold m-0">{t('modal.title')}</h2>
                             <button onClick={() => setShowNewCampaign(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Campaign name</label>
-                            <input value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} placeholder="Summer Promo 2026" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('modal.nameLabel')}</label>
+                            <input value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} placeholder={t('modal.namePlaceholder')} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                         </div>
                         <div className="mb-3.5">
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                                Mensaje template <span className="font-normal">(usa {"{{name}}"} para personalizar)</span>
+                                {t('modal.templateLabel')} <span className="font-normal">{t('modal.templateHint')}</span>
                             </label>
-                            <textarea value={newCampaign.template} onChange={e => setNewCampaign(p => ({ ...p, template: e.target.value }))} placeholder={"¡Hola {{name}}! Tenemos una oferta especial para ti..."} rows={4} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                            <textarea value={newCampaign.template} onChange={e => setNewCampaign(p => ({ ...p, template: e.target.value }))} placeholder={t('modal.templatePlaceholder')} rows={4} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
                         </div>
                         <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Send date (optional)</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('modal.sendDateLabel')}</label>
                             <input type="datetime-local" value={newCampaign.scheduledAt} onChange={e => setNewCampaign(p => ({ ...p, scheduledAt: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
-                            <div className="text-[11px] text-muted-foreground mt-1">Leave empty to save as draft</div>
+                            <div className="text-[11px] text-muted-foreground mt-1">{t('modal.leaveEmpty')}</div>
                         </div>
                         <div className="p-3.5 rounded-[10px] bg-primary/[0.08] border border-primary/15 mb-3.5">
-                            <div className="text-xs font-semibold text-primary mb-1">📋 Message preview</div>
+                            <div className="text-xs font-semibold text-primary mb-1">📋 {t('modal.preview')}</div>
                             <div className="text-[13px] text-foreground leading-relaxed">
-                                {newCampaign.template ? newCampaign.template.replace(/\{\{name\}\}/g, "Carlos Medina") : "Tu mensaje aparecera aqui..."}
+                                {newCampaign.template ? newCampaign.template.replace(/\{\{name\}\}/g, "Carlos Medina") : t('modal.previewEmpty')}
                             </div>
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowNewCampaign(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
+                            <button onClick={() => setShowNewCampaign(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc('cancel')}</button>
                             <button
                                 onClick={handleCreateCampaign}
                                 disabled={!newCampaign.name || !newCampaign.template}
@@ -241,7 +241,7 @@ export default function BroadcastPage() {
                                     (!newCampaign.name || !newCampaign.template) ? "bg-muted cursor-not-allowed" : "bg-primary cursor-pointer"
                                 )}
                             >
-                                {newCampaign.scheduledAt ? "📅 Schedule" : "📝 Save draft"}
+                                {newCampaign.scheduledAt ? `📅 ${t('modal.schedule')}` : `📝 ${t('modal.saveDraft')}`}
                             </button>
                         </div>
                     </div>

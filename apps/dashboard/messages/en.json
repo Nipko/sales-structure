@@ -985,6 +985,40 @@
     "rejectOptOut": "False positive",
     "detectedMessage": "Detected message",
     "reviewedBy": "Reviewed by",
+    "channel": "Channel",
+    "version": "Version",
+    "reason": "Reason",
+    "reasonPlaceholder": "User request",
+    "legalTextLabel": "Legal text",
+    "legalTextPlaceholder": "I accept the terms and conditions for personal data processing...",
+    "leadIdPlaceholder": "Lead UUID",
+    "noteOptional": "Note (optional)...",
+    "filterAll": "All",
+    "requestedBy": "Requested by",
+    "system": "System",
+    "process": "Process",
+    "statusBadge": {
+      "confirmed": "Confirmed",
+      "rejected": "Rejected (false positive)"
+    },
+    "modal": {
+      "newLegalText": "New legal text",
+      "registerOptOut": "Register opt-out"
+    },
+    "empty": {
+      "legal": "No legal texts configured.",
+      "consents": "No consents registered yet.",
+      "optOuts": "No opt-outs registered.",
+      "optOutsFiltered": "No opt-outs with status \"{status}\".",
+      "deletions": "No deletion requests."
+    },
+    "toast": {
+      "legalCreated": "Legal text created",
+      "optOutRegistered": "Opt-out registered",
+      "requestProcessed": "Request processed",
+      "optOutConfirmed": "Opt-out confirmed",
+      "markedFalsePositive": "Marked as false positive"
+    },
     "stats": {
       "pending": "Pending",
       "confirmed": "Confirmed",
@@ -993,6 +1027,15 @@
   },
   "pipeline": {
     "title": "Pipeline",
+    "dragHere": "Drag opportunities here",
+    "loading": "Loading pipeline...",
+    "movedTo": "Opportunity moved to {stage}",
+    "kpi": {
+      "totalValue": "Total value",
+      "weighted": "Weighted",
+      "opportunities": "Opportunities",
+      "average": "Average"
+    },
     "stages": "Stages",
     "deals": "Deals",
     "newDeal": "New deal",
@@ -1059,16 +1102,85 @@
     "actionDesc": "Define the actions to perform when the rule activates",
     "noActions": "Add at least one action",
     "addAction": "Add action",
+    "confirmDelete": "Are you sure you want to delete this rule?",
+    "loadingRules": "Loading rules...",
+    "executionHistory": "Execution history",
+    "noExecutions": "No executions recorded",
+    "field": "Field",
+    "operator": "Operator",
+    "value": "Value",
+    "templateName": "Template name",
+    "language": "Language",
+    "stage": "Stage",
+    "tag": "Tag",
+    "agentId": "Agent ID",
+    "delaySeconds": "Delay (seconds)",
+    "reviewTitle": "Review and save your rule",
+    "rulenamePlaceholder": "e.g. Auto-assign new leads",
+    "activateImmediately": "Activate rule immediately",
+    "steps": {
+      "trigger": "Trigger",
+      "conditions": "Conditions",
+      "actions": "Actions",
+      "summary": "Summary"
+    },
+    "empty": {
+      "title": "No automation rules",
+      "subtitle": "Create your first rule to start automating"
+    },
+    "stats": {
+      "totalRules": "Total rules",
+      "activeRules": "Active rules",
+      "totalExecutions": "Total executions"
+    },
+    "toast": {
+      "ruleCreated": "Rule created successfully",
+      "ruleUpdated": "Rule updated",
+      "ruleDeleted": "Rule deleted"
+    },
     "subtitle": "Automated rules to optimize operations"
   },
   "broadcast": {
     "title": "Campaigns",
     "newCampaign": "New campaign",
     "template": "Template",
-    "recipients": "Recipients",
+    "recipients": "recipients",
+    "delivered": "delivered",
+    "read": "read",
+    "responded": "responded",
+    "scheduledAt": "Scheduled: {date}",
+    "draftNotScheduled": "Draft — not scheduled",
+    "subtitleStats": "{campaigns} campaigns · {recipients} recipients",
     "scheduled": "Scheduled",
     "sent": "Sent",
     "draft": "Draft",
+    "status": {
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "sending": "Sending",
+      "sent": "Sent",
+      "failed": "Failed"
+    },
+    "stats": {
+      "campaigns": "Campaigns",
+      "sent": "Sent",
+      "scheduled": "Scheduled",
+      "responses": "Responses"
+    },
+    "modal": {
+      "title": "New campaign",
+      "nameLabel": "Campaign name",
+      "namePlaceholder": "Summer Promo 2026",
+      "templateLabel": "Message template",
+      "templateHint": "(use {'{{'}name{'}}'} to personalize)",
+      "templatePlaceholder": "Hi {'{{'}name{'}}'}! We have a special offer for you...",
+      "sendDateLabel": "Send date (optional)",
+      "leaveEmpty": "Leave empty to save as draft",
+      "preview": "Message preview",
+      "previewEmpty": "Your message will appear here...",
+      "schedule": "Schedule",
+      "saveDraft": "Save draft"
+    },
     "subtitle": "Mass campaigns and template messages"
   },
   "channels": {

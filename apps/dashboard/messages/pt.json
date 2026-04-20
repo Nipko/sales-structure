@@ -985,6 +985,40 @@
     "rejectOptOut": "Falso positivo",
     "detectedMessage": "Mensagem detectada",
     "reviewedBy": "Revisado por",
+    "channel": "Canal",
+    "version": "Versão",
+    "reason": "Motivo",
+    "reasonPlaceholder": "Solicitação do usuário",
+    "legalTextLabel": "Texto legal",
+    "legalTextPlaceholder": "Aceito os termos e condições para o tratamento de dados pessoais...",
+    "leadIdPlaceholder": "UUID do lead",
+    "noteOptional": "Nota (opcional)...",
+    "filterAll": "Todos",
+    "requestedBy": "Solicitado por",
+    "system": "Sistema",
+    "process": "Processar",
+    "statusBadge": {
+      "confirmed": "Confirmado",
+      "rejected": "Rejeitado (falso positivo)"
+    },
+    "modal": {
+      "newLegalText": "Novo texto legal",
+      "registerOptOut": "Registrar opt-out"
+    },
+    "empty": {
+      "legal": "Não há textos legais configurados.",
+      "consents": "Ainda não há consentimentos registrados.",
+      "optOuts": "Não há opt-outs registrados.",
+      "optOutsFiltered": "Não há opt-outs com status \"{status}\".",
+      "deletions": "Não há solicitações de exclusão."
+    },
+    "toast": {
+      "legalCreated": "Texto legal criado",
+      "optOutRegistered": "Opt-out registrado",
+      "requestProcessed": "Solicitação processada",
+      "optOutConfirmed": "Opt-out confirmado",
+      "markedFalsePositive": "Marcado como falso positivo"
+    },
     "stats": {
       "pending": "Pendentes",
       "confirmed": "Confirmados",
@@ -993,6 +1027,15 @@
   },
   "pipeline": {
     "title": "Pipeline",
+    "dragHere": "Arraste oportunidades aqui",
+    "loading": "Carregando pipeline...",
+    "movedTo": "Oportunidade movida para {stage}",
+    "kpi": {
+      "totalValue": "Valor total",
+      "weighted": "Ponderado",
+      "opportunities": "Oportunidades",
+      "average": "Média"
+    },
     "stages": "Etapas",
     "deals": "Negocios",
     "newDeal": "Novo negocio",
@@ -1059,16 +1102,85 @@
     "actionDesc": "Defina as acoes a serem realizadas quando a regra ativar",
     "noActions": "Adicione pelo menos uma acao",
     "addAction": "Adicionar acao",
+    "confirmDelete": "Tem certeza de que deseja excluir esta regra?",
+    "loadingRules": "Carregando regras...",
+    "executionHistory": "Histórico de execuções",
+    "noExecutions": "Nenhuma execução registrada",
+    "field": "Campo",
+    "operator": "Operador",
+    "value": "Valor",
+    "templateName": "Nome do template",
+    "language": "Idioma",
+    "stage": "Etapa",
+    "tag": "Tag",
+    "agentId": "ID do agente",
+    "delaySeconds": "Atraso (segundos)",
+    "reviewTitle": "Revise e salve sua regra",
+    "rulenamePlaceholder": "ex: Auto-atribuir novos leads",
+    "activateImmediately": "Ativar regra imediatamente",
+    "steps": {
+      "trigger": "Gatilho",
+      "conditions": "Condições",
+      "actions": "Ações",
+      "summary": "Resumo"
+    },
+    "empty": {
+      "title": "Sem regras de automação",
+      "subtitle": "Crie sua primeira regra para começar a automatizar"
+    },
+    "stats": {
+      "totalRules": "Total de regras",
+      "activeRules": "Regras ativas",
+      "totalExecutions": "Execuções totais"
+    },
+    "toast": {
+      "ruleCreated": "Regra criada com sucesso",
+      "ruleUpdated": "Regra atualizada",
+      "ruleDeleted": "Regra excluída"
+    },
     "subtitle": "Regras automaticas para otimizar operacoes"
   },
   "broadcast": {
     "title": "Campanhas",
     "newCampaign": "Nova campanha",
     "template": "Modelo",
-    "recipients": "Destinatarios",
+    "recipients": "destinatários",
+    "delivered": "entregue",
+    "read": "lido",
+    "responded": "responderam",
+    "scheduledAt": "Agendada: {date}",
+    "draftNotScheduled": "Rascunho — não agendado",
+    "subtitleStats": "{campaigns} campanhas · {recipients} destinatários",
     "scheduled": "Agendada",
     "sent": "Enviada",
     "draft": "Rascunho",
+    "status": {
+      "draft": "Rascunho",
+      "scheduled": "Agendada",
+      "sending": "Enviando",
+      "sent": "Enviada",
+      "failed": "Falhou"
+    },
+    "stats": {
+      "campaigns": "Campanhas",
+      "sent": "Enviadas",
+      "scheduled": "Agendadas",
+      "responses": "Respostas"
+    },
+    "modal": {
+      "title": "Nova campanha",
+      "nameLabel": "Nome da campanha",
+      "namePlaceholder": "Promo Verão 2026",
+      "templateLabel": "Mensagem do modelo",
+      "templateHint": "(use {'{{'}name{'}}'} para personalizar)",
+      "templatePlaceholder": "Olá {'{{'}name{'}}'}! Temos uma oferta especial para você...",
+      "sendDateLabel": "Data de envio (opcional)",
+      "leaveEmpty": "Deixe vazio para salvar como rascunho",
+      "preview": "Pré-visualização da mensagem",
+      "previewEmpty": "Sua mensagem aparecerá aqui...",
+      "schedule": "Agendar",
+      "saveDraft": "Salvar rascunho"
+    },
     "subtitle": "Campanhas em massa e mensagens com modelos"
   },
   "channels": {

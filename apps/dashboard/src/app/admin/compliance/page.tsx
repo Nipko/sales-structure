@@ -58,7 +58,7 @@ export default function CompliancePage() {
         setSaving(true);
         try {
             const created = await api.fetch(`/compliance/legal-texts/${activeTenantId}`, { method: "POST", body: JSON.stringify(legalForm) });
-            if (created?.id) { setLegalTexts(prev => [created, ...prev]); setShowModal(false); setToast("Legal text created"); setTimeout(() => setToast(null), 2500); }
+            if (created?.id) { setLegalTexts(prev => [created, ...prev]); setShowModal(false); setToast(t('toast.legalCreated')); setTimeout(() => setToast(null), 2500); }
         } catch (err) { console.error(err); } finally { setSaving(false); }
     };
 
@@ -67,7 +67,7 @@ export default function CompliancePage() {
         setSaving(true);
         try {
             const created = await api.fetch(`/compliance/opt-outs/${activeTenantId}`, { method: "POST", body: JSON.stringify(optOutForm) });
-            if (created?.id) { setOptOuts(prev => [created, ...prev]); setShowModal(false); setToast("Opt-out registered"); setTimeout(() => setToast(null), 2500); }
+            if (created?.id) { setOptOuts(prev => [created, ...prev]); setShowModal(false); setToast(t('toast.optOutRegistered')); setTimeout(() => setToast(null), 2500); }
         } catch (err) { console.error(err); } finally { setSaving(false); }
     };
 
@@ -75,7 +75,7 @@ export default function CompliancePage() {
         try {
             await api.fetch(`/compliance/deletion-requests/${activeTenantId}/${id}/process`, { method: "PUT" });
             setDeletions(prev => prev.map(d => d.id === id ? { ...d, status: "processed", processed_at: new Date().toISOString() } : d));
-            setToast("Request processed"); setTimeout(() => setToast(null), 2500);
+            setToast(t('toast.requestProcessed')); setTimeout(() => setToast(null), 2500);
         } catch (err) { console.error(err); }
     };
 
@@ -137,7 +137,7 @@ export default function CompliancePage() {
                                 <p className="text-[13px] text-muted-foreground mt-2 leading-relaxed">{lt.text?.substring(0, 200)}{lt.text?.length > 200 ? "..." : ""}</p>
                             </div>
                         ))}
-                        {legalTexts.length === 0 && <div className="text-center py-10 text-muted-foreground">No legal texts configured.</div>}
+                        {legalTexts.length === 0 && <div className="text-center py-10 text-muted-foreground">{t('empty.legal')}</div>}
                     </div>
                 )}
 
@@ -147,12 +147,12 @@ export default function CompliancePage() {
                             <div key={c.id} className="px-5 py-3 rounded-xl border border-border bg-card flex justify-between items-center">
                                 <div>
                                     <span className="font-semibold text-[13px]">Lead: {c.lead_id?.substring(0, 8) || "N/A"}...</span>
-                                    <span className="ml-3 text-xs text-muted-foreground">Canal: {c.channel} · v{c.legal_text_version}</span>
+                                    <span className="ml-3 text-xs text-muted-foreground">{t('channel')}: {c.channel} · v{c.legal_text_version}</span>
                                 </div>
                                 <span className="text-xs text-muted-foreground">{new Date(c.granted_at).toLocaleString()}</span>
                             </div>
                         ))}
-                        {consents.length === 0 && <div className="text-center py-10 text-muted-foreground">No consents registered yet.</div>}
+                        {consents.length === 0 && <div className="text-center py-10 text-muted-foreground">{t('empty.consents')}</div>}
                     </div>
                 )}
 
@@ -185,7 +185,7 @@ export default function CompliancePage() {
                                     "px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition-colors",
                                     optOutFilter === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border hover:border-primary/50"
                                 )}>
-                                    {f === "" ? "All" : f === "pending" ? t('stats.pending') : f === "confirmed" ? t('stats.confirmed') : t('stats.rejected')}
+                                    {f === "" ? t('filterAll') : f === "pending" ? t('stats.pending') : f === "confirmed" ? t('stats.confirmed') : t('stats.rejected')}
                                 </button>
                             ))}
                         </div>
@@ -204,7 +204,7 @@ export default function CompliancePage() {
                                                 o.status === "confirmed" ? "bg-red-500/15 text-red-500" :
                                                 "bg-emerald-500/15 text-emerald-500"
                                             )}>
-                                                {o.status === "pending" ? tc("pending") : o.status === "confirmed" ? "Confirmed" : "Rejected (false positive)"}
+                                                {o.status === "pending" ? tc("pending") : o.status === "confirmed" ? t('statusBadge.confirmed') : t('statusBadge.rejected')}
                                             </span>
                                             <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500">{o.channel}</span>
                                             <span className="text-[11px] px-2 py-0.5 rounded-md bg-neutral-500/10 text-muted-foreground">{o.detected_from || "keyword"}</span>
@@ -227,7 +227,7 @@ export default function CompliancePage() {
                                     {/* Review info if reviewed */}
                                     {o.reviewed_at && (
                                         <div className="text-xs text-muted-foreground mb-2">
-                                            Reviewed by <span className="font-semibold">{o.reviewer_first} {o.reviewer_last}</span> el {new Date(o.reviewed_at).toLocaleString(undefined)}
+                                            {t('reviewedBy')} <span className="font-semibold">{o.reviewer_first} {o.reviewer_last}</span> — {new Date(o.reviewed_at).toLocaleString(undefined)}
                                             {o.review_notes && <span className="ml-2">— &ldquo;{o.review_notes}&rdquo;</span>}
                                         </div>
                                     )}
@@ -236,12 +236,12 @@ export default function CompliancePage() {
                                     {o.status === "pending" && (
                                         <div className="flex items-center gap-2 mt-2">
                                             <input value={reviewNotes} onChange={e => setReviewNotes(e.target.value)}
-                                                placeholder="Note (optional)..."
+                                                placeholder={t('noteOptional')}
                                                 className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none" />
                                             <button onClick={async () => {
                                                 await api.confirmOptOut(activeTenantId!, o.id, reviewNotes);
                                                 setOptOuts(prev => prev.map(x => x.id === o.id ? { ...x, status: "confirmed", reviewed_at: new Date().toISOString() } : x));
-                                                setReviewNotes(""); setToast("Opt-out confirmed"); setTimeout(() => setToast(null), 2500);
+                                                setReviewNotes(""); setToast(t('toast.optOutConfirmed')); setTimeout(() => setToast(null), 2500);
                                                 const stats = await api.getOptOutStats(activeTenantId!); if (stats?.success) setOptOutStats(stats.data);
                                             }} className="px-3 py-1.5 rounded-lg border-none bg-red-500 text-white text-xs font-semibold cursor-pointer flex items-center gap-1">
                                                 <UserX size={12} /> {t('confirmOptOut')}
@@ -249,7 +249,7 @@ export default function CompliancePage() {
                                             <button onClick={async () => {
                                                 await api.rejectOptOut(activeTenantId!, o.id, reviewNotes);
                                                 setOptOuts(prev => prev.map(x => x.id === o.id ? { ...x, status: "rejected", reviewed_at: new Date().toISOString() } : x));
-                                                setReviewNotes(""); setToast("Marked as false positive"); setTimeout(() => setToast(null), 2500);
+                                                setReviewNotes(""); setToast(t('toast.markedFalsePositive')); setTimeout(() => setToast(null), 2500);
                                                 const stats = await api.getOptOutStats(activeTenantId!); if (stats?.success) setOptOutStats(stats.data);
                                             }} className="px-3 py-1.5 rounded-lg border border-emerald-500 bg-transparent text-emerald-500 text-xs font-semibold cursor-pointer flex items-center gap-1">
                                                 <Check size={12} /> {t('rejectOptOut')}
@@ -258,7 +258,7 @@ export default function CompliancePage() {
                                     )}
                                 </div>
                             ))}
-                            {optOuts.length === 0 && <div className="text-center py-10 text-muted-foreground">No opt-outs {optOutFilter ? `with status "${optOutFilter}"` : "registered"}.</div>}
+                            {optOuts.length === 0 && <div className="text-center py-10 text-muted-foreground">{optOutFilter ? t('empty.optOutsFiltered', { status: optOutFilter }) : t('empty.optOuts')}</div>}
                         </div>
                     </div>
                 )}
@@ -270,19 +270,19 @@ export default function CompliancePage() {
                                 <div>
                                     <span className="font-semibold text-[13px]">Lead: {d.lead_id?.substring(0, 8) || "N/A"}...</span>
                                     <span className="ml-3 text-[11px] px-2 py-0.5 rounded-md" style={{ background: d.status === "processed" ? "#2ecc7122" : "#f39c1222", color: d.status === "processed" ? "#2ecc71" : "#f39c12" }}>{d.status}</span>
-                                    <span className="ml-2 text-xs text-muted-foreground">Requested by: {d.requested_by || "System"}</span>
+                                    <span className="ml-2 text-xs text-muted-foreground">{t('requestedBy')}: {d.requested_by || t('system')}</span>
                                 </div>
                                 <div className="flex gap-2 items-center">
                                     <span className="text-xs text-muted-foreground">{new Date(d.requested_at).toLocaleDateString()}</span>
                                     {d.status === "pending" && (
                                         <button onClick={() => handleProcessDeletion(d.id)} className="px-3 py-1 rounded-md border-none bg-emerald-500 text-white text-xs cursor-pointer flex items-center gap-1">
-                                            <Check size={12} /> Process
+                                            <Check size={12} /> {t('process')}
                                         </button>
                                     )}
                                 </div>
                             </div>
                         ))}
-                        {deletions.length === 0 && <div className="text-center py-10 text-muted-foreground">No deletion requests.</div>}
+                        {deletions.length === 0 && <div className="text-center py-10 text-muted-foreground">{t('empty.deletions')}</div>}
                     </div>
                 )}
             </div>
@@ -292,14 +292,14 @@ export default function CompliancePage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">{tab === "legal" ? "New Legal Text" : "Register Opt-Out"}</h2>
+                            <h2 className="text-xl font-semibold m-0">{tab === "legal" ? t('modal.newLegalText') : t('modal.registerOptOut')}</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
 
                         {tab === "legal" && (
                             <>
                                 <div className="mb-3">
-                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Channel</label>
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('channel')}</label>
                                     <select value={legalForm.channel} onChange={e => setLegalForm(p => ({ ...p, channel: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
                                         <option value="web">Web</option>
                                         <option value="whatsapp">WhatsApp</option>
@@ -307,15 +307,15 @@ export default function CompliancePage() {
                                     </select>
                                 </div>
                                 <div className="mb-3">
-                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Version</label>
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('version')}</label>
                                     <input type="number" value={legalForm.version} onChange={e => setLegalForm(p => ({ ...p, version: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                                 </div>
                                 <div className="mb-3">
-                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Legal Text</label>
-                                    <textarea value={legalForm.text} onChange={e => setLegalForm(p => ({ ...p, text: e.target.value }))} rows={5} placeholder="I accept the terms and conditions for personal data processing..." className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('legalTextLabel')}</label>
+                                    <textarea value={legalForm.text} onChange={e => setLegalForm(p => ({ ...p, text: e.target.value }))} rows={5} placeholder={t('legalTextPlaceholder')} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
-                                    <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
+                                    <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
                                     <button onClick={handleCreateLegal} disabled={saving || !legalForm.text} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                                 </div>
                             </>
@@ -325,10 +325,10 @@ export default function CompliancePage() {
                             <>
                                 <div className="mb-3">
                                     <label className="block text-xs font-semibold text-muted-foreground mb-1">Lead ID</label>
-                                    <input value={optOutForm.lead_id} onChange={e => setOptOutForm(p => ({ ...p, lead_id: e.target.value }))} placeholder="Lead UUID" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                                    <input value={optOutForm.lead_id} onChange={e => setOptOutForm(p => ({ ...p, lead_id: e.target.value }))} placeholder={t('leadIdPlaceholder')} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                                 </div>
                                 <div className="mb-3">
-                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Channel</label>
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('channel')}</label>
                                     <select value={optOutForm.channel} onChange={e => setOptOutForm(p => ({ ...p, channel: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
                                         <option value="whatsapp">WhatsApp</option>
                                         <option value="email">Email</option>
@@ -336,12 +336,12 @@ export default function CompliancePage() {
                                     </select>
                                 </div>
                                 <div className="mb-3">
-                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Reason</label>
-                                    <input value={optOutForm.reason} onChange={e => setOptOutForm(p => ({ ...p, reason: e.target.value }))} placeholder="User request" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('reason')}</label>
+                                    <input value={optOutForm.reason} onChange={e => setOptOutForm(p => ({ ...p, reason: e.target.value }))} placeholder={t('reasonPlaceholder')} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
                                 </div>
                                 <div className="flex gap-2.5 mt-5">
-                                    <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
-                                    <button onClick={handleCreateOptOut} disabled={saving || !optOutForm.lead_id} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-red-500 cursor-pointer")}>{saving ? tc("saving") : "Register Opt-Out"}</button>
+                                    <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
+                                    <button onClick={handleCreateOptOut} disabled={saving || !optOutForm.lead_id} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-red-500 cursor-pointer")}>{saving ? tc("saving") : t('modal.registerOptOut')}</button>
                                 </div>
                             </>
                         )}

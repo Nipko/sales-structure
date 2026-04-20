@@ -980,11 +980,45 @@
     "legalTexts": "Textos Legales",
     "consents": "Consentimientos",
     "optOuts": "Opt-Outs",
-    "deletionRequests": "Solicitudes Borrado",
+    "deletionRequests": "Solicitudes de Borrado",
     "confirmOptOut": "Confirmar baja",
     "rejectOptOut": "Falso positivo",
     "detectedMessage": "Mensaje detectado",
     "reviewedBy": "Revisado por",
+    "channel": "Canal",
+    "version": "Versión",
+    "reason": "Motivo",
+    "reasonPlaceholder": "Solicitud del usuario",
+    "legalTextLabel": "Texto legal",
+    "legalTextPlaceholder": "Acepto los términos y condiciones para el tratamiento de datos personales...",
+    "leadIdPlaceholder": "UUID del lead",
+    "noteOptional": "Nota (opcional)...",
+    "filterAll": "Todos",
+    "requestedBy": "Solicitado por",
+    "system": "Sistema",
+    "process": "Procesar",
+    "statusBadge": {
+      "confirmed": "Confirmada",
+      "rejected": "Rechazada (falso positivo)"
+    },
+    "modal": {
+      "newLegalText": "Nuevo texto legal",
+      "registerOptOut": "Registrar opt-out"
+    },
+    "empty": {
+      "legal": "No hay textos legales configurados.",
+      "consents": "Aún no hay consentimientos registrados.",
+      "optOuts": "No hay opt-outs registrados.",
+      "optOutsFiltered": "No hay opt-outs con estado \"{status}\".",
+      "deletions": "No hay solicitudes de borrado."
+    },
+    "toast": {
+      "legalCreated": "Texto legal creado",
+      "optOutRegistered": "Opt-out registrado",
+      "requestProcessed": "Solicitud procesada",
+      "optOutConfirmed": "Opt-out confirmado",
+      "markedFalsePositive": "Marcado como falso positivo"
+    },
     "stats": {
       "pending": "Pendientes",
       "confirmed": "Confirmados",
@@ -999,6 +1033,15 @@
     "value": "Valor",
     "stage": "Etapa",
     "dragToMove": "Arrastra para mover",
+    "dragHere": "Arrastra oportunidades aquí",
+    "loading": "Cargando pipeline...",
+    "movedTo": "Oportunidad movida a {stage}",
+    "kpi": {
+      "totalValue": "Valor total",
+      "weighted": "Ponderado",
+      "opportunities": "Oportunidades",
+      "average": "Promedio"
+    },
     "subtitle": "Arrastra oportunidades entre etapas"
   },
   "automation": {
@@ -1059,16 +1102,85 @@
     "actionDesc": "Define las acciones que se realizaran cuando se active la regla",
     "noActions": "Agrega al menos una accion",
     "addAction": "Agregar accion",
+    "confirmDelete": "¿Seguro que quieres eliminar esta regla?",
+    "loadingRules": "Cargando reglas...",
+    "executionHistory": "Historial de ejecuciones",
+    "noExecutions": "Sin ejecuciones registradas",
+    "field": "Campo",
+    "operator": "Operador",
+    "value": "Valor",
+    "templateName": "Nombre de plantilla",
+    "language": "Idioma",
+    "stage": "Etapa",
+    "tag": "Etiqueta",
+    "agentId": "ID del agente",
+    "delaySeconds": "Demora (segundos)",
+    "reviewTitle": "Revisa y guarda tu regla",
+    "rulenamePlaceholder": "ej: Auto-asignar leads nuevos",
+    "activateImmediately": "Activar regla inmediatamente",
+    "steps": {
+      "trigger": "Disparador",
+      "conditions": "Condiciones",
+      "actions": "Acciones",
+      "summary": "Resumen"
+    },
+    "empty": {
+      "title": "No hay reglas de automatización",
+      "subtitle": "Crea tu primera regla para empezar a automatizar"
+    },
+    "stats": {
+      "totalRules": "Reglas totales",
+      "activeRules": "Reglas activas",
+      "totalExecutions": "Ejecuciones totales"
+    },
+    "toast": {
+      "ruleCreated": "Regla creada correctamente",
+      "ruleUpdated": "Regla actualizada",
+      "ruleDeleted": "Regla eliminada"
+    },
     "subtitle": "Reglas automaticas para optimizar operaciones"
   },
   "broadcast": {
     "title": "Campañas",
     "newCampaign": "Nueva campaña",
     "template": "Plantilla",
-    "recipients": "Destinatarios",
+    "recipients": "destinatarios",
+    "delivered": "entregado",
+    "read": "leído",
+    "responded": "respondieron",
+    "scheduledAt": "Programada: {date}",
+    "draftNotScheduled": "Borrador — sin programar",
+    "subtitleStats": "{campaigns} campañas · {recipients} destinatarios",
     "scheduled": "Programada",
     "sent": "Enviada",
     "draft": "Borrador",
+    "status": {
+      "draft": "Borrador",
+      "scheduled": "Programada",
+      "sending": "Enviando",
+      "sent": "Enviada",
+      "failed": "Fallida"
+    },
+    "stats": {
+      "campaigns": "Campañas",
+      "sent": "Enviadas",
+      "scheduled": "Programadas",
+      "responses": "Respuestas"
+    },
+    "modal": {
+      "title": "Nueva campaña",
+      "nameLabel": "Nombre de la campaña",
+      "namePlaceholder": "Promo Verano 2026",
+      "templateLabel": "Mensaje plantilla",
+      "templateHint": "(usa {'{{'}name{'}}'} para personalizar)",
+      "templatePlaceholder": "¡Hola {'{{'}name{'}}'}! Tenemos una oferta especial para ti...",
+      "sendDateLabel": "Fecha de envío (opcional)",
+      "leaveEmpty": "Deja vacío para guardar como borrador",
+      "preview": "Vista previa del mensaje",
+      "previewEmpty": "Tu mensaje aparecerá aquí...",
+      "schedule": "Programar",
+      "saveDraft": "Guardar borrador"
+    },
     "subtitle": "Campanas masivas y mensajes con plantillas"
   },
   "channels": {

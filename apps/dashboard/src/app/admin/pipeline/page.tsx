@@ -58,7 +58,7 @@ export default function PipelinePage() {
         return (
             <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
                 <Loader2 size={24} className="animate-spin" />
-                Loading pipeline...
+                {t('loading')}
             </div>
         );
     }
@@ -69,19 +69,19 @@ export default function PipelinePage() {
                 {/* Header */}
                 <PageHeader
                     title={t('title')}
-                    subtitle={`${forecast.dealCount} ${t('subtitle') || 'deals'}`}
+                    subtitle={`${forecast.dealCount} ${t('deals')}`}
                     badge={<DataSourceBadge isLive={isLive} />}
                 />
 
                 {/* Forecast Cards */}
                 <div className="grid grid-cols-4 gap-3 mb-5">
                     {[
-                        { icon: DollarSign, label: "Total value", value: formatCurrency(forecast.total), color: "#3498db", bg: "bg-blue-500/10" },
-                        { icon: TrendingUp, label: "Weighted", value: formatCurrency(Math.round(forecast.weighted)), color: "#2ecc71", bg: "bg-emerald-500/10" },
-                        { icon: Target, label: "Opportunities", value: String(forecast.dealCount), color: "#e67e22", bg: "bg-orange-500/10" },
-                        { icon: Users, label: "Average", value: formatCurrency(Math.round(forecast.avgDealValue)), color: "#9b59b6", bg: "bg-purple-500/10" },
+                        { key: "totalValue", icon: DollarSign, label: t('kpi.totalValue'), value: formatCurrency(forecast.total), color: "#3498db", bg: "bg-blue-500/10" },
+                        { key: "weighted", icon: TrendingUp, label: t('kpi.weighted'), value: formatCurrency(Math.round(forecast.weighted)), color: "#2ecc71", bg: "bg-emerald-500/10" },
+                        { key: "opportunities", icon: Target, label: t('kpi.opportunities'), value: String(forecast.dealCount), color: "#e67e22", bg: "bg-orange-500/10" },
+                        { key: "average", icon: Users, label: t('kpi.average'), value: formatCurrency(Math.round(forecast.avgDealValue)), color: "#9b59b6", bg: "bg-purple-500/10" },
                     ].map(card => (
-                        <Card key={card.label} className="border-border bg-card">
+                        <Card key={card.key} className="border-border bg-card">
                             <CardContent className="flex items-center gap-3 p-3.5">
                                 <div className={cn("w-10 h-10 rounded-[10px] flex items-center justify-center", card.bg)}>
                                     <card.icon size={20} color={card.color} />
@@ -132,7 +132,7 @@ export default function PipelinePage() {
                                                 method: "PUT",
                                                 body: JSON.stringify({ stage: stage.id }),
                                             });
-                                            setToast(`Opportunity moved to ${stage.name}`);
+                                            setToast(t('movedTo', { stage: stage.name }));
                                             setTimeout(() => setToast(null), 2000);
                                         } catch (err) {
                                             console.error("Failed to move opportunity:", err);
@@ -232,7 +232,7 @@ export default function PipelinePage() {
 
                                     {(!stage.deals || stage.deals.length === 0) && (
                                         <div className="p-5 text-center text-muted-foreground text-xs opacity-60">
-                                            Drag opportunities here
+                                            {t('dragHere')}
                                         </div>
                                     )}
                                 </div>

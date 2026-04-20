@@ -16,6 +16,7 @@ const MODEL_REGISTRY: ModelConfig[] = [
     { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 128000 },
     { id: 'claude-3-5-sonnet-20241022', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000 },
     // Tier 2 - Standard
+    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.004, maxContextTokens: 1000000 },
     { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 128000 },
     { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 1000000 },
     // Tier 3 - Efficient

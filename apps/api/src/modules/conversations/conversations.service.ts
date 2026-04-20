@@ -16,7 +16,7 @@ import { NurturingService } from '../automation/nurturing.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { APPOINTMENT_TOOLS, APPOINTMENT_SYSTEM_PROMPT } from './tools/appointment-tools';
+import { APPOINTMENT_TOOLS, buildBookingPrompt, updateBookingState, advanceStateFromMessage, type BookingState } from './tools/appointment-tools';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 
@@ -462,7 +462,7 @@ export class ConversationsService {
             // Clear stale tool context from DB AND in-memory object
             try {
                 await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' WHERE id = $1::uuid`,
+                    `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' - 'bookingState' - 'bookingStateUpdatedAt' WHERE id = $1::uuid`,
                     [conversation.id],
                 );
             } catch {}
@@ -470,78 +470,34 @@ export class ConversationsService {
             if (conversation.metadata) {
                 delete (conversation.metadata as any).toolContext;
                 delete (conversation.metadata as any).toolContextUpdatedAt;
+                delete (conversation.metadata as any).bookingState;
+                delete (conversation.metadata as any).bookingStateUpdatedAt;
             }
         }
 
-        // Inject AI tools prompt if appointments tool is enabled
+        // Inject AI tools if appointments tool is enabled
         const toolsConfig = (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
 
+        // Booking state machine — tracks where we are in the booking flow
+        let bookingState: BookingState = (conversation.metadata as any)?.bookingState || { step: 'idle' };
+
         if (toolsEnabled) {
-            systemPrompt += '\n' + APPOINTMENT_SYSTEM_PROMPT;
             tools = [...APPOINTMENT_TOOLS];
 
-            // Inject known customer profile so AI doesn't re-ask for data we already have
-            const profileLines: string[] = ['\n## Customer Profile (data you already have — DO NOT ask for these again):'];
-            if (contact?.name) profileLines.push(`- Name: ${contact.name}`);
-            if (contact?.email) profileLines.push(`- Email: ${contact.email}`);
-            if (contact?.phone) profileLines.push(`- Phone: ${contact.phone}`);
-            if (lead?.first_name || lead?.firstName) profileLines.push(`- First name: ${lead.first_name || lead.firstName}`);
-            if (profileLines.length > 1) {
-                systemPrompt += profileLines.join('\n');
-            } else {
-                systemPrompt += '\n## Customer Profile: NEW CUSTOMER (no prior data — collect name and email)';
-            }
+            // Advance state from user message (detect service/time/confirmation mentions)
+            bookingState = advanceStateFromMessage(bookingState, userText, bookingState.services);
 
-            // Inject tool context from previous turns (persisted in conversation metadata)
-            const prevContext = (conversation.metadata as any)?.toolContext;
-            const toolContextAge = (conversation.metadata as any)?.toolContextUpdatedAt;
+            // Build concise, state-aware booking prompt
+            const customerProfile = {
+                name: contact?.name || lead?.first_name || lead?.firstName,
+                email: contact?.email,
+                phone: contact?.phone,
+            };
+            systemPrompt += '\n' + buildBookingPrompt(bookingState, customerProfile);
 
-            // Expire tool context after 30 minutes
-            const TOOL_CONTEXT_TTL_MS = 30 * 60 * 1000;
-            const isToolContextFresh = toolContextAge && (Date.now() - new Date(toolContextAge).getTime()) < TOOL_CONTEXT_TTL_MS;
-
-            if (prevContext && !isToolContextFresh) {
-                this.logger.log(`[Pipeline] Clearing stale toolContext (age: ${toolContextAge || 'unknown'})`);
-                // Clear stale tool context from DB
-                try {
-                    await this.prisma.executeInTenantSchema(schemaName,
-                        `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' WHERE id = $1::uuid`,
-                        [conversation.id],
-                    );
-                } catch {}
-            }
-
-            if (prevContext && isToolContextFresh) {
-                const ctxLines: string[] = ['\n## Previously obtained data (DO NOT re-ask for this):'];
-                if (prevContext.list_services?.services?.length) {
-                    ctxLines.push('Available services:');
-                    for (const svc of prevContext.list_services.services) {
-                        ctxLines.push(`- "${svc.name}" → serviceId: ${svc.id}, duration: ${svc.durationMinutes}min, price: $${svc.price} ${svc.currency}`);
-                    }
-                    ctxLines.push('IMPORTANT: When the customer mentions a service by name, use the corresponding serviceId from this list. DO NOT call list_services again.');
-                }
-                if (prevContext.check_availability) {
-                    const avail = prevContext.check_availability;
-                    ctxLines.push(`\nAvailability checked for ${avail.date}:`);
-                    if (avail.available && avail.slots?.length) {
-                        for (const slot of avail.slots) {
-                            ctxLines.push(`- ${slot.time}-${slot.endTime}${slot.staffName ? ` with ${slot.staffName}` : ''}`);
-                        }
-                    } else {
-                        ctxLines.push('- No availability for that date');
-                    }
-                }
-                if (prevContext.create_appointment?.appointment) {
-                    const apt = prevContext.create_appointment.appointment;
-                    ctxLines.push(`\nAppointment already booked: ${apt.service} on ${apt.date} at ${apt.time} (${apt.status})`);
-                }
-                systemPrompt += '\n' + ctxLines.join('\n');
-                this.logger.log(`[Pipeline] Injected tool context from previous turns: ${Object.keys(prevContext).join(', ')}`);
-            }
-
-            this.logger.log(`[Pipeline] AI tools enabled: appointments (${tools.length} tools)`);
+            this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
         }
 
         // 2c. Inject knowledge base context if available
@@ -583,7 +539,7 @@ export class ConversationsService {
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const response = await this.llmRouter.execute({
-                    model: 'gpt-4o-mini',
+                    model: 'gpt-4.1-mini',
                     messages: currentMessages,
                     systemPrompt,
                     temperature: 0.7,
@@ -608,7 +564,7 @@ export class ConversationsService {
                         toolCalls: response.toolCalls,
                     });
 
-                    // Execute each tool and add results
+                    // Execute each tool and update booking state
                     const contactId = conversation.contact_id || '';
                     for (const tc of response.toolCalls) {
                         const args = typeof tc.function.arguments === 'string'
@@ -618,6 +574,12 @@ export class ConversationsService {
                         const result = await this.toolExecutor.execute(
                             schemaName, tenantId, contactId, tc.function.name, args,
                         );
+
+                        // Update booking state machine based on tool result
+                        if (toolsEnabled) {
+                            bookingState = updateBookingState(bookingState, tc.function.name, args, result);
+                            this.logger.log(`[Pipeline] Booking state after ${tc.function.name}: ${bookingState.step}`);
+                        }
 
                         currentMessages.push({
                             role: 'tool',
@@ -634,39 +596,17 @@ export class ConversationsService {
                 break;
             }
 
-            // Persist tool context for subsequent turns
+            // Persist booking state for subsequent turns
             if (toolsEnabled) {
-                const toolContext: Record<string, any> = {};
-                for (const msg of currentMessages) {
-                    if ((msg as any).role === 'tool' && (msg as any).content) {
-                        try {
-                            const parsed = JSON.parse((msg as any).content);
-                            // Find the tool name from the preceding assistant message
-                            const assistantMsg = currentMessages.find(
-                                (m: any) => m.toolCalls?.some((tc: any) => tc.id === (msg as any).toolCallId)
-                            ) as any;
-                            const toolCall = assistantMsg?.toolCalls?.find((tc: any) => tc.id === (msg as any).toolCallId);
-                            if (toolCall) {
-                                toolContext[toolCall.function.name] = parsed;
-                            }
-                        } catch { /* ignore parse errors */ }
-                    }
-                }
-
-                if (Object.keys(toolContext).length > 0) {
-                    const metadataUpdate = {
-                        toolContext: {
-                            ...((conversation.metadata as any)?.toolContext || {}),
-                            ...toolContext,
-                        },
-                        toolContextUpdatedAt: new Date().toISOString(),
-                    };
-                    await this.prisma.executeInTenantSchema(schemaName,
-                        `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                        [conversation.id, JSON.stringify(metadataUpdate)],
-                    );
-                    this.logger.log(`[Pipeline] Persisted tool context: ${Object.keys(toolContext).join(', ')}`);
-                }
+                const metadataUpdate = {
+                    bookingState,
+                    bookingStateUpdatedAt: new Date().toISOString(),
+                };
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                    [conversation.id, JSON.stringify(metadataUpdate)],
+                );
+                this.logger.log(`[Pipeline] Persisted booking state: ${bookingState.step}`);
             }
 
             // Reset failedAttempts on successful AI response

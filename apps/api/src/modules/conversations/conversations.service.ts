@@ -486,8 +486,39 @@ export class ConversationsService {
         if (toolsEnabled) {
             tools = [...APPOINTMENT_TOOLS];
 
+            // Pre-load services if state doesn't have them yet (avoids depending on LLM to call list_services)
+            if (!bookingState.services?.length) {
+                try {
+                    const svcResult = await this.toolExecutor.execute(schemaName, tenantId, '', 'list_services', {});
+                    if (svcResult?.services?.length) {
+                        bookingState.services = svcResult.services;
+                        bookingState.step = svcResult.services.length === 1 ? 'has_service' : 'has_services';
+                        if (svcResult.services.length === 1) {
+                            bookingState.serviceId = svcResult.services[0].id;
+                            bookingState.serviceName = svcResult.services[0].name;
+                        }
+                        this.logger.log(`[Pipeline] Pre-loaded ${svcResult.services.length} services into booking state`);
+                    }
+                } catch {}
+            }
+
             // Advance state from user message (detect service/time/confirmation mentions)
-            bookingState = advanceStateFromMessage(bookingState, userText, bookingState.services);
+            const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            bookingState = advanceStateFromMessage(bookingState, userText, bookingState.services, todayISO);
+
+            // If user mentioned a service and we have the list, auto-select it
+            if (bookingState.step === 'has_services' && bookingState.services?.length) {
+                const textLower = userText.toLowerCase();
+                for (const svc of bookingState.services) {
+                    if (textLower.includes(svc.name.toLowerCase()) || svc.name.toLowerCase().includes(textLower)) {
+                        bookingState.step = 'has_service';
+                        bookingState.serviceId = svc.id;
+                        bookingState.serviceName = svc.name;
+                        this.logger.log(`[Pipeline] Auto-matched service: ${svc.name}`);
+                        break;
+                    }
+                }
+            }
 
             // Build concise, state-aware booking prompt
             const customerProfile = {

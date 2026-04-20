@@ -138,10 +138,12 @@ export function buildBookingPrompt(state: BookingState, customerProfile: { name?
     }
 
     lines.push('\n## RULES:');
-    lines.push('- NEVER invent availability. Only show times from check_availability results.');
+    lines.push('- NEVER invent availability. Only show times from check_availability tool results.');
     lines.push('- NEVER re-ask for information shown above (service, date, time, name, email).');
-    lines.push('- If customer says "yes"/"si"/"ok"/"confirmo" after a confirmation summary, call create_appointment immediately.');
-    lines.push('- Be concise and direct. No filler text.');
+    lines.push('- NEVER ask for email or name until AFTER the customer has selected a time slot.');
+    lines.push('- Follow the NEXT ACTION instruction above exactly. Do not skip steps or add extra questions.');
+    lines.push('- If customer says "yes"/"si"/"ok"/"confirmo", call create_appointment immediately.');
+    lines.push('- Keep responses to 1-3 sentences maximum. No filler text.');
     lines.push('- Respond in the language the customer is using.');
 
     return lines.join('\n');
@@ -198,19 +200,34 @@ export function updateBookingState(state: BookingState, toolName: string, toolAr
  * Try to advance the booking state from the user's message.
  * Detects service selection, date mention, time selection, name/email.
  */
-export function advanceStateFromMessage(state: BookingState, userText: string, services?: any[]): BookingState {
+export function advanceStateFromMessage(state: BookingState, userText: string, services?: any[], todayDate?: string): BookingState {
     const next = { ...state };
     const text = userText.toLowerCase().trim();
 
+    // Detect "hoy"/"today" as date
+    if (state.step === 'has_service' && !state.date && todayDate) {
+        if (text.includes('hoy') || text.includes('today')) {
+            next.step = 'has_date';
+            next.date = todayDate;
+        }
+    }
+
     // Detect service selection (if we have services and no service selected yet)
-    if (state.step === 'has_services' && state.services?.length && !state.serviceId) {
+    if ((state.step === 'has_services' || state.step === 'idle') && state.services?.length && !state.serviceId) {
+        // Fuzzy match: check if ANY word from service name appears in user text
+        let bestMatch: { svc: any; score: number } | null = null;
         for (const svc of state.services) {
-            if (text.includes(svc.name.toLowerCase()) || svc.name.toLowerCase().includes(text)) {
-                next.step = 'has_service';
-                next.serviceId = svc.id;
-                next.serviceName = svc.name;
-                break;
+            const svcWords = svc.name.toLowerCase().split(/\s+/);
+            const matchedWords = svcWords.filter((w: string) => w.length > 3 && text.includes(w));
+            const score = matchedWords.length / svcWords.length;
+            if (score > 0.3 && (!bestMatch || score > bestMatch.score)) {
+                bestMatch = { svc, score };
             }
+        }
+        if (bestMatch) {
+            next.step = 'has_service';
+            next.serviceId = bestMatch.svc.id;
+            next.serviceName = bestMatch.svc.name;
         }
     }
 

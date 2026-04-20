@@ -72,6 +72,18 @@ export class AIToolExecutorService {
         };
     }
 
+    /** Resolve tenant timezone from persona_config or default */
+    private async getTenantTimezone(schema: string): Promise<string> {
+        try {
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT config_json->'hours'->>'timezone' as tz FROM "${schema}".persona_config WHERE is_active = true LIMIT 1`,
+            ) as any[];
+            return rows[0]?.tz || 'America/Bogota';
+        } catch {
+            return 'America/Bogota';
+        }
+    }
+
     private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
@@ -147,9 +159,17 @@ export class AIToolExecutorService {
         let googleBusy: { start: string; end: string }[] = [];
         try {
             googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, staffId);
-        } catch {
-            // Calendar not connected or table doesn't exist — continue without
+            if (googleBusy.length > 0) {
+                this.logger.log(`[Tool] Calendar busy times for ${date}: ${JSON.stringify(googleBusy)}`);
+            } else {
+                this.logger.log(`[Tool] No calendar busy times found for ${date} (calendar may not be connected or no events)`);
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Tool] Calendar busy check failed: ${e.message}`);
         }
+
+        // Get tenant timezone for calendar comparison
+        const tenantTz = await this.getTenantTimezone(schema);
 
         // Generate available time slots
         const availableSlots: any[] = [];
@@ -166,22 +186,38 @@ export class AIToolExecutorService {
                 const endMin = min + duration;
                 const endTimeStr = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
 
-                // Check conflicts with existing appointments
-                const slotStart = new Date(`${date}T${timeStr}:00`);
-                const slotEnd = new Date(`${date}T${endTimeStr}:00`);
+                // Check conflicts — use simple time comparison (minutes since midnight)
+                // to avoid timezone issues. Both slot times and busy times are
+                // converted to minutes-of-day for comparison.
+                const slotStartMinOfDay = min;
+                const slotEndMinOfDay = min + duration;
 
                 const hasConflict = existing.some(apt => {
                     if (slot.user_id && apt.assigned_to && slot.user_id !== apt.assigned_to) return false;
                     const aptStart = new Date(apt.start_at);
                     const aptEnd = new Date(apt.end_at);
+                    // Compare using full datetime for DB appointments (stored in tenant TZ)
+                    const slotStart = new Date(`${date}T${timeStr}:00`);
+                    const slotEnd = new Date(`${date}T${endTimeStr}:00`);
                     return slotStart < aptEnd && slotEnd > aptStart;
                 });
 
-                // Check conflicts with external calendar (Google/Microsoft) busy times
+                // Check conflicts with external calendar (Google/Microsoft) busy times.
+                // Google Calendar returns times in UTC/ISO format, so we extract
+                // hours:minutes and compare as minutes-of-day in local time.
                 const calendarConflict = googleBusy.some(busy => {
-                    const busyStart = new Date(busy.start);
-                    const busyEnd = new Date(busy.end);
-                    return slotStart < busyEnd && slotEnd > busyStart;
+                    // Parse busy times — could be UTC ("Z") or offset ("+05:00")
+                    const busyStartDate = new Date(busy.start);
+                    const busyEndDate = new Date(busy.end);
+                    // Get hours/minutes in tenant timezone (America/Bogota etc.)
+                    // We use the date's local representation for comparison
+                    const busyStartLocal = busyStartDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz });
+                    const busyEndLocal = busyEndDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz });
+                    const [bsH, bsM] = busyStartLocal.split(':').map(Number);
+                    const [beH, beM] = busyEndLocal.split(':').map(Number);
+                    const busyStartMin = bsH * 60 + bsM;
+                    const busyEndMin = beH * 60 + beM;
+                    return slotStartMinOfDay < busyEndMin && slotEndMinOfDay > busyStartMin;
                 });
 
                 if (!hasConflict && !calendarConflict) {

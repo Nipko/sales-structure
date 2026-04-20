@@ -493,8 +493,8 @@ export default function AutomationPage() {
 
             {/* Step indicator */}
             <div className="flex items-center mb-8">
-                {STEP_LABELS.map((label, i) => (
-                    <div key={i} className={cn("flex items-center", i < STEP_LABELS.length - 1 ? "flex-1" : "flex-none")}>
+                {STEP_KEYS.map((stepKey, i) => (
+                    <div key={stepKey} className={cn("flex items-center", i < STEP_KEYS.length - 1 ? "flex-1" : "flex-none")}>
                         <div
                             onClick={() => { if (i <= wizardStep) setWizardStep(i); }}
                             className={cn("flex items-center gap-2", i <= wizardStep ? "cursor-pointer" : "cursor-default")}
@@ -513,10 +513,10 @@ export default function AutomationPage() {
                                 "text-[13px] whitespace-nowrap",
                                 i === wizardStep ? "font-semibold text-foreground" : "font-normal text-muted-foreground"
                             )}>
-                                {label}
+                                {t(`steps.${stepKey}`)}
                             </span>
                         </div>
-                        {i < STEP_LABELS.length - 1 && (
+                        {i < STEP_KEYS.length - 1 && (
                             <div className={cn(
                                 "flex-1 h-0.5 mx-3 transition-colors duration-200",
                                 i < wizardStep ? "bg-emerald-500" : "bg-neutral-200 dark:bg-neutral-700"

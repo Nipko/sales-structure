@@ -59,6 +59,10 @@ export class ConversationsService {
         const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
 
+        // Capture the timestamp of the last message BEFORE we save the new one.
+        // This is used later for new-session detection (30 min gap = fresh start).
+        const previousMessageAt = conversation.updated_at || conversation.created_at;
+
         // Track conversation event (contactId here is the normalized external id
         // like a phone number — analytics needs the internal UUID)
         this.analyticsService.trackEvent({
@@ -157,7 +161,7 @@ export class ConversationsService {
         this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
-        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead);
+        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
         // Track AI response event
@@ -422,7 +426,7 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
-    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any): Promise<string> {
+    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any): Promise<string> {
         if (msg.content.type !== 'text') {
             return `He recibido tu mensaje multimedia, pero por ahora solo puedo procesar texto. ¿Puedes describirlo?`;
         }
@@ -448,19 +452,25 @@ export class ConversationsService {
         const schemaName = await this.tenantSchema(tenantId);
 
         // Detect if this is a new session (message after 30+ min gap)
-        const lastMessageTime = conversation.last_message_at || conversation.updated_at;
-        const timeSinceLastMessage = Date.now() - new Date(lastMessageTime).getTime();
+        // Uses previousMessageAt captured BEFORE saveMessage() updated the timestamp
+        const lastMsgTime = previousMessageAt || conversation.updated_at || conversation.created_at;
+        const timeSinceLastMessage = Date.now() - new Date(lastMsgTime).getTime();
         const isNewSession = timeSinceLastMessage > 30 * 60 * 1000; // 30 minutes
 
         if (isNewSession) {
             this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
-            // Clear stale tool context
+            // Clear stale tool context from DB AND in-memory object
             try {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' WHERE id = $1::uuid`,
                     [conversation.id],
                 );
             } catch {}
+            // Also clear in-memory so the prompt builder below doesn't use stale data
+            if (conversation.metadata) {
+                delete (conversation.metadata as any).toolContext;
+                delete (conversation.metadata as any).toolContextUpdatedAt;
+            }
         }
 
         // Inject AI tools prompt if appointments tool is enabled

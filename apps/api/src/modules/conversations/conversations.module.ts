@@ -9,6 +9,7 @@ import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { AgentTestService } from './agent-test.service';
 import { AgentTestController } from './agent-test.controller';
+import { IntentInterpreterService } from './intent-interpreter.service';
 import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
@@ -51,7 +52,7 @@ import { TenantsModule } from '../tenants/tenants.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, PromptAssemblerService, LanguageDetectorService, AgentTestService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService],
     controllers: [ConversationsController, AgentTestController],
     exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService],
 })

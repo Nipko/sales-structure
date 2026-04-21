@@ -21,6 +21,7 @@ import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
 import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
+import { IntentInterpreterService } from './intent-interpreter.service';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
@@ -52,6 +53,7 @@ export class ConversationsService {
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
         private bookingEngine: BookingEngineService,
+        private intentInterpreter: IntentInterpreterService,
         private complianceService: AnalyticsComplianceService,
         private analyticsService: AnalyticsService,
         private promptAssembler: PromptAssemblerService,
@@ -543,9 +545,18 @@ export class ConversationsService {
                 phone: contact?.phone,
             };
 
+            // ═══ PHASE 1: INTERPRET — extract structured intent ═══
+            const serviceNames = bookingState.services?.map(s => s.name) || [];
+            const upcoming = turnContext.upcomingDays || [];
+            const intent = await this.intentInterpreter.interpret(
+                userText, bookingState.step, serviceNames, todayISO, upcoming,
+            );
+            this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
+
+            // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
             const engineResult = await this.bookingEngine.process(
                 schemaName, tenantId, conversation.contact_id || '',
-                userText, bookingState, customerProfile, todayISO,
+                intent, userText, bookingState, customerProfile, todayISO,
             );
 
             bookingState = engineResult.state;
@@ -589,12 +600,10 @@ export class ConversationsService {
                     }
                 }
 
-                // Fallback text path: LLM voices the engine output using the FULL
-                // assembled prompt (persona tone + language + turn context). No
-                // prompt override — the engine text goes in the user message so
-                // the LLM's only job is to rewrite it naturally.
+                // ═══ PHASE 3: EXPRESS — LLM ONLY translates/reformulates ═══
+                // No tools, no persona rules, no history. Just: "say this in Spanish"
                 engineProducedText = engineResult.text || null;
-                tools = [];
+                tools = []; // NO TOOLS for express phase
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
             } else {
                 // Not booking-related — LLM handles; expose services as structured data
@@ -683,8 +692,20 @@ export class ConversationsService {
             }
         }
 
-        // 6. Assemble the final system prompt: Layer 1 (contract) + Layer 2 (persona) + Layer 3 (turn).
-        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
+        // 6. Assemble system prompt.
+        // When engine handled: EXPRESS mode — minimal prompt, only translate.
+        // When LLM handles: full 3-layer prompt with persona + tools.
+        let systemPrompt: string;
+        if (engineProducedText) {
+            // EXPRESS phase — LLM only rewrites text in the right language/tone
+            const personaName = config.persona?.name || 'Assistant';
+            const tone = config.persona?.personality?.tone || 'friendly';
+            const lang = turnContext.language || 'es-CO';
+            systemPrompt = `You are ${personaName}. Rewrite the message the user gives you in ${lang} with a ${tone} tone. Keep ALL data (names, dates, times, prices) exactly as shown. Be natural, warm, and concise (2-3 sentences). Do NOT add extra questions. Do NOT mention order numbers or IDs.`;
+        } else {
+            // Full 3-layer prompt for general conversation
+            systemPrompt = this.promptAssembler.assemble(config, turnContext);
+        }
 
         // 3. Get Conversation History with smart truncation
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,

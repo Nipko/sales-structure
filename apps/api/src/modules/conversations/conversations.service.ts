@@ -370,12 +370,26 @@ export class ConversationsService {
 
         this.logger.log(`Sending after hours message to ${msg.contactId}`);
 
+        // Translate afterHoursMessage to tenant language via EXPRESS
+        let text = config.hours.afterHoursMessage;
+        try {
+            const lang = config.language || 'es-CO';
+            const personaName = config.persona?.name || 'Assistant';
+            const result = await this.llmRouter.execute({
+                model: 'gpt-4.1-mini',
+                messages: [{ role: 'user', content: `Rewrite naturally:\n${text}` }],
+                systemPrompt: `You are ${personaName}. Rewrite this after-hours message in ${lang}. Be warm and concise.`,
+                temperature: 0.7,
+            });
+            text = result.content || text;
+        } catch {} // Fallback to raw message
+
         const outbound: OutboundMessage = {
             tenantId,
             channelType: msg.channelType,
             channelAccountId: msg.channelAccountId,
             to: msg.contactId,
-            content: { type: 'text', text: config.hours.afterHoursMessage },
+            content: { type: 'text', text },
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, msg.channelType);
@@ -553,11 +567,28 @@ export class ConversationsService {
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
-            // ═══ GREETING: use persona greeting directly, no LLM improvisation ═══
+            // ═══ GREETING: use persona greeting, translated to customer's language ═══
             if (intent.intent === 'greet' && isNewSession && config.persona?.greeting) {
-                this.logger.log(`[Pipeline] Greeting: using persona greeting directly`);
+                this.logger.log(`[Pipeline] Greeting: using persona greeting`);
                 await this.persistBookingState(schemaName, conversation.id, bookingState);
-                return config.persona.greeting;
+
+                // If greeting is already in the tenant's language, return directly
+                const greetingText = config.persona.greeting;
+                const lang = config.language || 'es-CO';
+                const personaName = config.persona.name || 'Assistant';
+
+                // Use EXPRESS to translate greeting to tenant language
+                try {
+                    const expressResult = await this.llmRouter.execute({
+                        model: 'gpt-4.1-mini',
+                        messages: [{ role: 'user', content: `Rewrite naturally:\n${greetingText}` }],
+                        systemPrompt: `You are ${personaName}. Rewrite the greeting in ${lang}. Be warm, natural, and concise. Do NOT add questions about email, order numbers, or personal info.`,
+                        temperature: 0.7,
+                    });
+                    return expressResult.content || greetingText;
+                } catch {
+                    return greetingText; // Fallback to raw greeting
+                }
             }
 
             // ═══ FAREWELL: respond warmly without LLM ═══

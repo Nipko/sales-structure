@@ -133,6 +133,19 @@ export class BookingEngineService {
         const detectedEmail = this.extractEmail(text);
         const isConfirm = this.isConfirmation(text);
 
+        // ── AUTO-SELECT: "Si" with only 1 service ──
+        if (isConfirm && state.step === 'show_services' && state.services?.length === 1 && !state.serviceId) {
+            state.serviceId = state.services[0].id;
+            state.serviceName = state.services[0].name;
+            this.logger.log(`[BookingEngine] Auto-selected single service: ${state.serviceName}`);
+        }
+
+        // ── AUTO-SELECT: "Si" with services shown, pick first if only 1 ──
+        if (isConfirm && state.step === 'show_services' && state.services?.length && state.services.length > 1 && !state.serviceId) {
+            // Multiple services, "si" is ambiguous — ask again
+            // But don't return handled:false, just stay in show_services
+        }
+
         // Update state with detected data
         if (matchedService && !state.serviceId) {
             state.serviceId = matchedService.id;
@@ -163,6 +176,14 @@ export class BookingEngineService {
         }
 
         this.logger.log(`[BookingEngine] svc=${matchedService?.name || '-'} date=${detectedDate || '-'} step=${state.step}`);
+
+        // ── AUTO-SELECT single service when booking intent detected ──
+        if (wantsBooking && !state.serviceId && state.services?.length === 1) {
+            state.serviceId = state.services[0].id;
+            state.serviceName = state.services[0].name;
+            this.logger.log(`[BookingEngine] Auto-selected single service for booking: ${state.serviceName}`);
+            // Don't return — fall through to check if we also have a date
+        }
 
         // ── SHOW SERVICES (interactive list) ──
         if ((wantsServices || (wantsBooking && !state.serviceId)) && state.services?.length) {
@@ -253,6 +274,33 @@ export class BookingEngineService {
                     state.step = 'ask_email';
                     return { handled: true, state, text: `Thanks ${state.customerName}! I need your email for the calendar invitation.` };
                 }
+                return this.buildConfirmation(state);
+            }
+        }
+
+        // ── If we're mid-booking-flow, DON'T give control to LLM ──
+        // The LLM's persona prompt (e.g., Support Agent) would hijack the conversation
+        if (state.step !== 'idle' && state.step !== 'booked') {
+            // Re-prompt based on current step
+            if (state.step === 'show_services' && state.services?.length) {
+                return {
+                    handled: true, state,
+                    text: `Which service would you like? ${state.services.map(s => s.name).join(', ')}`,
+                };
+            }
+            if (state.step === 'ask_date') {
+                return { handled: true, state, text: `What date would you like for ${state.serviceName}?` };
+            }
+            if (state.step === 'show_slots' && state.slots?.length) {
+                return { handled: true, state, text: `Which time do you prefer? ${(state.slots ?? []).map(s => s.time).join(', ')}` };
+            }
+            if (state.step === 'ask_name') {
+                return { handled: true, state, text: 'What is your full name?' };
+            }
+            if (state.step === 'ask_email') {
+                return { handled: true, state, text: 'I need your email address to send the calendar invitation.' };
+            }
+            if (state.step === 'confirm') {
                 return this.buildConfirmation(state);
             }
         }

@@ -553,6 +553,19 @@ export class ConversationsService {
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
+            // ═══ GREETING: use persona greeting directly, no LLM improvisation ═══
+            if (intent.intent === 'greet' && isNewSession && config.persona?.greeting) {
+                this.logger.log(`[Pipeline] Greeting: using persona greeting directly`);
+                await this.persistBookingState(schemaName, conversation.id, bookingState);
+                return config.persona.greeting;
+            }
+
+            // ═══ FAREWELL: respond warmly without LLM ═══
+            if (intent.intent === 'farewell') {
+                await this.persistBookingState(schemaName, conversation.id, bookingState);
+                return ''; // Let LLM handle farewell with full persona
+            }
+
             // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
             const engineResult = await this.bookingEngine.process(
                 schemaName, tenantId, conversation.contact_id || '',
@@ -606,8 +619,10 @@ export class ConversationsService {
                 tools = []; // NO TOOLS for express phase
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
             } else {
-                // Not booking-related — LLM handles; expose services as structured data
-                tools = [...APPOINTMENT_TOOLS];
+                // Not booking-related — LLM handles.
+                // IMPORTANT: Do NOT pass appointment tools to the LLM for non-booking messages.
+                // The booking engine handles ALL appointment interactions deterministically.
+                // Only pass non-appointment tools (catalog, faqs, etc.) to reduce contamination.
                 if (bookingState.services?.length) {
                     turnContext.availableServices = bookingState.services.map(s => ({
                         id: s.id,

@@ -302,26 +302,40 @@ export class WhatsAppAdapter implements IChannelAdapter {
         sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const payload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'interactive',
+            interactive: {
+                type: 'list',
+                header: { type: 'text', text: (sections[0]?.title || 'Options').slice(0, 60) },
+                body: { text: body.slice(0, 1024) },
+                action: {
+                    button: buttonText.slice(0, 20),
+                    sections: sections.map(s => ({
+                        title: (s.title || 'Options').slice(0, 24),
+                        rows: s.rows.map(r => ({
+                            id: r.id.slice(0, 200),
+                            title: r.title.slice(0, 24),
+                            description: r.description?.slice(0, 72),
+                        })),
+                    })),
+                },
+            },
+        };
+        this.logger.log(`[WhatsApp] Sending list message: ${JSON.stringify(payload.interactive.action.sections[0]?.rows?.length || 0)} rows`);
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                recipient_type: 'individual',
-                to,
-                type: 'interactive',
-                interactive: {
-                    type: 'list',
-                    body: { text: body },
-                    action: { button: buttonText, sections },
-                },
-            }),
+            body: JSON.stringify(payload),
         });
         const data = await response.json() as any;
         if (!response.ok) {
             this.logger.error(`WhatsApp list message failed: ${JSON.stringify(data)}`);
             throw new Error(data.error?.message || 'List message failed');
         }
+        this.logger.log(`[WhatsApp] List message sent: ${data.messages?.[0]?.id}`);
         return data.messages?.[0]?.id || '';
     }
 
@@ -336,6 +350,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
         buttons: Array<{ id: string; title: string }>,
     ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        this.logger.log(`[WhatsApp] Sending button message with ${buttons.length} buttons`);
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -346,11 +361,11 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 type: 'interactive',
                 interactive: {
                     type: 'button',
-                    body: { text: body },
+                    body: { text: body.slice(0, 1024) },
                     action: {
-                        buttons: buttons.map(b => ({
+                        buttons: buttons.slice(0, 3).map(b => ({
                             type: 'reply',
-                            reply: { id: b.id, title: b.title.slice(0, 20) },
+                            reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) },
                         })),
                     },
                 },

@@ -133,6 +133,41 @@ export class BookingEngineService {
         // STATE MACHINE — deterministic transitions
         // ═══════════════════════════════════════════════════
 
+        // ── CHANGE OF OPINION: user mentions a DIFFERENT service mid-flow ──
+        if (intent.serviceMentioned && state.serviceId && state.serviceName) {
+            const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            if (norm(intent.serviceMentioned) !== norm(state.serviceName)) {
+                // User changed their mind — reset and apply new service
+                const newSvc = state.services?.find(s => norm(s.name).includes(norm(intent.serviceMentioned!)));
+                if (newSvc) {
+                    state.serviceId = newSvc.id; state.serviceName = newSvc.name;
+                    state.date = undefined; state.slots = undefined; state.time = undefined;
+                    state.step = 'ask_date';
+                    this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
+                    return { handled: true, state, text: `[CHANGED_SERVICE] Switched to ${newSvc.name}. What date works for you?` };
+                }
+            }
+        }
+
+        // ── GENERAL QUESTION mid-booking: let LLM answer BUT keep booking state ──
+        if (intent.intent === 'general_question' && state.step !== 'idle' && state.step !== 'booked') {
+            // Don't handle — let LLM answer the general question.
+            // But DON'T reset the booking state. Next message will resume the flow.
+            this.logger.log(`[Decide] General question mid-booking, letting LLM handle (booking state preserved: ${state.step})`);
+            return { handled: false, state };
+        }
+
+        // ── GREET mid-booking: don't reset, just acknowledge ──
+        if (intent.intent === 'greet' && state.step !== 'idle' && state.step !== 'booked') {
+            return this.repromptCurrentStep(state);
+        }
+
+        // ── CANCEL: user wants to abort booking ──
+        if (intent.intent === 'cancel' && state.step !== 'idle' && state.step !== 'booked') {
+            Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
+            return { handled: true, state, text: '[CANCELLED] No problem! Is there anything else I can help you with?' };
+        }
+
         // ── INTENT: ask_services ──
         if (intent.intent === 'ask_services' && state.services?.length) {
             return this.showServices(state);

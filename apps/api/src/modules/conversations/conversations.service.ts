@@ -376,7 +376,7 @@ export class ConversationsService {
             const lang = config.language || 'es-CO';
             const personaName = config.persona?.name || 'Assistant';
             const result = await this.llmRouter.execute({
-                model: 'gpt-4.1-mini',
+                model: 'grok-3-mini',
                 messages: [{ role: 'user', content: `Rewrite naturally:\n${text}` }],
                 systemPrompt: `You are ${personaName}. Rewrite this after-hours message in ${lang}. Be warm and concise.`,
                 temperature: 0.7,
@@ -580,7 +580,7 @@ export class ConversationsService {
                 // Use EXPRESS to translate greeting to tenant language
                 try {
                     const expressResult = await this.llmRouter.execute({
-                        model: 'gpt-4.1-mini',
+                        model: 'grok-3-mini',
                         messages: [{ role: 'user', content: `Rewrite naturally:\n${greetingText}` }],
                         systemPrompt: `You are ${personaName}. Rewrite the greeting in ${lang}. Be warm, natural, and concise. Do NOT add questions about email, order numbers, or personal info.`,
                         temperature: 0.7,
@@ -703,19 +703,15 @@ export class ConversationsService {
         }
 
         // 6. Assemble system prompt.
-        // When engine handled: EXPRESS mode — minimal prompt, only translate.
-        // When LLM handles: full 3-layer prompt with persona + tools.
-        let systemPrompt: string;
+        // ALWAYS use full 3-layer prompt (contract + persona + turn context).
+        // When engine handled: add a directive to the turn context so the LLM
+        // knows WHAT to communicate, but generates the HOW naturally.
+        // This is directive-based, not template-based — the LLM converses, not translates.
         if (engineProducedText) {
-            // EXPRESS phase — LLM only rewrites text in the right language/tone
-            const personaName = config.persona?.name || 'Assistant';
-            const tone = config.persona?.personality?.tone || 'friendly';
-            const lang = turnContext.language || 'es-CO';
-            systemPrompt = `You are ${personaName}. Rewrite the message the user gives you in ${lang} with a ${tone} tone. Keep ALL data (names, dates, times, prices) exactly as shown. Be natural, warm, and concise (2-3 sentences). Do NOT add extra questions. Do NOT mention order numbers or IDs.`;
-        } else {
-            // Full 3-layer prompt for general conversation
-            systemPrompt = this.promptAssembler.assemble(config, turnContext);
+            // Add directive to turn context — tells LLM what to communicate
+            turnContext.directive = engineProducedText;
         }
+        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
 
         // 3. Get Conversation History with smart truncation
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -725,10 +721,15 @@ export class ConversationsService {
 
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {
-            // Engine produced deterministic text — LLM voices it in the persona's
-            // tone and language (taken from <persona> + <turn><language>).
-            messages = [{ role: 'user', content: `Rewrite the following message naturally, keeping ALL data exactly as-is:\n${engineProducedText}` }];
-            this.logger.log(`[Pipeline] Engine handled: LLM will voice the engine output`);
+            // Directive-based: LLM gets the user's actual message + conversation history
+            // The directive is in <turn><directive> telling the LLM WHAT to communicate
+            // The LLM generates the response naturally using its full persona
+            if (isNewSession) {
+                messages = [{ role: 'user', content: userText }];
+            } else {
+                messages = this.truncateHistory(history || [], userText);
+            }
+            this.logger.log(`[Pipeline] Express: directive-based with full persona + ${messages.length} history messages`);
         } else if (isNewSession) {
             messages = [{ role: 'user', content: userText }];
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
@@ -743,12 +744,18 @@ export class ConversationsService {
             let finalResponse = '';
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+                // Dual-model routing: Grok for conversation, Gemini for tools
+                const hasTools = tools.length > 0;
+                const conversationModel = 'grok-3-mini'; // Natural, emotional, cheap
+                const toolModel = 'gemini-2.5-pro';       // Best tool calling (99.3%)
+                const selectedModel = hasTools ? toolModel : conversationModel;
+
                 const response = await this.llmRouter.execute({
-                    model: 'gpt-4.1-mini',
+                    model: selectedModel,
                     messages: currentMessages,
                     systemPrompt,
-                    temperature: 0.7,
-                    tools: tools.length > 0 ? tools : undefined,
+                    temperature: hasTools ? 0.3 : 0.8, // Lower temp for tools, higher for natural conversation
+                    tools: hasTools ? tools : undefined,
                     routingFactors: {
                         ticketValue: 50,
                         complexity,

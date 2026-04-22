@@ -12,14 +12,15 @@ interface ModelConfig {
 }
 
 const MODEL_REGISTRY: ModelConfig[] = [
-    // Tier 1 - Premium
+    // Tier 1 - Premium (best quality, highest cost)
     { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 128000 },
     { id: 'claude-3-5-sonnet-20241022', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000 },
-    // Tier 2 - Standard
+    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.010, maxContextTokens: 1000000 },
+    // Tier 2 - Conversational (natural dialogue, good value)
+    { id: 'grok-3-mini', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0005, maxContextTokens: 131072 },
     { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.004, maxContextTokens: 1000000 },
     { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 128000 },
-    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 1000000 },
-    // Tier 3 - Efficient
+    // Tier 3 - Efficient (fast, cheap)
     { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 1000000 },
     // Tier 4 - Budget
     { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.0001, maxContextTokens: 64000 },

@@ -471,6 +471,8 @@ export interface TurnContext {
         currency?: string;
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];
+    /** Directive from booking engine — tells the LLM WHAT to communicate, not HOW */
+    directive?: string;
 }
 
 // ---- Test Agent Types ----

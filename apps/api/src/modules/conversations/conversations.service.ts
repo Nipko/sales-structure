@@ -567,34 +567,14 @@ export class ConversationsService {
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
-            // ═══ GREETING: use persona greeting, translated to customer's language ═══
-            if (intent.intent === 'greet' && isNewSession && config.persona?.greeting) {
-                this.logger.log(`[Pipeline] Greeting: using persona greeting`);
+            // ═══ GREETING & FAREWELL: let the LLM handle naturally with full persona ═══
+            // NO template greeting. The LLM generates it based on persona + context.
+            // The turn context already has isNewSession info and business identity.
+            if (intent.intent === 'greet' || intent.intent === 'farewell') {
+                this.logger.log(`[Pipeline] ${intent.intent}: LLM handles with full persona (no template)`);
+                // Don't go through booking engine — let LLM respond naturally
                 await this.persistBookingState(schemaName, conversation.id, bookingState);
-
-                // If greeting is already in the tenant's language, return directly
-                const greetingText = config.persona.greeting;
-                const lang = config.language || 'es-CO';
-                const personaName = config.persona.name || 'Assistant';
-
-                // Use EXPRESS to translate greeting to tenant language
-                try {
-                    const expressResult = await this.llmRouter.execute({
-                        model: 'grok-4-1-fast-non-reasoning',
-                        messages: [{ role: 'user', content: `Rewrite naturally:\n${greetingText}` }],
-                        systemPrompt: `You are ${personaName}. Rewrite the greeting in ${lang}. Be warm, natural, and concise. Do NOT add questions about email, order numbers, or personal info.`,
-                        temperature: 0.7,
-                    });
-                    return expressResult.content || greetingText;
-                } catch {
-                    return greetingText; // Fallback to raw greeting
-                }
-            }
-
-            // ═══ FAREWELL: respond warmly without LLM ═══
-            if (intent.intent === 'farewell') {
-                await this.persistBookingState(schemaName, conversation.id, bookingState);
-                return ''; // Let LLM handle farewell with full persona
+                // Fall through to LLM with full persona (handled=false path below)
             }
 
             // ═══ PHASE 2: DECIDE — deterministic booking engine ═══

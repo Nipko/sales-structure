@@ -609,45 +609,9 @@ export class ConversationsService {
             if (engineResult.handled) {
                 this.logger.log(`[Pipeline] Booking engine handled (step: ${bookingState.step})`);
 
-                const channelType = msg.channelType;
-                const accessToken = await this.resolveAccessToken(tenantId, channelType);
-                const waAdapter = this.channelGateway.getAdapter('whatsapp') as any;
-
-                if (channelType === 'whatsapp' && waAdapter && accessToken) {
-                    const phoneNumberId = (msg.metadata as any)?.phoneNumberId || msg.channelAccountId;
-                    const to = msg.contactId;
-
-                    try {
-                        if (engineResult.listMessage) {
-                            this.logger.log(`[Pipeline] Sending WhatsApp list message to ${to} via ${phoneNumberId}`);
-                            await waAdapter.sendListMessage(to, phoneNumberId, accessToken,
-                                engineResult.listMessage.body,
-                                engineResult.listMessage.buttonText,
-                                engineResult.listMessage.sections,
-                            );
-                            await this.persistBookingState(schemaName, conversation.id, engineResult.state);
-                            await this.saveAiMessage(tenantId, conversation.id, engineResult.text || engineResult.listMessage.body);
-                            return '';
-                        }
-
-                        if (engineResult.buttonMessage) {
-                            await waAdapter.sendButtonMessage(to, phoneNumberId, accessToken,
-                                engineResult.buttonMessage.body,
-                                engineResult.buttonMessage.buttons,
-                            );
-                            await this.persistBookingState(schemaName, conversation.id, engineResult.state);
-                            await this.saveAiMessage(tenantId, conversation.id, engineResult.text || engineResult.buttonMessage.body);
-                            return '';
-                        }
-                    } catch (e: any) {
-                        this.logger.warn(`[Pipeline] Interactive message failed, falling back to text: ${e.message}`);
-                    }
-                }
-
-                // ═══ PHASE 3: EXPRESS — LLM ONLY translates/reformulates ═══
-                // No tools, no persona rules, no history. Just: "say this in Spanish"
+                // ═══ PHASE 3: EXPRESS — LLM translates engine text to customer's language ═══
                 engineProducedText = engineResult.text || null;
-                tools = []; // NO TOOLS for express phase
+                tools = []; // NO TOOLS for express phase — pure translation
                 await this.persistBookingState(schemaName, conversation.id, engineResult.state);
             } else {
                 // Not booking-related — LLM handles.

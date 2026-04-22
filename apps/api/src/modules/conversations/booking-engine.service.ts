@@ -96,8 +96,14 @@ export class BookingEngineService {
         if (intent.dateMentioned) state.date = intent.dateMentioned;
         if (intent.timeMentioned && state.slots?.length) {
             const slot = state.slots.find(s => s.time === intent.timeMentioned);
-            if (slot) state.time = slot.time;
+            if (slot) {
+                state.time = slot.time;
+            } else {
+                // Time mentioned but NOT available — flag it so we can inform the customer
+                (state as any)._requestedUnavailableTime = intent.timeMentioned;
+            }
         }
+        this.logger.log(`[Decide] State after intent: step=${state.step} svc=${state.serviceName || '-'} date=${state.date || '-'} time=${state.time || '-'} slots=${state.slots?.length || 0}`);
         if (intent.nameProvided) state.customerName = intent.nameProvided;
         if (intent.emailProvided) state.customerEmail = intent.emailProvided;
 
@@ -115,7 +121,7 @@ export class BookingEngineService {
             const svc = state.services.find(s => s.id === rawText.replace('svc_', ''));
             if (svc) {
                 state.serviceId = svc.id; state.serviceName = svc.name; state.step = 'ask_date';
-                return { handled: true, state, text: `[ASK_DATE] ${svc.name} selected. What date works for you?` };
+                return { handled: true, state, text: `${svc.name} selected. What date works for you?` };
             }
         }
         if (rawText.startsWith('slot_') && state.slots?.length) {
@@ -126,7 +132,7 @@ export class BookingEngineService {
         if (rawText === 'confirm_yes') return this.createBooking(schemaName, tenantId, contactId, state);
         if (rawText === 'confirm_no') {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
-            return { handled: true, state, text: '[CANCELLED] No problem! Would you like to try something else?' };
+            return { handled: true, state, text: 'No problem! Would you like to try something else?' };
         }
 
         // ═══════════════════════════════════════════════════
@@ -144,7 +150,7 @@ export class BookingEngineService {
                     state.date = undefined; state.slots = undefined; state.time = undefined;
                     state.step = 'ask_date';
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
-                    return { handled: true, state, text: `[CHANGED_SERVICE] Switched to ${newSvc.name}. What date works for you?` };
+                    return { handled: true, state, text: `Switched to ${newSvc.name}. What date works for you?` };
                 }
             }
         }
@@ -165,11 +171,11 @@ export class BookingEngineService {
         // ── CANCEL: user wants to abort booking ──
         if (intent.intent === 'cancel' && state.step !== 'idle' && state.step !== 'booked') {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
-            return { handled: true, state, text: '[CANCELLED] No problem! Is there anything else I can help you with?' };
+            return { handled: true, state, text: 'No problem! Is there anything else I can help you with?' };
         }
 
-        // ── INTENT: ask_services ──
-        if (intent.intent === 'ask_services' && state.services?.length) {
+        // ── INTENT: ask_services — but only if no service already selected ──
+        if (intent.intent === 'ask_services' && !state.serviceId && state.services?.length) {
             return this.showServices(state);
         }
 
@@ -189,7 +195,18 @@ export class BookingEngineService {
         // ── Have service but no date ──
         if (state.serviceId && !state.date) {
             state.step = 'ask_date';
-            return { handled: true, state, text: `[ASK_DATE] ${state.serviceName} selected. What date works for you?` };
+            return { handled: true, state, text: `${state.serviceName} selected. What date works for you?` };
+        }
+
+        // ── User asked for a specific time that's NOT available ──
+        if ((state as any)._requestedUnavailableTime && state.step === 'show_slots' && state.slots?.length) {
+            const requested = (state as any)._requestedUnavailableTime;
+            delete (state as any)._requestedUnavailableTime;
+            const available = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
+            return {
+                handled: true, state,
+                text: `The ${requested} slot is not available. Available times: ${available}. Which one works for you?`,
+            };
         }
 
         // ── Booking intent without service → show services ──
@@ -206,27 +223,15 @@ export class BookingEngineService {
         return { handled: false, state };
     }
 
-    // ── Show services (with interactive list) ──
+    // ── Show services ──
     private showServices(state: BookingState): EngineResult {
         state.step = 'show_services';
         const svcList = (state.services || []).map((s, i) =>
-            `${i + 1}. ${s.name} (${s.durationMinutes}min - ${s.price.toLocaleString()} ${s.currency})`
+            `${i + 1}. ${s.name} (${s.durationMinutes} minutes) - ${s.price.toLocaleString()} ${s.currency}`
         ).join('\n');
         return {
             handled: true, state,
-            text: `[SERVICES] Here are our services:\n${svcList}\nWhich one interests you?`,
-            listMessage: state.services && state.services.length > 0 ? {
-                body: 'Select a service:',
-                buttonText: 'View services',
-                sections: [{
-                    title: 'Services',
-                    rows: (state.services || []).map(s => ({
-                        id: `svc_${s.id}`,
-                        title: s.name.slice(0, 24),
-                        description: `${s.durationMinutes}min - ${s.price.toLocaleString()} ${s.currency}`.slice(0, 72),
-                    })),
-                }],
-            } : undefined,
+            text: `These are our services:\n${svcList}\nWhich one interests you?`,
         };
     }
 
@@ -238,46 +243,36 @@ export class BookingEngineService {
         });
 
         if (result?.available && result.slots?.length) {
-            state.slots = result.slots.slice(0, 10);
+            state.slots = result.slots.slice(0, 6);
             state.step = 'show_slots';
-            const slotList = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
+            const slotList = (state.slots ?? []).map(s => `${s.time} - ${s.endTime}`).join(', ');
             return {
                 handled: true, state,
-                text: `[SLOTS] Available for ${state.serviceName} on ${state.date}: ${slotList}. Which time?`,
-                listMessage: {
-                    body: `Available for ${state.serviceName} on ${state.date}:`,
-                    buttonText: 'See times',
-                    sections: [{
-                        title: 'Times',
-                        rows: (state.slots ?? []).map(s => ({
-                            id: `slot_${s.time}`,
-                            title: `${s.time} - ${s.endTime}`,
-                        })),
-                    }],
-                },
+                text: `Available times for ${state.serviceName} on ${state.date}: ${slotList}. Which time do you prefer?`,
             };
         }
 
+        const noDate = state.date;
         state.date = undefined; state.step = 'ask_date';
-        return { handled: true, state, text: `[NO_SLOTS] No availability on ${state.date}. Try another date?` };
+        return { handled: true, state, text: `No availability on ${noDate}. Would you like to try another date?` };
     }
 
     // ── Collect missing info or show confirmation ──
     private collectMissingInfo(state: BookingState): EngineResult {
         if (!state.customerName) {
             state.step = 'ask_name';
-            return { handled: true, state, text: `[ASK_NAME] ${state.time} selected for ${state.serviceName}. What is your full name?` };
+            return { handled: true, state, text: `${state.time} selected for ${state.serviceName}. What is your full name?` };
         }
         if (!state.customerEmail) {
             state.step = 'ask_email';
-            return { handled: true, state, text: `[ASK_EMAIL] Thanks ${state.customerName}! I need your email for the calendar invitation.` };
+            return { handled: true, state, text: `Thanks ${state.customerName}! I need your email for the calendar invitation.` };
         }
         // All info collected → confirmation
         state.step = 'confirm';
         const summary = `${state.serviceName} on ${state.date} at ${state.time}\nName: ${state.customerName}\nEmail: ${state.customerEmail}`;
         return {
             handled: true, state,
-            text: `[CONFIRM] Please confirm:\n${summary}\nShall I book this?`,
+            text: `Please confirm:\n${summary}\nShall I book this?`,
             buttonMessage: {
                 body: `Confirm booking?\n\n${summary}`,
                 buttons: [
@@ -299,10 +294,10 @@ export class BookingEngineService {
             state.step = 'booked';
             return {
                 handled: true, state,
-                text: `[BOOKED] Appointment confirmed!\nService: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\nCalendar invite sent to: ${state.customerEmail}\nAnything else?`,
+                text: `Appointment confirmed!\nService: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\nCalendar invite sent to: ${state.customerEmail}\nAnything else?`,
             };
         }
-        return { handled: true, state, text: `[ERROR] Issue creating appointment: ${result?.error || 'Unknown'}. Try another time?` };
+        return { handled: true, state, text: `Issue creating appointment: ${result?.error || 'Unknown'}. Try another time?` };
     }
 
     // ── Re-prompt current step (mid-flow protection) ──
@@ -311,13 +306,13 @@ export class BookingEngineService {
             case 'show_services':
                 return this.showServices(state);
             case 'ask_date':
-                return { handled: true, state, text: `[ASK_DATE] What date would you like for ${state.serviceName}?` };
+                return { handled: true, state, text: `What date would you like for ${state.serviceName}?` };
             case 'show_slots':
-                return { handled: true, state, text: `[ASK_SLOT] Which time? ${(state.slots ?? []).map(s => s.time).join(', ')}` };
+                return { handled: true, state, text: `Which time? ${(state.slots ?? []).map(s => s.time).join(', ')}` };
             case 'ask_name':
-                return { handled: true, state, text: `[ASK_NAME] What is your full name?` };
+                return { handled: true, state, text: `What is your full name?` };
             case 'ask_email':
-                return { handled: true, state, text: `[ASK_EMAIL] What is your email address?` };
+                return { handled: true, state, text: `What is your email address?` };
             case 'confirm':
                 return this.collectMissingInfo(state);
             default:

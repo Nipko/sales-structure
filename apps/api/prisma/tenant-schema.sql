@@ -1378,3 +1378,19 @@ CREATE INDEX IF NOT EXISTS "idx_wa_templates_pending" ON "{{SCHEMA_NAME}}"."what
 -- embedded signup callback fires twice.
 ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_channels" ADD COLUMN IF NOT EXISTS "seeds_submitted"    BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."whatsapp_channels" ADD COLUMN IF NOT EXISTS "seeds_submitted_at" TIMESTAMP;
+
+-- ── Broadcast Campaign Recipients ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."campaign_recipients" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "campaign_id" UUID NOT NULL,
+    "contact_id" UUID,
+    "phone" VARCHAR(50),
+    "status" VARCHAR(30) DEFAULT 'pending',
+    "error_message" TEXT,
+    "sent_at" TIMESTAMP,
+    "delivered_at" TIMESTAMP,
+    "read_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_campaign_recipients_campaign" ON "{{SCHEMA_NAME}}"."campaign_recipients" ("campaign_id", "status");

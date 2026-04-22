@@ -691,13 +691,18 @@ export class ConversationsService {
             // Add directive to turn context — tells LLM what to communicate
             turnContext.directive = engineProducedText;
         }
-        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
 
         // 3. Get Conversation History with smart truncation
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 30`,
             [conversation.id],
         );
+
+        // Anti-repetition: tell the LLM how many messages exist in this conversation.
+        // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
+        turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message already saved
+
+        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
 
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {

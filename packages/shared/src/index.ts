@@ -473,6 +473,8 @@ export interface TurnContext {
     retrievedKnowledge?: RetrievedKnowledgeItem[];
     /** Directive from booking engine — tells the LLM WHAT to communicate, not HOW */
     directive?: string;
+    /** Number of messages in the current conversation (used for anti-repetition) */
+    messageCount?: number;
 }
 
 // ---- Test Agent Types ----

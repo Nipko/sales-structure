@@ -261,7 +261,7 @@ Respond ONLY with valid JSON matching this schema:
 }`;
 
         const response = await this.llmRouter.execute({
-            model: 'grok-3-mini',
+            model: 'grok-4-1-fast-non-reasoning',
             messages: [{ role: 'user', content: `${prompt}\n\nMessage: "${userText}"` }],
             systemPrompt: 'You extract structured data from messages. Return ONLY JSON, nothing else.',
             temperature: 0,

@@ -376,7 +376,7 @@ export class ConversationsService {
             const lang = config.language || 'es-CO';
             const personaName = config.persona?.name || 'Assistant';
             const result = await this.llmRouter.execute({
-                model: 'grok-3-mini',
+                model: 'grok-4-1-fast-non-reasoning',
                 messages: [{ role: 'user', content: `Rewrite naturally:\n${text}` }],
                 systemPrompt: `You are ${personaName}. Rewrite this after-hours message in ${lang}. Be warm and concise.`,
                 temperature: 0.7,
@@ -580,7 +580,7 @@ export class ConversationsService {
                 // Use EXPRESS to translate greeting to tenant language
                 try {
                     const expressResult = await this.llmRouter.execute({
-                        model: 'grok-3-mini',
+                        model: 'grok-4-1-fast-non-reasoning',
                         messages: [{ role: 'user', content: `Rewrite naturally:\n${greetingText}` }],
                         systemPrompt: `You are ${personaName}. Rewrite the greeting in ${lang}. Be warm, natural, and concise. Do NOT add questions about email, order numbers, or personal info.`,
                         temperature: 0.7,
@@ -746,7 +746,7 @@ export class ConversationsService {
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 // Dual-model routing: Grok for conversation, Gemini for tools
                 const hasTools = tools.length > 0;
-                const conversationModel = 'grok-3-mini'; // Natural, emotional, cheap
+                const conversationModel = 'grok-4-1-fast-non-reasoning'; // Natural, emotional, cheap
                 const toolModel = 'gemini-2.5-pro';       // Best tool calling (99.3%)
                 const selectedModel = hasTools ? toolModel : conversationModel;
 

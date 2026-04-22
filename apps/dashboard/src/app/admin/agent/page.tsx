@@ -486,8 +486,12 @@ function AgentCard({
   agent, scheduleSummary, menuOpen,
   onMenuToggle, onEdit, onDuplicate, onSetDefault, onSaveAsTemplate, onDelete, t,
 }: AgentCardProps) {
-  const ruleCount = agent.rule_count ?? 0;
-  const hasAppointments = agent.config_json?.tools?.appointments?.enabled;
+  const cfg = agent.config_json || {};
+  const ruleCount = (cfg.behavior?.rules?.filter(Boolean)?.length || 0)
+    + (cfg.behavior?.forbiddenTopics?.filter(Boolean)?.length || 0)
+    + (cfg.behavior?.handoffTriggers?.filter(Boolean)?.length || 0);
+  const hasAppointments = cfg.tools?.appointments?.enabled;
+  const agentRole = cfg.persona?.role || agent.role;
 
   return (
     <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors">
@@ -517,7 +521,7 @@ function AgentCard({
             )}
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
-            {agent.role || t("noRole")}
+            {agentRole || t("noRole")}
           </p>
         </div>
       </div>

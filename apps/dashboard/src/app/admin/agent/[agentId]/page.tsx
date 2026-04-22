@@ -11,7 +11,7 @@ import {
   Bot, User, Smile, Shield, Cpu, Wrench, Brain, Sparkles,
   Save, CheckCircle, AlertTriangle, ArrowLeft, MoreVertical,
   BookmarkPlus, Star, Radio, Clock, TestTube2,
-  MessageSquare, Instagram, Facebook, Send, Phone,
+  MessageSquare, Instagram, Facebook, Send, Phone, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +94,8 @@ export default function AgentEditorPage() {
   const [assignedChannels, setAssignedChannels] = useState<string[]>([]);
   const [allAgents, setAllAgents] = useState<AgentData[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
   const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({
     services: 0,
     slots: 0,
@@ -250,6 +252,33 @@ export default function AgentEditorPage() {
     setMenuOpen(false);
   }
 
+  // ── Change template ────────────────────────────────────────
+
+  async function openTemplatePicker() {
+    if (templates.length === 0 && activeTenantId) {
+      try {
+        const res = await api.listAgentTemplates(activeTenantId);
+        if (res?.success && Array.isArray(res.data)) setTemplates(res.data);
+      } catch {}
+    }
+    setShowTemplatePicker(true);
+    setMenuOpen(false);
+  }
+
+  function applyTemplate(template: any) {
+    const tplConfig = template.config_json || {};
+    // Overwrite persona, behavior, tools — but keep the agent's name and language
+    const agentName = config.persona.name;
+    const agentLang = config.language;
+    setConfig(prev => deepMerge(structuredClone(defaultConfig), {
+      ...tplConfig,
+      persona: { ...tplConfig.persona, name: agentName || tplConfig.persona?.name },
+      language: agentLang || tplConfig.language,
+    }));
+    setShowTemplatePicker(false);
+    setToast(t("templateApplied") || "Template applied — review and save");
+  }
+
   // ── Set as default ─────────────────────────────────────────
 
   async function handleSetDefault() {
@@ -370,6 +399,13 @@ export default function AgentEditorPage() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                   <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg py-1">
+                    <button
+                      type="button"
+                      onClick={openTemplatePicker}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left"
+                    >
+                      <Wrench size={14} /> {t("changeTemplate") || "Change template"}
+                    </button>
                     <button
                       type="button"
                       onClick={handleSaveAsTemplate}
@@ -578,6 +614,44 @@ export default function AgentEditorPage() {
       )}
 
       {/* Toast */}
+      {/* Template Picker Modal */}
+      {showTemplatePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowTemplatePicker(false)}>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 max-w-lg w-full mx-4 shadow-xl max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("changeTemplate") || "Change Template"}</h3>
+                <p className="text-xs text-neutral-500 mt-0.5">{t("changeTemplateDesc") || "Apply a template. Your agent name and channels will be kept."}</p>
+              </div>
+              <button type="button" onClick={() => setShowTemplatePicker(false)} className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {templates.map(tpl => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => applyTemplate(tpl)}
+                  className="text-left rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 p-4 hover:border-indigo-400 dark:hover:border-indigo-500/40 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Bot size={16} className="text-indigo-500" />
+                    <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{tpl.name}</span>
+                  </div>
+                  {tpl.description && (
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">{tpl.description}</p>
+                  )}
+                </button>
+              ))}
+              {templates.length === 0 && (
+                <p className="col-span-2 text-center text-sm text-neutral-400 py-8">{tc("loading")}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div
           className={cn(

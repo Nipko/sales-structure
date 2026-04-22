@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as yaml from 'js-yaml';
 import { TenantConfig } from '@parallext/shared';
 
@@ -19,6 +20,7 @@ export class PersonaService {
         private prisma: PrismaService,
         private redis: RedisService,
         private tenantsService: TenantsService,
+        private throttleService: TenantThrottleService,
     ) { }
 
     /**
@@ -422,6 +424,13 @@ export class PersonaService {
      * List all agent personas for a tenant.
      * Auto-migrates from legacy persona_config if no agents exist yet.
      */
+    private async countActiveAgents(schemaName: string): Promise<number> {
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".agent_personas WHERE is_active = true`,
+        ) as any[];
+        return Number(rows[0]?.cnt || 0);
+    }
+
     async listAgents(tenantId: string): Promise<any[]> {
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
@@ -486,6 +495,21 @@ export class PersonaService {
     }): Promise<any> {
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
+
+        // Enforce plan's maxAgents at the server level. The UI already hides
+        // the "add agent" button past the limit, but without this check a
+        // direct API call bypasses the restriction and lets any tenant exceed
+        // their quota.
+        const planFeatures = await this.throttleService.getPlanFeatures(tenantId);
+        const currentCount = await this.countActiveAgents(schemaName);
+        if (currentCount >= planFeatures.maxAgents) {
+            throw new ForbiddenException({
+                error: 'agent_limit_reached',
+                message: `Tu plan permite hasta ${planFeatures.maxAgents} agente${planFeatures.maxAgents === 1 ? '' : 's'}. Actualizá tu plan para agregar más.`,
+                currentCount,
+                maxAgents: planFeatures.maxAgents,
+            });
+        }
 
         // If setting as default, unset other defaults
         if (data.isDefault) {

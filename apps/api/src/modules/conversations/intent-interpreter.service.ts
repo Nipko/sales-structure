@@ -100,16 +100,10 @@ export class IntentInterpreterService {
         const emailMatch = t.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
         if (emailMatch) base.emailProvided = emailMatch[0];
 
-        // ── Detect confirmation ──
+        // ── Detect confirmation (set flag but DON'T return yet — continue extracting) ──
         if (/^(si|sí|yes|ok|confirmo|dale|listo|perfecto|claro|correcto|de acuerdo|por supuesto|sure|oui|sim|va|vamos|eso|exacto)\b/i.test(t)) {
             base.isConfirmation = true;
             base.intent = 'confirm';
-            // If confirming a single service in show_services step
-            if (step === 'show_services' && services.length === 1) {
-                base.serviceMentioned = services[0];
-                base.intent = 'select_service';
-            }
-            return base;
         }
 
         // ── Detect negation ──
@@ -119,14 +113,14 @@ export class IntentInterpreterService {
             return base;
         }
 
-        // ── Detect greeting ──
-        if (/^(hola|hi|hey|hello|buenos? d[ií]as?|buenas? tardes?|buenas? noches?|buen d[ií]a|oi|olá|bonjour|salut)\b/i.test(t) && t.length < 30) {
+        // ── Detect greeting (only if short and NOT a confirmation) ──
+        if (!base.isConfirmation && /^(hola|hi|hey|hello|buenos? d[ií]as?|buenas? tardes?|buenas? noches?|buen d[ií]a|oi|olá|bonjour|salut)\b/i.test(t) && t.length < 30) {
             base.intent = 'greet';
             return base;
         }
 
-        // ── Detect farewell ──
-        if (/^(gracias|chao|adios|bye|hasta luego|nos vemos|thank|merci|obrigado)\b/i.test(t)) {
+        // ── Detect farewell (only if NOT a confirmation) ──
+        if (!base.isConfirmation && /^(gracias|chao|adios|bye|hasta luego|nos vemos|thank|merci|obrigado)\b/i.test(t)) {
             base.intent = 'farewell';
             return base;
         }
@@ -137,23 +131,66 @@ export class IntentInterpreterService {
             return base;
         }
 
-        // ── Match service by name ──
-        let matchedService: string | null = null;
-        for (const svc of services) {
-            if (tNorm.includes(norm(svc))) {
-                matchedService = svc;
-                break;
+        // ── Match service by NUMBER ("el 1", "la 2", "opcion 1", "la primera") ──
+        if (step === 'show_services' && services.length > 0) {
+            // Numeric: "el 1", "la 2", "opcion 3", "numero 1", "el numero 2"
+            const numMatch = tNorm.match(/(?:el|la|opcion|numero|el numero|la opcion|quiero el|quiero la)\s*(\d+)/);
+            if (numMatch) {
+                const idx = parseInt(numMatch[1]) - 1; // 1-based to 0-based
+                if (idx >= 0 && idx < services.length) {
+                    base.serviceMentioned = services[idx];
+                    base.intent = 'select_service';
+                }
             }
-            // Word overlap
-            const words = norm(svc).split(/\s+/).filter(w => w.length > 3);
-            const matched = words.filter(w => tNorm.includes(w));
-            if (words.length > 0 && matched.length / words.length >= 0.5) {
-                matchedService = svc;
-                break;
+            // Just a bare number: "1", "2"
+            if (!base.serviceMentioned && /^\d+$/.test(t.trim())) {
+                const idx = parseInt(t.trim()) - 1;
+                if (idx >= 0 && idx < services.length) {
+                    base.serviceMentioned = services[idx];
+                    base.intent = 'select_service';
+                }
+            }
+            // Ordinals: "la primera", "el primero", "la segunda", "el segundo"
+            if (!base.serviceMentioned) {
+                const ordinals: Record<string, number> = {
+                    primer: 0, primero: 0, primera: 0,
+                    segund: 1, segundo: 1, segunda: 1,
+                    tercer: 2, tercero: 2, tercera: 2,
+                    cuart: 3, cuarto: 3, cuarta: 3,
+                    quint: 4, quinto: 4, quinta: 4,
+                };
+                for (const [word, idx] of Object.entries(ordinals)) {
+                    if (tNorm.includes(word) && idx < services.length) {
+                        base.serviceMentioned = services[idx];
+                        base.intent = 'select_service';
+                        break;
+                    }
+                }
             }
         }
-        if (matchedService) {
-            base.serviceMentioned = matchedService;
+
+        // ── Match service by name ──
+        if (!base.serviceMentioned) {
+            for (const svc of services) {
+                if (tNorm.includes(norm(svc))) {
+                    base.serviceMentioned = svc;
+                    base.intent = 'select_service';
+                    break;
+                }
+                // Word overlap
+                const words = norm(svc).split(/\s+/).filter(w => w.length > 3);
+                const matched = words.filter(w => tNorm.includes(w));
+                if (words.length > 0 && matched.length / words.length >= 0.5) {
+                    base.serviceMentioned = svc;
+                    base.intent = 'select_service';
+                    break;
+                }
+            }
+        }
+
+        // ── Confirmation with single service at show_services ──
+        if (base.isConfirmation && !base.serviceMentioned && step === 'show_services' && services.length === 1) {
+            base.serviceMentioned = services[0];
             base.intent = 'select_service';
         }
 
@@ -211,8 +248,8 @@ export class IntentInterpreterService {
         if (step === 'ask_name' && !base.isConfirmation && !base.isNegation) {
             const cleaned = text.replace(/[.,!?]/g, '').trim();
             const words = cleaned.split(/\s+/);
-            const skip = /^(si|no|ok|hola|quiero|para|yes|gracias)\b/i;
-            if (words.length >= 2 && words.length <= 5 && !/\d/.test(cleaned) && !skip.test(words[0])) {
+            const skip = /^(si|no|ok|hola|quiero|para|yes|gracias|el|la|los|las|un|una)\b/i;
+            if (words.length >= 1 && words.length <= 5 && !/\d/.test(cleaned) && !skip.test(words[0])) {
                 base.nameProvided = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                 base.intent = 'provide_info';
             }

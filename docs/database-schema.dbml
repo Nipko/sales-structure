@@ -1,0 +1,560 @@
+// Parallly Platform — Database Schema (DBML format)
+// Open at: https://dbdiagram.io/d
+// Last updated: 2026-04-22
+
+// ═══════════════════════════════════════════════
+// PUBLIC SCHEMA (global, Prisma-managed)
+// ═══════════════════════════════════════════════
+
+Table public.tenants {
+  id uuid [pk]
+  name text [not null]
+  slug text [unique, not null]
+  industry text
+  language text [default: 'es-CO']
+  schema_name text [unique, not null]
+  plan text [default: 'starter', note: 'starter/pro/enterprise/custom']
+  is_active boolean [default: true]
+  settings jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.users {
+  id uuid [pk]
+  email text [unique, not null]
+  password text [note: 'bcrypt 12 rounds, null for OAuth']
+  first_name text
+  last_name text
+  role text [not null, note: 'super_admin/tenant_admin/tenant_supervisor/tenant_agent']
+  tenant_id uuid [ref: > public.tenants.id]
+  auth_provider text [default: 'email', note: 'email/google/microsoft']
+  google_id text
+  microsoft_id text
+  email_verified boolean [default: false]
+  picture text
+  availability_status text [default: 'offline', note: 'online/offline/away/dnd']
+  max_capacity int [default: 5]
+  last_active_at timestamptz
+  onboarding_completed boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.channel_accounts {
+  id uuid [pk]
+  tenant_id uuid [ref: > public.tenants.id]
+  channel_type text [not null, note: 'whatsapp/instagram/messenger/telegram/sms']
+  account_id text [not null]
+  display_name text
+  access_token text [note: 'AES-256-GCM encrypted']
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (channel_type, account_id) [unique]
+  }
+}
+
+Table public.audit_logs {
+  id uuid [pk]
+  user_id text
+  tenant_id text
+  action text [note: 'created/updated/deleted/logged_in']
+  resource text
+  details jsonb
+  ip text
+  created_at timestamptz [default: `now()`]
+}
+
+Table public.whatsapp_onboardings {
+  id uuid [pk]
+  tenant_id text
+  status text [note: 'CREATED/CODE_REQUESTED/EXCHANGE_COMPLETED/ASSETS_SYNCED']
+  meta_business_id text
+  waba_id text
+  phone_number_id text
+  display_phone_number text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.whatsapp_credentials {
+  id uuid [pk]
+  tenant_id text
+  credential_type text [note: 'system_user_token/app_secret']
+  encrypted_value text [note: 'AES-256-GCM']
+  rotation_state text [default: 'active']
+  expires_at timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+Table public.platform_settings {
+  id uuid [pk]
+  key text [unique, not null]
+  value text
+  is_secret boolean [default: false]
+  category text
+  created_at timestamptz [default: `now()`]
+}
+
+// ═══════════════════════════════════════════════
+// TENANT SCHEMA (per-tenant, 65+ tables)
+// ═══════════════════════════════════════════════
+
+// ── Core Messaging ──
+
+Table tenant.contacts {
+  id uuid [pk]
+  external_id text [not null]
+  channel_type text [not null]
+  name text
+  phone text
+  email text
+  first_contact_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (external_id, channel_type) [unique]
+  }
+}
+
+Table tenant.conversations {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  channel_type text
+  channel_account_id uuid
+  status text [default: 'active', note: 'active/waiting_human/with_human/resolved/archived']
+  stage text [default: 'greeting']
+  assigned_to uuid
+  sentiment text
+  metadata jsonb [default: '{}', note: 'Contains bookingState, toolContext']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table tenant.messages {
+  id uuid [pk]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  direction text [not null, note: 'inbound/outbound']
+  content_text text
+  content_type text [default: 'text']
+  sender_type text [note: 'contact/agent/ai/system']
+  sender_id text
+  llm_model_used text
+  routing_tier text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+}
+
+// ── AI Agent System ──
+
+Table tenant.agent_personas {
+  id uuid [pk]
+  name text [not null]
+  template_id text
+  is_active boolean [default: true]
+  is_default boolean [default: false]
+  config_json jsonb [not null, note: 'PersonaConfig: persona, behavior, hours, llm, tools']
+  channels text[] [default: '{}', note: 'whatsapp/instagram/messenger/telegram/sms']
+  schedule_mode text [default: '24_7']
+  version int [default: 1]
+  created_by text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table tenant.agent_templates {
+  id uuid [pk]
+  name text [not null]
+  description text
+  icon text [default: 'bot']
+  config_json jsonb [not null]
+  is_builtin boolean [default: false]
+  created_by text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.persona_config {
+  id uuid [pk, note: 'LEGACY — deprecated in favor of agent_personas']
+  version int
+  is_active boolean
+  config_yaml text
+  config_json jsonb
+  created_by text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ── CRM & Sales ──
+
+Table tenant.leads {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  first_name text
+  last_name text
+  phone text
+  stage text [default: 'nuevo', note: 'nuevo/contactado/calificado/caliente/ganado/perdido']
+  score int [default: 0]
+  campaign_id uuid
+  source text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table tenant.opportunities {
+  id uuid [pk]
+  lead_id uuid [ref: > tenant.leads.id]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  stage text
+  value decimal
+  probability int
+  sla_deadline timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.deals {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  stage_id uuid [ref: > tenant.pipeline_stages.id]
+  value decimal
+  assigned_agent_id uuid
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.pipeline_stages {
+  id uuid [pk]
+  name text [not null]
+  sort_order int [default: 0]
+  color text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.companies {
+  id uuid [pk]
+  name text
+  industry text
+  about text
+  phone text
+  email text
+  website text
+  address text
+  city text
+  country text
+  social_links jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table tenant.contact_segments {
+  id uuid [pk]
+  name text [not null]
+  filter_rules jsonb
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Products & Commerce ──
+
+Table tenant.products {
+  id uuid [pk]
+  name text [not null]
+  description text
+  category text
+  price decimal [default: 0]
+  currency text [default: 'COP']
+  is_available boolean [default: true]
+  stock int
+  images text[]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table tenant.product_categories {
+  id uuid [pk]
+  name text [not null]
+  color text [default: '#6c5ce7']
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.stock_movements {
+  id uuid [pk]
+  product_id uuid [ref: > tenant.products.id]
+  type text [not null, note: 'inbound/outbound/adjustment']
+  quantity int [not null]
+  previous_stock int
+  new_stock int
+  reason text
+  created_by text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.orders {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  total_amount decimal [default: 0]
+  currency text [default: 'COP']
+  status text [default: 'pending', note: 'pending/confirmed/processing/completed/cancelled']
+  payment_status text [default: 'pending']
+  notes text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.order_items {
+  id uuid [pk]
+  order_id uuid [ref: > tenant.orders.id]
+  product_id uuid [ref: > tenant.products.id]
+  product_name text
+  quantity int [default: 1]
+  unit_price decimal [default: 0]
+  total_price decimal [default: 0]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.commercial_offers {
+  id uuid [pk]
+  name text [not null]
+  description text
+  discount_type text [note: 'percentage/fixed']
+  discount_value decimal
+  valid_from timestamptz
+  valid_to timestamptz
+  conditions jsonb
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.campaign_recipients {
+  id uuid [pk]
+  campaign_id uuid
+  contact_id uuid
+  phone text
+  status text [default: 'pending', note: 'pending/queued/sent/delivered/read/failed']
+  sent_at timestamptz
+  delivered_at timestamptz
+  read_at timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Appointments & Calendar ──
+
+Table tenant.services {
+  id uuid [pk]
+  name text [not null]
+  description text
+  duration_minutes int [default: 30]
+  buffer_minutes int [default: 0]
+  price decimal [default: 0]
+  currency text [default: 'COP']
+  color text [default: '#6c5ce7']
+  is_active boolean [default: true]
+  is_public boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.availability_slots {
+  id uuid [pk]
+  user_id uuid
+  day_of_week int [note: '0=Sun, 1=Mon ... 6=Sat']
+  start_time time [not null]
+  end_time time [not null]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.appointments {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  service_id uuid [ref: > tenant.services.id]
+  service_name text
+  assigned_to uuid
+  start_at timestamptz [not null]
+  end_at timestamptz [not null]
+  status text [default: 'confirmed', note: 'confirmed/completed/cancelled/no_show']
+  customer_name text
+  customer_phone text
+  customer_email text
+  notes text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.blocked_dates {
+  id uuid [pk]
+  user_id uuid
+  blocked_date date [not null]
+  reason text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.calendar_integrations {
+  id uuid [pk]
+  user_id uuid [not null]
+  provider text [not null, note: 'google/microsoft']
+  encrypted_refresh_token text
+  calendar_id text [default: 'primary']
+  account_email text
+  is_active boolean [default: true]
+  connected_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (user_id, provider) [unique]
+  }
+}
+
+// ── Knowledge & Content ──
+
+Table tenant.knowledge_documents {
+  id uuid [pk]
+  title text
+  content text
+  source_type text [note: 'uploaded/web_scraped/manual']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.knowledge_embeddings {
+  id uuid [pk]
+  document_id uuid [ref: > tenant.knowledge_documents.id]
+  chunk_text text
+  embedding vector [note: 'vector(1536) — OpenAI text-embedding-3-small']
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.faqs {
+  id uuid [pk]
+  question text [not null]
+  answer text [not null]
+  category text
+  is_active boolean [default: true]
+  search_vector tsvector
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table tenant.policies {
+  id uuid [pk]
+  type text [not null, note: 'returns/shipping/privacy/terms/cancellation']
+  title text [not null]
+  content text [not null]
+  version int [default: 1]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+// ── Automation ──
+
+Table tenant.automation_rules {
+  id uuid [pk]
+  name text [not null]
+  trigger_type text [not null]
+  conditions_json jsonb
+  actions_json jsonb
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.automation_executions {
+  id uuid [pk]
+  rule_id uuid [ref: > tenant.automation_rules.id]
+  conversation_id uuid
+  status text
+  result_json jsonb
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Analytics ──
+
+Table tenant.analytics_events {
+  id uuid [pk]
+  event_type text [not null]
+  conversation_id uuid
+  contact_id uuid
+  data jsonb
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.csat_surveys {
+  id uuid [pk]
+  conversation_id uuid
+  agent_id uuid
+  rating int [note: '1-5']
+  feedback text
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Compliance ──
+
+Table tenant.consent_records {
+  id uuid [pk]
+  contact_id uuid
+  consent_type text
+  granted boolean
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.opt_out_records {
+  id uuid [pk]
+  phone text
+  channel text
+  trigger_message text
+  status text [default: 'pending', note: 'pending/confirmed/rejected']
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Agent Console ──
+
+Table tenant.conversation_assignments {
+  id uuid [pk]
+  agent_id uuid
+  conversation_id uuid [ref: > tenant.conversations.id]
+  assigned_at timestamptz [default: `now()`]
+  first_response_at timestamptz
+  resolved_at timestamptz
+}
+
+Table tenant.internal_notes {
+  id uuid [pk]
+  agent_id uuid
+  conversation_id uuid [ref: > tenant.conversations.id]
+  content text
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.macros {
+  id uuid [pk]
+  name text [not null]
+  actions_json jsonb
+  visibility text [default: 'private']
+  created_at timestamptz [default: `now()`]
+}
+
+// ── WhatsApp ──
+
+Table tenant.whatsapp_channels {
+  id uuid [pk]
+  phone_number_id text
+  waba_id text
+  display_name text
+  display_phone_number text
+  is_active boolean [default: true]
+  seeds_submitted boolean [default: false]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.whatsapp_templates {
+  id uuid [pk]
+  template_id text
+  name text [not null]
+  language text [default: 'es']
+  category text
+  components jsonb
+  approval_status text [default: 'PENDING']
+  created_at timestamptz [default: `now()`]
+}

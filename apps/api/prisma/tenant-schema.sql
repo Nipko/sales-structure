@@ -139,6 +139,29 @@ CREATE TABLE "{{SCHEMA_NAME}}"."products" (
 CREATE INDEX ON "{{SCHEMA_NAME}}"."products" ("category");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."products" ("is_available");
 
+-- ---- Product Categories ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."product_categories" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "color" VARCHAR(50) DEFAULT '#6c5ce7',
+    "sort_order" INTEGER DEFAULT 0,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- Stock Movements ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."stock_movements" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "product_id" UUID NOT NULL,
+    "type" VARCHAR(30) NOT NULL, -- inbound, outbound, adjustment
+    "quantity" INTEGER NOT NULL,
+    "previous_stock" INTEGER,
+    "new_stock" INTEGER,
+    "reason" TEXT,
+    "created_by" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_stock_movements_product" ON "{{SCHEMA_NAME}}"."stock_movements" ("product_id", "created_at" DESC);
+
 -- ---- Orders ----
 CREATE TABLE "{{SCHEMA_NAME}}"."orders" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -157,6 +180,20 @@ CREATE TABLE "{{SCHEMA_NAME}}"."orders" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."orders" ("contact_id");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."orders" ("status");
+
+-- ---- Order Items ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."order_items" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "order_id" UUID NOT NULL,
+    "product_id" UUID,
+    "product_name" VARCHAR(500),
+    "quantity" INTEGER NOT NULL DEFAULT 1,
+    "unit_price" DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    "total_price" DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    "notes" TEXT,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_order_items_order" ON "{{SCHEMA_NAME}}"."order_items" ("order_id");
 
 -- ---- Tool Configs ----
 CREATE TABLE "{{SCHEMA_NAME}}"."tool_configs" (

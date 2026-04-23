@@ -116,35 +116,109 @@ export class MercadoPagoAdapter implements IPaymentProvider {
     }
 
     // -------------------------------------------------------------------------
-    // Subscription lifecycle (Sprint 2.4)
+    // Subscription lifecycle
     // -------------------------------------------------------------------------
 
-    async createSubscription(_input: CreateSubscriptionInput): Promise<ProviderSubscription> {
-        throw new NotImplementedException('MercadoPagoAdapter.createSubscription — Sprint 2.4');
+    async createSubscription(input: CreateSubscriptionInput): Promise<ProviderSubscription> {
+        // MP needs a card_token_id to create an `authorized` subscription that
+        // auto-charges. Callers (BillingService) enforce this via the plan's
+        // requiresCardForTrial flag. Starter trials without a card are handled
+        // upstream by NOT calling createSubscription until the user adds a
+        // card (Sprint 3 flow).
+        if (!input.cardTokenId) {
+            throw new BadRequestException({
+                error: 'mp_card_token_required',
+                message: 'MercadoPago requires a card_token_id to create an authorised subscription. Collect the token via the frontend SDK before calling createSubscription.',
+            });
+        }
+
+        // payer_email is required by MP. Fall back to the tenant's billing
+        // email stored against the synthetic customer (metadata passed by
+        // BillingService); if nothing is available, MP will reject the call
+        // with a 400.
+        const payerEmail = (input.metadata?.email as string) || input.metadata?.billingEmail;
+        if (!payerEmail) {
+            throw new BadRequestException({
+                error: 'mp_payer_email_required',
+                message: 'MercadoPago requires payer_email. Pass it via CreateSubscriptionInput.metadata.email.',
+            });
+        }
+
+        const body = {
+            preapproval_plan_id: input.providerPlanId,
+            card_token_id: input.cardTokenId,
+            payer_email: payerEmail,
+            external_reference: input.externalReference ?? input.tenantId,
+            status: 'authorized',
+        };
+
+        const res = await this.mpConfig.preApproval.create({ body });
+        if (!res.id) {
+            throw new BadRequestException({ error: 'mp_subscription_create_failed', response: res });
+        }
+
+        this.logger.log(`Created MP subscription ${res.id} for tenant=${input.tenantId} (plan=${input.providerPlanId})`);
+        return this.toProviderSubscription(res, input.providerCustomerId, input.providerPlanId);
     }
 
-    async cancelSubscription(_providerSubscriptionId: string, _opts?: CancelSubscriptionOptions): Promise<void> {
-        throw new NotImplementedException('MercadoPagoAdapter.cancelSubscription — Sprint 2.4');
+    async cancelSubscription(providerSubscriptionId: string, _opts?: CancelSubscriptionOptions): Promise<void> {
+        // MP only has a hard cancel — there is no cancel_at_period_end flag.
+        // BillingService still honours the soft-cancel intent by setting its
+        // own cancelAtPeriodEnd=true and delaying the provider call until the
+        // period ends (implemented in Sprint 3). If we're called here we send
+        // the hard cancel regardless of opts.
+        await this.mpConfig.preApproval.update({
+            id: providerSubscriptionId,
+            body: { status: 'cancelled' },
+        });
+        this.logger.log(`Cancelled MP subscription ${providerSubscriptionId}`);
     }
 
-    async pauseSubscription(_providerSubscriptionId: string): Promise<void> {
-        throw new NotImplementedException('MercadoPagoAdapter.pauseSubscription — Sprint 2.4');
+    async pauseSubscription(providerSubscriptionId: string): Promise<void> {
+        await this.mpConfig.preApproval.update({
+            id: providerSubscriptionId,
+            body: { status: 'paused' },
+        });
     }
 
-    async resumeSubscription(_providerSubscriptionId: string): Promise<void> {
-        throw new NotImplementedException('MercadoPagoAdapter.resumeSubscription — Sprint 2.4');
+    async resumeSubscription(providerSubscriptionId: string): Promise<void> {
+        await this.mpConfig.preApproval.update({
+            id: providerSubscriptionId,
+            body: { status: 'authorized' },
+        });
     }
 
-    async changeSubscriptionPlan(_providerSubscriptionId: string, _newProviderPlanId: string): Promise<ProviderSubscription> {
-        throw new NotImplementedException('MercadoPagoAdapter.changeSubscriptionPlan — Sprint 2.4');
+    async changeSubscriptionPlan(providerSubscriptionId: string, newProviderPlanId: string): Promise<ProviderSubscription> {
+        // MP has no native plan change with proration. Try the simple PUT
+        // updating `preapproval_plan_id` — works on some accounts. If MP
+        // rejects it, the caller (BillingService) falls back to cancel+recreate.
+        const res = await this.mpConfig.preApproval.update({
+            id: providerSubscriptionId,
+            body: { preapproval_plan_id: newProviderPlanId } as any,
+        });
+        if (!res.id) {
+            throw new BadRequestException({ error: 'mp_plan_change_failed', response: res });
+        }
+        return this.toProviderSubscription(res, undefined, newProviderPlanId);
     }
 
-    async getSubscription(_providerSubscriptionId: string): Promise<ProviderSubscription> {
-        throw new NotImplementedException('MercadoPagoAdapter.getSubscription — Sprint 2.4');
+    async getSubscription(providerSubscriptionId: string): Promise<ProviderSubscription> {
+        const res = await this.mpConfig.preApproval.get({ id: providerSubscriptionId });
+        return this.toProviderSubscription(res);
     }
 
-    async listCustomerSubscriptions(_providerCustomerId: string): Promise<ProviderSubscription[]> {
-        throw new NotImplementedException('MercadoPagoAdapter.listCustomerSubscriptions — Sprint 2.4');
+    async listCustomerSubscriptions(providerCustomerId: string): Promise<ProviderSubscription[]> {
+        // Our synthetic id is `mp_<tenantId>` — strip the prefix to get the
+        // tenant UUID we stored as external_reference on each preapproval.
+        const externalReference = providerCustomerId.startsWith('mp_')
+            ? providerCustomerId.slice(3)
+            : providerCustomerId;
+
+        const res = await this.mpConfig.preApproval.search({
+            options: { external_reference: externalReference },
+        });
+        const items = (res as any)?.results ?? [];
+        return items.map((r: any) => this.toProviderSubscription(r));
     }
 
     // -------------------------------------------------------------------------
@@ -173,7 +247,6 @@ export class MercadoPagoAdapter implements IPaymentProvider {
      *  - `cancelled` → terminal. Maps to CANCELLED.
      *  - `finished` → the repetitions count was reached. Maps to EXPIRED.
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     protected translateStatus(mpStatus: string | undefined, hasActiveTrial: boolean = false): SubscriptionStatus {
         switch (mpStatus) {
             case 'pending':
@@ -190,5 +263,27 @@ export class MercadoPagoAdapter implements IPaymentProvider {
                 this.logger.warn(`Unknown MP status "${mpStatus}" — defaulting to PENDING_AUTH`);
                 return SubscriptionStatus.PENDING_AUTH;
         }
+    }
+
+    /**
+     * Translate an MP PreApprovalResponse to our normalized ProviderSubscription.
+     * MP's free_trial on the response is a string ("started" / "finished") — we
+     * derive trialEndsAt from date_created + the free_trial config on the plan
+     * when a richer timeline is needed; for now we parse next_payment_date.
+     */
+    protected toProviderSubscription(res: any, providerCustomerId?: string, providerPlanId?: string): ProviderSubscription {
+        const hasActiveTrial = res.auto_recurring?.free_trial === 'started' || res.auto_recurring?.free_trial?.frequency > 0;
+        const nextPayment = res.next_payment_date ? new Date(res.next_payment_date) : undefined;
+        return {
+            providerSubscriptionId: res.id,
+            providerCustomerId: providerCustomerId ?? `mp_${res.external_reference ?? res.payer_id ?? 'unknown'}`,
+            providerPlanId: providerPlanId ?? res.preapproval_plan_id ?? '',
+            status: this.translateStatus(res.status, hasActiveTrial),
+            trialEndsAt: hasActiveTrial ? nextPayment : undefined,
+            currentPeriodStart: res.date_created ? new Date(res.date_created) : undefined,
+            currentPeriodEnd: nextPayment,
+            cancelAtPeriodEnd: false, // MP has no such concept; BillingService owns this flag
+            rawStatus: res.status,
+        };
     }
 }

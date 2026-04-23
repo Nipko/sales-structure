@@ -499,7 +499,7 @@ export class AIToolExecutorService {
         // Check Google/Microsoft Calendar busy times
         let googleBusy: { start: string; end: string }[] = [];
         try {
-            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, staffId);
+            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, { staffId });
             if (googleBusy.length > 0) {
                 this.logger.log(`[Tool] Calendar busy times for ${date}: ${JSON.stringify(googleBusy)}`);
             } else {

@@ -1183,7 +1183,17 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_integrations" (
     "connected_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "ci_user_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
+-- Multi-calendar: drop old unique constraint (allow multiple calendars per user+provider)
+DROP INDEX IF EXISTS "{{SCHEMA_NAME}}"."ci_user_idx";
+
+-- Multi-calendar: assignment model
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "label" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "assignment_type" VARCHAR(20) DEFAULT 'general';
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "assignment_id" UUID;
+
+-- Non-unique index for lookups
+CREATE INDEX IF NOT EXISTS "ci_user_provider_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
+CREATE INDEX IF NOT EXISTS "ci_assignment_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("assignment_type", "assignment_id") WHERE "is_active" = true;
 
 -- ---- Appointments ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (

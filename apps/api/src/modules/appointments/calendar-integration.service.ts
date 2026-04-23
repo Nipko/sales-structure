@@ -9,6 +9,7 @@ import { Client as GraphClient } from '@microsoft/microsoft-graph-client';
 import * as crypto from 'crypto';
 
 type CalendarProvider = 'google' | 'microsoft';
+type AssignmentType = 'staff' | 'service' | 'general';
 
 const DEFAULT_TIMEZONE = 'America/Bogota';
 
@@ -23,6 +24,9 @@ export interface CalendarIntegration {
     provider: CalendarProvider;
     calendarId: string;
     accountEmail: string | null;
+    label: string | null;
+    assignmentType: AssignmentType;
+    assignmentId: string | null;
     isActive: boolean;
     connectedAt: string;
 }
@@ -74,19 +78,20 @@ export class CalendarIntegrationService {
 
     // ── OAuth2 URL generation ────────────────────────────────────
 
-    getGoogleAuthUrl(tenantId: string, userId: string): string {
+    getGoogleAuthUrl(tenantId: string, userId: string, assignmentType?: AssignmentType, assignmentId?: string): string {
         const oauth2 = new google.auth.OAuth2(this.googleClientId, this.googleClientSecret, this.googleRedirectUri);
+        const state = `${tenantId}:${userId}:${assignmentType || 'general'}:${assignmentId || ''}`;
         return oauth2.generateAuthUrl({
             access_type: 'offline',
             prompt: 'consent',
             scope: ['https://www.googleapis.com/auth/calendar'],
-            state: `${tenantId}:${userId}`,
+            state,
         });
     }
 
-    getMicrosoftAuthUrl(tenantId: string, userId: string): string {
+    getMicrosoftAuthUrl(tenantId: string, userId: string, assignmentType?: AssignmentType, assignmentId?: string): string {
         if (!this.msalClient) throw new BadRequestException('Microsoft Calendar not configured');
-        const state = `${tenantId}:${userId}`;
+        const state = `${tenantId}:${userId}:${assignmentType || 'general'}:${assignmentId || ''}`;
         return `https://login.microsoftonline.com/${this.msTenantId}/oauth2/v2.0/authorize?` +
             `client_id=${this.msClientId}&response_type=code&redirect_uri=${encodeURIComponent(this.msRedirectUri)}` +
             `&scope=${encodeURIComponent('Calendars.ReadWrite offline_access')}&state=${state}&prompt=consent`;
@@ -95,7 +100,11 @@ export class CalendarIntegrationService {
     // ── OAuth2 Callbacks ─────────────────────────────────────────
 
     async handleGoogleCallback(code: string, state: string): Promise<CalendarIntegration> {
-        const [tenantId, userId] = state.split(':');
+        const parts = state.split(':');
+        const tenantId = parts[0];
+        const userId = parts[1];
+        const assignmentType: AssignmentType = (parts[2] as AssignmentType) || 'general';
+        const assignmentId = parts[3] || null;
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         const oauth2 = new google.auth.OAuth2(this.googleClientId, this.googleClientSecret, this.googleRedirectUri);
@@ -114,20 +123,23 @@ export class CalendarIntegrationService {
         const encrypted = this.encrypt(tokens.refresh_token);
         const id = crypto.randomUUID();
 
-        // Upsert: one integration per user+provider
+        // Insert new integration (multi-calendar: no upsert)
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, connected_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, 'google', $3, 'primary', $4, NOW(), NOW())
-             ON CONFLICT (user_id, provider) DO UPDATE SET encrypted_refresh_token = $3, account_email = $4, is_active = true, updated_at = NOW()`,
-            [id, userId, encrypted, accountEmail],
+            `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, label, assignment_type, assignment_id, connected_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'google', $3, 'primary', $4, $5, $6, $7, NOW(), NOW())`,
+            [id, userId, encrypted, accountEmail, accountEmail, assignmentType, assignmentId],
         );
 
-        this.logger.log(`Google Calendar connected for user ${userId} (${accountEmail})`);
-        return this.getIntegration(schemaName, userId, 'google');
+        this.logger.log(`Google Calendar connected for user ${userId} (${accountEmail}) [${assignmentType}:${assignmentId || 'none'}]`);
+        return this.getIntegrationById(schemaName, id);
     }
 
     async handleMicrosoftCallback(code: string, state: string): Promise<CalendarIntegration> {
-        const [tenantId, userId] = state.split(':');
+        const parts = state.split(':');
+        const tenantId = parts[0];
+        const userId = parts[1];
+        const assignmentType: AssignmentType = (parts[2] as AssignmentType) || 'general';
+        const assignmentId = parts[3] || null;
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         if (!this.msalClient) throw new BadRequestException('Microsoft not configured');
@@ -148,37 +160,104 @@ export class CalendarIntegrationService {
         const encrypted = this.encrypt(cacheContent);
         const id = crypto.randomUUID();
 
+        // Insert new integration (multi-calendar: no upsert)
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, connected_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, 'microsoft', $3, 'primary', $4, NOW(), NOW())
-             ON CONFLICT (user_id, provider) DO UPDATE SET encrypted_refresh_token = $3, account_email = $4, is_active = true, updated_at = NOW()`,
-            [id, userId, encrypted, accountEmail],
+            `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, label, assignment_type, assignment_id, connected_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'microsoft', $3, 'primary', $4, $5, $6, $7, NOW(), NOW())`,
+            [id, userId, encrypted, accountEmail, accountEmail, assignmentType, assignmentId],
         );
 
-        this.logger.log(`Microsoft Calendar connected for user ${userId} (${accountEmail})`);
-        return this.getIntegration(schemaName, userId, 'microsoft');
+        this.logger.log(`Microsoft Calendar connected for user ${userId} (${accountEmail}) [${assignmentType}:${assignmentId || 'none'}]`);
+        return this.getIntegrationById(schemaName, id);
+    }
+
+    // ── Multi-calendar resolution ────────────────────────────────
+
+    /**
+     * Resolve the best calendar integration(s) for a given context.
+     * Priority: service-assigned → staff-assigned → general fallback.
+     */
+    async resolveCalendarsForContext(
+        schemaName: string,
+        opts: { serviceId?: string; staffId?: string },
+    ): Promise<CalendarIntegration[]> {
+        // 1. Try service-specific calendars
+        if (opts.serviceId) {
+            const serviceCalendars = await this.queryIntegrations(schemaName,
+                `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+                 FROM calendar_integrations
+                 WHERE is_active = true AND assignment_type = 'service' AND assignment_id = $1::uuid
+                 ORDER BY connected_at ASC`,
+                [opts.serviceId],
+            );
+            if (serviceCalendars.length > 0) return serviceCalendars;
+        }
+
+        // 2. Try staff-specific calendars
+        if (opts.staffId) {
+            const staffCalendars = await this.queryIntegrations(schemaName,
+                `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+                 FROM calendar_integrations
+                 WHERE is_active = true AND assignment_type = 'staff' AND assignment_id = $1::uuid
+                 ORDER BY connected_at ASC`,
+                [opts.staffId],
+            );
+            if (staffCalendars.length > 0) return staffCalendars;
+        }
+
+        // 3. Fallback to general calendars
+        const generalCalendars = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+             FROM calendar_integrations
+             WHERE is_active = true AND assignment_type = 'general'
+             ORDER BY connected_at ASC`,
+            [],
+        );
+        return generalCalendars;
+    }
+
+    /**
+     * Create a calendar event on the best-matching calendar for the context.
+     * Uses resolveCalendarsForContext to pick the first available integration.
+     */
+    async createEventOnBestCalendar(
+        schemaName: string,
+        opts: { serviceId?: string; staffId?: string },
+        eventData: { summary: string; startAt: string; endAt: string; attendeeEmail?: string; description?: string },
+    ): Promise<string | null> {
+        const calendars = await this.resolveCalendarsForContext(schemaName, opts);
+        if (calendars.length === 0) return null;
+
+        const integration = calendars[0];
+        return this.createEventForIntegration(schemaName, integration.id, {
+            summary: eventData.summary,
+            startAt: eventData.startAt,
+            endAt: eventData.endAt,
+            attendeeEmail: eventData.attendeeEmail,
+            description: eventData.description,
+        });
     }
 
     // ── FreeBusy queries ─────────────────────────────────────────
 
-    async getFreeBusy(schemaName: string, userId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
-        const integration = await this.getIntegrationOrNull(schemaName, userId);
+    async getFreeBusy(schemaName: string, integrationId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
+        const integration = await this.getIntegrationByIdOrNull(schemaName, integrationId);
         if (!integration || !integration.isActive) return [];
 
         try {
             if (integration.provider === 'google') {
-                return this.googleFreeBusy(schemaName, userId, timeMin, timeMax);
+                return this.googleFreeBusy(schemaName, integrationId, timeMin, timeMax);
             } else if (integration.provider === 'microsoft') {
-                return this.microsoftFreeBusy(schemaName, userId, timeMin, timeMax);
+                return this.microsoftFreeBusy(schemaName, integrationId, timeMin, timeMax);
             }
         } catch (error: any) {
-            this.logger.warn(`FreeBusy failed for ${userId} (${integration.provider}): ${error.message}`);
+            this.logger.warn(`FreeBusy failed for integration ${integrationId} (${integration.provider}): ${error.message}`);
         }
         return [];
     }
 
-    private async googleFreeBusy(schemaName: string, userId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
-        const client = await this.getGoogleClient(schemaName, userId);
+    private async googleFreeBusy(schemaName: string, integrationId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
+        const client = await this.getGoogleClient(schemaName, integrationId);
         const cal = google.calendar({ version: 'v3', auth: client });
 
         const res = await cal.freebusy.query({
@@ -192,8 +271,8 @@ export class CalendarIntegrationService {
         return busy.map(b => ({ start: b.start || '', end: b.end || '' }));
     }
 
-    private async microsoftFreeBusy(schemaName: string, userId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
-        const client = await this.getMicrosoftClient(schemaName, userId);
+    private async microsoftFreeBusy(schemaName: string, integrationId: string, timeMin: string, timeMax: string): Promise<FreeBusySlot[]> {
+        const client = await this.getMicrosoftClient(schemaName, integrationId);
         const tz = await this.getTimezoneFromSchema(schemaName);
 
         const res = await client.api('/me/calendar/getSchedule').post({
@@ -209,31 +288,38 @@ export class CalendarIntegrationService {
     }
 
     /**
-     * Get all busy slots for a given date across all active calendar integrations.
-     * Optionally filter by staffId (user_id). Used by AIToolExecutorService
-     * to exclude Google/Microsoft calendar conflicts from availability.
+     * Get all busy slots for a given date across matching calendar integrations.
+     * Uses resolveCalendarsForContext for context-aware resolution.
+     * Falls back to all active integrations if no context provided.
      */
-    async getFreeBusyForDate(schemaName: string, date: string, staffId?: string): Promise<FreeBusySlot[]> {
-        let sql = `SELECT user_id FROM calendar_integrations WHERE is_active = true`;
-        const params: any[] = [];
-        if (staffId) {
-            sql += ` AND user_id = $1::uuid`;
-            params.push(staffId);
-        }
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
-        if (!rows?.length) return [];
-
+    async getFreeBusyForDate(
+        schemaName: string,
+        date: string,
+        opts?: { serviceId?: string; staffId?: string },
+    ): Promise<FreeBusySlot[]> {
         const timeMin = `${date}T00:00:00Z`;
         const timeMax = `${date}T23:59:59Z`;
         const allBusy: FreeBusySlot[] = [];
 
-        for (const row of rows) {
+        let integrations: CalendarIntegration[];
+
+        if (opts?.serviceId || opts?.staffId) {
+            integrations = await this.resolveCalendarsForContext(schemaName, opts);
+        } else {
+            // No context: query all active integrations
+            integrations = await this.queryIntegrations(schemaName,
+                `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+                 FROM calendar_integrations WHERE is_active = true`,
+                [],
+            );
+        }
+
+        for (const integration of integrations) {
             try {
-                const busy = await this.getFreeBusy(schemaName, row.user_id, timeMin, timeMax);
+                const busy = await this.getFreeBusy(schemaName, integration.id, timeMin, timeMax);
                 allBusy.push(...busy);
             } catch (e: any) {
-                this.logger.warn(`FreeBusy check failed for user ${row.user_id}: ${e.message}`);
+                this.logger.warn(`FreeBusy check failed for integration ${integration.id}: ${e.message}`);
             }
         }
 
@@ -243,23 +329,32 @@ export class CalendarIntegrationService {
     // ── List external calendar events ──────────────────────────────
 
     async listExternalEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
-        const integration = await this.getIntegrationOrNull(schemaName, userId);
-        if (!integration || !integration.isActive) return [];
+        // List events from all active integrations for this user
+        const integrations = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+             FROM calendar_integrations WHERE user_id = $1::uuid AND is_active = true`,
+            [userId],
+        );
 
-        try {
-            if (integration.provider === 'google') {
-                return this.googleListEvents(schemaName, userId, startDate, endDate);
-            } else if (integration.provider === 'microsoft') {
-                return this.microsoftListEvents(schemaName, userId, startDate, endDate);
+        const allEvents: any[] = [];
+        for (const integration of integrations) {
+            try {
+                if (integration.provider === 'google') {
+                    const events = await this.googleListEvents(schemaName, integration.id, startDate, endDate);
+                    allEvents.push(...events);
+                } else if (integration.provider === 'microsoft') {
+                    const events = await this.microsoftListEvents(schemaName, integration.id, startDate, endDate);
+                    allEvents.push(...events);
+                }
+            } catch (error: any) {
+                this.logger.warn(`ListEvents failed for integration ${integration.id} (${integration.provider}): ${error.message}`);
             }
-        } catch (error: any) {
-            this.logger.warn(`ListEvents failed for ${userId} (${integration.provider}): ${error.message}`);
         }
-        return [];
+        return allEvents;
     }
 
-    private async googleListEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
-        const client = await this.getGoogleClient(schemaName, userId);
+    private async googleListEvents(schemaName: string, integrationId: string, startDate: string, endDate: string): Promise<any[]> {
+        const client = await this.getGoogleClient(schemaName, integrationId);
         const cal = google.calendar({ version: 'v3', auth: client });
 
         const res = await cal.events.list({
@@ -284,8 +379,8 @@ export class CalendarIntegrationService {
         }));
     }
 
-    private async microsoftListEvents(schemaName: string, userId: string, startDate: string, endDate: string): Promise<any[]> {
-        const client = await this.getMicrosoftClient(schemaName, userId);
+    private async microsoftListEvents(schemaName: string, integrationId: string, startDate: string, endDate: string): Promise<any[]> {
+        const client = await this.getMicrosoftClient(schemaName, integrationId);
 
         // Use Prefer header to get times in tenant's timezone (not UTC)
         const tz = await this.getTimezoneFromSchema(schemaName);
@@ -317,16 +412,19 @@ export class CalendarIntegrationService {
 
     // ── Create calendar event ────────────────────────────────────
 
-    async createEvent(schemaName: string, userId: string, data: {
+    /**
+     * Create event on a specific integration by ID.
+     */
+    async createEventForIntegration(schemaName: string, integrationId: string, data: {
         summary: string; startAt: string; endAt: string;
         location?: string; description?: string; attendeeEmail?: string;
     }): Promise<string | null> {
-        const integration = await this.getIntegrationOrNull(schemaName, userId);
+        const integration = await this.getIntegrationByIdOrNull(schemaName, integrationId);
         if (!integration || !integration.isActive) return null;
 
         try {
             if (integration.provider === 'google') {
-                const client = await this.getGoogleClient(schemaName, userId);
+                const client = await this.getGoogleClient(schemaName, integrationId);
                 const cal = google.calendar({ version: 'v3', auth: client });
 
                 const event: calendar_v3.Schema$Event = {
@@ -341,11 +439,11 @@ export class CalendarIntegrationService {
                 }
 
                 const res = await cal.events.insert({ calendarId: 'primary', requestBody: event });
-                this.logger.log(`Google event created: ${res.data.id}`);
+                this.logger.log(`Google event created: ${res.data.id} (integration ${integrationId})`);
                 return res.data.id || null;
 
             } else if (integration.provider === 'microsoft') {
-                const client = await this.getMicrosoftClient(schemaName, userId);
+                const client = await this.getMicrosoftClient(schemaName, integrationId);
 
                 const event: any = {
                     subject: data.summary,
@@ -359,35 +457,49 @@ export class CalendarIntegrationService {
                 }
 
                 const res = await client.api('/me/events').post(event);
-                this.logger.log(`Microsoft event created: ${res.id}`);
+                this.logger.log(`Microsoft event created: ${res.id} (integration ${integrationId})`);
                 return res.id || null;
             }
         } catch (error: any) {
-            this.logger.error(`Create event failed for ${userId}: ${error.message}`);
+            this.logger.error(`Create event failed for integration ${integrationId}: ${error.message}`);
         }
         return null;
+    }
+
+    /**
+     * Legacy wrapper: create event by userId. Finds the first active integration for that user.
+     * Kept for backward compatibility with ai-tool-executor and other callers.
+     */
+    async createEvent(schemaName: string, userId: string, data: {
+        summary: string; startAt: string; endAt: string;
+        location?: string; description?: string; attendeeEmail?: string;
+    }): Promise<string | null> {
+        const integrations = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+             FROM calendar_integrations WHERE user_id = $1::uuid AND is_active = true ORDER BY connected_at ASC LIMIT 1`,
+            [userId],
+        );
+        if (integrations.length === 0) return null;
+        return this.createEventForIntegration(schemaName, integrations[0].id, data);
     }
 
     // ── List integrations ────────────────────────────────────────
 
     async listIntegrations(schemaName: string, userId?: string): Promise<CalendarIntegration[]> {
-        let sql = `SELECT id, user_id, provider, calendar_id, account_email, is_active, connected_at FROM calendar_integrations`;
+        let sql = `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at FROM calendar_integrations`;
         const params: any[] = [];
         if (userId) { sql += ` WHERE user_id = $1::uuid`; params.push(userId); }
         sql += ` ORDER BY connected_at DESC`;
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
-        return (rows || []).map(r => ({
-            id: r.id, userId: r.user_id, provider: r.provider,
-            calendarId: r.calendar_id, accountEmail: r.account_email,
-            isActive: r.is_active, connectedAt: r.connected_at,
-        }));
+        return this.queryIntegrations(schemaName, sql, params);
     }
 
+    // ── Disconnect ──────────────────────────────────────────────
+
     async disconnect(schemaName: string, integrationId: string): Promise<void> {
-        // Get the integration's user_id
+        // Get the integration details
         const integrationRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT user_id FROM calendar_integrations WHERE id = $1::uuid`,
+            `SELECT user_id, assignment_type, assignment_id FROM calendar_integrations WHERE id = $1::uuid`,
             [integrationId],
         );
 
@@ -395,22 +507,46 @@ export class CalendarIntegrationService {
             throw new BadRequestException('Calendar integration not found');
         }
 
-        const userId = integrationRows[0].user_id;
+        const { user_id: userId, assignment_type: assignmentType, assignment_id: assignmentId } = integrationRows[0];
 
-        // Check for future appointments assigned to this user
-        const countRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT COUNT(*) AS count FROM appointments
-             WHERE assigned_to = $1::uuid
-               AND start_at > NOW()
-               AND status NOT IN ('cancelled', 'completed', 'no_show')`,
-            [userId],
-        );
+        // Check for future appointments based on assignment type
+        let futureCount = 0;
 
-        const futureCount = Number(countRows?.[0]?.count ?? 0);
+        if (assignmentType === 'staff' && assignmentId) {
+            // Staff-assigned: check appointments assigned to that staff member
+            const countRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT COUNT(*) AS count FROM appointments
+                 WHERE assigned_to = $1::uuid
+                   AND start_at > NOW()
+                   AND status NOT IN ('cancelled', 'completed', 'no_show')`,
+                [assignmentId],
+            );
+            futureCount = Number(countRows?.[0]?.count ?? 0);
+        } else if (assignmentType === 'service' && assignmentId) {
+            // Service-assigned: check appointments for that service
+            const countRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT COUNT(*) AS count FROM appointments
+                 WHERE service_id = $1::uuid
+                   AND start_at > NOW()
+                   AND status NOT IN ('cancelled', 'completed', 'no_show')`,
+                [assignmentId],
+            );
+            futureCount = Number(countRows?.[0]?.count ?? 0);
+        } else {
+            // General: check appointments assigned to the integration owner
+            const countRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT COUNT(*) AS count FROM appointments
+                 WHERE assigned_to = $1::uuid
+                   AND start_at > NOW()
+                   AND status NOT IN ('cancelled', 'completed', 'no_show')`,
+                [userId],
+            );
+            futureCount = Number(countRows?.[0]?.count ?? 0);
+        }
 
         if (futureCount > 0) {
             throw new BadRequestException(
-                `Cannot disconnect: ${futureCount} future appointment${futureCount > 1 ? 's' : ''} assigned to this user must be reassigned or cancelled first`,
+                `Cannot disconnect: ${futureCount} future appointment${futureCount > 1 ? 's' : ''} must be reassigned or cancelled first`,
             );
         }
 
@@ -420,17 +556,91 @@ export class CalendarIntegrationService {
         );
     }
 
+    // ── Update assignment ───────────────────────────────────────
+
+    async updateAssignment(
+        schemaName: string,
+        integrationId: string,
+        data: { label?: string; assignmentType?: string; assignmentId?: string },
+    ): Promise<void> {
+        const sets: string[] = [];
+        const params: any[] = [integrationId];
+        let idx = 2;
+
+        if (data.label !== undefined) {
+            sets.push(`label = $${idx}`);
+            params.push(data.label);
+            idx++;
+        }
+        if (data.assignmentType !== undefined) {
+            sets.push(`assignment_type = $${idx}`);
+            params.push(data.assignmentType);
+            idx++;
+        }
+        if (data.assignmentId !== undefined) {
+            sets.push(`assignment_id = $${idx}::uuid`);
+            params.push(data.assignmentId || null);
+            idx++;
+        }
+
+        if (sets.length === 0) return;
+
+        sets.push('updated_at = NOW()');
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE calendar_integrations SET ${sets.join(', ')} WHERE id = $1::uuid`,
+            params,
+        );
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
+    /**
+     * Query integrations and map rows to CalendarIntegration objects.
+     */
+    private async queryIntegrations(schemaName: string, sql: string, params: any[]): Promise<CalendarIntegration[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
+        return (rows || []).map(r => ({
+            id: r.id,
+            userId: r.user_id,
+            provider: r.provider,
+            calendarId: r.calendar_id,
+            accountEmail: r.account_email,
+            label: r.label || null,
+            assignmentType: r.assignment_type || 'general',
+            assignmentId: r.assignment_id || null,
+            isActive: r.is_active,
+            connectedAt: r.connected_at,
+        }));
+    }
+
+    private async getIntegrationById(schemaName: string, integrationId: string): Promise<CalendarIntegration> {
+        const rows = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+             FROM calendar_integrations WHERE id = $1::uuid LIMIT 1`,
+            [integrationId],
+        );
+        if (!rows.length) throw new BadRequestException('Calendar integration not found');
+        return rows[0];
+    }
+
+    private async getIntegrationByIdOrNull(schemaName: string, integrationId: string): Promise<CalendarIntegration | null> {
+        const rows = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+             FROM calendar_integrations WHERE id = $1::uuid LIMIT 1`,
+            [integrationId],
+        );
+        return rows[0] || null;
+    }
+
     private async getIntegration(schemaName: string, userId: string, provider: CalendarProvider): Promise<CalendarIntegration> {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, user_id, provider, calendar_id, account_email, is_active, connected_at
+        const rows = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
              FROM calendar_integrations WHERE user_id = $1::uuid AND provider = $2 LIMIT 1`,
             [userId, provider],
         );
-        const r = rows?.[0];
-        if (!r) throw new BadRequestException('Calendar integration not found');
-        return { id: r.id, userId: r.user_id, provider: r.provider, calendarId: r.calendar_id, accountEmail: r.account_email, isActive: r.is_active, connectedAt: r.connected_at };
+        if (!rows.length) throw new BadRequestException('Calendar integration not found');
+        return rows[0];
     }
 
     /**
@@ -466,21 +676,19 @@ export class CalendarIntegrationService {
         }
     }
 
-    private async getIntegrationOrNull(schemaName: string, userId: string): Promise<(CalendarIntegration & { provider: CalendarProvider }) | null> {
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, user_id, provider, calendar_id, account_email, is_active, connected_at
+    private async getIntegrationOrNull(schemaName: string, userId: string): Promise<CalendarIntegration | null> {
+        const rows = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
              FROM calendar_integrations WHERE user_id = $1::uuid AND is_active = true LIMIT 1`,
             [userId],
         );
-        const r = rows?.[0];
-        if (!r) return null;
-        return { id: r.id, userId: r.user_id, provider: r.provider, calendarId: r.calendar_id, accountEmail: r.account_email, isActive: r.is_active, connectedAt: r.connected_at };
+        return rows[0] || null;
     }
 
-    private async getGoogleClient(schemaName: string, userId: string) {
+    private async getGoogleClient(schemaName: string, integrationId: string) {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT encrypted_refresh_token FROM calendar_integrations WHERE user_id = $1::uuid AND provider = 'google' AND is_active = true LIMIT 1`,
-            [userId],
+            `SELECT encrypted_refresh_token FROM calendar_integrations WHERE id = $1::uuid AND provider = 'google' AND is_active = true LIMIT 1`,
+            [integrationId],
         );
         if (!rows?.[0]) throw new BadRequestException('Google Calendar not connected');
 
@@ -490,12 +698,12 @@ export class CalendarIntegrationService {
         return oauth2;
     }
 
-    private async getMicrosoftClient(schemaName: string, userId: string) {
+    private async getMicrosoftClient(schemaName: string, integrationId: string) {
         if (!this.msalClient) throw new BadRequestException('Microsoft not configured');
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT encrypted_refresh_token FROM calendar_integrations WHERE user_id = $1::uuid AND provider = 'microsoft' AND is_active = true LIMIT 1`,
-            [userId],
+            `SELECT encrypted_refresh_token FROM calendar_integrations WHERE id = $1::uuid AND provider = 'microsoft' AND is_active = true LIMIT 1`,
+            [integrationId],
         );
         if (!rows?.[0]) throw new BadRequestException('Microsoft Calendar not connected');
 

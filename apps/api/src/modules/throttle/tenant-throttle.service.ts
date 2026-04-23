@@ -30,11 +30,11 @@ const PLAN_LIMITS: Record<string, PlanLimits> = {
     enterprise: { automation: 5000, outbound: 20000, broadcast: 50000,  priority: 1, maxPendingJobs: 1000 },
 };
 
-const PLAN_FEATURES: Record<string, { maxAgents: number; templates: boolean; customPrompt: boolean }> = {
-    starter:    { maxAgents: 1,  templates: false, customPrompt: false },
-    pro:        { maxAgents: 3,  templates: true,  customPrompt: true },
-    enterprise: { maxAgents: 10, templates: true,  customPrompt: true },
-    custom:     { maxAgents: 999, templates: true, customPrompt: true },
+const PLAN_FEATURES: Record<string, { maxAgents: number; maxCalendars: number; templates: boolean; customPrompt: boolean }> = {
+    starter:    { maxAgents: 1,  maxCalendars: 1,   templates: false, customPrompt: false },
+    pro:        { maxAgents: 3,  maxCalendars: 3,   templates: true,  customPrompt: true },
+    enterprise: { maxAgents: 10, maxCalendars: 10,  templates: true,  customPrompt: true },
+    custom:     { maxAgents: 999, maxCalendars: 999, templates: true, customPrompt: true },
 };
 
 const DEFAULT_PLAN = 'starter';

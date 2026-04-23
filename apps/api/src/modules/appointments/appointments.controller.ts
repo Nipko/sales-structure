@@ -90,9 +90,25 @@ export class AppointmentsController {
     // ── Calendar Integrations ────────────────────────────────────
 
     @Get(':tenantId/calendar/integrations')
-    async listCalendarIntegrations(@Param('tenantId') tenantId: string, @CurrentUser() user: any) {
-        const data = await this.calendarService.listIntegrations(user.schemaName, user.id);
+    async listCalendarIntegrations(
+        @Param('tenantId') tenantId: string,
+        @CurrentUser() user: any,
+        @Query('all') all?: string,
+    ) {
+        const userId = all === 'true' ? undefined : user.id;
+        const data = await this.calendarService.listIntegrations(user.schemaName, userId);
         return { success: true, data };
+    }
+
+    @Put(':tenantId/calendar/:integrationId/assignment')
+    async updateCalendarAssignment(
+        @Param('tenantId') tenantId: string,
+        @Param('integrationId') integrationId: string,
+        @Body() body: { label?: string; assignmentType?: string; assignmentId?: string },
+        @CurrentUser() user: any,
+    ) {
+        await this.calendarService.updateAssignment(user.schemaName, integrationId, body);
+        return { success: true };
     }
 
     @Get(':tenantId/calendar/events')
@@ -108,15 +124,35 @@ export class AppointmentsController {
     }
 
     @Get(':tenantId/calendar/google/connect')
-    async connectGoogle(@Param('tenantId') tenantId: string, @CurrentUser() user: any, @Res() res: Response) {
-        const url = this.calendarService.getGoogleAuthUrl(tenantId, user.id);
-        return res.json({ success: true, data: { url } });
+    async connectGoogle(
+        @Param('tenantId') tenantId: string,
+        @CurrentUser() user: any,
+        @Query('assignmentType') assignmentType?: string,
+        @Query('assignmentId') assignmentId?: string,
+        @Res() res?: Response,
+    ) {
+        const url = this.calendarService.getGoogleAuthUrl(
+            tenantId, user.id,
+            (assignmentType as any) || undefined,
+            assignmentId || undefined,
+        );
+        return res!.json({ success: true, data: { url } });
     }
 
     @Get(':tenantId/calendar/microsoft/connect')
-    async connectMicrosoft(@Param('tenantId') tenantId: string, @CurrentUser() user: any, @Res() res: Response) {
-        const url = this.calendarService.getMicrosoftAuthUrl(tenantId, user.id);
-        return res.json({ success: true, data: { url } });
+    async connectMicrosoft(
+        @Param('tenantId') tenantId: string,
+        @CurrentUser() user: any,
+        @Query('assignmentType') assignmentType?: string,
+        @Query('assignmentId') assignmentId?: string,
+        @Res() res?: Response,
+    ) {
+        const url = this.calendarService.getMicrosoftAuthUrl(
+            tenantId, user.id,
+            (assignmentType as any) || undefined,
+            assignmentId || undefined,
+        );
+        return res!.json({ success: true, data: { url } });
     }
 
     @Delete(':tenantId/calendar/:integrationId')

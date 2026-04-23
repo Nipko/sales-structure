@@ -621,7 +621,7 @@ export class ConversationsService {
                 // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
                 const engineResult = await this.bookingEngine.process(
                     schemaName, tenantId, conversation.contact_id || '',
-                    intent, userText, bookingState, customerProfile, todayISO,
+                    intent, userText, bookingState, customerProfile, todayISO, userLanguage,
                 );
 
                 bookingState = engineResult.state;

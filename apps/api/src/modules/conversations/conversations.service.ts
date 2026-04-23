@@ -810,7 +810,7 @@ export class ConversationsService {
                             : tc.function.arguments;
 
                         const result = await this.toolExecutor.execute(
-                            schemaName, tenantId, contactId, tc.function.name, args,
+                            schemaName, tenantId, contactId, tc.function.name, args, conversation.id,
                         );
 
                         // Log tool result

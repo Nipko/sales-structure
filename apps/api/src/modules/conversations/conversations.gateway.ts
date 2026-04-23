@@ -70,4 +70,12 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     emitConversationUpdated(tenantId: string, conversation: any) {
         this.server.to(tenantId).emit('conversationUpdated', conversation);
     }
+
+    emitAppointmentCreated(tenantId: string, appointment: any) {
+        this.server.to(tenantId).emit('appointmentCreated', appointment);
+    }
+
+    emitAppointmentUpdated(tenantId: string, appointment: any) {
+        this.server.to(tenantId).emit('appointmentUpdated', appointment);
+    }
 }

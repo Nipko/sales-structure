@@ -285,6 +285,31 @@ export default function AppointmentsPage() {
     loadExternalEvents();
   }, [loadExternalEvents]);
 
+  // Live calendar updates via WebSocket
+  useEffect(() => {
+    if (!activeTenantId) return;
+    const accessToken = localStorage.getItem("accessToken");
+    if (!accessToken) return;
+    let socket: any;
+    try {
+      const { io } = require("socket.io-client");
+      const socketUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace("/api/v1", "");
+      socket = io(`${socketUrl}/inbox`, {
+        auth: { token: accessToken },
+        transports: ["websocket", "polling"],
+      });
+      socket.on("appointmentCreated", () => {
+        loadAppointments();
+        loadExternalEvents();
+      });
+      socket.on("appointmentUpdated", () => {
+        loadAppointments();
+        loadExternalEvents();
+      });
+    } catch { /* socket.io not available */ }
+    return () => { socket?.disconnect(); };
+  }, [activeTenantId, loadAppointments, loadExternalEvents]);
+
   // Tab-dependent loads
   useEffect(() => {
     if (activeTab === "config") {

@@ -3,11 +3,12 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { ConversationsGateway } from '../conversations/conversations.gateway';
 import type { OutboundMessage } from '@parallext/shared';
 
 /**
  * Listens for appointment events and sends WhatsApp/channel notifications.
- * Sends confirmation on creation and cancellation notice on cancel.
+ * Also emits WebSocket events for live dashboard calendar updates.
  */
 @Injectable()
 export class AppointmentNotificationsService {
@@ -17,6 +18,7 @@ export class AppointmentNotificationsService {
         private prisma: PrismaService,
         private outboundQueue: OutboundQueueService,
         private channelToken: ChannelTokenService,
+        private gateway: ConversationsGateway,
     ) {}
 
     @OnEvent('appointment.created')
@@ -47,6 +49,7 @@ export class AppointmentNotificationsService {
                 `🗓️ ${dateStr}`,
                 `⏰ ${timeStr}`,
                 appointment.location ? `📍 ${appointment.location}` : null,
+                appointment.meetingUrl ? `💻 Enlace de reunión: ${appointment.meetingUrl}` : null,
                 ``,
                 `Si necesitas cancelar o reprogramar, escríbenos con anticipación.`,
             ].filter(Boolean).join('\n');
@@ -56,8 +59,11 @@ export class AppointmentNotificationsService {
                 appointmentId: appointment.id,
             });
 
+            // Emit WebSocket event for live calendar update in dashboard
+            this.gateway.emitAppointmentCreated(tenantId, appointment);
+
             this.logger.log(`Sent confirmation for appointment ${appointment.id}`);
-        } catch (err) {
+        } catch (err: any) {
             this.logger.error(`Failed to send appointment confirmation: ${err.message}`);
         }
     }

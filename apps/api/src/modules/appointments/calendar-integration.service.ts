@@ -223,10 +223,10 @@ export class CalendarIntegrationService {
     async createEventOnBestCalendar(
         schemaName: string,
         opts: { serviceId?: string; staffId?: string },
-        eventData: { summary: string; startAt: string; endAt: string; attendeeEmail?: string; description?: string },
-    ): Promise<string | null> {
+        eventData: { summary: string; startAt: string; endAt: string; attendeeEmail?: string; description?: string; isOnline?: boolean },
+    ): Promise<{ eventId: string | null; meetingUrl?: string }> {
         const calendars = await this.resolveCalendarsForContext(schemaName, opts);
-        if (calendars.length === 0) return null;
+        if (calendars.length === 0) return { eventId: null };
 
         const integration = calendars[0];
         return this.createEventForIntegration(schemaName, integration.id, {
@@ -235,6 +235,7 @@ export class CalendarIntegrationService {
             endAt: eventData.endAt,
             attendeeEmail: eventData.attendeeEmail,
             description: eventData.description,
+            isOnline: eventData.isOnline,
         });
     }
 
@@ -418,9 +419,10 @@ export class CalendarIntegrationService {
     async createEventForIntegration(schemaName: string, integrationId: string, data: {
         summary: string; startAt: string; endAt: string;
         location?: string; description?: string; attendeeEmail?: string;
-    }): Promise<string | null> {
+        isOnline?: boolean;
+    }): Promise<{ eventId: string | null; meetingUrl?: string }> {
         const integration = await this.getIntegrationByIdOrNull(schemaName, integrationId);
-        if (!integration || !integration.isActive) return null;
+        if (!integration || !integration.isActive) return { eventId: null };
 
         try {
             if (integration.provider === 'google') {
@@ -437,33 +439,55 @@ export class CalendarIntegrationService {
                 if (data.attendeeEmail) {
                     event.attendees = [{ email: data.attendeeEmail }];
                 }
+                if (data.isOnline) {
+                    event.conferenceData = {
+                        createRequest: {
+                            requestId: crypto.randomUUID(),
+                            conferenceSolutionKey: { type: 'hangoutsMeet' },
+                        },
+                    };
+                }
 
-                const res = await cal.events.insert({ calendarId: 'primary', requestBody: event });
-                this.logger.log(`Google event created: ${res.data.id} (integration ${integrationId})`);
-                return res.data.id || null;
+                const res = await cal.events.insert({
+                    calendarId: 'primary',
+                    requestBody: event,
+                    sendUpdates: 'all',
+                    conferenceDataVersion: data.isOnline ? 1 : undefined,
+                });
+                const meetingUrl = res.data.conferenceData?.entryPoints?.find(
+                    (ep) => ep.entryPointType === 'video',
+                )?.uri || undefined;
+                this.logger.log(`Google event created: ${res.data.id} (integration ${integrationId})${meetingUrl ? ` meetingUrl=${meetingUrl}` : ''}`);
+                return { eventId: res.data.id || null, meetingUrl };
 
             } else if (integration.provider === 'microsoft') {
                 const client = await this.getMicrosoftClient(schemaName, integrationId);
+                const tz = await this.getTimezoneFromSchema(schemaName);
 
                 const event: any = {
                     subject: data.summary,
-                    start: { dateTime: data.startAt, timeZone: await this.getTimezoneFromSchema(schemaName) },
-                    end: { dateTime: data.endAt, timeZone: await this.getTimezoneFromSchema(schemaName) },
+                    start: { dateTime: data.startAt, timeZone: tz },
+                    end: { dateTime: data.endAt, timeZone: tz },
                     location: data.location ? { displayName: data.location } : undefined,
                     body: data.description ? { content: data.description, contentType: 'text' } : undefined,
                 };
                 if (data.attendeeEmail) {
                     event.attendees = [{ emailAddress: { address: data.attendeeEmail }, type: 'required' }];
                 }
+                if (data.isOnline) {
+                    event.isOnlineMeeting = true;
+                    event.onlineMeetingProvider = 'teamsForBusiness';
+                }
 
                 const res = await client.api('/me/events').post(event);
-                this.logger.log(`Microsoft event created: ${res.id} (integration ${integrationId})`);
-                return res.id || null;
+                const meetingUrl = res.onlineMeeting?.joinUrl || undefined;
+                this.logger.log(`Microsoft event created: ${res.id} (integration ${integrationId})${meetingUrl ? ` meetingUrl=${meetingUrl}` : ''}`);
+                return { eventId: res.id || null, meetingUrl };
             }
         } catch (error: any) {
             this.logger.error(`Create event failed for integration ${integrationId}: ${error.message}`);
         }
-        return null;
+        return { eventId: null };
     }
 
     /**
@@ -473,13 +497,14 @@ export class CalendarIntegrationService {
     async createEvent(schemaName: string, userId: string, data: {
         summary: string; startAt: string; endAt: string;
         location?: string; description?: string; attendeeEmail?: string;
-    }): Promise<string | null> {
+        isOnline?: boolean;
+    }): Promise<{ eventId: string | null; meetingUrl?: string }> {
         const integrations = await this.queryIntegrations(schemaName,
             `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
              FROM calendar_integrations WHERE user_id = $1::uuid AND is_active = true ORDER BY connected_at ASC LIMIT 1`,
             [userId],
         );
-        if (integrations.length === 0) return null;
+        if (integrations.length === 0) return { eventId: null };
         return this.createEventForIntegration(schemaName, integrations[0].id, data);
     }
 

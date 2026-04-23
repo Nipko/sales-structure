@@ -159,7 +159,7 @@ export class PromptAssemblerService {
         // The LLM decides HOW to say it naturally based on persona + tone
         if (turn.directive) {
             lines.push('  <directive>');
-            lines.push(`    Express ONLY the following information naturally in your own words. Do NOT add extra questions, do NOT ask for email or any other data unless the text below explicitly asks for it. One message, one purpose — say what is here and stop.`);
+            lines.push(`    Say EXACTLY this information in a natural way. Do not apologize, do not add context the customer didn't ask for, do not reference previous messages. Just communicate this one thing:`);
             lines.push(`    ${turn.directive}`);
             lines.push('  </directive>');
         }

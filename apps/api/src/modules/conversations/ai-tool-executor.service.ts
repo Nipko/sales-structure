@@ -33,6 +33,7 @@ export class AIToolExecutorService {
         contactId: string,
         toolName: string,
         args: Record<string, any>,
+        conversationId?: string,
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
 
@@ -45,7 +46,7 @@ export class AIToolExecutorService {
                     return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId);
 
                 case 'cancel_appointment':
                     return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason);
@@ -597,6 +598,7 @@ export class AIToolExecutorService {
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
+        conversationId?: string,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -609,9 +611,9 @@ export class AIToolExecutorService {
             args.serviceId = nameMatch[0].id;
         }
 
-        // Get service
+        // Get service (including modality columns)
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT id, name, duration_minutes, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid`,
             args.serviceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -635,30 +637,96 @@ export class AIToolExecutorService {
         const apt = rows[0];
         this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
 
+        // Build rich description for calendar event
+        const descriptionParts: string[] = [];
+        descriptionParts.push(`Customer: ${args.customerName}`);
+        if (args.customerEmail) descriptionParts.push(`Email: ${args.customerEmail}`);
+        if (args.customerPhone) descriptionParts.push(`Phone: ${args.customerPhone}`);
+        descriptionParts.push('');
+        const priceStr = svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A';
+        descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
+        descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
+
+        // Add conversation context if available
+        if (conversationId) {
+            try {
+                const msgs: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT direction, content_text FROM "${schema}".messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 5`,
+                    conversationId,
+                );
+                if (msgs.length > 0) {
+                    descriptionParts.push('');
+                    descriptionParts.push('Conversation context:');
+                    // Reverse to show oldest first
+                    for (const m of msgs.reverse()) {
+                        const role = m.direction === 'inbound' ? 'Customer' : 'Agent';
+                        const text = (m.content_text || '').slice(0, 200);
+                        if (text) descriptionParts.push(`- ${role}: "${text}"`);
+                    }
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Tool] Failed to fetch conversation context: ${e.message}`);
+            }
+        }
+
+        if (args.notes) {
+            descriptionParts.push('');
+            descriptionParts.push(`Notes: ${args.notes}`);
+        }
+
+        const description = descriptionParts.join('\n');
+
+        // Determine modality for calendar event
+        const isOnline = svc.location_type === 'online';
+        const location = (svc.location_type === 'in_person' && svc.location_address) ? svc.location_address : undefined;
+
         // Sync to Google/Microsoft Calendar if any active integration exists
+        let meetingUrl: string | undefined;
         try {
             const calUsers: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT user_id FROM "${schema}".calendar_integrations WHERE is_active = true LIMIT 1`,
             );
             if (calUsers.length > 0) {
                 const calUserId = calUsers[0].user_id;
-                const eventId = await this.calendarIntegration.createEvent(schema, calUserId, {
+                const calResult = await this.calendarIntegration.createEvent(schema, calUserId, {
                     summary: svc.name,
                     startAt,
                     endAt,
                     attendeeEmail: args.customerEmail || undefined,
-                    description: args.notes ? `Customer: ${args.customerName}\n${args.notes}` : `Customer: ${args.customerName}`,
+                    description,
+                    location,
+                    isOnline,
                 });
-                if (eventId) {
+                if (calResult.eventId) {
                     await this.prisma.$queryRawUnsafe(
                         `UPDATE "${schema}".appointments SET google_event_id = $2 WHERE id = $1::uuid`,
-                        apt.id, eventId,
+                        apt.id, calResult.eventId,
                     );
-                    this.logger.log(`[Tool] Calendar event created: ${eventId} for appointment ${apt.id}`);
+                    this.logger.log(`[Tool] Calendar event created: ${calResult.eventId} for appointment ${apt.id}`);
+                }
+                if (calResult.meetingUrl) {
+                    meetingUrl = calResult.meetingUrl;
+                    // Store meeting URL on appointment metadata
+                    await this.prisma.$queryRawUnsafe(
+                        `UPDATE "${schema}".appointments SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                        apt.id, JSON.stringify({ meetingUrl }),
+                    );
+                    this.logger.log(`[Tool] Meeting URL stored for appointment ${apt.id}: ${meetingUrl}`);
                 }
             }
         } catch (calErr: any) {
             this.logger.warn(`[Tool] Calendar sync failed for appointment ${apt.id}: ${calErr.message}`);
+        }
+
+        // If service has a pre-configured meeting link and no auto-generated one, use it
+        if (!meetingUrl && svc.meeting_link) {
+            meetingUrl = svc.meeting_link;
+            try {
+                await this.prisma.$queryRawUnsafe(
+                    `UPDATE "${schema}".appointments SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                    apt.id, JSON.stringify({ meetingUrl }),
+                );
+            } catch {}
         }
 
         // Emit event so notifications (WhatsApp confirmation, email, calendar) are triggered
@@ -674,6 +742,7 @@ export class AIToolExecutorService {
                 customerName: args.customerName,
                 customerEmail: args.customerEmail,
                 customerPhone: args.customerPhone,
+                meetingUrl,
             },
         });
 
@@ -686,6 +755,7 @@ export class AIToolExecutorService {
                 time: args.time,
                 status: 'confirmed',
                 customerName: args.customerName,
+                meetingUrl,
             },
         };
     }

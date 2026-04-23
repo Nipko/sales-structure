@@ -1155,6 +1155,8 @@ ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "location_type
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "max_concurrent" INTEGER DEFAULT 1;
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "required_fields" JSONB DEFAULT '["name","phone"]';
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT true;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "meeting_link" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT;
 
 -- ---- Service Staff Assignment (many-to-many) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_staff" (

@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { IPaymentProvider } from './payment-provider.interface';
 import { MercadoPagoConfigService } from './mercadopago-config.service';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
+import { BillingEventType } from '../types/billing-event.enum';
 import {
     CancelSubscriptionOptions,
     CreateCustomerInput,
@@ -11,6 +12,7 @@ import {
     NormalizedBillingEvent,
     PaymentProviderName,
     ProviderCustomer,
+    ProviderPayment,
     ProviderPlan,
     ProviderSubscription,
 } from '../types/provider-types';
@@ -298,8 +300,145 @@ export class MercadoPagoAdapter implements IPaymentProvider {
         }
     }
 
-    parseWebhookEvent(_rawBody: string, _headers: Record<string, string>): NormalizedBillingEvent {
-        throw new NotImplementedException('MercadoPagoAdapter.parseWebhookEvent — Sprint 2.6');
+    /**
+     * Turn a MercadoPago webhook shim into a NormalizedBillingEvent.
+     *
+     * MP sends a minimal payload: { type, action, data: { id }, id, date_created }.
+     * For anything beyond identifiers we fetch the current resource state from
+     * the MP API. That is why this method is async.
+     *
+     * Topic mapping:
+     *  - type=payment → GET /v1/payments/{data.id} → look at payment.status to
+     *    decide PAYMENT_SUCCEEDED (approved) vs PAYMENT_FAILED (rejected/cancelled)
+     *  - type=subscription_preapproval → GET /preapproval/{data.id} → translate
+     *    preapproval.status into SUBSCRIPTION_* events
+     *  - type=subscription_authorized_payment → a specific recurring charge
+     *    succeeded; we treat it as PAYMENT_SUCCEEDED with subscription linkage
+     *  - type=subscription_preapproval_plan → plan catalog changed on MP side;
+     *    interesting for audit only; we drop it with a log warning
+     */
+    async parseWebhookEvent(rawBody: string, _headers: Record<string, string>): Promise<NormalizedBillingEvent> {
+        const notification = JSON.parse(rawBody);
+        const topic = notification.type ?? notification.topic;
+        const resourceId: string | undefined = notification?.data?.id ?? notification?.resource?.id ?? notification?.id;
+        const providerEventId: string = String(notification.id ?? `${topic}_${resourceId}_${notification.date_created ?? Date.now()}`);
+        const occurredAt = notification.date_created ? new Date(notification.date_created) : new Date();
+
+        // Base event — every specific handler augments it
+        const base: NormalizedBillingEvent = {
+            type: BillingEventType.SUBSCRIPTION_CREATED, // overwritten below
+            provider: 'mercadopago',
+            providerEventId,
+            occurredAt,
+            rawPayload: notification,
+        };
+
+        if (!resourceId) {
+            this.logger.warn(`MP webhook has no resource id (topic=${topic}) — dropping`);
+            // Synthesise an event that BillingService will treat as no-op (unknown type)
+            return { ...base, type: BillingEventType.SUBSCRIPTION_CREATED, rawPayload: { ...notification, _reason: 'missing_resource_id' } };
+        }
+
+        switch (topic) {
+            case 'payment':
+            case 'payment.created':
+            case 'payment.updated':
+                return this.parsePaymentWebhook(base, resourceId);
+
+            case 'subscription_preapproval':
+                return this.parsePreapprovalWebhook(base, resourceId);
+
+            case 'subscription_authorized_payment':
+                return this.parseAuthorizedPaymentWebhook(base, resourceId);
+
+            case 'subscription_preapproval_plan':
+                this.logger.log(`MP webhook subscription_preapproval_plan (plan=${resourceId}) — informational, no action`);
+                return { ...base, type: BillingEventType.SUBSCRIPTION_PLAN_CHANGED, rawPayload: { ...notification, _reason: 'plan_informational' } };
+
+            default:
+                this.logger.warn(`MP webhook unknown topic "${topic}" — returning as raw audit event`);
+                return { ...base, type: BillingEventType.SUBSCRIPTION_CREATED, rawPayload: { ...notification, _reason: 'unknown_topic' } };
+        }
+    }
+
+    private async parsePaymentWebhook(base: NormalizedBillingEvent, paymentId: string): Promise<NormalizedBillingEvent> {
+        const payment = await this.mpConfig.payment.get({ id: paymentId });
+        const amountCents = Math.round((payment.transaction_amount ?? 0) * 100);
+        const currency = payment.currency_id ?? 'USD';
+        const succeeded = payment.status === 'approved';
+        const refunded = payment.status === 'refunded';
+        const failed = !succeeded && !refunded; // rejected | cancelled | in_process → failed for our purposes
+
+        const normalizedPayment: ProviderPayment = {
+            providerPaymentId: String(payment.id),
+            amountCents,
+            currency,
+            status: succeeded ? 'succeeded' : refunded ? 'refunded' : 'failed',
+            paidAt: payment.date_approved ? new Date(payment.date_approved) : undefined,
+            failureReason: failed ? (payment.status_detail ?? payment.status) : undefined,
+            rawStatus: payment.status,
+        };
+
+        return {
+            ...base,
+            type: refunded
+                ? BillingEventType.PAYMENT_REFUNDED
+                : succeeded
+                    ? BillingEventType.PAYMENT_SUCCEEDED
+                    : BillingEventType.PAYMENT_FAILED,
+            providerPaymentId: String(payment.id),
+            // MP includes preapproval id on recurring charges via metadata or external_reference
+            providerSubscriptionId: (payment as any).preapproval_id ?? (payment.external_reference ? String(payment.external_reference) : undefined),
+            payment: normalizedPayment,
+            rawPayload: { ...(base.rawPayload as any), _fetched_payment: payment },
+        };
+    }
+
+    private async parsePreapprovalWebhook(base: NormalizedBillingEvent, preapprovalId: string): Promise<NormalizedBillingEvent> {
+        const sub = await this.mpConfig.preApproval.get({ id: preapprovalId });
+        const providerSub = this.toProviderSubscription(sub);
+        // Decide event type from the fetched status
+        let type: BillingEventType;
+        switch (sub.status) {
+            case 'cancelled':
+                type = BillingEventType.SUBSCRIPTION_CANCELLED;
+                break;
+            case 'paused':
+                type = BillingEventType.SUBSCRIPTION_PAST_DUE;
+                break;
+            case 'finished':
+                type = BillingEventType.SUBSCRIPTION_EXPIRED;
+                break;
+            case 'authorized':
+                type = BillingEventType.SUBSCRIPTION_ACTIVATED;
+                break;
+            case 'pending':
+            default:
+                type = BillingEventType.SUBSCRIPTION_CREATED;
+        }
+
+        return {
+            ...base,
+            type,
+            providerSubscriptionId: preapprovalId,
+            tenantId: sub.external_reference ?? undefined,
+            subscription: providerSub,
+            rawPayload: { ...(base.rawPayload as any), _fetched_preapproval: sub },
+        };
+    }
+
+    private async parseAuthorizedPaymentWebhook(base: NormalizedBillingEvent, authorizedPaymentId: string): Promise<NormalizedBillingEvent> {
+        // This topic fires for each successful recurring charge and maps to
+        // PAYMENT_SUCCEEDED with subscription context. We fetch the underlying
+        // payment for the amount + paid_at.
+        try {
+            const payment = await this.mpConfig.payment.get({ id: authorizedPaymentId });
+            return this.parsePaymentWebhook(base, String(payment.id));
+        } catch {
+            // Fallback — some MP accounts deliver this topic with a different
+            // id format that is not a standard payment id. Treat as audit-only.
+            return { ...base, type: BillingEventType.PAYMENT_SUCCEEDED, providerPaymentId: authorizedPaymentId };
+        }
     }
 
     // -------------------------------------------------------------------------

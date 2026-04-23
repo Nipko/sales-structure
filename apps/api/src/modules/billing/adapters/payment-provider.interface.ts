@@ -108,11 +108,16 @@ export interface IPaymentProvider {
      * Parse a provider webhook into a NormalizedBillingEvent. Only call after
      * verifyWebhookSignature returned true.
      *
+     * Async because providers like MercadoPago send a notification shim (just
+     * the resource type + id) instead of the full state. The adapter is
+     * responsible for fetching the current resource from the provider API
+     * before returning the normalized event.
+     *
      * Implementations must:
      *  - extract providerEventId from the webhook (for idempotency)
      *  - extract tenantId from external_reference / metadata
      *  - map the provider's status strings to our SubscriptionStatus enum
-     *  - store the raw payload on NormalizedBillingEvent.rawPayload
+     *  - store the raw payload (plus any fetched resource state) on NormalizedBillingEvent.rawPayload
      */
-    parseWebhookEvent(rawBody: string, headers: Record<string, string>): NormalizedBillingEvent;
+    parseWebhookEvent(rawBody: string, headers: Record<string, string>): Promise<NormalizedBillingEvent>;
 }

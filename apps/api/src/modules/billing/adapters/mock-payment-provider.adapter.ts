@@ -160,7 +160,7 @@ export class MockPaymentProvider implements IPaymentProvider {
         return true; // Always trust — safe only in tests.
     }
 
-    parseWebhookEvent(rawBody: string, _headers: Record<string, string>): NormalizedBillingEvent {
+    async parseWebhookEvent(rawBody: string, _headers: Record<string, string>): Promise<NormalizedBillingEvent> {
         // Mock webhook bodies are JSON with the NormalizedBillingEvent shape
         // already, plus providerEventId. Tests typically call
         // simulateWebhookEvent() instead, which bypasses parsing.

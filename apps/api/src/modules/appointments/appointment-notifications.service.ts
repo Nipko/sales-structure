@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
-import { ConversationsGateway } from '../conversations/conversations.gateway';
 import type { OutboundMessage } from '@parallext/shared';
 
 /**
  * Listens for appointment events and sends WhatsApp/channel notifications.
- * Also emits WebSocket events for live dashboard calendar updates.
+ * Emits 'appointment.ws' event for WebSocket relay to dashboard.
  */
 @Injectable()
 export class AppointmentNotificationsService {
@@ -16,9 +16,9 @@ export class AppointmentNotificationsService {
 
     constructor(
         private prisma: PrismaService,
+        private eventEmitter: EventEmitter2,
         private outboundQueue: OutboundQueueService,
         private channelToken: ChannelTokenService,
-        private gateway: ConversationsGateway,
     ) {}
 
     @OnEvent('appointment.created')
@@ -59,8 +59,8 @@ export class AppointmentNotificationsService {
                 appointmentId: appointment.id,
             });
 
-            // Emit WebSocket event for live calendar update in dashboard
-            this.gateway.emitAppointmentCreated(tenantId, appointment);
+            // Emit event for WebSocket relay to dashboard (handled by ConversationsGateway)
+            this.eventEmitter.emit('appointment.ws', { tenantId, type: 'created', appointment });
 
             this.logger.log(`Sent confirmation for appointment ${appointment.id}`);
         } catch (err: any) {

@@ -8,16 +8,10 @@ import { CalendarIntegrationService } from './calendar-integration.service';
 import { AppointmentRemindersService } from './appointment-reminders.service';
 import { AppointmentNotificationsService } from './appointment-notifications.service';
 import { ChannelsModule } from '../channels/channels.module';
-import { ConversationsModule } from '../conversations/conversations.module';
 
 @Module({
     imports: [
         forwardRef(() => ChannelsModule),
-        // AppointmentNotificationsService depends on ConversationsGateway
-        // (the /inbox WebSocket) to push real-time appointment cards into open
-        // conversations. forwardRef because ConversationsModule also reaches
-        // back into appointments for the AI tool executor.
-        forwardRef(() => ConversationsModule),
     ],
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [

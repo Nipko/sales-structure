@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
@@ -77,5 +78,15 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
 
     emitAppointmentUpdated(tenantId: string, appointment: any) {
         this.server.to(tenantId).emit('appointmentUpdated', appointment);
+    }
+
+    /** Relay appointment WebSocket events from EventEmitter (avoids circular DI) */
+    @OnEvent('appointment.ws')
+    onAppointmentWs(payload: { tenantId: string; type: string; appointment: any }) {
+        if (payload.type === 'created') {
+            this.emitAppointmentCreated(payload.tenantId, payload.appointment);
+        } else if (payload.type === 'updated') {
+            this.emitAppointmentUpdated(payload.tenantId, payload.appointment);
+        }
     }
 }

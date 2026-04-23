@@ -29,11 +29,26 @@ model Tenant {
   isActive    Boolean  @default(true) @map("is_active")
   plan        String   @default("starter")
   settings    Json     @default("{}")
+
+  // Billing — denormalized hot-path fields. Source of truth for full
+  // subscription state is the BillingSubscription row linked via the
+  // one-to-one relation below. These columns exist so the rate limiter and
+  // middleware can decide access without joining billing_subscriptions per
+  // request. Kept in sync by BillingService on every state transition.
+  billingEmail              String?   @map("billing_email")
+  billingCountry            String?   @map("billing_country")
+  subscriptionStatus        String?   @map("subscription_status")       // pending_auth|trialing|active|past_due|cancelled|expired
+  trialEndsAt               DateTime? @map("trial_ends_at")
+  currentPeriodEnd          DateTime? @map("current_period_end")
+  paymentProvider           String?   @map("payment_provider")           // mercadopago|stripe|mock
+  paymentProviderCustomerId String?   @map("payment_provider_customer_id")
+
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   users             User[]
   channelAccounts   ChannelAccount[]
+  subscription      BillingSubscription?
 
   @@map("tenants")
   @@schema("public")
@@ -168,6 +183,128 @@ model WhatsappCredential {
 
   @@index([tenantId, credentialType])
   @@map("whatsapp_credentials")
+  @@schema("public")
+}
+
+// ============================================
+// BILLING — Global tables (cross-tenant)
+// ============================================
+
+// ---- Billing Plans ----
+// Catalog of subscription tiers. Prices stored in USD cents (source of truth);
+// per-country local currency equivalents live in priceLocalOverrides JSONB:
+//   { "AR": { "currency": "ARS", "amountCents": 4890000 }, "MX": { ... } }
+// Provider-specific plan IDs (MercadoPago preapproval_plan_id, Stripe price_id)
+// are populated after creating the plan on each provider.
+model BillingPlan {
+  id                    String   @id @default(uuid())
+  slug                  String   @unique                                  // starter | pro | enterprise | custom
+  name                  String
+  priceUsdCents         Int      @map("price_usd_cents")
+  trialDays             Int      @default(0) @map("trial_days")
+  requiresCardForTrial  Boolean  @default(false) @map("requires_card_for_trial")
+  maxAgents             Int      @map("max_agents")
+  maxAiMessages         Int      @map("max_ai_messages")
+  features              Json     @default("{}")
+  mpPlanId              String?  @map("mp_plan_id")
+  stripePlanId          String?  @map("stripe_plan_id")
+  priceLocalOverrides   Json     @default("{}") @map("price_local_overrides")
+  isActive              Boolean  @default(true) @map("is_active")
+  sortOrder             Int      @default(0) @map("sort_order")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  subscriptions         BillingSubscription[]
+
+  @@map("billing_plans")
+  @@schema("public")
+}
+
+// ---- Billing Subscriptions ----
+// One active subscription per tenant (tenantId @unique). Status is our
+// normalized SubscriptionStatus enum; each provider adapter translates its
+// own vocabulary on read. Lifecycle transitions are orchestrated by
+// BillingService — do not mutate status directly.
+model BillingSubscription {
+  id                        String   @id @default(uuid())
+  tenantId                  String   @unique @map("tenant_id")
+  planId                    String   @map("plan_id")
+  status                    String                                     // pending_auth|trialing|active|past_due|cancelled|expired
+  provider                  String                                     // mercadopago|stripe|mock
+  providerSubscriptionId    String?  @unique @map("provider_subscription_id")
+  providerCustomerId        String?  @map("provider_customer_id")
+  trialStartedAt            DateTime? @map("trial_started_at")
+  trialEndsAt               DateTime? @map("trial_ends_at")
+  currentPeriodStart        DateTime? @map("current_period_start")
+  currentPeriodEnd          DateTime? @map("current_period_end")
+  cancelAtPeriodEnd         Boolean  @default(false) @map("cancel_at_period_end")
+  cancelledAt               DateTime? @map("cancelled_at")
+  cancellationReason        String?  @map("cancellation_reason")
+  metadata                  Json     @default("{}")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  tenant                    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan                      BillingPlan  @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments                  BillingPayment[]
+  events                    BillingEvent[]
+
+  @@index([status])
+  @@index([trialEndsAt])
+  @@index([currentPeriodEnd])
+  @@map("billing_subscriptions")
+  @@schema("public")
+}
+
+// ---- Billing Events ----
+// Append-only log of every normalized billing event BillingService processes.
+// Doubles as the idempotency store: (provider, providerEventId) must be unique
+// so a webhook redelivery is skipped on the second processing attempt.
+model BillingEvent {
+  id                    String   @id @default(uuid())
+  tenantId              String?  @map("tenant_id")
+  subscriptionId        String?  @map("subscription_id")
+  provider              String
+  providerEventId       String   @map("provider_event_id")
+  eventType             String   @map("event_type")                    // BillingEventType enum as string
+  payload               Json                                           // raw provider payload for audit
+  processedAt           DateTime @default(now()) @map("processed_at")
+
+  subscription          BillingSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([tenantId, processedAt])
+  @@index([eventType])
+  @@map("billing_events")
+  @@schema("public")
+}
+
+// ---- Billing Payments ----
+// Individual charge history for invoices, dashboard, and fiscal integration.
+// amountCents is in the currency stored in `currency` (USD or local).
+// invoicePdfUrl and invoiceNumber are populated by the fiscal integration
+// (Facturapi / Alegra / Quaderno) in Phase 4 — nullable until then.
+model BillingPayment {
+  id                        String   @id @default(uuid())
+  subscriptionId            String   @map("subscription_id")
+  tenantId                  String   @map("tenant_id")
+  amountCents               Int      @map("amount_cents")
+  currency                  String                                     // USD | ARS | MXN | COP | CLP | PEN | UYU | BRL
+  status                    String                                     // succeeded | failed | refunded | pending
+  provider                  String
+  providerPaymentId         String?  @unique @map("provider_payment_id")
+  paidAt                    DateTime? @map("paid_at")
+  failureReason             String?  @map("failure_reason")
+  invoiceNumber             String?  @map("invoice_number")
+  invoicePdfUrl             String?  @map("invoice_pdf_url")
+  metadata                  Json     @default("{}")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  subscription              BillingSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@map("billing_payments")
   @@schema("public")
 }
 

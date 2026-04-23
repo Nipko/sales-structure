@@ -1,5 +1,6 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { Injectable, Logger, NotImplementedException } from '@nestjs/common';
 import { IPaymentProvider } from './payment-provider.interface';
+import { MercadoPagoConfigService } from './mercadopago-config.service';
 import {
     CancelSubscriptionOptions,
     CreateCustomerInput,
@@ -36,6 +37,9 @@ import {
 @Injectable()
 export class MercadoPagoAdapter implements IPaymentProvider {
     readonly name: PaymentProviderName = 'mercadopago';
+    private readonly logger = new Logger(MercadoPagoAdapter.name);
+
+    constructor(private readonly mpConfig: MercadoPagoConfigService) {}
 
     async createCustomer(_input: CreateCustomerInput): Promise<ProviderCustomer> {
         throw new NotImplementedException('MercadoPagoAdapter.createCustomer — Sprint 2');

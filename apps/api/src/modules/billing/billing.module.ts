@@ -6,6 +6,7 @@ import { BillingController } from './billing.controller';
 import { BillingWebhookController } from './webhook.controller';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
+import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 
@@ -27,6 +28,7 @@ import { BillingReconciliationProcessor } from './processors/reconciliation.proc
         PaymentProviderFactory,
         MockPaymentProvider,
         MercadoPagoAdapter,
+        MercadoPagoConfigService,
         BillingReconciliationProcessor,
     ],
     exports: [BillingService],

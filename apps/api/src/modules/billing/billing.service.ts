@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
@@ -124,7 +125,7 @@ export class BillingService {
         const trialEndsAt = providerSub.trialEndsAt
             ?? (plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86_400_000) : undefined);
 
-        const subscription = await this.prisma.$transaction(async (tx) => {
+        const subscription = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const created = await tx.billingSubscription.create({
                 data: {
                     tenantId: tenant.id,
@@ -280,7 +281,7 @@ export class BillingService {
             ? await this.prisma.billingSubscription.findUnique({ where: { providerSubscriptionId: event.providerSubscriptionId } })
             : null;
 
-        await this.prisma.$transaction(async (tx) => {
+        await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.billingEvent.create({
                 data: {
                     tenantId: sub?.tenantId ?? event.tenantId ?? null,

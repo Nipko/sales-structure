@@ -78,7 +78,7 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
                 period === p
                   ? "bg-white dark:bg-neutral-900 text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground bg-transparent")}>
-              {p === "7d" ? "7 days" : p === "30d" ? "30 days" : "90 days"}
+              {t(`period.${p}`)}
             </button>
           ))}
         </div>
@@ -191,9 +191,9 @@ export default function AnalyticsTab({ activeTenantId }: AnalyticsTabProps) {
             <div className="space-y-2">
               {bySource.map((src: any) => {
                 const sourceLabels: Record<string, string> = {
-                  manual: "Dashboard",
-                  ai_agent: "AI Agent",
-                  public_booking: "Public Booking",
+                  manual: t("source.manual"),
+                  ai_agent: t("source.aiAgent"),
+                  public_booking: t("source.publicBooking"),
                 };
                 const sourceColors: Record<string, string> = {
                   manual: "#6c5ce7",

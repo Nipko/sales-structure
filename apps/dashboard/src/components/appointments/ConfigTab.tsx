@@ -295,9 +295,9 @@ export default function ConfigTab({
                 <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
                     <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
                     <div className="flex-1">
-                        <p className="text-sm font-semibold text-red-700 dark:text-red-300">Horarios no guardados</p>
+                        <p className="text-sm font-semibold text-red-700 dark:text-red-300">{t("availabilityWarningTitle")}</p>
                         <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                            Availability schedule not yet saved. These are default suggestions, not in the database. If your AI agent has the appointment tool enabled, it will respond with no availability until you save.
+                            {t("availabilityWarningDesc")}
                         </p>
                     </div>
                 </div>

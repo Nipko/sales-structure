@@ -841,6 +841,18 @@
     "peakHours": "Heures de pointe",
     "byService": "Par service",
     "bySource": "Par source",
+    "period": {
+      "7d": "7 jours",
+      "30d": "30 jours",
+      "90d": "90 jours"
+    },
+    "source": {
+      "manual": "Tableau de bord",
+      "aiAgent": "Agent IA",
+      "publicBooking": "Réservation publique"
+    },
+    "availabilityWarningTitle": "Horaires non enregistrés",
+    "availabilityWarningDesc": "Les horaires de disponibilité ne sont pas encore enregistrés. Ce sont des suggestions par défaut, pas dans la base de données. Si votre agent IA a l'outil de rendez-vous activé, il répondra sans disponibilité jusqu'à ce que vous enregistriez.",
     "category": "Categorie",
     "categoryPlaceholder": "Ex: Consultation",
     "maxConcurrent": "Max simultanes",

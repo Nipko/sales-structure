@@ -121,7 +121,7 @@ export class BookingEngineService {
             const svc = state.services.find(s => s.id === rawText.replace('svc_', ''));
             if (svc) {
                 state.serviceId = svc.id; state.serviceName = svc.name; state.step = 'ask_date';
-                return { handled: true, state, text: `${svc.name} selected. What date works for you?` };
+                return { handled: true, state, text: `${svc.name} seleccionado. ¿Qué fecha te queda bien?` };
             }
         }
         if (rawText.startsWith('slot_') && state.slots?.length) {
@@ -132,12 +132,17 @@ export class BookingEngineService {
         if (rawText === 'confirm_yes') return this.createBooking(schemaName, tenantId, contactId, state);
         if (rawText === 'confirm_no') {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
-            return { handled: true, state, text: 'No problem! Would you like to try something else?' };
+            return { handled: true, state, text: '¡Sin problema! ¿Te gustaría probar algo más?' };
         }
 
         // ═══════════════════════════════════════════════════
         // STATE MACHINE — deterministic transitions
         // ═══════════════════════════════════════════════════
+
+        // ── Already booked — don't re-process ──
+        if (state.step === 'booked') {
+            return { handled: false, state }; // Let LLM handle any follow-up naturally
+        }
 
         // ── CHANGE OF OPINION: user mentions a DIFFERENT service mid-flow ──
         if (intent.serviceMentioned && state.serviceId && state.serviceName) {
@@ -150,13 +155,13 @@ export class BookingEngineService {
                     state.date = undefined; state.slots = undefined; state.time = undefined;
                     state.step = 'ask_date';
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
-                    return { handled: true, state, text: `Switched to ${newSvc.name}. What date works for you?` };
+                    return { handled: true, state, text: `Cambiamos a ${newSvc.name}. ¿Qué fecha te queda bien?` };
                 }
             }
         }
 
         // ── GENERAL QUESTION mid-booking: let LLM answer BUT keep booking state ──
-        if (intent.intent === 'general_question' && state.step !== 'idle' && state.step !== 'booked') {
+        if (intent.intent === 'general_question' && state.step !== 'idle') {
             // Don't handle — let LLM answer the general question.
             // But DON'T reset the booking state. Next message will resume the flow.
             this.logger.log(`[Decide] General question mid-booking, letting LLM handle (booking state preserved: ${state.step})`);
@@ -164,14 +169,14 @@ export class BookingEngineService {
         }
 
         // ── GREET mid-booking: don't reset, just acknowledge ──
-        if (intent.intent === 'greet' && state.step !== 'idle' && state.step !== 'booked') {
+        if (intent.intent === 'greet' && state.step !== 'idle') {
             return this.repromptCurrentStep(state);
         }
 
         // ── CANCEL: user wants to abort booking ──
-        if (intent.intent === 'cancel' && state.step !== 'idle' && state.step !== 'booked') {
+        if (intent.intent === 'cancel' && state.step !== 'idle') {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
-            return { handled: true, state, text: 'No problem! Is there anything else I can help you with?' };
+            return { handled: true, state, text: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarte?' };
         }
 
         // ── INTENT: ask_services — but only if no service already selected ──
@@ -195,7 +200,7 @@ export class BookingEngineService {
         // ── Have service but no date ──
         if (state.serviceId && !state.date) {
             state.step = 'ask_date';
-            return { handled: true, state, text: `${state.serviceName} selected. What date works for you?` };
+            return { handled: true, state, text: `${state.serviceName} seleccionado. ¿Qué fecha te queda bien?` };
         }
 
         // ── User asked for a specific time that's NOT available ──
@@ -205,7 +210,7 @@ export class BookingEngineService {
             const available = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
             return {
                 handled: true, state,
-                text: `The ${requested} slot is not available. Available times: ${available}. Which one works for you?`,
+                text: `El horario de las ${requested} no está disponible. Horarios disponibles: ${available}. ¿Cuál te funciona?`,
             };
         }
 
@@ -215,7 +220,7 @@ export class BookingEngineService {
         }
 
         // ── Mid-flow protection: if we're in a booking step, re-prompt ──
-        if (state.step !== 'idle' && state.step !== 'booked') {
+        if (state.step !== 'idle') {
             return this.repromptCurrentStep(state);
         }
 
@@ -227,11 +232,11 @@ export class BookingEngineService {
     private showServices(state: BookingState): EngineResult {
         state.step = 'show_services';
         const svcList = (state.services || []).map((s, i) =>
-            `${i + 1}. ${s.name} (${s.durationMinutes} minutes) - ${s.price.toLocaleString()} ${s.currency}`
+            `${i + 1}. ${s.name} (${s.durationMinutes} minutos) - ${s.price.toLocaleString()} ${s.currency}`
         ).join('\n');
         return {
             handled: true, state,
-            text: `These are our services:\n${svcList}\nWhich one interests you?`,
+            text: `Estos son nuestros servicios:\n${svcList}\n¿Cuál te interesa?`,
         };
     }
 
@@ -248,36 +253,36 @@ export class BookingEngineService {
             const slotList = (state.slots ?? []).map(s => `${s.time} - ${s.endTime}`).join(', ');
             return {
                 handled: true, state,
-                text: `Available times for ${state.serviceName} on ${state.date}: ${slotList}. Which time do you prefer?`,
+                text: `Horarios disponibles para ${state.serviceName} el ${state.date}: ${slotList}. ¿Cuál horario prefieres?`,
             };
         }
 
         const noDate = state.date;
         state.date = undefined; state.step = 'ask_date';
-        return { handled: true, state, text: `No availability on ${noDate}. Would you like to try another date?` };
+        return { handled: true, state, text: `No hay disponibilidad el ${noDate}. ¿Te gustaría probar otra fecha?` };
     }
 
     // ── Collect missing info or show confirmation ──
     private collectMissingInfo(state: BookingState): EngineResult {
         if (!state.customerName) {
             state.step = 'ask_name';
-            return { handled: true, state, text: `${state.time} selected for ${state.serviceName}. What is your full name?` };
+            return { handled: true, state, text: `${state.time} seleccionado para ${state.serviceName}. ¿Cuál es tu nombre completo?` };
         }
         if (!state.customerEmail) {
             state.step = 'ask_email';
-            return { handled: true, state, text: `Thanks ${state.customerName}! I need your email for the calendar invitation.` };
+            return { handled: true, state, text: `¡Gracias ${state.customerName}! Necesito tu correo electrónico para la invitación del calendario.` };
         }
         // All info collected → confirmation
         state.step = 'confirm';
         const summary = `${state.serviceName} on ${state.date} at ${state.time}\nName: ${state.customerName}\nEmail: ${state.customerEmail}`;
         return {
             handled: true, state,
-            text: `Please confirm:\n${summary}\nShall I book this?`,
+            text: `Por favor confirma:\n${summary}\n¿Lo agendo?`,
             buttonMessage: {
-                body: `Confirm booking?\n\n${summary}`,
+                body: `¿Confirmar cita?\n\n${summary}`,
                 buttons: [
-                    { id: 'confirm_yes', title: 'Confirm' },
-                    { id: 'confirm_no', title: 'Cancel' },
+                    { id: 'confirm_yes', title: 'Confirmar' },
+                    { id: 'confirm_no', title: 'Cancelar' },
                 ],
             },
         };
@@ -286,6 +291,26 @@ export class BookingEngineService {
     // ── Create booking ──
     private async createBooking(schema: string, tenantId: string, contactId: string, state: BookingState): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
+
+        // ── Duplicate check — prevent double booking ──
+        try {
+            const startAt = `${state.date} ${state.time}`;
+            const existing: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".appointments WHERE contact_id = $1::uuid AND service_id = $2::uuid AND start_at = $3::timestamp AND status NOT IN ('cancelled') LIMIT 1`,
+                contactId, state.serviceId, startAt,
+            );
+            if (existing?.length) {
+                this.logger.warn(`[Decide] Duplicate booking prevented — appointment ${existing[0].id} already exists`);
+                state.step = 'booked';
+                return {
+                    handled: true, state,
+                    text: `¡Cita confirmada!\nServicio: ${state.serviceName}\nFecha: ${state.date} a las ${state.time}\nNombre: ${state.customerName}\nInvitación enviada a: ${state.customerEmail}\n¿Algo más?`,
+                };
+            }
+        } catch (err) {
+            this.logger.warn(`[Decide] Duplicate check failed (non-blocking): ${err.message}`);
+        }
+
         const result = await this.toolExecutor.execute(schema, tenantId, contactId, 'create_appointment', {
             serviceId: state.serviceId, date: state.date, time: state.time,
             customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
@@ -297,7 +322,7 @@ export class BookingEngineService {
                 text: `Appointment confirmed!\nService: ${state.serviceName}\nDate: ${state.date} at ${state.time}\nName: ${state.customerName}\nCalendar invite sent to: ${state.customerEmail}\nAnything else?`,
             };
         }
-        return { handled: true, state, text: `Issue creating appointment: ${result?.error || 'Unknown'}. Try another time?` };
+        return { handled: true, state, text: `Error al crear la cita: ${result?.error || 'Desconocido'}. ¿Probamos otro horario?` };
     }
 
     // ── Re-prompt current step (mid-flow protection) ──
@@ -306,13 +331,13 @@ export class BookingEngineService {
             case 'show_services':
                 return this.showServices(state);
             case 'ask_date':
-                return { handled: true, state, text: `What date would you like for ${state.serviceName}?` };
+                return { handled: true, state, text: `¿Qué fecha te gustaría para ${state.serviceName}?` };
             case 'show_slots':
-                return { handled: true, state, text: `Which time? ${(state.slots ?? []).map(s => s.time).join(', ')}` };
+                return { handled: true, state, text: `¿Cuál horario? ${(state.slots ?? []).map(s => s.time).join(', ')}` };
             case 'ask_name':
-                return { handled: true, state, text: `What is your full name?` };
+                return { handled: true, state, text: `¿Cuál es tu nombre completo?` };
             case 'ask_email':
-                return { handled: true, state, text: `What is your email address?` };
+                return { handled: true, state, text: `¿Cuál es tu correo electrónico?` };
             case 'confirm':
                 return this.collectMissingInfo(state);
             default:

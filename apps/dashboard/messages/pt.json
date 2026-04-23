@@ -841,6 +841,18 @@
     "peakHours": "Horários de pico",
     "byService": "Por serviço",
     "bySource": "Por origem",
+    "period": {
+      "7d": "7 dias",
+      "30d": "30 dias",
+      "90d": "90 dias"
+    },
+    "source": {
+      "manual": "Painel",
+      "aiAgent": "Agente IA",
+      "publicBooking": "Reserva pública"
+    },
+    "availabilityWarningTitle": "Horários não salvos",
+    "availabilityWarningDesc": "Os horários de disponibilidade ainda não foram salvos. Estas são sugestões padrão, não estão no banco de dados. Se seu agente IA tiver a ferramenta de agendamento habilitada, responderá sem disponibilidade até que você salve.",
     "category": "Categoria",
     "categoryPlaceholder": "Ex: Consultoria",
     "maxConcurrent": "Max simultaneous",

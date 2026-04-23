@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { FaqsService } from '../faqs/faqs.service';
@@ -16,6 +17,7 @@ export class AIToolExecutorService {
 
     constructor(
         private prisma: PrismaService,
+        private eventEmitter: EventEmitter2,
         private calendarIntegration: CalendarIntegrationService,
         private faqsService: FaqsService,
         private policiesService: PoliciesService,
@@ -632,6 +634,22 @@ export class AIToolExecutorService {
 
         const apt = rows[0];
         this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
+
+        // Emit event so notifications (WhatsApp confirmation, email, calendar) are triggered
+        this.eventEmitter.emit('appointment.created', {
+            schemaName: schema,
+            appointment: {
+                id: apt.id,
+                contactId: contactId,
+                serviceName: svc.name,
+                startAt: startAt,
+                endAt: endAt,
+                status: 'confirmed',
+                customerName: args.customerName,
+                customerEmail: args.customerEmail,
+                customerPhone: args.customerPhone,
+            },
+        });
 
         return {
             success: true,

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotImplementedException } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { IPaymentProvider } from './payment-provider.interface';
 import { MercadoPagoConfigService } from './mercadopago-config.service';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
@@ -225,8 +226,76 @@ export class MercadoPagoAdapter implements IPaymentProvider {
     // Webhooks (Sprint 2.5 / 2.6)
     // -------------------------------------------------------------------------
 
-    verifyWebhookSignature(_rawBody: string, _headers: Record<string, string>): boolean {
-        throw new NotImplementedException('MercadoPagoAdapter.verifyWebhookSignature — Sprint 2.5');
+    /**
+     * Verify the HMAC-SHA256 signature MP attaches to webhook deliveries.
+     *
+     * MP sends two headers:
+     *   x-signature: "ts=1704382800,v1=abcdef..."
+     *   x-request-id: the unique request id to reconstruct the signed string
+     *
+     * The signed message is:
+     *   id:<notification.data.id>;request-id:<x-request-id>;ts:<ts>;
+     *
+     * Compared against HMAC-SHA256(MP_WEBHOOK_SECRET, message).
+     * Returns false on any parsing or mismatch so the controller can 401.
+     * Never throws — lets the caller decide how to react.
+     *
+     * Reference: developer portal webhook notifications simulator (Jan 2024)
+     */
+    verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
+        const secret = this.mpConfig.webhookSecret;
+        if (!secret) {
+            this.logger.warn('verifyWebhookSignature called with MP_WEBHOOK_SECRET unset — failing closed');
+            return false;
+        }
+
+        // Headers arrive lowercased from Express but accept both just in case
+        const sigHeader = headers['x-signature'] ?? headers['X-Signature'] ?? headers['X-SIGNATURE'];
+        const requestId = headers['x-request-id'] ?? headers['X-Request-Id'];
+        if (!sigHeader || !requestId) {
+            this.logger.warn('verifyWebhookSignature missing x-signature or x-request-id header');
+            return false;
+        }
+
+        // Parse "ts=...,v1=..." — order is not guaranteed
+        const parts: Record<string, string> = {};
+        for (const chunk of sigHeader.split(',')) {
+            const [k, v] = chunk.trim().split('=');
+            if (k && v) parts[k] = v;
+        }
+        const ts = parts.ts;
+        const v1 = parts.v1;
+        if (!ts || !v1) {
+            this.logger.warn('verifyWebhookSignature x-signature missing ts or v1');
+            return false;
+        }
+
+        // Extract notification.data.id from the JSON body
+        let dataId: string | undefined;
+        try {
+            const body = JSON.parse(rawBody);
+            dataId = body?.data?.id ?? body?.id;
+        } catch {
+            this.logger.warn('verifyWebhookSignature could not parse raw body as JSON');
+            return false;
+        }
+        if (!dataId) {
+            this.logger.warn('verifyWebhookSignature webhook body has no data.id');
+            return false;
+        }
+
+        const message = `id:${dataId};request-id:${requestId};ts:${ts};`;
+        const expected = createHmac('sha256', secret).update(message).digest('hex');
+
+        // Constant-time comparison to avoid timing attacks
+        const a = Buffer.from(expected, 'hex');
+        const b = Buffer.from(v1, 'hex');
+        if (a.length !== b.length) return false;
+        try {
+            return timingSafeEqual(a, b);
+        } catch {
+            return false;
+        }
     }
 
     parseWebhookEvent(_rawBody: string, _headers: Record<string, string>): NormalizedBillingEvent {

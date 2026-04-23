@@ -210,6 +210,10 @@ jobs:
           PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
           PROD_MS_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
           PROD_MS_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
+          # MercadoPago (sandbox values today; same variable names in production)
+          PROD_MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
+          PROD_MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
+          PROD_MP_PUBLIC_KEY: ${{ secrets.MP_PUBLIC_KEY }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -228,7 +232,8 @@ jobs:
             PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
-            PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET
+            PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
+            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -326,6 +331,11 @@ jobs:
             echo "MS_CLIENT_SECRET=${PROD_MS_CLIENT_SECRET}" >> .env
             echo "MS_TENANT_ID=common" >> .env
             echo "MS_CALENDAR_REDIRECT_URI=https://api.parallly-chat.cloud/api/v1/calendar/microsoft/callback" >> .env
+            echo "# MercadoPago (Billing)" >> .env
+            echo "MP_ACCESS_TOKEN=${PROD_MP_ACCESS_TOKEN}" >> .env
+            echo "MP_WEBHOOK_SECRET=${PROD_MP_WEBHOOK_SECRET}" >> .env
+            echo "MP_PUBLIC_KEY=${PROD_MP_PUBLIC_KEY}" >> .env
+            echo "MP_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 

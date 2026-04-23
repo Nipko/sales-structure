@@ -52,7 +52,7 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: Use snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client
 - **Auth**: JWT with refresh token rotation (Redis-backed). 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent. Google OAuth, email 2FA, password reset. Session timeout 60min with warning modal
-- **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations
+- **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations. PostgreSQL tuned: `max_locks_per_transaction=256`, `shared_buffers=256MB`. Multi-statement SQL must be split into individual queries for PgBouncer compatibility
 - **Error tracking**: Sentry (@sentry/nestjs + profiling). `instrument.ts` must load before all modules
 - **Guards**: `@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)` on protected endpoints
 - **CRM is built-in**: No external CRM. Handoff → internal agent console via WebSocket
@@ -65,16 +65,20 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
 - **i18n**: Every page edit/creation MUST include i18n updates in all 4 JSON files (es/en/pt/fr)
 - **Multi-agent**: Each tenant can have N agents (plan-gated: starter=1, pro=3, enterprise=10, custom=unlimited). One agent per channel. Pipeline uses getPersonaForChannel() for routing.
-- **Subscription plans**: 4 plans: starter, pro, enterprise, custom — controls agent count, template access, and rate limits
+- **Subscription plans**: 4 plans: starter, pro, enterprise, custom — controls agent count, template access, rate limits, and calendar count
 - **Channels**: Adapter pattern via `IChannelAdapter`. Supported: WhatsApp, Instagram, Messenger, Telegram, SMS (Twilio). One AI agent per channel (hard rule).
+- **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL) prevents race conditions when messages arrive simultaneously
+- **Booking state**: Redis-backed (`booking:{conversationId}`, 1h TTL) as primary, PostgreSQL as backup. Loaded from Redis first. In directive mode, only last 4 messages sent to LLM (not full history) to prevent LLM from ignoring directives
+- **Booking engine i18n**: All 21 directive strings in 4 languages (es/en/pt/fr). Language auto-detected from customer message. No LLM translation needed
+- **Multi-calendar**: N calendars per tenant, plan-gated (starter:1, pro:3, enterprise:10, custom:999). 3-tier resolution: service → staff → general fallback. Auto meeting links (Google Meet / Microsoft Teams). Calendar sync on AI booking via `appointment.created` event
 
 ## Prompt Architecture (3 layers — Apr 2026 refactor)
 
 The system prompt is ASSEMBLED per turn by `PromptAssemblerService`:
 
-- **Layer 1 (Contract)** — hardcoded universal rules. Defines that backend controls flow, LLM is the voice, must cite retrieved knowledge, must use `<turn><language>`, must never leak context tags. Identical for every agent.
+- **Layer 1 (Contract)** — hardcoded universal rules (10 rules). Golden rule: "One message, one purpose. Never ask more than one question per message." Sales awareness: guide LLM to connect customer needs to available services. Strict directive handling: "Say EXACTLY this information in a natural way." Also: backend controls flow, LLM is the voice, must cite retrieved knowledge, must use `<turn><language>`, must never leak context tags, anti-repetition (uses message_count in turn context). Identical for every agent.
 - **Layer 2 (Persona)** — `<persona>…</persona>` from `PersonaService.buildSystemPrompt(config)`. 100% user configuration (name, role, personality, rules, forbidden topics, handoff triggers, business hours). In `editorMode: 'prompt'`, the user's free-form prompt replaces the guided body but STILL wrapped in `<persona>` so L1/L3 apply.
-- **Layer 3 (Turn Context)** — `<turn>…</turn>` structured XML for this specific turn: language (auto-detected), timezone, now, upcoming_days, business_hours_status, business identity, contact profile, booking_state, available_services, retrieved_knowledge (from RAG + tools).
+- **Layer 3 (Turn Context)** — `<turn>…</turn>` structured XML for this specific turn: language (auto-detected), timezone, now, upcoming_days, business_hours_status, business identity, contact profile, booking_state, available_services, retrieved_knowledge (from RAG + tools), message_count.
 
 **No prose instructions are mixed with user config.** Dates, language, business info, RAG hits — all appear as structured data inside `<turn>`, never as prepended/appended prose.
 
@@ -106,7 +110,7 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
 | **Operations** | broadcast, inventory, orders, compliance, email, email-templates |
 | **Media & Files** | media (upload, resize, logo, tags, serve) |
-| **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection) |
+| **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection, multi-calendar, Google/Microsoft sync) |
 | **Identity** | identity (unified profiles, merge suggestions) |
 | **Analytics** | analytics (Redis counters + DB), dashboard-analytics (KPIs, volume, response times, AI metrics, heatmap, anomalies, cohorts), agent-analytics, alerts, scheduled-reports, csat-trigger, compliance, audit, metrics-aggregation, bi-api |
 | **Other** | carla (legacy, being replaced), intake (landing pages) |
@@ -176,6 +180,10 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | Agent list | `dashboard/src/app/admin/agent/page.tsx` |
 | Setup banner | `dashboard/src/components/SetupBanner.tsx` |
 | SMS adapter | `channels/sms/sms.adapter.ts` |
+| Booking engine | `appointments/booking-engine.service.ts` (deterministic flow, Redis state) |
+| Booking i18n | `appointments/booking-messages.ts` (21 directives x 4 languages) |
+| Calendar integrations | `appointments/calendar-integration.service.ts` (Google/Microsoft sync) |
+| Intent interpreter | `appointments/intent-interpreter.service.ts` (NLP for booking intents) |
 
 ## Dashboard pages (50+)
 
@@ -191,7 +199,7 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | **Channels** | Overview, WhatsApp Setup, Instagram Setup, Messenger Setup, Telegram Setup, SMS/Twilio Setup |
 | **Identity** | Merge Suggestions (approve/reject) |
 | **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports** (threshold alerts + scheduled email reports) |
-| **Scheduling** | Appointments (week/day calendar, agenda, services + staff, config, analytics), Public Booking (/book/:tenantSlug) |
+| **Scheduling** | Appointments (week/day calendar, agenda, services + staff + modality, config + multi-calendar, analytics), Public Booking (/book/:tenantSlug) |
 | **Operations** | Broadcast, Inventory, Orders, Compliance, Knowledge Base |
 | **Public** | `/kb/[tenantSlug]` (public help center, light theme, no auth) |
 
@@ -253,6 +261,8 @@ analytics:{tenantId}:{YYYY-MM-DD}:cost                    — LLM cost (float)
 analytics:{tenantId}:{YYYY-MM-DD}:model:{modelName}       — Per-model usage
 analytics:{tenantId}:{YYYY-MM-DD}:hourly:{0-23}           — Volume per hour
 refresh:{userId}:{tokenId}                                — Refresh tokens (8h or 14d TTL)
+booking:{conversationId}                                  — Booking engine state (1h TTL)
+lock:conv:{conversationId}                                — Conversation processing mutex (30s TTL)
 ```
 
 ### Tenant Schema Tables (Analytics)
@@ -268,6 +278,8 @@ dashboard_preferences  — Widget config per user
 automation_executions  — Rule execution audit trail
 agent_personas         — Multi-agent config (name, model, system prompt, channel assignment, template_id)
 agent_templates        — Reusable agent templates (builtin + tenant-created)
+calendar_integrations  — External calendar connections (Google/Microsoft), label, assignment_type, assignment_id
+services               — Bookable services (+ location_type: in_person/online/hybrid, location_address, meeting_link)
 ```
 
 ## Auth & Session Management
@@ -310,6 +322,35 @@ agent_templates        — Reusable agent templates (builtin + tenant-created)
 - **Landing**: next-intl via custom LangProvider (React Context), 4 files in `apps/landing/messages/`, 15 sections fully translated
 - **Convention**: Every page edit MUST include i18n updates in all 4 JSON files
 - **Status**: 0 hardcoded Spanish strings remaining as of April 18, 2026. All dashboard strings use next-intl with 4 languages
+
+## Calendar System (Apr 22-23, 2026)
+
+- **Multi-calendar**: N calendars per tenant, plan-gated (starter:1, pro:3, enterprise:10, custom:999)
+- **Calendar assignment model**: Each calendar assigned to staff, service, or general (fallback)
+- **3-tier resolution**: service → staff → general when checking availability or creating events
+- **Auto meeting links**: Google creates Meet link, Microsoft creates Teams link when service is online
+- **Calendar sync on AI booking**: Appointments created by AI push to Google/Microsoft Calendar automatically via `appointment.created` event
+- **Event naming**: "Service Name — Customer Name" format. Description includes customer info + last 5 messages
+- **Attendee invites**: Google `sendUpdates:'all'`, Microsoft auto-sends
+- **Disconnect protection**: Can't disconnect calendar if future appointments exist
+- **Live calendar updates**: WebSocket `appointmentCreated`/`Updated` events refresh dashboard in real-time
+
+## Service Modality (Apr 22-23, 2026)
+
+- **location_type**: `in_person` | `online` | `hybrid` on services table
+- **location_address**: Physical address for in-person services
+- **meeting_link**: Pre-configured meeting URL (or auto-generated from calendar provider)
+- **Dashboard UI**: ServiceModal has modality buttons, conditional address/link fields
+
+## Pipeline Hardening (Apr 22-23, 2026)
+
+- **conversation.updated_at fix**: `saveMessage` and `saveAiMessage` now UPDATE `conversations.updated_at`. Was frozen at creation time — root cause of state being lost every turn
+- **Redis-backed booking state**: Primary store in Redis (1h TTL), PostgreSQL as backup. Loaded from Redis first
+- **Conversation mutex**: Redis SETNX lock per conversation prevents race conditions on simultaneous messages
+- **History limited in directive mode**: When booking engine handles, only last 4 messages sent to LLM (not full history). Prevents LLM from ignoring directives
+- **Intent interpreter improvements**: Confirmation no longer returns early (extracts service/date/time too). Numbered selection ("el 1", "la 2", ordinals). Stem matching for fuzzy service names. Single-word names accepted
+- **Double booking protection**: Early return when step=booked. Duplicate check before INSERT (same contact+service+time)
+- **Greeting skip engine**: Greeting/farewell at idle properly skips booking engine
 
 ## Verification before pushing
 

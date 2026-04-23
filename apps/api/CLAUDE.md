@@ -23,12 +23,16 @@ NestJS 10 backend with 34 modules. Port 3000. Global prefix: `/api/v1`.
 - `channels/outbound-queue.service.ts` — BullMQ queue (3 retries, priority by tenant plan)
 - `channels/channel-management.controller.ts` — Generic channel connect/status/config endpoints
 - `channels/meta-signature.util.ts` — Shared HMAC-SHA256 webhook validator
-- `conversations/` — Main orchestrator. `processIncomingMessage()` is the entry point
+- `conversations/` — Main orchestrator. `processIncomingMessage()` is the entry point. Updates `conversation.updated_at` on every message
+- `conversations/` — Redis-backed booking state (primary Redis `booking:{conversationId}`, backup PG). Conversation mutex via Redis SETNX lock (`lock:conv:{conversationId}`, 30s TTL)
+- `conversations/` — History limited to 4 messages when in directive (booking) mode
+- `conversations/` — Intent interpreter: no early return on confirmation, supports numbered selection, stem matching
 - `conversations/pre-chat.service.ts` — Pre-chat form data collection before AI responds
 - `whatsapp/` — Webhook handling, connection management, templates, messaging
 
 **AI**:
 - `ai/router/` — LLM Router. 4 tiers, 5 providers. Skips unconfigured providers. Auto-upgrades tier
+- `ai/tool-executor.service.ts` — Executes tool calls from LLM. Emits `appointment.created` event on booking. Triggers calendar sync. Adds conversation context to calendar event description. Event summary format: "Service — Customer Name"
 - `ai/providers/` — OpenAI, Anthropic, Gemini, DeepSeek, xAI implementations
 - `persona/` — YAML/JSON config with versioning. REST API for dashboard. Default fallback for new tenants
 - `knowledge/` — RAG with pgvector + public KB portal endpoints
@@ -100,6 +104,23 @@ await this.prisma.executeInTenantSchema(schemaName,
 - `appointments/appointments.service.ts` — CRUD, availability slots, blocked dates, conflict detection
 - `appointments/appointments.controller.ts` — Static routes (availability, blocked-dates, check-slots) BEFORE dynamic :appointmentId routes
 - AI-ready: checkAvailableSlots for agent tool calls
+- Services have `location_type` (in_person/online/hybrid), `meeting_link`, `location_address` columns
+
+### Booking Engine (conversations/booking-engine.service.ts)
+- Deterministic state machine for appointment scheduling via chat (no LLM flow decisions)
+- **i18n**: All user-facing messages use `msg()` function with 4-language support (es/en/pt/fr). Language parameter passed from `conversations.service.ts` based on detected language
+- **State machine steps**: select_service → select_date → select_time → confirm → booked (early return when step=booked)
+- **Double booking protection**: Re-checks slot availability at confirm step before committing
+- **Redis-backed state**: Primary storage in `booking:{conversationId}` (1h TTL), backup in PG `booking_state` column
+- **History**: Conversation history limited to 4 messages when in directive (booking) mode
+
+### Calendar Integration (appointments/calendar-integration.service.ts)
+- **Multi-calendar**: Tenants can connect multiple Google Calendar accounts with assignment model
+- **Plan-gated limits**: `maxCalendars` in PLAN_FEATURES (starter=1, pro=3, enterprise=10, custom=unlimited)
+- **3-tier resolution**: When syncing, resolves calendar by: service-specific → staff-specific → general tenant calendar
+- **Auto meeting links**: Generates Google Meet or Teams links for online/hybrid services
+- **Disconnect protection**: Graceful handling when calendar is disconnected mid-use
+- **Live WebSocket updates**: Emits calendar sync events to dashboard via WebSocket
 
 ### Multi-Agent System (April 2026)
 
@@ -135,4 +156,10 @@ await this.prisma.executeInTenantSchema(schemaName,
 - PgBouncer: transaction mode pooler between services and PostgreSQL
 - Sentry: @sentry/nestjs with instrument.ts loaded before all modules
 - Email layouts: email/email-layouts.ts (professional templates for auth flows)
-- Google Calendar integration: `appointments/calendar-integration.service.ts`
+- Google Calendar integration: `appointments/calendar-integration.service.ts` (multi-calendar, 3-tier resolution, auto meeting links)
+
+## Redis Keys (API-specific)
+```
+booking:{conversationId}        — Booking engine state (1h TTL)
+lock:conv:{conversationId}      — Conversation processing mutex via SETNX (30s TTL)
+```

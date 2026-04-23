@@ -385,6 +385,35 @@ export class CalendarIntegrationService {
     }
 
     async disconnect(schemaName: string, integrationId: string): Promise<void> {
+        // Get the integration's user_id
+        const integrationRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT user_id FROM calendar_integrations WHERE id = $1::uuid`,
+            [integrationId],
+        );
+
+        if (!integrationRows?.length) {
+            throw new BadRequestException('Calendar integration not found');
+        }
+
+        const userId = integrationRows[0].user_id;
+
+        // Check for future appointments assigned to this user
+        const countRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT COUNT(*) AS count FROM appointments
+             WHERE assigned_to = $1::uuid
+               AND start_at > NOW()
+               AND status NOT IN ('cancelled', 'completed', 'no_show')`,
+            [userId],
+        );
+
+        const futureCount = Number(countRows?.[0]?.count ?? 0);
+
+        if (futureCount > 0) {
+            throw new BadRequestException(
+                `Cannot disconnect: ${futureCount} future appointment${futureCount > 1 ? 's' : ''} assigned to this user must be reassigned or cancelled first`,
+            );
+        }
+
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE calendar_integrations SET is_active = false, updated_at = NOW() WHERE id = $1::uuid`,
             [integrationId],

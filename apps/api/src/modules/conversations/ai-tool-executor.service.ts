@@ -635,6 +635,32 @@ export class AIToolExecutorService {
         const apt = rows[0];
         this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
 
+        // Sync to Google/Microsoft Calendar if any active integration exists
+        try {
+            const calUsers: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT user_id FROM "${schema}".calendar_integrations WHERE is_active = true LIMIT 1`,
+            );
+            if (calUsers.length > 0) {
+                const calUserId = calUsers[0].user_id;
+                const eventId = await this.calendarIntegration.createEvent(schema, calUserId, {
+                    summary: svc.name,
+                    startAt,
+                    endAt,
+                    attendeeEmail: args.customerEmail || undefined,
+                    description: args.notes ? `Customer: ${args.customerName}\n${args.notes}` : `Customer: ${args.customerName}`,
+                });
+                if (eventId) {
+                    await this.prisma.$queryRawUnsafe(
+                        `UPDATE "${schema}".appointments SET google_event_id = $2 WHERE id = $1::uuid`,
+                        apt.id, eventId,
+                    );
+                    this.logger.log(`[Tool] Calendar event created: ${eventId} for appointment ${apt.id}`);
+                }
+            }
+        } catch (calErr: any) {
+            this.logger.warn(`[Tool] Calendar sync failed for appointment ${apt.id}: ${calErr.message}`);
+        }
+
         // Emit event so notifications (WhatsApp confirmation, email, calendar) are triggered
         this.eventEmitter.emit('appointment.created', {
             schemaName: schema,

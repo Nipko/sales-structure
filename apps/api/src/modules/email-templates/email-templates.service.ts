@@ -114,6 +114,144 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
         variables: ['customer_name', 'customer_email', 'company_name', 'company_logo'],
         isActive: true,
     },
+
+    // -----------------------------------------------------------------------
+    // Billing templates — triggered by BillingService via EventEmitter2.
+    // Variables convention for all billing templates:
+    //   customer_name, plan_name, trial_days, trial_ends_at, amount_charged,
+    //   currency, next_billing_date, update_payment_url, dashboard_url,
+    //   invoice_url, failure_reason.
+    // -----------------------------------------------------------------------
+
+    {
+        name: 'Trial iniciado',
+        slug: 'billing_trial_started',
+        subject: 'Tu prueba gratuita de {{trial_days}} dias arranco — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#6c5ce7,#0984e3);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Tu prueba empezo</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Activaste el plan <strong>{{plan_name}}</strong> y tienes <strong>{{trial_days}} dias</strong> para probarlo sin costo.</p>
+    <div style="background:#f0f4ff;padding:16px;border-radius:8px;border-left:3px solid #6c5ce7;margin:16px 0;">
+      <p style="margin:4px 0;font-size:14px;"><strong>Tu prueba termina el:</strong> {{trial_ends_at}}</p>
+    </div>
+    <p style="font-size:14px;color:#555;">Aprovecha estos dias para conectar tus canales, cargar tus servicios y configurar tu agente IA.</p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="{{dashboard_url}}" style="background:#6c5ce7;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Ir a mi dashboard</a>
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:20px;">Si tienes dudas, responde a este correo.</p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'trial_days', 'trial_ends_at', 'dashboard_url'],
+        isActive: true,
+    },
+
+    {
+        name: 'Trial por vencer',
+        slug: 'billing_trial_ending_soon',
+        subject: 'Tu prueba termina en 3 dias — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#f39c12,#e67e22);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Tu prueba termina pronto</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Tu prueba del plan <strong>{{plan_name}}</strong> termina el <strong>{{trial_ends_at}}</strong>.</p>
+    <p style="font-size:14px;color:#555;">Para seguir usando {{company_name}} sin interrupcion, agrega un metodo de pago antes de esa fecha.</p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="{{update_payment_url}}" style="background:#e67e22;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Agregar metodo de pago</a>
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:20px;">Si no haces nada, tu cuenta pasara a modo lectura el {{trial_ends_at}}. Podes reactivarla en cualquier momento desde tu dashboard.</p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'trial_ends_at', 'update_payment_url'],
+        isActive: true,
+    },
+
+    {
+        name: 'Trial vencido',
+        slug: 'billing_trial_ended',
+        subject: 'Tu prueba gratuita termino — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#e74c3c,#c0392b);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Tu prueba termino</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Tu prueba gratuita del plan <strong>{{plan_name}}</strong> termino. Tu cuenta entro en <strong>modo lectura</strong>: podes ver tu informacion pero el bot y las automatizaciones estan pausadas.</p>
+    <p style="font-size:14px;color:#555;">Agrega un metodo de pago para reactivar tu cuenta. Tenes <strong>22 dias</strong> antes de que archivemos tu informacion.</p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="{{update_payment_url}}" style="background:#6c5ce7;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Reactivar mi cuenta</a>
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:20px;">Si tenes dudas o necesitas mas tiempo, respondenos a este correo.</p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'update_payment_url'],
+        isActive: true,
+    },
+
+    {
+        name: 'Pago recibido',
+        slug: 'billing_payment_succeeded',
+        subject: 'Recibimos tu pago — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#00b894,#00cec9);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Pago confirmado</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Recibimos tu pago. Gracias por seguir con {{company_name}}.</p>
+    <div style="background:#f0fff4;padding:16px;border-radius:8px;border-left:3px solid #00b894;margin:16px 0;">
+      <p style="margin:4px 0;font-size:14px;"><strong>Plan:</strong> {{plan_name}}</p>
+      <p style="margin:4px 0;font-size:14px;"><strong>Monto:</strong> {{amount_charged}} {{currency}}</p>
+      <p style="margin:4px 0;font-size:14px;"><strong>Proximo cobro:</strong> {{next_billing_date}}</p>
+    </div>
+    {{#if invoice_url}}<div style="text-align:center;margin:20px 0;">
+      <a href="{{invoice_url}}" style="background:#00b894;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Ver recibo</a>
+    </div>{{/if}}
+    <p style="font-size:12px;color:#999;margin-top:20px;">Si tenes dudas sobre tu factura, respondenos a este correo.</p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'amount_charged', 'currency', 'next_billing_date', 'invoice_url'],
+        isActive: true,
+    },
+
+    {
+        name: 'Pago fallido',
+        slug: 'billing_payment_failed',
+        subject: 'No pudimos cobrar tu suscripcion — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#e74c3c,#c0392b);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Problema con tu pago</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Intentamos cobrar tu suscripcion del plan <strong>{{plan_name}}</strong> por <strong>{{amount_charged}} {{currency}}</strong> pero la transaccion no pudo completarse.</p>
+    {{#if failure_reason}}<div style="background:#fff5f5;padding:12px;border-radius:8px;border-left:3px solid #e74c3c;margin:16px 0;">
+      <p style="margin:0;font-size:13px;color:#c0392b;"><strong>Motivo:</strong> {{failure_reason}}</p>
+    </div>{{/if}}
+    <p style="font-size:14px;color:#555;">Vamos a reintentar el cobro automaticamente en las proximas horas. Para evitar la suspension, actualiza tu metodo de pago ahora.</p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="{{update_payment_url}}" style="background:#e74c3c;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Actualizar metodo de pago</a>
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:20px;">Tu cuenta sigue activa. Si despues de varios intentos no logramos cobrar, te avisaremos antes de suspender.</p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'amount_charged', 'currency', 'failure_reason', 'update_payment_url'],
+        isActive: true,
+    },
 ];
 
 @Injectable()

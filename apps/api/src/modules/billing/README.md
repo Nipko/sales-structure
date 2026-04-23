@@ -132,7 +132,7 @@ Done:
 - Server-side enforcement of `maxAgents` per plan (commit `837c183`)
 
 Pending:
-- Sprint 2: MercadoPago adapter real HTTP + HMAC webhook verification + reconciliation cron + raw-body middleware for webhooks
+- Sprint 2: MercadoPago adapter real HTTP + HMAC webhook verification + reconciliation cron + raw-body middleware for webhooks. SDK chosen: `mercadopago@2.12.0` official — it exposes `PreApproval` (create/get/search/update) and `PreApprovalPlan` classes with proper TypeScript types including `auto_recurring.free_trial`, `summarized.semaphore`, `card_token_id`, `external_reference`. No need for `mercadopago-extended` or raw HTTP.
 - Sprint 3: Onboarding plan picker, dashboard billing page, email sender wiring, server-side enforcement of remaining plan limits (services, automations, broadcasts, AI messages)
 - Sprint 4: Fiscal integration (Facturapi for MX+CL+AR)
 - Sprint 5: Beta rollout (feature flag per tenant)

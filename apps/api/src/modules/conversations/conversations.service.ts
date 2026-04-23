@@ -567,48 +567,52 @@ export class ConversationsService {
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 
-            // ═══ GREETING & FAREWELL: let the LLM handle naturally with full persona ═══
-            // NO template greeting. The LLM generates it based on persona + context.
-            // The turn context already has isNewSession info and business identity.
-            if (intent.intent === 'greet' || intent.intent === 'farewell') {
-                this.logger.log(`[Pipeline] ${intent.intent}: LLM handles with full persona (no template)`);
-                // Don't go through booking engine — let LLM respond naturally
-                await this.persistBookingState(schemaName, conversation.id, bookingState);
-                // Fall through to LLM with full persona (handled=false path below)
-            }
+            // ═══ GREETING & FAREWELL at idle: let LLM handle naturally ═══
+            const isGreetOrFarewell = intent.intent === 'greet' || intent.intent === 'farewell';
+            const isIdleOrBooked = bookingState.step === 'idle' || bookingState.step === 'booked' || !bookingState.step;
 
-            // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
-            const engineResult = await this.bookingEngine.process(
-                schemaName, tenantId, conversation.contact_id || '',
-                intent, userText, bookingState, customerProfile, todayISO,
-            );
-
-            bookingState = engineResult.state;
-            this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
-
-            if (engineResult.handled) {
-                this.logger.log(`[Pipeline] Booking engine handled (step: ${bookingState.step})`);
-
-                // ═══ PHASE 3: EXPRESS — LLM translates engine text to customer's language ═══
-                engineProducedText = engineResult.text || null;
-                tools = []; // NO TOOLS for express phase — pure translation
-                await this.persistBookingState(schemaName, conversation.id, engineResult.state);
-            } else {
-                // Not booking-related — LLM handles.
-                // IMPORTANT: Do NOT pass appointment tools to the LLM for non-booking messages.
-                // The booking engine handles ALL appointment interactions deterministically.
-                // Only pass non-appointment tools (catalog, faqs, etc.) to reduce contamination.
-                if (bookingState.services?.length) {
-                    turnContext.availableServices = bookingState.services.map(s => ({
-                        id: s.id,
-                        name: s.name,
-                        durationMinutes: s.durationMinutes,
-                        price: s.price,
-                        currency: s.currency,
-                    }));
+            if (isGreetOrFarewell && isIdleOrBooked) {
+                this.logger.log(`[Pipeline] ${intent.intent} (idle): LLM handles with full persona`);
+                // Pre-load services so they're ready if user asks about them next turn
+                if (!bookingState.services?.length) {
+                    try {
+                        const result = await this.toolExecutor.execute(schemaName, tenantId, conversation.contact_id || '', 'list_services', {});
+                        if (result?.services?.length) bookingState.services = result.services;
+                    } catch {}
                 }
-                this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
-                await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                await this.persistBookingState(schemaName, conversation.id, bookingState);
+                // Skip engine entirely — fall through to LLM
+            } else {
+                // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
+                const engineResult = await this.bookingEngine.process(
+                    schemaName, tenantId, conversation.contact_id || '',
+                    intent, userText, bookingState, customerProfile, todayISO,
+                );
+
+                bookingState = engineResult.state;
+                this.logger.log(`[Pipeline] Booking state: ${bookingState.step} | service: ${bookingState.serviceName || '-'} | date: ${bookingState.date || '-'} | time: ${bookingState.time || '-'}`);
+
+                if (engineResult.handled) {
+                    this.logger.log(`[Pipeline] Booking engine handled (step: ${bookingState.step})`);
+
+                    // ═══ PHASE 3: EXPRESS — LLM voices the engine's output naturally ═══
+                    engineProducedText = engineResult.text || null;
+                    tools = []; // NO TOOLS for express phase
+                    await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                } else {
+                    // Not booking-related — LLM handles.
+                    if (bookingState.services?.length) {
+                        turnContext.availableServices = bookingState.services.map(s => ({
+                            id: s.id,
+                            name: s.name,
+                            durationMinutes: s.durationMinutes,
+                            price: s.price,
+                            currency: s.currency,
+                        }));
+                    }
+                    this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
+                    await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                }
             }
         }
 

@@ -158,7 +158,7 @@ export class PromptAssemblerService {
         // The LLM decides HOW to say it naturally based on persona + tone
         if (turn.directive) {
             lines.push('  <directive>');
-            lines.push(`    Communicate this information to the customer naturally. Use the data below but express it in your own words, as a real person would. Do not dump all information at once — be conversational. Do not add information not present here.`);
+            lines.push(`    Express ONLY the following information naturally in your own words. Do NOT add extra questions, do NOT ask for email or any other data unless the text below explicitly asks for it. One message, one purpose — say what is here and stop.`);
             lines.push(`    ${turn.directive}`);
             lines.push('  </directive>');
         }

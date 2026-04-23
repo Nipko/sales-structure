@@ -172,15 +172,32 @@ export class IntentInterpreterService {
         // ── Match service by name ──
         if (!base.serviceMentioned) {
             for (const svc of services) {
-                if (tNorm.includes(norm(svc))) {
+                const svcNorm = norm(svc);
+                // Exact substring: "asesoramiento" in user text
+                if (tNorm.includes(svcNorm)) {
                     base.serviceMentioned = svc;
                     base.intent = 'select_service';
                     break;
                 }
-                // Word overlap
-                const words = norm(svc).split(/\s+/).filter(w => w.length > 3);
-                const matched = words.filter(w => tNorm.includes(w));
-                if (words.length > 0 && matched.length / words.length >= 0.5) {
+                // Reverse substring: user text word inside service name
+                // e.g. "asesoria" is inside "asesoramiento", "consulta" is inside "consultoria"
+                const userWords = tNorm.split(/\s+/).filter(w => w.length > 4);
+                const reverseMatch = userWords.some(w => svcNorm.includes(w));
+                if (reverseMatch) {
+                    base.serviceMentioned = svc;
+                    base.intent = 'select_service';
+                    break;
+                }
+                // Stem overlap: compare first 5+ chars of words
+                // "asesoria" stem(5)="aseso" matches "asesoramiento" stem(5)="aseso"
+                const svcWords = svcNorm.split(/\s+/).filter(w => w.length > 4);
+                const stemMatch = userWords.some(uw =>
+                    svcWords.some(sw => {
+                        const stemLen = Math.min(5, Math.min(uw.length, sw.length));
+                        return uw.substring(0, stemLen) === sw.substring(0, stemLen);
+                    })
+                );
+                if (stemMatch) {
                     base.serviceMentioned = svc;
                     base.intent = 'select_service';
                     break;

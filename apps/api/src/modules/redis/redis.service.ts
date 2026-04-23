@@ -52,6 +52,18 @@ export class RedisService implements OnModuleDestroy {
         await this.set(key, JSON.stringify(value), ttlSeconds);
     }
 
+    // ---- Locking ----
+
+    /** Acquire a lock (SET NX EX). Returns true if acquired. */
+    async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+        const result = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
+        return result === 'OK';
+    }
+
+    async releaseLock(key: string): Promise<void> {
+        await this.client.del(key);
+    }
+
     // ---- Tenant-scoped operations ----
 
     tenantKey(tenantId: string, key: string): string {

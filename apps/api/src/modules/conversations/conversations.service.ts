@@ -72,6 +72,24 @@ export class ConversationsService {
         const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
 
+        // Serialize message processing per conversation to prevent race conditions.
+        // If user sends 2 messages in quick succession, the second one waits for the first.
+        const lockKey = `lock:conv:${conversation.id}`;
+        let lockAcquired = await this.redis.acquireLock(lockKey, 30); // 30s safety TTL
+        if (!lockAcquired) {
+            // Another message is being processed — wait up to 10s with retries
+            for (let i = 0; i < 5; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                lockAcquired = await this.redis.acquireLock(lockKey, 30);
+                if (lockAcquired) break;
+            }
+            if (!lockAcquired) {
+                this.logger.warn(`[Pipeline] Could not acquire lock for conversation ${conversation.id} — processing anyway`);
+            }
+        }
+
+        try {
+
         // Capture the timestamp of the last message BEFORE we save the new one.
         // This is used later for new-session detection (30 min gap = fresh start).
         const previousMessageAt = conversation.updated_at || conversation.created_at;
@@ -220,6 +238,13 @@ export class ConversationsService {
             this.nurturingService.scheduleFollowUp(tenantId, conversation.id, lead.id).catch(e =>
                 this.logger.warn(`Nurturing schedule failed (non-fatal): ${e.message}`),
             );
+        }
+
+        } finally {
+            // Release conversation lock
+            if (lockAcquired) {
+                await this.redis.releaseLock(lockKey).catch(() => {});
+            }
         }
     }
 

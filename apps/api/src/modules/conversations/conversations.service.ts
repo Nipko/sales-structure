@@ -745,15 +745,17 @@ export class ConversationsService {
 
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {
-            // Directive-based: LLM gets the user's actual message + conversation history
-            // The directive is in <turn><directive> telling the LLM WHAT to communicate
-            // The LLM generates the response naturally using its full persona
-            if (isNewSession) {
-                messages = [{ role: 'user', content: userText }];
-            } else {
-                messages = this.truncateHistory(history || [], userText);
-            }
-            this.logger.log(`[Pipeline] Express: directive-based with full persona + ${messages.length} history messages`);
+            // Directive-based: send MINIMAL context. The directive in <turn> tells
+            // the LLM WHAT to say. Too much history causes the LLM to ignore the
+            // directive and respond to old messages instead.
+            // Only include the last 2 exchanges (4 messages) for tone continuity.
+            const recentHistory = (history || []).slice(-4);
+            messages = recentHistory.map((m: any) => ({
+                role: m.direction === 'inbound' ? 'user' : 'assistant',
+                content: m.content_text || '',
+            }));
+            messages.push({ role: 'user', content: userText });
+            this.logger.log(`[Pipeline] Express: directive-based with ${messages.length} recent messages`);
         } else if (isNewSession) {
             messages = [{ role: 'user', content: userText }];
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);

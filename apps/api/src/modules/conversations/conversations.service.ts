@@ -477,6 +477,7 @@ export class ConversationsService {
         if (isNewSession) {
             this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
             try {
+                await this.redis.del(`booking:${conversation.id}`);
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE conversations SET metadata = metadata - 'toolContext' - 'toolContextUpdatedAt' - 'bookingState' - 'bookingStateUpdatedAt' WHERE id = $1::uuid`,
                     [conversation.id],
@@ -548,7 +549,7 @@ export class ConversationsService {
         const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
-        let bookingState: BookingState = (conversation.metadata as any)?.bookingState || { step: 'idle' };
+        let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata);
         let engineProducedText: string | null = null;
 
         if (toolsEnabled) {
@@ -856,8 +857,16 @@ export class ConversationsService {
         return messages;
     }
 
-    /** Helper to resolve tenant schema name (cached in Redis) */
+    /** Persist booking state to BOTH Redis (fast, reliable) and PostgreSQL (durable). */
     private async persistBookingState(schemaName: string, conversationId: string, state: any): Promise<void> {
+        // Redis first — always succeeds, survives PG failures
+        const redisKey = `booking:${conversationId}`;
+        try {
+            await this.redis.set(redisKey, JSON.stringify(state), 3600); // 1h TTL
+        } catch (e: any) {
+            this.logger.warn(`Redis booking state save failed: ${e.message}`);
+        }
+        // PostgreSQL — durable but may fail under shared memory pressure
         try {
             const update = { bookingState: state, bookingStateUpdatedAt: new Date().toISOString() };
             await this.prisma.executeInTenantSchema(schemaName,
@@ -865,8 +874,29 @@ export class ConversationsService {
                 [conversationId, JSON.stringify(update)],
             );
         } catch (e: any) {
-            this.logger.warn(`Failed to persist booking state: ${e.message}`);
+            this.logger.warn(`PG booking state save failed (Redis has backup): ${e.message}`);
         }
+    }
+
+    /** Load booking state: Redis first (fast), fallback to conversation metadata. */
+    private async loadBookingState(conversationId: string, conversationMetadata: any): Promise<BookingState> {
+        try {
+            const redisKey = `booking:${conversationId}`;
+            const cached = await this.redis.get(redisKey);
+            if (cached) {
+                const state = JSON.parse(cached);
+                if (state.step) {
+                    this.logger.log(`[Pipeline] Booking state loaded from Redis: step=${state.step} svc=${state.serviceName || '-'}`);
+                    return state;
+                }
+            }
+        } catch {}
+        // Fallback to PG metadata
+        const state = conversationMetadata?.bookingState || { step: 'idle' };
+        if (state.step && state.step !== 'idle') {
+            this.logger.log(`[Pipeline] Booking state loaded from PG metadata: step=${state.step}`);
+        }
+        return state;
     }
 
     private async tenantSchema(tenantId: string): Promise<string> {

@@ -145,17 +145,17 @@ export class WhatsappWebhookService {
 
   private async resolveTenantFromWabaId(wabaId: string): Promise<{ tenantId: string; schemaName: string } | null> {
     try {
-      const rows = await this.prisma.$queryRaw<Array<{ id: string; schemaName: string }>>`
-        SELECT id, "schemaName" FROM tenants WHERE is_active = true
+      const rows = await this.prisma.$queryRaw<Array<{ id: string; schema_name: string }>>`
+        SELECT id, schema_name FROM tenants WHERE is_active = true
       `;
       for (const t of rows) {
         try {
           const match = await this.prisma.executeInTenantSchema<any[]>(
-            t.schemaName,
+            t.schema_name,
             `SELECT 1 FROM whatsapp_channels WHERE meta_waba_id = $1 LIMIT 1`,
             [wabaId],
           );
-          if (match.length > 0) return { tenantId: t.id, schemaName: t.schemaName };
+          if (match.length > 0) return { tenantId: t.id, schemaName: t.schema_name };
         } catch {}
       }
       return null;

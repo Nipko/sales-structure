@@ -273,15 +273,13 @@ export class InventoryService {
         if (cached) return;
 
         try {
-            await this.prisma.$queryRawUnsafe(`
-                CREATE TABLE IF NOT EXISTS "${schema}".product_categories (
+            await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".product_categories (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     name VARCHAR(100) NOT NULL,
                     color VARCHAR(20) DEFAULT '#6c5ce7',
                     created_at TIMESTAMP DEFAULT NOW()
-                );
-
-                CREATE TABLE IF NOT EXISTS "${schema}".products (
+                )`);
+            await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".products (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     name VARCHAR(255) NOT NULL,
                     sku VARCHAR(100) UNIQUE NOT NULL,
@@ -300,9 +298,8 @@ export class InventoryService {
                     metadata JSONB DEFAULT '{}',
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
-                );
-
-                CREATE TABLE IF NOT EXISTS "${schema}".stock_movements (
+                )`);
+            await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".stock_movements (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     product_id UUID REFERENCES "${schema}".products(id) ON DELETE CASCADE,
                     type VARCHAR(20) NOT NULL,
@@ -312,12 +309,10 @@ export class InventoryService {
                     reason TEXT DEFAULT '',
                     created_by VARCHAR(255),
                     created_at TIMESTAMP DEFAULT NOW()
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_products_sku ON "${schema}".products(sku);
-                CREATE INDEX IF NOT EXISTS idx_products_category ON "${schema}".products(category_id);
-                CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON "${schema}".stock_movements(product_id);
-            `);
+                )`);
+            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_products_sku ON "${schema}".products(sku)`);
+            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_products_category ON "${schema}".products(category_id)`);
+            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON "${schema}".stock_movements(product_id)`);
 
             await this.redis.set(cacheKey, 'true', 86400); // Cache for 24h
         } catch (error) {

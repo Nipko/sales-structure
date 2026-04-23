@@ -17,10 +17,10 @@ export class WhatsappTemplatePollService {
     // was dropped, or fired before DI was ready).
     @Cron('*/30 * * * *')
     async pollAll() {
-        let tenants: Array<{ id: string; schemaName: string }>;
+        let tenants: Array<{ id: string; schema_name: string }>;
         try {
-            tenants = await this.prisma.$queryRaw<Array<{ id: string; schemaName: string }>>`
-                SELECT id, "schemaName" FROM tenants WHERE is_active = true
+            tenants = await this.prisma.$queryRaw<Array<{ id: string; schema_name: string }>>`
+                SELECT id, schema_name FROM tenants WHERE is_active = true
             `;
         } catch (e: any) {
             this.logger.warn(`[pollAll] Failed to list tenants: ${e.message}`);
@@ -30,7 +30,7 @@ export class WhatsappTemplatePollService {
         let totalRefreshed = 0;
         for (const t of tenants) {
             try {
-                const { refreshed } = await this.templateService.pollPendingTemplates(t.schemaName);
+                const { refreshed } = await this.templateService.pollPendingTemplates(t.schema_name);
                 totalRefreshed += refreshed;
             } catch (e: any) {
                 this.logger.warn(`[pollAll] tenant ${t.id}: ${e.message}`);

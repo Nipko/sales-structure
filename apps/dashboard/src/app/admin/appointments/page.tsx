@@ -164,6 +164,9 @@ export default function AppointmentsPage() {
     category: "",
     maxConcurrent: 1,
     requiredFields: [] as string[],
+    locationType: "in_person",
+    locationAddress: "",
+    meetingLink: "",
   });
   const [savingService, setSavingService] = useState(false);
 
@@ -550,7 +553,7 @@ export default function AppointmentsPage() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: "", duration: 30, buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, requiredFields: [] });
+    setServiceForm({ name: "", duration: 30, buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "" });
     setShowServiceModal(true);
   };
 
@@ -565,6 +568,9 @@ export default function AppointmentsPage() {
       category: svc.category || "",
       maxConcurrent: svc.maxConcurrent || 1,
       requiredFields: svc.requiredFields || [],
+      locationType: (svc as any).locationType || (svc as any).location_type || "in_person",
+      locationAddress: (svc as any).locationAddress || (svc as any).location_address || "",
+      meetingLink: (svc as any).meetingLink || (svc as any).meeting_link || "",
     });
     setShowServiceModal(true);
   };

@@ -689,7 +689,7 @@ export class AIToolExecutorService {
             if (calUsers.length > 0) {
                 const calUserId = calUsers[0].user_id;
                 const calResult = await this.calendarIntegration.createEvent(schema, calUserId, {
-                    summary: svc.name,
+                    summary: `${svc.name} — ${args.customerName}`,
                     startAt,
                     endAt,
                     attendeeEmail: args.customerEmail || undefined,

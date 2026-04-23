@@ -2,7 +2,7 @@
 
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
-import { Tag, X, Save } from "lucide-react";
+import { Tag, X, Save, MapPin, Video, Globe } from "lucide-react";
 import { Service, DURATION_PRESETS, SERVICE_COLORS } from "./shared";
 
 interface ServiceForm {
@@ -14,6 +14,9 @@ interface ServiceForm {
   category: string;
   maxConcurrent: number;
   requiredFields: string[];
+  locationType: string;
+  locationAddress: string;
+  meetingLink: string;
 }
 
 interface ServiceModalProps {
@@ -181,6 +184,65 @@ export default function ServiceModal({
               />
             </div>
           </div>
+
+          {/* Modality */}
+          <div>
+            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              {t('locationType')}
+            </label>
+            <div className="flex gap-2">
+              {[
+                { value: 'in_person', icon: MapPin, label: t('inPerson') },
+                { value: 'online', icon: Video, label: t('online') },
+                { value: 'hybrid', icon: Globe, label: t('hybrid') },
+              ].map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  onClick={() => onChange({ ...form, locationType: value })}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
+                    form.locationType === value
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                  )}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Location / Meeting Link */}
+          {(form.locationType === 'in_person' || form.locationType === 'hybrid') && (
+            <div>
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+                {t('locationAddress')}
+              </label>
+              <input
+                type="text"
+                value={form.locationAddress || ''}
+                onChange={(e) => onChange({ ...form, locationAddress: e.target.value })}
+                placeholder={t('locationAddressPlaceholder')}
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          )}
+          {(form.locationType === 'online' || form.locationType === 'hybrid') && (
+            <div>
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+                {t('meetingLink')}
+              </label>
+              <input
+                type="url"
+                value={form.meetingLink || ''}
+                onChange={(e) => onChange({ ...form, meetingLink: e.target.value })}
+                placeholder={t('meetingLinkPlaceholder')}
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <p className="text-xs text-neutral-400 mt-1">{t('meetingLinkHint')}</p>
+            </div>
+          )}
 
           {/* Category + Max Concurrent */}
           <div className="grid grid-cols-2 gap-3">

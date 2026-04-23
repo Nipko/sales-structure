@@ -45,6 +45,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { MediaModule } from './modules/media/media.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { BusinessInfoModule } from './modules/business-info/business-info.module';
 import { FaqsModule } from './modules/faqs/faqs.module';
 import { PoliciesModule } from './modules/policies/policies.module';
@@ -149,6 +150,7 @@ import llmConfig from './config/llm.config';
         MediaModule,
         EmailTemplatesModule,
         AppointmentsModule,
+        BillingModule,
         BusinessInfoModule,
         FaqsModule,
         PoliciesModule,

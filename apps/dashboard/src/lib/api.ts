@@ -503,15 +503,27 @@ export const api = {
 
     // --- Calendar Integrations ---
     getCalendarIntegrations: (tenantId: string) =>
-        apiGet(`/appointments/${tenantId}/calendar/integrations`),
+        apiGet(`/appointments/${tenantId}/calendar/integrations?all=true`),
     getCalendarEvents: (tenantId: string, startDate: string, endDate: string) =>
         apiGet(`/appointments/${tenantId}/calendar/events?startDate=${startDate}&endDate=${endDate}`),
-    connectGoogleCalendar: (tenantId: string) =>
-        apiGet(`/appointments/${tenantId}/calendar/google/connect`),
-    connectMicrosoftCalendar: (tenantId: string) =>
-        apiGet(`/appointments/${tenantId}/calendar/microsoft/connect`),
+    connectGoogleCalendar: (tenantId: string, assignmentType?: string, assignmentId?: string) => {
+        const params = new URLSearchParams();
+        if (assignmentType) params.set('assignmentType', assignmentType);
+        if (assignmentId) params.set('assignmentId', assignmentId);
+        const qs = params.toString();
+        return apiGet(`/appointments/${tenantId}/calendar/google/connect${qs ? `?${qs}` : ''}`);
+    },
+    connectMicrosoftCalendar: (tenantId: string, assignmentType?: string, assignmentId?: string) => {
+        const params = new URLSearchParams();
+        if (assignmentType) params.set('assignmentType', assignmentType);
+        if (assignmentId) params.set('assignmentId', assignmentId);
+        const qs = params.toString();
+        return apiGet(`/appointments/${tenantId}/calendar/microsoft/connect${qs ? `?${qs}` : ''}`);
+    },
     disconnectCalendar: (tenantId: string, integrationId: string) =>
         apiDelete(`/appointments/${tenantId}/calendar/${integrationId}`),
+    updateCalendarAssignment: (tenantId: string, integrationId: string, data: { label?: string; assignmentType?: string; assignmentId?: string }) =>
+        apiPut(`/appointments/${tenantId}/calendar/${integrationId}/assignment`, data),
     getBookableSlots: (tenantId: string, date: string, serviceId: string, userId?: string) =>
         apiGet(`/appointments/${tenantId}/bookable-slots?date=${date}&serviceId=${serviceId}${userId ? `&userId=${userId}` : ''}`),
 

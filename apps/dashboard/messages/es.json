@@ -928,6 +928,15 @@
       "all": "Todos",
       "confirmDelete": "¿Eliminar este servicio?"
     },
+    "calendarCount": "{count}/{max} calendarios",
+    "calendarLimitReached": "Límite de calendarios alcanzado. Mejora tu plan.",
+    "assignGeneral": "General",
+    "assignStaff": "Miembro del equipo",
+    "assignService": "Servicio",
+    "selectAssignment": "¿Para qué es este calendario?",
+    "calendarLabel": "Etiqueta",
+    "editLabel": "Editar etiqueta",
+    "noCalendarsConnected": "No hay calendarios conectados",
     "configSection": {
       "title": "Configuración",
       "schedule": "Horario de atención",

@@ -55,6 +55,9 @@ interface CalendarIntegration {
   provider: "google" | "microsoft";
   email: string;
   active: boolean;
+  label?: string;
+  assignmentType?: "general" | "staff" | "service";
+  assignmentId?: string;
 }
 
 
@@ -585,14 +588,14 @@ export default function AppointmentsPage() {
   /*  Calendar integrations                                            */
   /* ================================================================ */
 
-  const handleConnectCalendar = async (provider: "google" | "microsoft") => {
+  const handleConnectCalendar = async (provider: "google" | "microsoft", assignmentType?: string, assignmentId?: string) => {
     if (!activeTenantId) return;
     setConnectingCalendar(true);
     try {
       const res =
         provider === "google"
-          ? await api.connectGoogleCalendar(activeTenantId)
-          : await api.connectMicrosoftCalendar(activeTenantId);
+          ? await api.connectGoogleCalendar(activeTenantId, assignmentType, assignmentId)
+          : await api.connectMicrosoftCalendar(activeTenantId, assignmentType, assignmentId);
       if (res?.data?.url) {
         window.location.href = res.data.url;
       }
@@ -771,6 +774,7 @@ export default function AppointmentsPage() {
             onDeleteBlockedDate={handleDeleteBlockedDate}
             onRefresh={() => { loadCalendarIntegrations(); loadBlockedDates(); loadAvailability(); }}
             showToast={showToast}
+            services={services.map(s => ({ id: s.id, name: s.name }))}
           />
         )}
 

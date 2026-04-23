@@ -928,6 +928,15 @@
       "all": "All",
       "confirmDelete": "Delete this service?"
     },
+    "calendarCount": "{count}/{max} calendars",
+    "calendarLimitReached": "Calendar limit reached. Upgrade your plan.",
+    "assignGeneral": "General",
+    "assignStaff": "Staff member",
+    "assignService": "Service",
+    "selectAssignment": "What is this calendar for?",
+    "calendarLabel": "Label",
+    "editLabel": "Edit label",
+    "noCalendarsConnected": "No calendars connected",
     "configSection": {
       "title": "Settings",
       "schedule": "Working hours",

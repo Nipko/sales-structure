@@ -928,6 +928,15 @@
       "all": "Tous",
       "confirmDelete": "Supprimer ce service ?"
     },
+    "calendarCount": "{count}/{max} calendriers",
+    "calendarLimitReached": "Limite de calendriers atteinte. Mettez à niveau votre plan.",
+    "assignGeneral": "Général",
+    "assignStaff": "Membre de l'équipe",
+    "assignService": "Service",
+    "selectAssignment": "À quoi sert ce calendrier ?",
+    "calendarLabel": "Libellé",
+    "editLabel": "Modifier le libellé",
+    "noCalendarsConnected": "Aucun calendrier connecté",
     "configSection": {
       "title": "Configuration",
       "schedule": "Horaires d'ouverture",

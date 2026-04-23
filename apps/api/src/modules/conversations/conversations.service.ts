@@ -430,6 +430,11 @@ export class ConversationsService {
              VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
             [conversationId, msg.content.type, msg.content.text, metadataJson],
         );
+        // Update conversation timestamp so new-session detection works correctly
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
+            [conversationId],
+        );
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }
 
@@ -440,6 +445,10 @@ export class ConversationsService {
             `INSERT INTO messages (conversation_id, direction, content_type, content_text, status)
              VALUES ($1::uuid, 'outbound', 'text', $2, 'delivered') RETURNING *`,
             [conversationId, text],
+        );
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
+            [conversationId],
         );
         this.gateway.emitNewMessage(tenantId, result[0], conversationId);
     }

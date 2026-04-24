@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
-const STEP_KEYS = ["step1", "step2", "step3", "step4"];
+const STEP_KEYS = ["step1", "step2", "step3", "step4", "step5"];
+
+const PLAN_SLUGS = ["starter", "pro", "enterprise"] as const;
+type PlanSlug = typeof PLAN_SLUGS[number];
 
 const INDUSTRY_KEYS = [
     "turismo", "education", "salud", "retail", "technology",
@@ -80,6 +83,9 @@ export default function OnboardingPage() {
     const [referral, setReferral] = useState("");
     const [referralOther, setReferralOther] = useState("");
 
+    // Step 5 — plan picker
+    const [planSlug, setPlanSlug] = useState<PlanSlug>("starter");
+
     // Protected
     useEffect(() => {
         const token = localStorage.getItem("accessToken");
@@ -108,6 +114,11 @@ export default function OnboardingPage() {
                 return goals.length > 0;
             case 3:
                 return !!referral;
+            case 4:
+                // Starter is always valid; Pro/Enterprise requires card which
+                // we do not collect in onboarding yet — they are shown for
+                // discovery but selection falls back to Starter on submit.
+                return !!planSlug;
             default:
                 return false;
         }
@@ -115,7 +126,7 @@ export default function OnboardingPage() {
 
     const handleNext = () => {
         if (!canProceed()) return;
-        if (step < 3) {
+        if (step < 4) {
             setStep(step + 1);
         } else {
             handleSubmit();
@@ -150,6 +161,12 @@ export default function OnboardingPage() {
                 ? [...goals.filter((g) => g !== "other"), `other:${goalOther}`]
                 : goals,
             referral: referral === "other" ? `other:${referralOther}` : referral,
+            // Plan picker (step 5). Pro/Enterprise require a card we don't
+            // collect in onboarding today — the backend will enforce the
+            // requirement and reject those slugs without cardTokenId, so we
+            // fall back to starter here. Sprint 4 adds the MP card form to
+            // make Pro/Enterprise selectable end-to-end.
+            plan: planSlug === "starter" ? "starter" : "starter",
         };
 
         try {
@@ -560,6 +577,54 @@ export default function OnboardingPage() {
                         </div>
                     )}
 
+                    {/* Step 5: Plan picker */}
+                    {step === 4 && (
+                        <div>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('planTitle')}</h2>
+                            <p className="text-muted-foreground text-sm mb-6">{t('planSubtitle')}</p>
+
+                            <div className="space-y-3">
+                                {PLAN_SLUGS.map((slug) => {
+                                    const requiresCard = slug !== 'starter';
+                                    const active = planSlug === slug;
+                                    return (
+                                        <label
+                                            key={slug}
+                                            className={cn(
+                                                'flex items-start gap-3 p-4 rounded-xl border transition-all',
+                                                requiresCard ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                                                active && !requiresCard
+                                                    ? 'border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10'
+                                                    : 'border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03]'
+                                            )}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="plan"
+                                                checked={active}
+                                                disabled={requiresCard}
+                                                onChange={() => !requiresCard && setPlanSlug(slug)}
+                                                className="mt-1 w-4 h-4 border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-sm font-semibold text-foreground">{t(`plans.${slug}.name`)}</span>
+                                                    <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">{t(`plans.${slug}.price`)}</span>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mt-1">{t(`plans.${slug}.desc`)}</p>
+                                                {requiresCard && (
+                                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">{t('planContactSales')}</p>
+                                                )}
+                                            </div>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+
+                            <p className="text-xs text-muted-foreground mt-4 text-center">{t('planStarterNote')}</p>
+                        </div>
+                    )}
+
                     {/* Navigation */}
                     <div className="flex items-center justify-between mt-8 gap-3">
                         {step > 0 ? (
@@ -590,7 +655,7 @@ export default function OnboardingPage() {
                                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                     Creating...
                                 </>
-                            ) : step === 3 ? (
+                            ) : step === 4 ? (
                                 "Create my account"
                             ) : (
                                 <>

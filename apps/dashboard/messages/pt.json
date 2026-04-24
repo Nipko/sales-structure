@@ -1864,6 +1864,16 @@
     "step2": "Seus clientes",
     "step3": "Objetivos",
     "step4": "Referência",
+    "step5": "Plano",
+    "planTitle": "Escolha seu plano",
+    "planSubtitle": "Comece com 7 ou 15 dias gratis. Voce pode mudar a qualquer momento.",
+    "planStarterNote": "Os planos Pro e Enterprise exigem cartao — nossa equipe entrara em contato se voce escolher um.",
+    "planContactSales": "Entraremos em contato para ativar este plano",
+    "plans": {
+      "starter": { "name": "Starter", "price": "USD $49/mes", "desc": "1 agente IA, 5.000 mensagens/mes, 7 dias de teste" },
+      "pro": { "name": "Pro", "price": "USD $129/mes", "desc": "3 agentes IA, 25.000 mensagens/mes, 15 dias de teste" },
+      "enterprise": { "name": "Enterprise", "price": "USD $349/mes", "desc": "10 agentes IA, 100.000 mensagens/mes, SSO, suporte prioritario" }
+    },
     "companyName": "Nome da empresa",
     "website": "Site",
     "businessPhone": "Telefone",

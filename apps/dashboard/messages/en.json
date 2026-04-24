@@ -1864,6 +1864,16 @@
     "step2": "Your customers",
     "step3": "Goals",
     "step4": "Reference",
+    "step5": "Plan",
+    "planTitle": "Choose your plan",
+    "planSubtitle": "Start with 7 or 15 days free. You can change anytime.",
+    "planStarterNote": "Pro and Enterprise plans require a card — our team will reach out if you pick one.",
+    "planContactSales": "We will reach out to activate this plan",
+    "plans": {
+      "starter": { "name": "Starter", "price": "USD $49/mo", "desc": "1 AI agent, 5,000 messages/mo, 7-day trial" },
+      "pro": { "name": "Pro", "price": "USD $129/mo", "desc": "3 AI agents, 25,000 messages/mo, 15-day trial" },
+      "enterprise": { "name": "Enterprise", "price": "USD $349/mo", "desc": "10 AI agents, 100,000 messages/mo, SSO, priority support" }
+    },
     "companyName": "Company name",
     "website": "Website",
     "businessPhone": "Phone",

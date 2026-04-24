@@ -1,36 +1,29 @@
-/**
- * Sync Parallly billing plans to MercadoPago per country.
- *
- * Usage (from repo root):
- *   npx ts-node apps/api/scripts/sync-mp-plans.ts --country=CO --fx=4200
- *   npx ts-node apps/api/scripts/sync-mp-plans.ts --country=AR --fx=1200 --dry-run
- *
- * What it does
- * ------------
- * For each active paid plan in billing_plans (starter, pro, enterprise; skips
- * `custom` because that one is sales-led and never registered with a provider):
- *  1. Converts the USD cents price into local currency cents using the --fx rate.
- *  2. POSTs /preapproval_plan with auto_recurring + free_trial to the MP API
- *     using the provided MP_ACCESS_TOKEN from the environment.
- *  3. Writes the returned plan id into two places:
- *       - `billing_plans.mpPlanId` (kept for Colombia single-country launch)
- *       - `billing_plans.priceLocalOverrides[COUNTRY]`:
- *           { currency, amountCents, mpPlanId }
- *     so subsequent countries just add more entries under priceLocalOverrides
- *     without losing the Colombian ids.
- *
- * Idempotent: rerunning the script with the same country creates NEW MP plans
- * (MP has no upsert on /preapproval_plan). To avoid duplicates, check the
- * priceLocalOverrides for an existing entry first — if it exists and
- * --force is NOT passed, skip that tier.
- */
+// scripts/sync-mp-plans.js
+//
+// Sync Parallly billing plans to MercadoPago per country.
+//
+// Runs on any Node container that has @prisma/client + mercadopago installed
+// (the prod API image does). No ts-node or build step required.
+//
+// Usage (from inside parallext-api container or any host with the env set):
+//   docker exec parallext-api sh -c \
+//     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200 --dry-run'
+//
+//   docker exec parallext-api sh -c \
+//     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200'
+//
+// For each active paid plan (starter, pro, enterprise — custom is sales-led
+// and skipped), converts USD cents → local currency cents via --fx, POSTs
+// /preapproval_plan, and saves the returned plan id into billing_plans:
+//   - mpPlanId (top-level column, CO only for now — Sprint 3 adds per-country resolver)
+//   - priceLocalOverrides[COUNTRY] = { currency, amountCents, mpPlanId }
+//
+// Idempotent: skips tiers already synced for that country unless --force.
 
-import { PrismaClient } from '@prisma/client';
-import { MercadoPagoConfig, PreApprovalPlan } from 'mercadopago';
+const { PrismaClient } = require('@prisma/client');
+const { MercadoPagoConfig, PreApprovalPlan } = require('mercadopago');
 
-type CountryCode = 'CO' | 'AR' | 'MX' | 'CL' | 'PE' | 'UY' | 'BR';
-
-const CURRENCY_BY_COUNTRY: Record<CountryCode, string> = {
+const CURRENCY_BY_COUNTRY = {
     CO: 'COP',
     AR: 'ARS',
     MX: 'MXN',
@@ -40,20 +33,13 @@ const CURRENCY_BY_COUNTRY: Record<CountryCode, string> = {
     BR: 'BRL',
 };
 
-interface Args {
-    country: CountryCode;
-    fx: number;
-    dryRun: boolean;
-    force: boolean;
-}
-
-function parseArgs(): Args {
+function parseArgs() {
     const argv = process.argv.slice(2);
-    const get = (flag: string) => {
+    const get = (flag) => {
         const match = argv.find(a => a.startsWith(`--${flag}=`));
         return match ? match.split('=')[1] : undefined;
     };
-    const country = (get('country') ?? 'CO').toUpperCase() as CountryCode;
+    const country = (get('country') || 'CO').toUpperCase();
     if (!CURRENCY_BY_COUNTRY[country]) {
         console.error(`Unknown country ${country}. Supported: ${Object.keys(CURRENCY_BY_COUNTRY).join(', ')}`);
         process.exit(1);
@@ -99,10 +85,12 @@ async function main() {
 
     for (const plan of plans) {
         const localAmountCents = Math.round(plan.priceUsdCents * args.fx);
-        const priceLocalOverrides = (plan.priceLocalOverrides as Record<string, any>) ?? {};
+        const priceLocalOverrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
+            ? { ...plan.priceLocalOverrides }
+            : {};
         const existing = priceLocalOverrides[args.country];
 
-        if (existing?.mpPlanId && !args.force) {
+        if (existing && existing.mpPlanId && !args.force) {
             console.log(`  [${plan.slug}] already synced for ${args.country} (mpPlanId=${existing.mpPlanId}) — skipping. Use --force to re-create.`);
             continue;
         }
@@ -137,17 +125,13 @@ async function main() {
             continue;
         }
 
-        // Persist the id in both the simple column (for Colombia MVP) and the
-        // per-country JSONB for future multi-country resolution.
         priceLocalOverrides[args.country] = {
             currency,
             amountCents: localAmountCents,
             mpPlanId: res.id,
         };
 
-        const updateData: any = { priceLocalOverrides };
-        // Colombia is our primary launch — keep mpPlanId pointing at CO until
-        // BillingService gains a country-aware resolver in Sprint 3.
+        const updateData = { priceLocalOverrides };
         if (args.country === 'CO') {
             updateData.mpPlanId = res.id;
         }

@@ -214,6 +214,18 @@ jobs:
           PROD_MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
           PROD_MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
           PROD_MP_PUBLIC_KEY: ${{ secrets.MP_PUBLIC_KEY }}
+          # Optional — comma separated list of ISO codes for which to sync
+          # plans with MP on every deploy. Defaults to CO. Add more once you
+          # have an MP account per country. Example secret value: "CO,AR,MX"
+          PROD_MP_SYNC_COUNTRIES: ${{ secrets.MP_SYNC_COUNTRIES }}
+          # Per-country USD→local FX rates. Override via secrets when prices drift.
+          PROD_MP_FX_CO: ${{ secrets.MP_FX_CO }}
+          PROD_MP_FX_AR: ${{ secrets.MP_FX_AR }}
+          PROD_MP_FX_MX: ${{ secrets.MP_FX_MX }}
+          PROD_MP_FX_CL: ${{ secrets.MP_FX_CL }}
+          PROD_MP_FX_PE: ${{ secrets.MP_FX_PE }}
+          PROD_MP_FX_UY: ${{ secrets.MP_FX_UY }}
+          PROD_MP_FX_BR: ${{ secrets.MP_FX_BR }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -233,7 +245,9 @@ jobs:
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
-            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY
+            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,
+            PROD_MP_SYNC_COUNTRIES,
+            PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -375,6 +389,37 @@ jobs:
             echo "===> Running tenant schema migration (idempotent)..."
             docker compose -f infra/docker/docker-compose.prod.yml \
               run --rm api npm run migrate:tenants || true
+
+            echo "===> Seeding billing_plans (idempotent upsert)..."
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              run --rm api node prisma/seed-billing-plans.js || true
+
+            echo "===> Syncing billing plans to MercadoPago per configured country..."
+            # Countries + FX rates from env. PROD_MP_SYNC_COUNTRIES is a comma
+            # separated list (e.g. "CO,AR,MX"). For each country, PROD_MP_FX_<CC>
+            # sets the USD→local rate (e.g. PROD_MP_FX_CO=4200). Both are
+            # optional GitHub secrets with Colombia @ 4200 as the default so the
+            # very first deploy after setup "just works".
+            # The script skips any country×tier already synced, so rerunning on
+            # every deploy is safe and cheap.
+            SYNC_COUNTRIES="${PROD_MP_SYNC_COUNTRIES:-CO}"
+            IFS=',' read -r -a COUNTRY_LIST <<< "$SYNC_COUNTRIES"
+            for country in "${COUNTRY_LIST[@]}"; do
+              country=$(echo "$country" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+              case "$country" in
+                CO) fx="${PROD_MP_FX_CO:-4200}" ;;
+                AR) fx="${PROD_MP_FX_AR:-1200}" ;;
+                MX) fx="${PROD_MP_FX_MX:-18}" ;;
+                CL) fx="${PROD_MP_FX_CL:-950}" ;;
+                PE) fx="${PROD_MP_FX_PE:-3.8}" ;;
+                UY) fx="${PROD_MP_FX_UY:-40}" ;;
+                BR) fx="${PROD_MP_FX_BR:-5.5}" ;;
+                *) echo "  [skip] unknown country $country"; continue ;;
+              esac
+              echo "  Sync country=$country fx=$fx"
+              docker compose -f infra/docker/docker-compose.prod.yml \
+                run --rm api node scripts/sync-mp-plans.js --country="$country" --fx="$fx" || true
+            done
 
             echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
             for schema in $(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \

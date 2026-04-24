@@ -139,8 +139,12 @@ Pending:
 
 ---
 
-## Ops runbook (stub — fill in as we hit real incidents)
+## Operational runbook
 
-- **A subscription is stuck in `past_due` after the provider reports a successful retry**: The reconciliation cron (hourly) should recover within 1 hour. If not, check `billing_events` for the relevant `billing.payment.succeeded` — if missing, the webhook never arrived; run `listCustomerSubscriptions(providerCustomerId)` against the adapter and call `handleBillingEvent` manually from a script.
-- **Manual refund**: issue refund on the provider dashboard; the webhook fires `billing.payment.refunded` which BillingService records into `billing_payments`. No manual DB work needed.
-- **Change a tenant's plan outside the upgrade flow**: call `BillingService.upgradeSubscription(tenantId, newSlug)` via a super-admin script. Do not mutate rows directly — denormalized fields on `tenants` and provider state would drift.
+The full operational guide — deploy automation, adding countries, updating prices, manual ops, incident response, sandbox↔prod cutover — lives at [`docs/billing-runbook.md`](../../../../../docs/billing-runbook.md).
+
+Quick incident shortcuts:
+- **Subscription stuck in `past_due`**: reconciliation cron (hourly) self-heals. Force via script (see runbook §6).
+- **Webhook signature failures**: confirm `MP_WEBHOOK_SECRET` matches MP dashboard Signing Key; rotate if needed (runbook §6).
+- **Manual refund**: issue on provider dashboard; webhook fires `billing.payment.refunded` into `billing_payments`. No manual DB work.
+- **Manually change a tenant's plan**: call `BillingService.upgradeSubscription(tenantId, newSlug)` — never mutate rows directly (denormalized fields on `tenants` would drift).

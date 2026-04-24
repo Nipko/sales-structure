@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BillingService } from '../billing.service';
@@ -36,6 +37,7 @@ export class BillingReconciliationProcessor {
         private readonly prisma: PrismaService,
         private readonly billingService: BillingService,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     /**
@@ -167,6 +169,61 @@ export class BillingReconciliationProcessor {
                 return BillingEventType.SUBSCRIPTION_EXPIRED;
             default:
                 return null;
+        }
+    }
+
+    /**
+     * Daily at 09:00 — fire billing.trial.ending_soon for every tenant whose
+     * trial ends in 72–96 hours. That 24-hour window (instead of an exact
+     * "3 days before") absorbs clock skew and makes missed runs self-healing
+     * within 24h.
+     *
+     * Deduplicated via billing_events: we write a synthetic event with a
+     * deterministic providerEventId per subscription, and the UNIQUE constraint
+     * (provider, providerEventId) makes the second insert a no-op. So if the
+     * cron fires twice (two pods, a replay, whatever) the email still sends
+     * only once.
+     */
+    @Cron('0 9 * * *')
+    async emitTrialEndingSoon() {
+        const now = Date.now();
+        const from = new Date(now + 72 * 3600_000); // 3 days from now
+        const to = new Date(now + 96 * 3600_000);   // 4 days from now
+
+        const trialing = await this.prisma.billingSubscription.findMany({
+            where: {
+                status: SubscriptionStatus.TRIALING,
+                trialEndsAt: { gte: from, lte: to },
+            },
+            select: { id: true, tenantId: true, trialEndsAt: true },
+        });
+        if (trialing.length === 0) return;
+        this.logger.log(`[Reconcile] trial.ending_soon: ${trialing.length} subscription(s) in window`);
+
+        for (const sub of trialing) {
+            const providerEventId = `synthetic_trial_ending_soon_${sub.id}`;
+            try {
+                await this.prisma.billingEvent.create({
+                    data: {
+                        tenantId: sub.tenantId,
+                        subscriptionId: sub.id,
+                        provider: 'system',
+                        providerEventId,
+                        eventType: BillingEventType.TRIAL_ENDING_SOON,
+                        payload: { trialEndsAt: sub.trialEndsAt, source: 'cron' } as any,
+                    },
+                });
+            } catch {
+                // UNIQUE violation → already fired. Skip the emit so the email
+                // doesn't duplicate on subsequent cron runs.
+                continue;
+            }
+
+            this.eventEmitter.emit(BillingEventType.TRIAL_ENDING_SOON, {
+                tenantId: sub.tenantId,
+                subscriptionId: sub.id,
+                trialEndsAt: sub.trialEndsAt,
+            });
         }
     }
 }

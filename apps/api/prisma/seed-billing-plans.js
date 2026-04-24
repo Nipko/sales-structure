@@ -1,41 +1,23 @@
-/**
- * Seed Billing Plans
- * Run: npx ts-node prisma/seed-billing-plans.ts
- *
- * Upserts the 4 tier plans (starter, pro, enterprise, custom) into billing_plans.
- * Idempotent: rerunning the script updates prices and limits without creating
- * duplicates (slug is unique).
- *
- * Prices stored in USD cents (catalog price — source of truth). Per-country
- * local currency amounts are set up separately via priceLocalOverrides once
- * per-country pricing has been validated with customers.
- *
- * mpPlanId / stripePlanId remain null here — they get populated by the
- * provider-side plan sync script that will live at
- * `scripts/sync-mp-plans.ts` in Sprint 2 after plans are registered with
- * MercadoPago's preapproval_plan endpoint in each country.
- */
+// prisma/seed-billing-plans.js
+//
+// Seed the 4 billing plans (starter, pro, enterprise, custom).
+// Rerunning is safe — slug is UNIQUE and the script UPSERTS: existing rows
+// get their price, limits, and features refreshed; missing rows get created.
+//
+// Usage (prod container with plain node, no ts-node required):
+//   docker exec parallext-api node prisma/seed-billing-plans.js
+//
+// After this, run sync-mp-plans.js per country to register the plans in
+// MercadoPago and populate billing_plans.mpPlanId + priceLocalOverrides.
 
-import { PrismaClient } from '@prisma/client';
+const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-
-interface SeedPlan {
-    slug: string;
-    name: string;
-    priceUsdCents: number;
-    trialDays: number;
-    requiresCardForTrial: boolean;
-    maxAgents: number;
-    maxAiMessages: number;
-    sortOrder: number;
-    features: Record<string, unknown>;
-}
 
 // Decisions confirmed in docs/billing-plan.md Section 7.
 // Starter = self-serve entry; Pro = SMB sweet spot; Enterprise = teams + SSO;
 // Custom = sales-led agencies/resellers, manual admin provisioning only.
-const PLANS: SeedPlan[] = [
+const PLANS = [
     {
         slug: 'starter',
         name: 'Starter',
@@ -72,7 +54,7 @@ const PLANS: SeedPlan[] = [
         features: {
             seats: 5,
             channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
-            automationRules: -1, // unlimited
+            automationRules: -1,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
@@ -100,7 +82,7 @@ const PLANS: SeedPlan[] = [
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
-            whatsappCreditUsdCents: 0, // negotiated
+            whatsappCreditUsdCents: 0,
             customPrompt: true,
             customTemplates: true,
             sso: true,
@@ -112,11 +94,11 @@ const PLANS: SeedPlan[] = [
     {
         slug: 'custom',
         name: 'Custom',
-        priceUsdCents: 0, // negotiated; not self-serve
+        priceUsdCents: 0,
         trialDays: 0,
         requiresCardForTrial: false,
         maxAgents: 999,
-        maxAiMessages: -1, // unlimited
+        maxAiMessages: -1,
         sortOrder: 4,
         features: {
             seats: -1,
@@ -152,7 +134,7 @@ async function main() {
                     maxAgents: plan.maxAgents,
                     maxAiMessages: plan.maxAiMessages,
                     sortOrder: plan.sortOrder,
-                    features: plan.features as any,
+                    features: plan.features,
                     isActive: true,
                 },
             });
@@ -168,7 +150,7 @@ async function main() {
                     maxAgents: plan.maxAgents,
                     maxAiMessages: plan.maxAiMessages,
                     sortOrder: plan.sortOrder,
-                    features: plan.features as any,
+                    features: plan.features,
                     isActive: true,
                 },
             });

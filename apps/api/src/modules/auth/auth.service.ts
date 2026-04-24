@@ -9,6 +9,7 @@ import { RedisService } from '../redis/redis.service';
 import { GoogleAuthService } from './google-auth.service';
 import { PersonaService } from '../persona/persona.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
+import { BillingService } from '../billing/billing.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
@@ -30,6 +31,7 @@ export class AuthService {
         private redis: RedisService,
         private personaService: PersonaService,
         private businessInfoService: BusinessInfoService,
+        private billingService: BillingService,
     ) { }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -930,7 +932,35 @@ export class AuthService {
             console.error(`[Onboarding] Failed to persist business identity for "${result.tenant.schemaName}":`, error);
         }
 
-        // 6. Generate new JWT tokens (now includes tenantId)
+        // 7. Create the trial subscription. The onboarding wizard may pass
+        // `plan` (slug) and `cardTokenId` — defaults to starter with no card
+        // so an empty body still produces a valid TRIALING subscription. Any
+        // failure here is logged but does NOT roll back the tenant — the
+        // founder can retry billing activation from the dashboard later.
+        try {
+            const planSlug = (data.plan || data.planSlug || 'starter') as string;
+            const cardTokenId = data.cardTokenId as string | undefined;
+            const billingEmail = company.email || data.businessEmail || user.email;
+            const billingCountry = (company.country || data.billingCountry || this.inferCountryFromTimezone(timezone)) as string;
+            await this.billingService.createTrialSubscription({
+                tenantId: result.tenant.id,
+                planSlug,
+                billingEmail,
+                billingCountry,
+                cardTokenId,
+            });
+        } catch (error: any) {
+            // If Pro/Enterprise was chosen without a card we intentionally
+            // throw upstream — the dashboard UI will have validated it, but
+            // if somebody hits the API directly, they should get a clear error.
+            // Re-throw so the onboarding reports it.
+            if (error?.response?.error === 'card_required_for_trial' || error?.response?.error === 'plan_not_found') {
+                throw error;
+            }
+            console.error(`[Onboarding] Failed to create billing subscription for "${result.tenant.schemaName}":`, error);
+        }
+
+        // 8. Generate new JWT tokens (now includes tenantId)
         const payload: JwtPayload = {
             sub: result.user.id,
             email: result.user.email,
@@ -954,5 +984,28 @@ export class AuthService {
                 onboardingCompleted: result.user.onboardingCompleted,
             },
         };
+    }
+
+    /**
+     * Best-effort country inference from the tenant's picked timezone. Used
+     * only when the onboarding wizard did not include an explicit country —
+     * gives BillingService's country-aware resolver a sensible default so
+     * Starter tenants from Argentina don't get Colombian MP plan ids.
+     * Expand this list as we onboard more countries.
+     */
+    private inferCountryFromTimezone(tz: string | undefined): string {
+        if (!tz) return 'CO';
+        const map: Record<string, string> = {
+            'America/Bogota': 'CO',
+            'America/Mexico_City': 'MX',
+            'America/Argentina/Buenos_Aires': 'AR',
+            'America/Santiago': 'CL',
+            'America/Lima': 'PE',
+            'America/Montevideo': 'UY',
+            'America/Sao_Paulo': 'BR',
+            'America/Guayaquil': 'EC',
+            'America/Caracas': 'VE',
+        };
+        return map[tz] || 'CO';
     }
 }

@@ -116,7 +116,7 @@ export class BillingService {
         const providerSub = await provider.createSubscription({
             tenantId: tenant.id,
             providerCustomerId,
-            providerPlanId: this.resolveProviderPlanId(plan, providerName),
+            providerPlanId: this.resolveProviderPlanId(plan, providerName, input.billingCountry ?? tenant.billingCountry),
             trialDays: plan.trialDays > 0 ? plan.trialDays : undefined,
             cardTokenId: input.cardTokenId,
             externalReference: tenant.id,
@@ -182,7 +182,13 @@ export class BillingService {
         }
 
         const provider = this.providerFactory.getByName(sub.provider);
-        const newProviderPlanId = this.resolveProviderPlanId(newPlan, sub.provider as PaymentProviderName);
+        // For plan changes we need the tenant's current billing country to pick
+        // the right MP plan id. The Tenant row is authoritative here.
+        const tenantForCountry = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { billingCountry: true },
+        });
+        const newProviderPlanId = this.resolveProviderPlanId(newPlan, sub.provider as PaymentProviderName, tenantForCountry?.billingCountry);
         if (!sub.providerSubscriptionId) {
             throw new BadRequestException({ error: 'missing_provider_subscription', message: 'Subscription has no provider id — cannot upgrade.' });
         }
@@ -362,12 +368,45 @@ export class BillingService {
         return sub;
     }
 
-    private resolveProviderPlanId(plan: { mpPlanId: string | null; stripePlanId: string | null }, providerName: PaymentProviderName): string {
-        const id = providerName === 'mercadopago' ? plan.mpPlanId : providerName === 'stripe' ? plan.stripePlanId : 'mock-plan';
+    /**
+     * Resolve the provider-specific plan id to use for a given tenant.
+     *
+     * Lookup order (most specific first):
+     *  1. `billing_plans.priceLocalOverrides[billingCountry].mpPlanId` — per-country
+     *     id populated by scripts/sync-mp-plans.js. Essential when Parallly
+     *     operates in multiple countries (AR/MX/BR/CL/PE/UY on top of CO).
+     *  2. `billing_plans.mpPlanId` — legacy single-country fallback. Today
+     *     this holds the Colombia id as a convenience.
+     *
+     * Stripe lookup stays simple because our Stripe rollout (Phase 4) will
+     * use one plan per tier globally with Stripe-side currency handling.
+     */
+    private resolveProviderPlanId(
+        plan: { mpPlanId: string | null; stripePlanId: string | null; priceLocalOverrides: any },
+        providerName: PaymentProviderName,
+        billingCountry?: string | null,
+    ): string {
+        let id: string | null | undefined;
+        if (providerName === 'mercadopago') {
+            const overrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object') ? plan.priceLocalOverrides : {};
+            const country = billingCountry?.toUpperCase();
+            if (country && overrides[country]?.mpPlanId) {
+                id = overrides[country].mpPlanId;
+            } else {
+                id = plan.mpPlanId;
+            }
+        } else if (providerName === 'stripe') {
+            id = plan.stripePlanId;
+        } else {
+            id = 'mock-plan';
+        }
+
         if (!id) {
             throw new BadRequestException({
                 error: 'provider_plan_not_configured',
-                message: `This plan is not registered with ${providerName} yet. Run the plan sync script for that provider.`,
+                message: `This plan is not registered with ${providerName} for country ${billingCountry ?? '(default)'} yet. Run the plan sync script for that provider/country.`,
+                providerName,
+                billingCountry,
             });
         }
         return id;

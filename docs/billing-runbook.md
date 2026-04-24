@@ -26,11 +26,17 @@ docker compose run --rm api node prisma/seed-billing-plans.js
 ```
 Upsertea los 4 planes (`starter`, `pro`, `enterprise`, `custom`) en `billing_plans`. Los precios están en USD cents — son la fuente de verdad. Correrlo en cada deploy es seguro; actualiza nombre/precio/límites si cambian en el archivo fuente, sino es no-op.
 
-### 1.3 Sync de planes a MercadoPago por país
+### 1.3 Sync de planes a MercadoPago (Colombia)
 ```bash
 docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
 ```
-Para cada país en `$PROD_MP_SYNC_COUNTRIES` (default `CO`), registra los 3 tiers pagos (`starter`, `pro`, `enterprise`) como `preapproval_plan` en MercadoPago y guarda los IDs de MP en `billing_plans.priceLocalOverrides[PAÍS]`. Colombia además mirroriza el ID en la columna top-level `mpPlanId` (legacy hasta que llegue el resolver país-aware).
+Registra los 3 tiers pagos (`starter`, `pro`, `enterprise`) como `preapproval_plan` en MercadoPago Colombia y guarda los IDs en `billing_plans.priceLocalOverrides[CO]` + mirror en la columna `mpPlanId`. El FX rate se lee del secret `PROD_MP_FX_CO` (default `4200`).
+
+**Cómo agregar otro país**: al deploy.yml, después de la línea de Colombia, duplicá la invocación con el código ISO correcto. Ejemplo México:
+```yaml
+docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}" || true
+```
+Y cargá el secret `MP_FX_MX` en GitHub si querés overridear el default.
 
 **Garantía de idempotencia**: un tier ya sincronizado para un país se saltea por default. Correrlo en cada deploy es seguro y barato (un SELECT por tier, cero llamadas a MP API si nada cambió).
 
@@ -48,7 +54,6 @@ Para cada país en `$PROD_MP_SYNC_COUNTRIES` (default `CO`), registra los 3 tier
 | Variable | Default | Para qué |
 |---|---|---|
 | `MP_PUBLIC_KEY` | vacío | Usada por el frontend del dashboard para tokenizar tarjetas (Sprint 3) |
-| `MP_SYNC_COUNTRIES` | `CO` | Lista de códigos ISO separados por coma a sincronizar en cada deploy. Válidos: `CO,AR,MX,CL,PE,UY,BR` |
 | `MP_FX_CO` | `4200` | Tipo de cambio USD→COP. Cambiar cuando fluctúe |
 | `MP_FX_AR` | `1200` | Tipo de cambio USD→ARS |
 | `MP_FX_MX` | `18` | Tipo de cambio USD→MXN |

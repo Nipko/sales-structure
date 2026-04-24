@@ -394,32 +394,18 @@ jobs:
             docker compose -f infra/docker/docker-compose.prod.yml \
               run --rm api node prisma/seed-billing-plans.js || true
 
-            echo "===> Syncing billing plans to MercadoPago per configured country..."
-            # Countries + FX rates from env. PROD_MP_SYNC_COUNTRIES is a comma
-            # separated list (e.g. "CO,AR,MX"). For each country, PROD_MP_FX_<CC>
-            # sets the USD→local rate (e.g. PROD_MP_FX_CO=4200). Both are
-            # optional GitHub secrets with Colombia @ 4200 as the default so the
-            # very first deploy after setup "just works".
-            # The script skips any country×tier already synced, so rerunning on
-            # every deploy is safe and cheap.
-            SYNC_COUNTRIES="${PROD_MP_SYNC_COUNTRIES:-CO}"
-            IFS=',' read -r -a COUNTRY_LIST <<< "$SYNC_COUNTRIES"
-            for country in "${COUNTRY_LIST[@]}"; do
-              country=$(echo "$country" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-              case "$country" in
-                CO) fx="${PROD_MP_FX_CO:-4200}" ;;
-                AR) fx="${PROD_MP_FX_AR:-1200}" ;;
-                MX) fx="${PROD_MP_FX_MX:-18}" ;;
-                CL) fx="${PROD_MP_FX_CL:-950}" ;;
-                PE) fx="${PROD_MP_FX_PE:-3.8}" ;;
-                UY) fx="${PROD_MP_FX_UY:-40}" ;;
-                BR) fx="${PROD_MP_FX_BR:-5.5}" ;;
-                *) echo "  [skip] unknown country $country"; continue ;;
-              esac
-              echo "  Sync country=$country fx=$fx"
-              docker compose -f infra/docker/docker-compose.prod.yml \
-                run --rm api node scripts/sync-mp-plans.js --country="$country" --fx="$fx" || true
-            done
+            echo "===> Syncing billing plans to MercadoPago (Colombia)..."
+            # Per-country sync. Colombia is the primary launch market. To add
+            # another country later, duplicate the line below with its ISO
+            # code + FX rate from secrets (e.g. PROD_MP_FX_MX for Mexico).
+            # The script is idempotent — already-synced tiers are skipped.
+            # appleboy/ssh-action wraps each line with exit-code tracking and
+            # chokes on bash arrays / case statements, so we keep the loop
+            # unrolled as plain sequential invocations.
+            docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" || true
+            # Add below when opening new countries:
+            # docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}" || true
+            # docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}" || true
 
             echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
             for schema in $(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \

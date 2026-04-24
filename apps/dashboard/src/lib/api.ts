@@ -601,6 +601,19 @@ export const api = {
     getDashboardCohorts: (tenantId: string, months?: number) =>
         apiGet(`/dashboard-analytics/cohorts/${tenantId}?months=${months || 6}`),
 
+    // --- Billing (Sprint 2+3) ---
+    getBillingPlans: () => apiGet(`/billing/plans`),
+    getBillingSubscription: (tenantId: string) =>
+        apiGet(`/billing/${tenantId}/subscription`),
+    startBillingTrial: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingEmail?: string; billingCountry?: string }) =>
+        apiPost(`/billing/${tenantId}/subscription`, data),
+    upgradeBillingPlan: (tenantId: string, data: { planSlug: string; cardTokenId?: string }) =>
+        apiPost(`/billing/${tenantId}/subscription/upgrade`, data),
+    cancelBillingSubscription: (tenantId: string, data: { immediate?: boolean; reason?: string }) =>
+        apiPost(`/billing/${tenantId}/subscription/cancel`, data),
+    updateBillingPaymentMethod: (tenantId: string, data: { cardTokenId: string }) =>
+        apiPost(`/billing/${tenantId}/subscription/payment-method`, data),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {

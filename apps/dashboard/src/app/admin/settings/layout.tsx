@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import {
     User, Shield, Bell, Palette, Building2, Globe, Clock,
     Database, Zap, MessageSquare, Mail, Image, Brain,
-    SlidersHorizontal, Phone, Settings, type LucideIcon,
+    SlidersHorizontal, Phone, Settings, CreditCard, type LucideIcon,
 } from "lucide-react";
 
 interface NavItem { i18nKey: string; href: string; icon: LucideIcon; }
@@ -30,6 +30,7 @@ const NAV_SECTIONS: NavSection[] = [
             { i18nKey: "general", href: "/admin/settings/company", icon: Building2 },
             { i18nKey: "localization", href: "/admin/settings/localization", icon: Globe },
             { i18nKey: "businessHours", href: "/admin/settings/business-hours", icon: Clock },
+            { i18nKey: "billing", href: "/admin/settings/billing", icon: CreditCard },
         ],
     },
     {

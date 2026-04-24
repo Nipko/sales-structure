@@ -44,14 +44,24 @@ const ok = (msg) => { console.log(`  ✅ ${msg}`); pass++; };
 const ko = (msg) => { console.error(`  ❌ ${msg}`); fail++; };
 const step = (title) => console.log(`\n▶ ${title}`);
 
-function mintTestToken() {
+async function mintTestToken() {
     // Server signs JWTs with JWT_SECRET (falling back to INTERNAL_JWT_SECRET
     // for historical reasons — see auth.config.ts). The script runs inside
     // the api container so both are in env.
     const secret = process.env.JWT_SECRET || process.env.INTERNAL_JWT_SECRET;
     if (!secret) throw new Error('JWT_SECRET / INTERNAL_JWT_SECRET not set in env — cannot mint test token');
+
+    // JwtStrategy.validate looks up prisma.user.findUnique({ id: payload.sub })
+    // and user.id is a UUID column — so sub has to be a real user's UUID, not
+    // a sentinel. Use the seeded super_admin user (created by prisma/seed-admin.ts).
+    const admin = await prisma.user.findFirst({
+        where: { role: 'super_admin', isActive: true },
+        select: { id: true, email: true },
+    });
+    if (!admin) throw new Error('No active super_admin user found. Run prisma/seed-admin.ts first.');
+
     return jwt.sign(
-        { sub: 'e2e-billing-test', email: 'e2e@parallext.internal', role: 'super_admin' },
+        { sub: admin.id, email: admin.email, role: 'super_admin' },
         secret,
         { expiresIn: '5m' },
     );
@@ -103,7 +113,7 @@ async function main() {
     console.log(`\n=== Billing flow E2E test (tenant=${slug}) ===`);
 
     step('1. Mint super_admin JWT from server secret');
-    const token = mintTestToken();
+    const token = await mintTestToken();
     if (!token) { ko('Failed to mint token'); return; }
     ok('access token minted (5 min TTL)');
 

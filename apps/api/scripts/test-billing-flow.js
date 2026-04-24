@@ -157,7 +157,40 @@ async function main() {
     got.json?.data?.status === 'trialing' ? ok('data.status = trialing') : ko(`data.status = ${got.json?.data?.status}`);
     Array.isArray(got.json?.data?.payments) ? ok('data.payments is an array') : ko('data.payments missing');
 
-    step('7. POST /billing/:id/subscription/cancel (immediate)');
+    step('7. Simulate PAYMENT_SUCCEEDED webhook via /billing/webhook/mock');
+    // MockPaymentProvider.parseWebhookEvent reads the body as already-normalized.
+    // MockPaymentProvider.verifyWebhookSignature always returns true, so no HMAC needed.
+    const webhookBody = {
+        type: 'billing.payment.succeeded',
+        providerEventId: `test_evt_${testId}`,
+        occurredAt: new Date().toISOString(),
+        tenantId: tenant.id,
+        providerSubscriptionId: sub?.providerSubscriptionId,
+        payment: {
+            providerPaymentId: `test_pay_${testId}`,
+            amountCents: 4900,
+            currency: 'USD',
+            status: 'succeeded',
+            paidAt: new Date().toISOString(),
+        },
+    };
+    const webhookRes = await fetch(`${API_URL}/billing/webhook/mock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookBody),
+    });
+    webhookRes.status === 200 ? ok(`webhook HTTP ${webhookRes.status}`) : ko(`webhook HTTP ${webhookRes.status}: ${await webhookRes.text()}`);
+
+    // Give the event loop a tick so the async transaction inside handleBillingEvent settles
+    await new Promise(r => setTimeout(r, 200));
+
+    const subAfterPay = await prisma.billingSubscription.findUnique({ where: { tenantId: tenant.id } });
+    subAfterPay?.status === 'active' ? ok(`status transitioned trialing → ${subAfterPay.status}`) : ko(`expected active, got ${subAfterPay?.status}`);
+
+    const payments = await prisma.billingPayment.findMany({ where: { tenantId: tenant.id } });
+    payments.length === 1 && payments[0].status === 'succeeded' ? ok('billing_payments row created with status=succeeded') : ko(`expected 1 succeeded payment, got ${payments.length}`);
+
+    step('8. POST /billing/:id/subscription/cancel (immediate)');
     const cancel = await http(token, 'POST', `/billing/${tenant.id}/subscription/cancel`, { immediate: true, reason: 'e2e_test' });
     cancel.status === 200 || cancel.status === 201 ? ok(`HTTP ${cancel.status}`) : ko(`HTTP ${cancel.status}: ${cancel.text.slice(0, 200)}`);
 
@@ -165,12 +198,12 @@ async function main() {
     sub2?.status === 'cancelled' ? ok(`status = ${sub2.status}`) : ko(`expected cancelled, got ${sub2?.status}`);
     sub2?.cancelledAt ? ok('cancelled_at populated') : ko('cancelled_at missing');
 
-    step('8. billing_events audit log has entries');
-    const events = await prisma.billingEvent.findMany({ where: { tenantId: tenant.id } });
-    events.length > 0 ? ok(`${events.length} event(s) recorded`) : ko('no billing_events rows created');
-    events.forEach(e => console.log(`    • ${e.eventType} (${e.provider})`));
+    step('9. billing_events audit log has webhook entry');
+    const events = await prisma.billingEvent.findMany({ where: { tenantId: tenant.id }, orderBy: { processedAt: 'asc' } });
+    events.length >= 1 ? ok(`${events.length} webhook event(s) recorded`) : ko('no billing_events rows created — webhook processing failed');
+    events.forEach(e => console.log(`    • ${e.eventType} (${e.provider}/${e.providerEventId})`));
 
-    step('9. Summary');
+    step('10. Summary');
     console.log(`\n  ${pass} passed, ${fail} failed.\n`);
     if (fail > 0) process.exitCode = 1;
 }

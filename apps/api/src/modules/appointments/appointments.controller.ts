@@ -8,6 +8,7 @@ import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { AppointmentsService } from './appointments.service';
 import { ServicesService } from './services.service';
 import { CalendarIntegrationService } from './calendar-integration.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('appointments')
 @Controller('appointments')
@@ -18,6 +19,7 @@ export class AppointmentsController {
         private service: AppointmentsService,
         private servicesService: ServicesService,
         private calendarService: CalendarIntegrationService,
+        private throttle: TenantThrottleService,
     ) {}
 
     // ── Services CRUD ────────────────────────────────────────────
@@ -30,6 +32,11 @@ export class AppointmentsController {
 
     @Post(':tenantId/services')
     async createService(@Param('tenantId') tenantId: string, @Body() body: any, @CurrentUser() user: any) {
+        // Plan gate — count active services and reject if the tier limit is reached.
+        const existing = await this.servicesService.list(user.schemaName);
+        const activeCount = existing.filter(s => s.isActive !== false).length;
+        await this.throttle.enforcePlanLimit(tenantId, 'appointmentsServices', activeCount, 'servicios de agenda');
+
         const data = await this.servicesService.create(user.schemaName, body);
         return { success: true, data };
     }

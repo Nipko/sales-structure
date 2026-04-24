@@ -111,6 +111,51 @@ export class TenantThrottleService {
     }
 
     /**
+     * Resolve a granular per-resource limit from billing_plans.features (the
+     * source of truth populated by the seed). Returns Infinity for -1
+     * (unlimited) so callers can compare with `>=`.
+     *
+     * Falls back to 0 if the plan row does not exist yet, which keeps fresh
+     * installs safe — enforcePlanLimit then rejects every create call until
+     * seed-billing-plans.js runs. That is preferable to silently letting
+     * unlimited resources through in a half-initialised deploy.
+     */
+    async getPlanLimit(tenantId: string, limitKey: string): Promise<number> {
+        const plan = await this.getTenantPlan(tenantId);
+        const row = await this.prisma.billingPlan.findUnique({
+            where: { slug: plan },
+            select: { features: true },
+        });
+        const features = (row?.features ?? {}) as Record<string, unknown>;
+        const raw = features[limitKey];
+        if (typeof raw !== 'number') return 0;
+        return raw === -1 ? Number.POSITIVE_INFINITY : raw;
+    }
+
+    /**
+     * Generic quota guard. Throws 403 with { error: 'plan_limit_reached', ... }
+     * when the current count has already reached the plan's allowed maximum.
+     * Use from any resource-creation path (services, automation rules,
+     * broadcasts, etc.) to replicate the maxAgents pattern.
+     */
+    async enforcePlanLimit(tenantId: string, limitKey: string, currentCount: number, resourceLabel?: string): Promise<void> {
+        const { ForbiddenException } = await import('@nestjs/common');
+        const max = await this.getPlanLimit(tenantId, limitKey);
+        if (currentCount >= max) {
+            const plan = await this.getTenantPlan(tenantId);
+            throw new ForbiddenException({
+                error: 'plan_limit_reached',
+                limitKey,
+                resource: resourceLabel ?? limitKey,
+                currentCount,
+                maxAllowed: Number.isFinite(max) ? max : null,
+                plan,
+                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} ${resourceLabel ?? limitKey}. Actualizá tu plan para agregar más.`,
+            });
+        }
+    }
+
+    /**
      * Resolve tenant plan with Redis caching (5 min TTL).
      */
     private async getTenantPlan(tenantId: string): Promise<string> {

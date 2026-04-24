@@ -5,6 +5,7 @@ import { AutomationService } from './automation.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('automation')
 @Controller('automation')
@@ -16,6 +17,7 @@ export class AutomationController {
     constructor(
         private readonly automationService: AutomationService,
         private readonly prisma: PrismaService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     private async schemaFor(tenantId: string): Promise<string> {
@@ -37,6 +39,14 @@ export class AutomationController {
         @Body() payload: any
     ) {
         const schemaName = await this.schemaFor(tenantId);
+
+        // Plan gate — count existing active rules and reject if tier limit is reached.
+        const existing = await this.automationService.getRules(schemaName);
+        const activeCount = Array.isArray(existing)
+            ? existing.filter((r: any) => r.is_active !== false && r.isActive !== false).length
+            : 0;
+        await this.throttle.enforcePlanLimit(tenantId, 'automationRules', activeCount, 'reglas de automatización');
+
         const created = await this.automationService.createRule(schemaName, { ...payload, tenant_id: tenantId });
         return { success: true, data: created };
     }

@@ -64,8 +64,8 @@ jobs:
           tags: |
             ${{ env.API_IMAGE }}:latest
             ${{ env.API_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=billing-v2
+          cache-to: type=gha,mode=max,scope=billing-v2
 
       - name: Smoke test API — verify module graph resolves
         run: |
@@ -96,8 +96,8 @@ jobs:
           tags: |
             ${{ env.WORKER_IMAGE }}:latest
             ${{ env.WORKER_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=billing-v2
+          cache-to: type=gha,mode=max,scope=billing-v2
 
       - name: Build and push Dashboard image
         uses: docker/build-push-action@v5
@@ -116,8 +116,9 @@ jobs:
             NEXT_PUBLIC_META_BUSINESS_ID=${{ secrets.META_BUSINESS_ID }}
             NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            NEXT_PUBLIC_APP_VERSION=${{ github.sha }}
+          cache-from: type=gha,scope=billing-v2
+          cache-to: type=gha,mode=max,scope=billing-v2
 
       - name: Build and push WhatsApp image
         uses: docker/build-push-action@v5
@@ -128,8 +129,8 @@ jobs:
           tags: |
             ${{ env.WHATSAPP_IMAGE }}:latest
             ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=billing-v2
+          cache-to: type=gha,mode=max,scope=billing-v2
 
       - name: Smoke test WhatsApp image modules
         run: |
@@ -145,8 +146,8 @@ jobs:
           tags: |
             ${{ env.LANDING_IMAGE }}:latest
             ${{ env.LANDING_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=billing-v2
+          cache-to: type=gha,mode=max,scope=billing-v2
 
   # ──────────────────────────────────────────────────────────────
   # JOB 2: SSH into VPS and deploy

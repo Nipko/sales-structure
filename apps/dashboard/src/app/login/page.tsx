@@ -305,7 +305,12 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-neutral-400 mt-6">Powered by <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
+                <p className="text-center text-xs text-neutral-400 mt-6">
+                    Powered by <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a>
+                    {process.env.NEXT_PUBLIC_APP_VERSION && (
+                        <span className="ml-2 opacity-60">· build {process.env.NEXT_PUBLIC_APP_VERSION.slice(0, 7)}</span>
+                    )}
+                </p>
             </div>
         </div>
     );

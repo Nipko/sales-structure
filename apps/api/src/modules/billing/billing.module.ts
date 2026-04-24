@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingWebhookController } from './webhook.controller';
+import { BillingEmailService } from './billing-email.service';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
@@ -21,10 +23,11 @@ import { BillingReconciliationProcessor } from './processors/reconciliation.proc
  * so it is consumable in BillingService without an explicit import here.
  */
 @Module({
-    imports: [PrismaModule, RedisModule],
+    imports: [PrismaModule, RedisModule, EmailTemplatesModule],
     controllers: [BillingController, BillingWebhookController],
     providers: [
         BillingService,
+        BillingEmailService,
         PaymentProviderFactory,
         MockPaymentProvider,
         MercadoPagoAdapter,

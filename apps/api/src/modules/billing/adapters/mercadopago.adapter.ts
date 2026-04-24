@@ -59,12 +59,35 @@ export class MercadoPagoAdapter implements IPaymentProvider {
         };
     }
 
-    async updatePaymentMethod(_providerCustomerId: string, _cardTokenId: string): Promise<void> {
-        // Tokens are attached per preapproval (createSubscription), not per customer.
-        // To actually rotate a payment method we update the preapproval via
-        // changeSubscriptionPlan-style PUT with a new card_token_id.
-        // Deferred to Sprint 3 when the dashboard "update card" flow lands.
-        throw new NotImplementedException('updatePaymentMethod — implemented in Sprint 3 together with the dashboard update-card form');
+    /**
+     * Rotate the card attached to a tenant's active subscription.
+     *
+     * MP has no standalone "customer" or "payment method" resource — the card
+     * lives on the preapproval record itself. This method resolves the active
+     * subscription for the customer (via listCustomerSubscriptions, which
+     * searches by external_reference), picks the first non-cancelled one, and
+     * PUTs the new card_token_id onto that preapproval. If there are multiple
+     * live subscriptions (shouldn't happen in our model — one sub per tenant
+     * is enforced in DB), the first active one wins.
+     *
+     * Callers (BillingService) are expected to have the new token from the
+     * dashboard's @mercadopago/sdk-js tokenisation step.
+     */
+    async updatePaymentMethod(providerCustomerId: string, cardTokenId: string): Promise<void> {
+        const subs = await this.listCustomerSubscriptions(providerCustomerId);
+        const target = subs.find(s => s.status !== SubscriptionStatus.CANCELLED && s.status !== SubscriptionStatus.EXPIRED);
+        if (!target) {
+            throw new BadRequestException({
+                error: 'no_active_subscription',
+                message: 'The tenant has no active subscription to attach a new card to.',
+                providerCustomerId,
+            });
+        }
+        await this.mpConfig.preApproval.update({
+            id: target.providerSubscriptionId,
+            body: { card_token_id: cardTokenId } as any,
+        });
+        this.logger.log(`Rotated card on MP subscription ${target.providerSubscriptionId}`);
     }
 
     // -------------------------------------------------------------------------

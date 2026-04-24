@@ -5,6 +5,7 @@ import { useState } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
+import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { useRouter } from "next/navigation";
@@ -51,6 +52,7 @@ export default function AdminLayout({
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
+          <TrialCountdownBanner />
           <div className="flex-1 flex overflow-hidden">
             <main className="flex-1 overflow-auto p-6">{children}</main>
             <OnboardingChecklist />

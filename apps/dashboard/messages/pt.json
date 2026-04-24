@@ -2255,6 +2255,13 @@
     "emptyFilterTitle": "Nao ha modelos com este status",
     "emptyFilterBody": "Tente outro filtro ou sincronize com a Meta."
   },
+  "trialBanner": {
+    "endsToday": "Seu teste gratis termina hoje.",
+    "endsTomorrow": "Seu teste gratis termina amanha.",
+    "endsIn": "Seu teste gratis termina em {days} dias.",
+    "managePlan": "Gerenciar plano",
+    "dismiss": "Fechar"
+  },
   "billingPage": {
     "title": "Faturamento e plano",
     "subtitle": "Gerencie sua assinatura, forma de pagamento e faturas.",

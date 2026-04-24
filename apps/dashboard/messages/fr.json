@@ -2255,6 +2255,13 @@
     "emptyFilterTitle": "Aucun modele avec ce statut",
     "emptyFilterBody": "Essayez un autre filtre ou synchronisez depuis Meta."
   },
+  "trialBanner": {
+    "endsToday": "Votre essai gratuit se termine aujourd'hui.",
+    "endsTomorrow": "Votre essai gratuit se termine demain.",
+    "endsIn": "Votre essai gratuit se termine dans {days} jours.",
+    "managePlan": "Gerer le plan",
+    "dismiss": "Fermer"
+  },
   "billingPage": {
     "title": "Facturation et plan",
     "subtitle": "Gerez votre abonnement, moyen de paiement et factures.",

@@ -2255,6 +2255,13 @@
     "emptyFilterTitle": "No templates with this status",
     "emptyFilterBody": "Try a different filter or sync from Meta."
   },
+  "trialBanner": {
+    "endsToday": "Your free trial ends today.",
+    "endsTomorrow": "Your free trial ends tomorrow.",
+    "endsIn": "Your free trial ends in {days} days.",
+    "managePlan": "Manage plan",
+    "dismiss": "Dismiss"
+  },
   "billingPage": {
     "title": "Billing & plan",
     "subtitle": "Manage your subscription, payment method and invoices.",

@@ -2255,6 +2255,13 @@
     "emptyFilterTitle": "No hay plantillas con este estado",
     "emptyFilterBody": "Prueba con otro filtro o sincroniza desde Meta."
   },
+  "trialBanner": {
+    "endsToday": "Tu prueba gratuita termina hoy.",
+    "endsTomorrow": "Tu prueba gratuita termina manana.",
+    "endsIn": "Tu prueba gratuita termina en {days} dias.",
+    "managePlan": "Administrar plan",
+    "dismiss": "Cerrar"
+  },
   "billingPage": {
     "title": "Facturacion y plan",
     "subtitle": "Administra tu suscripcion, metodo de pago y factura.",

@@ -83,7 +83,7 @@ export class BillingEmailService {
             return;
         }
 
-        const admin = tenant.users.find(u => u.role === 'tenant_admin') ?? tenant.users[0];
+        const admin = tenant.users.find((u: { role: string }) => u.role === 'tenant_admin') ?? tenant.users[0];
         const recipient = tenant.billingEmail ?? admin?.email;
         if (!recipient) {
             this.logger.warn(`[BillingEmail] ${templateSlug} skipped — tenant ${tenantId} has no billingEmail nor admin user`);

@@ -19,20 +19,17 @@
 // Cleanup is automatic — the test tenant and its rows are deleted at the end,
 // even on failure.
 //
-// Usage:
-//   API_URL=https://api.parallly-chat.cloud/api/v1 \
-//   ADMIN_EMAIL=admin@parallext.com \
-//   ADMIN_PASSWORD=... \
+// Usage (runs inside the api container so JWT_SECRET is already set):
 //   docker exec parallext-api node scripts/test-billing-flow.js
 //
-// The ADMIN_* env vars default to the seeded super_admin credentials set by
-// prisma/seed-admin.ts. Override them if the admin user was rotated.
+// The script mints its own short-lived super_admin JWT using the server's
+// JWT_SECRET — no password required and no dependency on an external admin
+// user existing in the DB.
 
+const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 
 const API_URL = process.env.API_URL || 'http://localhost:3000/api/v1';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@parallext.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Parallext2026!';
 
 const prisma = new PrismaClient();
 const testId = Date.now();
@@ -47,15 +44,17 @@ const ok = (msg) => { console.log(`  ✅ ${msg}`); pass++; };
 const ko = (msg) => { console.error(`  ❌ ${msg}`); fail++; };
 const step = (title) => console.log(`\n▶ ${title}`);
 
-async function login() {
-    const res = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-    });
-    if (!res.ok) throw new Error(`Login ${res.status}: ${await res.text()}`);
-    const body = await res.json();
-    return body?.data?.accessToken || body?.accessToken;
+function mintTestToken() {
+    // Server signs JWTs with JWT_SECRET (falling back to INTERNAL_JWT_SECRET
+    // for historical reasons — see auth.config.ts). The script runs inside
+    // the api container so both are in env.
+    const secret = process.env.JWT_SECRET || process.env.INTERNAL_JWT_SECRET;
+    if (!secret) throw new Error('JWT_SECRET / INTERNAL_JWT_SECRET not set in env — cannot mint test token');
+    return jwt.sign(
+        { sub: 'e2e-billing-test', email: 'e2e@parallext.internal', role: 'super_admin' },
+        secret,
+        { expiresIn: '5m' },
+    );
 }
 
 async function createTestTenant() {
@@ -103,10 +102,10 @@ async function cleanup() {
 async function main() {
     console.log(`\n=== Billing flow E2E test (tenant=${slug}) ===`);
 
-    step('1. Login as super_admin');
-    const token = await login();
-    if (!token) { ko('No access token returned'); return; }
-    ok('access token acquired');
+    step('1. Mint super_admin JWT from server secret');
+    const token = mintTestToken();
+    if (!token) { ko('Failed to mint token'); return; }
+    ok('access token minted (5 min TTL)');
 
     step('2. Create throwaway tenant with paymentProvider=mock');
     await createTestTenant();

@@ -1861,7 +1861,121 @@
     "schema": "Schema",
     "industry": "Industry",
     "activeUsers": "Active users",
-    "subtitle": "Manage organizations and tenants"
+    "subtitle": "Manage organizations and subscriptions",
+    "tabs": {
+      "overview": "Overview",
+      "onboarding": "Onboarding",
+      "offboarding": "Offboarding",
+      "billing": "Billing",
+      "usage": "Usage",
+      "platform": "Platform"
+    },
+    "kpis": {
+      "active": "Active",
+      "trialing": "Trialing",
+      "pastDue": "Past Due",
+      "cancelled": "Cancelled",
+      "mrr": "MRR",
+      "suspended": "Suspended",
+      "pendingDeletion": "Pending Deletion",
+      "signups7d": "Signups (7d)",
+      "signups30d": "Signups (30d)",
+      "conversionRate": "Conversion Rate",
+      "totalRevenue": "Total Revenue",
+      "activeSubs": "Active Subscriptions",
+      "failedPayments": "Failed Payments"
+    },
+    "status": {
+      "all": "All",
+      "active": "Active",
+      "trialing": "Trialing",
+      "past_due": "Past Due",
+      "cancelled": "Cancelled",
+      "suspended": "Suspended",
+      "online": "Online",
+      "offline": "Offline"
+    },
+    "table": {
+      "company": "Company",
+      "slug": "Slug",
+      "planCol": "Plan",
+      "statusCol": "Status",
+      "periodEnd": "Period End",
+      "users": "Users",
+      "channels": "Channels",
+      "actions": "Actions",
+      "created": "Created",
+      "email": "Email",
+      "role": "Role",
+      "type": "Type",
+      "connectedAt": "Connected",
+      "amount": "Amount",
+      "date": "Date",
+      "reason": "Reason",
+      "queueName": "Queue",
+      "waiting": "Waiting",
+      "delayed": "Delayed",
+      "failed": "Failed",
+      "tenant": "Tenant",
+      "daysPastDue": "Days Past Due",
+      "suspendedDate": "Suspended Date",
+      "failureReason": "Failure Reason",
+      "automation": "Automation",
+      "outbound": "Outbound"
+    },
+    "actions": {
+      "view": "View details",
+      "edit": "Edit",
+      "suspend": "Suspend",
+      "reactivate": "Reactivate",
+      "impersonate": "Impersonate",
+      "resetPassword": "Reset password",
+      "extendTrial": "Extend trial"
+    },
+    "modals": {
+      "editTitle": "Edit tenant",
+      "suspendTitle": "Suspend tenant",
+      "suspendMessage": "Are you sure you want to suspend this tenant? Users will not be able to access.",
+      "suspendReason": "Suspension reason",
+      "createTitle": "New tenant",
+      "companyName": "Company name",
+      "language": "Language",
+      "name": "Name"
+    },
+    "onboardingFunnel": {
+      "signedUp": "Signed Up",
+      "onboardingComplete": "Onboarding Complete",
+      "channelConnected": "Channel Connected",
+      "activeSubscription": "Active Subscription"
+    },
+    "sections": {
+      "recentSignups": "Recent signups",
+      "stuckTenants": "Stuck tenants",
+      "stuckDesc": "Created over 3 days ago with no channel connected",
+      "pastDueTenants": "Past due tenants",
+      "recentlySuspended": "Recently suspended",
+      "planDistribution": "Plan distribution",
+      "recentPayments": "Recent payments",
+      "failedPaymentsTable": "Failed payments",
+      "serviceStatus": "Service status",
+      "queueStatus": "Queue status",
+      "channelDistribution": "Channel distribution"
+    },
+    "detail": {
+      "info": "Info",
+      "users": "Users",
+      "channels": "Channels",
+      "billing": "Billing",
+      "companyDetails": "Company details",
+      "subscriptionStatus": "Subscription status",
+      "trialEnd": "Trial end",
+      "noUsers": "No users in this tenant",
+      "noChannels": "No channels connected"
+    },
+    "impersonation": {
+      "banner": "Viewing as {name}",
+      "exit": "Exit"
+    }
   },
   "onboarding": {
     "title": "Set up your company",

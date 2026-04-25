@@ -986,6 +986,74 @@ export class AuthService {
         };
     }
 
+    // ── Super Admin Impersonation ──────────────────────────────────
+
+    /**
+     * Generate short-lived tokens (1 hour) for a super_admin to impersonate
+     * a tenant_admin in the given tenant. Tokens carry impersonation metadata
+     * so audit trails can distinguish real from impersonated sessions.
+     */
+    async impersonate(superAdminId: string, tenantId: string): Promise<{ accessToken: string; refreshToken: string }> {
+        // Verify the caller is actually a super_admin
+        const superAdmin = await this.prisma.user.findUnique({ where: { id: superAdminId } });
+        if (!superAdmin || superAdmin.role !== 'super_admin') {
+            throw new UnauthorizedException('Only super_admin can impersonate');
+        }
+
+        // Verify tenant exists
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (!tenant) {
+            throw new NotFoundException(`Tenant ${tenantId} not found`);
+        }
+
+        // Find the first tenant_admin user for this tenant
+        const targetUser = await this.prisma.user.findFirst({
+            where: { tenantId, role: 'tenant_admin', isActive: true },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        if (!targetUser) {
+            throw new NotFoundException(`No active tenant_admin found for tenant ${tenantId}`);
+        }
+
+        // Generate a short-lived access token (1 hour)
+        const payload: JwtPayload = {
+            sub: targetUser.id,
+            email: targetUser.email,
+            role: targetUser.role as UserRole,
+            tenantId: targetUser.tenantId || undefined,
+        };
+
+        const accessToken = this.jwtService.sign(
+            { ...payload, impersonatedBy: superAdminId, isImpersonation: true },
+            {
+                secret: this.configService.get<string>('auth.jwtSecret'),
+                expiresIn: '1h',
+            },
+        );
+
+        // Generate a matching refresh token (also 1 hour)
+        const tokenId = crypto.randomUUID();
+        const refreshToken = this.jwtService.sign(
+            { ...payload, tid: tokenId, impersonatedBy: superAdminId, isImpersonation: true },
+            {
+                secret: this.configService.get<string>('auth.jwtRefreshSecret'),
+                expiresIn: '1h',
+            },
+        );
+
+        // Store refresh token in Redis with 1h TTL
+        const redisKey = `refresh:${payload.sub}:${tokenId}`;
+        await this.redis.setJson(redisKey, {
+            userId: payload.sub,
+            impersonatedBy: superAdminId,
+            isImpersonation: true,
+            createdAt: Date.now(),
+        }, 3600);
+
+        return { accessToken, refreshToken };
+    }
+
     /**
      * Best-effort country inference from the tenant's picked timezone. Used
      * only when the onboarding wizard did not include an explicit country —

@@ -43,4 +43,23 @@ export class OffboardingController {
         const status = await this.offboardingService.getOffboardingStatus(tenantId);
         return { success: true, data: status };
     }
+
+    @Post(':tenantId/reactivate')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Reactivate a suspended or cancelled tenant' })
+    async reactivateTenant(@Param('tenantId') tenantId: string) {
+        const result = await this.offboardingService.reactivate(tenantId);
+        return { success: true, data: result };
+    }
+
+    @Post(':tenantId/extend-trial')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Extend trial period for a tenant' })
+    async extendTrial(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { days: number },
+    ) {
+        const result = await this.offboardingService.extendTrial(tenantId, body.days);
+        return { success: true, data: result };
+    }
 }

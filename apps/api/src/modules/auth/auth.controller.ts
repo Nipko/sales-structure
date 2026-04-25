@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -323,6 +323,19 @@ export class AuthController {
     @ApiOperation({ summary: 'Update current user profile (name, phone, jobTitle)' })
     async updateProfile(@Request() req: any, @Body() body: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string }) {
         const result = await this.authService.updateProfile(req.user.id, body);
+        return { success: true, data: result };
+    }
+
+    // ── Super Admin Impersonation ────────────────────────────────
+
+    @Post('impersonate/:tenantId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Impersonate a tenant admin (super_admin only)' })
+    async impersonate(@Param('tenantId') tenantId: string, @CurrentUser() user: any) {
+        const result = await this.authService.impersonate(user.id, tenantId);
         return { success: true, data: result };
     }
 

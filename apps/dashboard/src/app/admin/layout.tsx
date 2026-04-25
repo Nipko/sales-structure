@@ -7,6 +7,7 @@ import TopBar from "@/components/layout/TopBar";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import SuspendedScreen from "@/components/SuspendedScreen";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -81,6 +82,7 @@ export default function AdminLayout({
           onMobileClose={() => setMobileOpen(false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
+          <ImpersonationBanner />
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
           <TrialCountdownBanner />
           <div className="flex-1 flex overflow-hidden">

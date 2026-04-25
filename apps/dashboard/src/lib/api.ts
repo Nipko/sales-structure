@@ -381,6 +381,22 @@ export const api = {
     deactivateTenant: (id: string) =>
         apiPost(`/tenants/${id}/deactivate`, {}),
 
+    // --- Platform Stats (super_admin) ---
+    getPlatformStats: () => apiGet("/tenants/stats"),
+    getPlatformBilling: () => apiGet("/tenants/platform-billing"),
+    getPlatformUsage: () => apiGet("/tenants/platform-usage"),
+    getPlatformHealth: () => apiGet("/tenants/health"),
+
+    // --- Tenant management (super_admin) ---
+    suspendTenant: (tenantId: string, reason: string) =>
+        apiPost(`/offboarding/${tenantId}/suspend`, { reason }),
+    reactivateTenant: (tenantId: string) =>
+        apiPost(`/offboarding/${tenantId}/reactivate`, {}),
+    extendTrial: (tenantId: string, days: number) =>
+        apiPost(`/offboarding/${tenantId}/extend-trial`, { days }),
+    impersonateTenant: (tenantId: string) =>
+        apiPost(`/auth/impersonate/${tenantId}`, {}),
+
     // --- Copilot ---
     copilotChat: (data: {
         message: string;

@@ -37,11 +37,51 @@ export class TenantsController {
         return { success: true, data: tenant };
     }
 
+    // ── Super Admin Platform Endpoints (static routes BEFORE :id) ────
+
+    @Get('stats')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Platform KPIs — tenant counts, users, channels, signups' })
+    async getPlatformStats() {
+        const data = await this.tenantsService.getPlatformStats();
+        return { success: true, data };
+    }
+
+    @Get('platform-billing')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Billing summary — MRR, plan distribution, recent payments' })
+    async getPlatformBilling() {
+        const data = await this.tenantsService.getPlatformBilling();
+        return { success: true, data };
+    }
+
+    @Get('platform-usage')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Usage across all active tenants' })
+    async getPlatformUsage() {
+        const data = await this.tenantsService.getPlatformUsage();
+        return { success: true, data };
+    }
+
+    @Get('health')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Platform health — services, queues' })
+    async getPlatformHealth() {
+        const data = await this.tenantsService.getPlatformHealth();
+        return { success: true, data };
+    }
+
+    // ── Standard CRUD ────────────────────────────────────────────────
+
     @Get()
     @Roles('super_admin')
     @ApiOperation({ summary: 'List all tenants' })
-    async findAll(@Query('page') page = 1, @Query('limit') limit = 20) {
-        const result = await this.tenantsService.findAll(page, limit);
+    async findAll(
+        @Query('page') page = 1,
+        @Query('limit') limit = 20,
+        @Query('status') status?: string,
+    ) {
+        const result = await this.tenantsService.findAll(page, limit, status);
         return { success: true, data: result.tenants, meta: { page: result.page, limit: result.limit, total: result.total } };
     }
 

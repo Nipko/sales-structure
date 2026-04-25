@@ -382,6 +382,144 @@ export class OffboardingService {
     }
 
     /**
+     * Reactivate a suspended or cancelled tenant — restores access.
+     */
+    async reactivate(tenantId: string) {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+
+        // Re-enable tenant
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { isActive: true, subscriptionStatus: 'active' },
+        });
+
+        // Re-enable all users
+        await this.prisma.user.updateMany({
+            where: { tenantId },
+            data: { isActive: true },
+        });
+
+        // Update billing subscription if exists
+        try {
+            const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
+            if (sub) {
+                await this.prisma.billingSubscription.update({
+                    where: { id: sub.id },
+                    data: {
+                        status: 'active',
+                        cancelAtPeriodEnd: false,
+                        cancelledAt: null,
+                        cancellationReason: null,
+                    },
+                });
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to update billing subscription on reactivation for tenant ${tenantId}: ${error}`);
+        }
+
+        // Clear past_due Redis key
+        await this.redis.del(`offboard:past_due:${tenantId}`);
+
+        // Invalidate caches
+        await this.redis.del(`tenant:${tenantId}:config`);
+        await this.redis.del(`tenant:${tenantId}:schema`);
+        await this.redis.del(`tenant_plan:${tenantId}`);
+
+        // Audit log
+        try {
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'tenant_reactivated',
+                    resource: 'offboarding',
+                    details: { previousStatus: tenant.subscriptionStatus, previousActive: tenant.isActive },
+                },
+            });
+        } catch (error) {
+            this.logger.warn(`Failed to create audit log for reactivation: ${error}`);
+        }
+
+        this.logger.log(`Tenant ${tenantId} reactivated`);
+
+        return {
+            tenantId,
+            name: tenant.name,
+            isActive: true,
+            subscriptionStatus: 'active',
+        };
+    }
+
+    /**
+     * Extend trial period for a tenant by the given number of days.
+     */
+    async extendTrial(tenantId: string, days: number) {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+
+        const currentTrialEnd = tenant.trialEndsAt || new Date();
+        const baseDate = currentTrialEnd > new Date() ? currentTrialEnd : new Date();
+        const newTrialEndsAt = new Date(baseDate.getTime() + days * 86_400_000);
+
+        // Update tenant
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                trialEndsAt: newTrialEndsAt,
+                subscriptionStatus: 'trialing',
+                isActive: true,
+            },
+        });
+
+        // Update billing subscription if exists
+        try {
+            const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
+            if (sub) {
+                await this.prisma.billingSubscription.update({
+                    where: { id: sub.id },
+                    data: {
+                        trialEndsAt: newTrialEndsAt,
+                        status: 'trialing',
+                    },
+                });
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to update billing subscription trial extension for tenant ${tenantId}: ${error}`);
+        }
+
+        // Invalidate caches
+        await this.redis.del(`tenant:${tenantId}:config`);
+        await this.redis.del(`tenant_plan:${tenantId}`);
+
+        // Audit log
+        try {
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'trial_extended',
+                    resource: 'offboarding',
+                    details: {
+                        days,
+                        previousTrialEndsAt: tenant.trialEndsAt?.toISOString() || null,
+                        newTrialEndsAt: newTrialEndsAt.toISOString(),
+                    },
+                },
+            });
+        } catch (error) {
+            this.logger.warn(`Failed to create audit log for trial extension: ${error}`);
+        }
+
+        this.logger.log(`Tenant ${tenantId} trial extended by ${days} days (new end: ${newTrialEndsAt.toISOString()})`);
+
+        return {
+            tenantId,
+            name: tenant.name,
+            trialEndsAt: newTrialEndsAt,
+            subscriptionStatus: 'trialing',
+        };
+    }
+
+    /**
      * AES-256-GCM decryption — same pattern as ChannelTokenService.
      */
     private decryptToken(encryptedValue: string): string {

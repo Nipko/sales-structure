@@ -21,10 +21,11 @@ const CHANNEL_COLORS: Record<string, string> = {
 export default function PlatformTab({ health }: Props) {
   const t = useTranslations("tenants");
 
+  const svcData = health?.services ?? (health as any);
   const services = [
-    { name: "API", status: health?.api ?? false, icon: Server },
-    { name: "Redis", status: health?.redis ?? false, icon: HardDrive },
-    { name: "PostgreSQL", status: health?.postgres ?? false, icon: Database },
+    { name: "API", status: svcData?.api ?? false, icon: Server },
+    { name: "Redis", status: svcData?.redis ?? false, icon: HardDrive },
+    { name: "PostgreSQL", status: svcData?.postgres ?? false, icon: Database },
   ];
 
   const queues = health?.queues ?? [];

@@ -42,9 +42,10 @@ export interface PlatformStats {
 }
 
 export interface PlatformHealth {
-  api: boolean;
-  redis: boolean;
-  postgres: boolean;
+  services?: { api: boolean; redis: boolean; postgres: boolean };
+  api?: boolean;
+  redis?: boolean;
+  postgres?: boolean;
   queues: {
     name: string;
     waiting: number;

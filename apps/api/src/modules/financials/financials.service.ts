@@ -18,7 +18,7 @@ export class FinancialsService {
             where: { status: 'active' },
             include: { plan: true },
         });
-        const mrrCents = activeSubs.reduce((sum, s) => sum + (s.plan?.priceUsdCents || 0), 0);
+        const mrrCents = activeSubs.reduce((sum: number, s: any) => sum + (s.plan?.priceUsdCents || 0), 0);
         const activeCustomers = activeSubs.length;
         const arpu = activeCustomers > 0 ? mrrCents / activeCustomers : 0;
         const arr = mrrCents * 12;
@@ -66,7 +66,7 @@ export class FinancialsService {
             orderBy: { snapshotMonth: 'desc' },
             take: months,
         });
-        return snapshots.reverse().map((s) => ({
+        return snapshots.reverse().map((s: any) => ({
             month: s.snapshotMonth,
             mrr: s.mrrCents,
             newMrr: s.newMrrCents,
@@ -89,7 +89,7 @@ export class FinancialsService {
             orderBy: { snapshotMonth: 'desc' },
             take: months,
         });
-        return snapshots.reverse().map((s) => ({
+        return snapshots.reverse().map((s: any) => ({
             month: s.snapshotMonth,
             revenue: s.revenueCollectedCents,
             paymentsSucceeded: s.paymentsSucceeded,
@@ -109,7 +109,7 @@ export class FinancialsService {
             orderBy: { snapshotMonth: 'desc' },
             take: months,
         });
-        return snapshots.reverse().map((s) => ({
+        return snapshots.reverse().map((s: any) => ({
             month: s.snapshotMonth,
             customerChurnRate:
                 s.activeCustomers > 0
@@ -128,7 +128,7 @@ export class FinancialsService {
             orderBy: { snapshotMonth: 'desc' },
             take: months,
         });
-        return snapshots.reverse().map((s) => {
+        return snapshots.reverse().map((s: any) => {
             const totalCost = s.llmCostCents + s.infraCostCents;
             const grossMargin =
                 s.revenueCollectedCents > 0
@@ -156,14 +156,14 @@ export class FinancialsService {
             where: { snapshotMonth: targetMonth },
         });
         // Get tenant names
-        const tenantIds = snapshots.map((s) => s.tenantId);
+        const tenantIds = snapshots.map((s: any) => s.tenantId);
         const tenants = await this.prisma.tenant.findMany({
             where: { id: { in: tenantIds } },
             select: { id: true, name: true },
         });
-        const nameMap = Object.fromEntries(tenants.map((t) => [t.id, t.name]));
+        const nameMap = Object.fromEntries(tenants.map((t: any) => [t.id, t.name]));
 
-        return snapshots.map((s) => ({
+        return snapshots.map((s: any) => ({
             tenantId: s.tenantId,
             tenantName: nameMap[s.tenantId] || 'Unknown',
             plan: s.planSlug,
@@ -185,7 +185,7 @@ export class FinancialsService {
             where: { status: 'trialing' },
             include: { tenant: { select: { name: true } } },
         });
-        const trialsEndingSoon = trialingSubs.filter((s) => {
+        const trialsEndingSoon = trialingSubs.filter((s: any) => {
             if (!s.trialEndsAt) return false;
             const daysLeft = (new Date(s.trialEndsAt).getTime() - Date.now()) / 86400000;
             return daysLeft >= 0 && daysLeft <= 7;
@@ -201,7 +201,7 @@ export class FinancialsService {
                 snapshot && snapshot.trialsStarted > 0
                     ? Math.round((snapshot.trialsConverted / snapshot.trialsStarted) * 10000) / 100
                     : 0,
-            trialsEndingSoonList: trialsEndingSoon.map((s) => ({
+            trialsEndingSoonList: trialsEndingSoon.map((s: any) => ({
                 tenantId: s.tenantId,
                 tenantName: (s as any).tenant?.name,
                 trialEndsAt: s.trialEndsAt,

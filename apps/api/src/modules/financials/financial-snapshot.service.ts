@@ -49,19 +49,19 @@ export class FinancialSnapshotService {
         });
 
         const mrrCents = activeSubs
-            .filter((s) => s.status === 'active')
-            .reduce((sum, s) => sum + (s.plan?.priceUsdCents || 0), 0);
+            .filter((s: any) => s.status === 'active')
+            .reduce((sum: number, s: any) => sum + (s.plan?.priceUsdCents || 0), 0);
 
         // Plan distribution
         const planDist: Record<string, number> = {};
-        activeSubs.forEach((s) => {
+        activeSubs.forEach((s: any) => {
             const slug = s.plan?.slug || 'unknown';
             planDist[slug] = (planDist[slug] || 0) + 1;
         });
 
         // Customer counts
-        const activeCustomers = activeSubs.filter((s) => s.status === 'active').length;
-        const trialingCustomers = activeSubs.filter((s) => s.status === 'trialing').length;
+        const activeCustomers = activeSubs.filter((s: any) => s.status === 'active').length;
+        const trialingCustomers = activeSubs.filter((s: any) => s.status === 'trialing').length;
 
         // New customers this month
         const newCustomers = await this.prisma.tenant.count({
@@ -80,15 +80,15 @@ export class FinancialSnapshotService {
         const payments = await this.prisma.billingPayment.findMany({
             where: { createdAt: { gte: monthStart, lte: monthEnd } },
         });
-        const succeeded = payments.filter((p) => p.status === 'succeeded');
-        const failed = payments.filter((p) => p.status === 'failed');
-        const revenueCollected = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
+        const succeeded = payments.filter((p: any) => p.status === 'succeeded');
+        const failed = payments.filter((p: any) => p.status === 'failed');
+        const revenueCollected = succeeded.reduce((sum: number, p: any) => sum + p.amountCents, 0);
 
         // Infra costs for the month
         const infraCosts = await this.prisma.infraCost.findMany({
             where: { month: monthStart },
         });
-        const infraTotal = infraCosts.reduce((sum, c) => sum + c.amountCents, 0);
+        const infraTotal = infraCosts.reduce((sum: number, c: any) => sum + c.amountCents, 0);
 
         // LLM costs — aggregate from tenant schemas
         let llmCostTotal = 0;
@@ -122,8 +122,8 @@ export class FinancialSnapshotService {
                 llmCostTotal += tenantLlmCost;
 
                 const tenantRevenue = succeeded
-                    .filter((p) => p.tenantId === tenant.id)
-                    .reduce((sum, p) => sum + p.amountCents, 0);
+                    .filter((p: any) => p.tenantId === tenant.id)
+                    .reduce((sum: number, p: any) => sum + p.amountCents, 0);
 
                 tenantSnapshots.push({
                     tenantId: tenant.id,
@@ -155,8 +155,8 @@ export class FinancialSnapshotService {
               })
             : [];
 
-        const prevMap = new Map(prevTenantSnapshots.map((s) => [s.tenantId, s]));
-        const currMap = new Map(tenantSnapshots.map((s) => [s.tenantId, s]));
+        const prevMap = new Map<string, { mrrCents: number; [key: string]: any }>(prevTenantSnapshots.map((s: any) => [s.tenantId, s]));
+        const currMap = new Map<string, { mrrCents: number; [key: string]: any }>(tenantSnapshots.map((s: any) => [s.tenantId, s]));
 
         let newMrr = 0;
         let expansionMrr = 0;
@@ -164,7 +164,7 @@ export class FinancialSnapshotService {
         let churnedMrr = 0;
         const reactivationMrr = 0;
 
-        for (const [tid, curr] of currMap) {
+        for (const [tid, curr] of currMap.entries()) {
             const prev = prevMap.get(tid);
             if (!prev) {
                 newMrr += curr.mrrCents;
@@ -174,7 +174,7 @@ export class FinancialSnapshotService {
                 contractionMrr += prev.mrrCents - curr.mrrCents;
             }
         }
-        for (const [tid, prev] of prevMap) {
+        for (const [tid, prev] of prevMap.entries()) {
             if (!currMap.has(tid)) {
                 churnedMrr += prev.mrrCents;
             }

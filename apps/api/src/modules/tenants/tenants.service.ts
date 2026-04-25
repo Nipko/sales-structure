@@ -410,7 +410,7 @@ export class TenantsService {
         });
 
         const usageData = await Promise.all(
-            tenants.map(async (t) => {
+            tenants.map(async (t: any) => {
                 const [automation, outbound] = await Promise.all([
                     this.throttle.getUsage(t.id, 'automation'),
                     this.throttle.getUsage(t.id, 'outbound'),

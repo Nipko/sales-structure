@@ -203,15 +203,27 @@ export default function AppointmentsPage() {
     if (!activeTenantId) return;
     try {
       const res = await api.getAvailability(activeTenantId);
-      if (res?.success && res.data?.slots?.length) {
+      if (res?.success && res.data?.length) {
+        // res.data is the array directly (not res.data.slots)
+        const slots = Array.isArray(res.data) ? res.data : (res.data?.slots || res.data);
         const merged = DAY_KEYS.map((_, i) => {
-          const existing = res.data.slots.find((s: any) => s.dayOfWeek === i + 1);
+          const existing = (slots as any[]).find((s: any) => s.dayOfWeek === i + 1);
           return existing
-            ? { ...existing, active: true }
+            ? { dayOfWeek: existing.dayOfWeek, startTime: existing.startTime, endTime: existing.endTime, active: existing.isActive !== false }
             : { dayOfWeek: i + 1, startTime: "09:00", endTime: "18:00", active: false };
         });
         setAvailabilitySlots(merged);
-        setHasSavedAvailability(true);
+        setHasSavedAvailability(merged.some(s => s.active));
+      } else if (res?.success && res.data?.slots?.length) {
+        // Fallback for wrapped response
+        const merged = DAY_KEYS.map((_, i) => {
+          const existing = res.data.slots.find((s: any) => s.dayOfWeek === i + 1);
+          return existing
+            ? { dayOfWeek: existing.dayOfWeek, startTime: existing.startTime, endTime: existing.endTime, active: existing.isActive !== false }
+            : { dayOfWeek: i + 1, startTime: "09:00", endTime: "18:00", active: false };
+        });
+        setAvailabilitySlots(merged);
+        setHasSavedAvailability(merged.some(s => s.active));
       } else {
         setHasSavedAvailability(false);
       }
@@ -506,11 +518,14 @@ export default function AppointmentsPage() {
     if (!activeTenantId) return;
     setSavingAvailability(true);
     try {
-      const activeSlots = availabilitySlots
-        .filter((s) => s.active)
-        .map(({ dayOfWeek, startTime, endTime }) => ({ dayOfWeek, startTime, endTime }));
-      await api.saveAvailability(activeTenantId, { userId: undefined, slots: activeSlots });
-      setHasSavedAvailability(activeSlots.length > 0);
+      // Send ALL 7 days with isActive flag so the backend knows which are enabled
+      const allSlots = availabilitySlots.map(({ dayOfWeek, startTime, endTime, active }) => ({
+        dayOfWeek, startTime, endTime, isActive: active,
+      }));
+      await api.saveAvailability(activeTenantId, { slots: allSlots });
+      setHasSavedAvailability(allSlots.some(s => s.isActive));
+      // Reload to verify persistence
+      await loadAvailability();
       showToast(t("configSection.schedule") + " ✓");
     } catch {
       showToast(t("errors.saveAvailability"));

@@ -675,6 +675,12 @@ export const api = {
         apiPut<any>(`/offers/${tenantId}/${id}`, data),
     deleteOffer: (tenantId: string, id: string) =>
         apiDelete(`/offers/${tenantId}/${id}`),
+
+    // ─── Offboarding ───
+    cancelAccount: (tenantId: string, reason?: string) =>
+        apiPost(`/offboarding/${tenantId}/cancel`, { reason }),
+    getOffboardingStatus: (tenantId: string) =>
+        apiGet<{ subscriptionStatus: string; currentPeriodEnd: string | null }>(`/offboarding/${tenantId}/status`),
 };
 
 // ============================================

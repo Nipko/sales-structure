@@ -1,24 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 // Setup wizard renders as a modal overlay on the dashboard
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import TrialCountdownBanner from "@/components/TrialCountdownBanner";
+import SuspendedScreen from "@/components/SuspendedScreen";
 import { useAuth } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isSuspended, setIsSuspended] = useState(false);
 
   // Setup wizard renders as modal overlay on top of dashboard
 
@@ -27,6 +29,30 @@ export default function AdminLayout({
       router.push("/login");
     }
   }, [isLoading, isAuthenticated, router]);
+
+  // Check if tenant account is suspended
+  useEffect(() => {
+    if (!user?.tenantId || user.role === "super_admin") return;
+
+    async function checkSuspension() {
+      try {
+        const result = await api.getOffboardingStatus(user!.tenantId!);
+        if (result.success && result.data) {
+          const { subscriptionStatus, currentPeriodEnd } = result.data;
+          const isExpiredOrCancelled =
+            subscriptionStatus === "expired" || subscriptionStatus === "cancelled";
+          const periodEnded = currentPeriodEnd
+            ? new Date(currentPeriodEnd) < new Date()
+            : true;
+          setIsSuspended(isExpiredOrCancelled && periodEnded);
+        }
+      } catch {
+        // Silently fail — don't block access on network errors
+      }
+    }
+
+    checkSuspension();
+  }, [user]);
 
   if (isLoading) {
     return (
@@ -42,6 +68,10 @@ export default function AdminLayout({
   }
 
   if (!isAuthenticated) return null;
+
+  if (isSuspended) {
+    return <SuspendedScreen />;
+  }
 
   return (
     <TenantProvider>

@@ -29,7 +29,12 @@
     "connectionError": "Connection error",
     "noData": "No data available",
     "deleteConfirm": "Are you sure you want to delete?",
-    "select": "Select..."
+    "select": "Select...",
+    "logout": "Log out",
+    "accountSuspended": "Account suspended",
+    "accountSuspendedDesc": "Your account has been deactivated. Contact support to reactivate.",
+    "cancelAccount": "Cancel account",
+    "cancelAccountConfirm": "Are you sure? This action will deactivate your account at the end of the billing period."
   },
   "nav": {
     "sections": {

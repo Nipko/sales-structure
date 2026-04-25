@@ -560,6 +560,26 @@ export class MetaGraphService {
   }
 
   /**
+   * Unsubscribe the app from a WABA — removes webhook subscriptions.
+   * Used during tenant offboarding to cleanly disconnect WhatsApp.
+   */
+  async unsubscribeAppFromWaba(wabaId: string, accessToken: string): Promise<boolean> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.delete(
+          `${this.baseUrl}/${wabaId}/subscribed_apps`,
+          { params: { access_token: accessToken }, timeout: 15000 },
+        ),
+      );
+      this.logger.log(`Unsubscribed app from WABA ${wabaId}`);
+      return response.data?.success === true;
+    } catch (error: any) {
+      this.logger.warn(`Failed to unsubscribe from WABA ${wabaId}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Envía un mensaje de prueba para verificar que el canal está operativo
    */
   async sendTestMessage(phoneNumberId: string, accessToken: string, toPhone: string): Promise<string | null> {

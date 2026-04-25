@@ -29,7 +29,12 @@
     "connectionError": "Erreur de connexion",
     "noData": "Aucune donnee disponible",
     "deleteConfirm": "Etes-vous sur de vouloir supprimer?",
-    "select": "Selectionner..."
+    "select": "Selectionner...",
+    "logout": "Deconnexion",
+    "accountSuspended": "Compte suspendu",
+    "accountSuspendedDesc": "Votre compte a ete desactive. Contactez le support pour le reactiver.",
+    "cancelAccount": "Annuler le compte",
+    "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation."
   },
   "nav": {
     "sections": {

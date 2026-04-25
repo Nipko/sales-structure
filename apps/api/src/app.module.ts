@@ -50,6 +50,7 @@ import { BusinessInfoModule } from './modules/business-info/business-info.module
 import { FaqsModule } from './modules/faqs/faqs.module';
 import { PoliciesModule } from './modules/policies/policies.module';
 import { OffersModule } from './modules/offers/offers.module';
+import { OffboardingModule } from './modules/offboarding/offboarding.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -155,6 +156,7 @@ import llmConfig from './config/llm.config';
         FaqsModule,
         PoliciesModule,
         OffersModule,
+        OffboardingModule,
     ],
 })
 export class AppModule { }

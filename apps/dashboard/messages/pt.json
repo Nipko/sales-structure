@@ -29,7 +29,12 @@
     "connectionError": "Erro de conexao",
     "noData": "Sem dados disponiveis",
     "deleteConfirm": "Tem certeza de que deseja excluir?",
-    "select": "Selecionar..."
+    "select": "Selecionar...",
+    "logout": "Sair",
+    "accountSuspended": "Conta suspensa",
+    "accountSuspendedDesc": "Sua conta foi desativada. Entre em contato com o suporte para reativar.",
+    "cancelAccount": "Cancelar conta",
+    "cancelAccountConfirm": "Tem certeza? Esta acao desativara sua conta no final do periodo de faturamento."
   },
   "nav": {
     "sections": {

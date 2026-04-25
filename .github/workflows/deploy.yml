@@ -117,6 +117,7 @@ jobs:
             NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
             NEXT_PUBLIC_APP_VERSION=${{ github.sha }}
+            NEXT_PUBLIC_MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}
           cache-from: type=gha,scope=billing-v2
           cache-to: type=gha,mode=max,scope=billing-v2
 

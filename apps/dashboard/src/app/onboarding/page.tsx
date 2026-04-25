@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import AnimatedLogo from "@/components/AnimatedLogo";
+import MpCardForm from "@/components/billing/MpCardForm";
 
 const STEP_KEYS = ["step1", "step2", "step3", "step4", "step5"];
 
@@ -83,8 +84,9 @@ export default function OnboardingPage() {
     const [referral, setReferral] = useState("");
     const [referralOther, setReferralOther] = useState("");
 
-    // Step 5 — plan picker
+    // Step 5 — plan picker + card for paid tiers
     const [planSlug, setPlanSlug] = useState<PlanSlug>("starter");
+    const [cardTokenId, setCardTokenId] = useState<string | null>(null);
 
     // Protected
     useEffect(() => {
@@ -115,10 +117,10 @@ export default function OnboardingPage() {
             case 3:
                 return !!referral;
             case 4:
-                // Starter is always valid; Pro/Enterprise requires card which
-                // we do not collect in onboarding yet — they are shown for
-                // discovery but selection falls back to Starter on submit.
-                return !!planSlug;
+                // Starter is always valid. Pro/Enterprise require a card
+                // token (collected via the MP card form below).
+                if (planSlug === "starter") return true;
+                return !!cardTokenId;
             default:
                 return false;
         }
@@ -161,12 +163,8 @@ export default function OnboardingPage() {
                 ? [...goals.filter((g) => g !== "other"), `other:${goalOther}`]
                 : goals,
             referral: referral === "other" ? `other:${referralOther}` : referral,
-            // Plan picker (step 5). Pro/Enterprise require a card we don't
-            // collect in onboarding today — the backend will enforce the
-            // requirement and reject those slugs without cardTokenId, so we
-            // fall back to starter here. Sprint 4 adds the MP card form to
-            // make Pro/Enterprise selectable end-to-end.
-            plan: planSlug === "starter" ? "starter" : "starter",
+            plan: planSlug,
+            cardTokenId: planSlug !== "starter" ? cardTokenId : undefined,
         };
 
         try {
@@ -591,9 +589,8 @@ export default function OnboardingPage() {
                                         <label
                                             key={slug}
                                             className={cn(
-                                                'flex items-start gap-3 p-4 rounded-xl border transition-all',
-                                                requiresCard ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
-                                                active && !requiresCard
+                                                'flex items-start gap-3 p-4 rounded-xl border transition-all cursor-pointer',
+                                                active
                                                     ? 'border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10'
                                                     : 'border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03]'
                                             )}
@@ -602,8 +599,11 @@ export default function OnboardingPage() {
                                                 type="radio"
                                                 name="plan"
                                                 checked={active}
-                                                disabled={requiresCard}
-                                                onChange={() => !requiresCard && setPlanSlug(slug)}
+                                                onChange={() => {
+                                                    setPlanSlug(slug);
+                                                    // Changing plan invalidates any previously tokenised card
+                                                    setCardTokenId(null);
+                                                }}
                                                 className="mt-1 w-4 h-4 border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                             />
                                             <div className="flex-1 min-w-0">
@@ -613,13 +613,37 @@ export default function OnboardingPage() {
                                                 </div>
                                                 <p className="text-xs text-muted-foreground mt-1">{t(`plans.${slug}.desc`)}</p>
                                                 {requiresCard && (
-                                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">{t('planContactSales')}</p>
+                                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">{t('requiresCardNote')}</p>
                                                 )}
                                             </div>
                                         </label>
                                     );
                                 })}
                             </div>
+
+                            {/* Inline card form for Pro/Enterprise */}
+                            {planSlug !== "starter" && !cardTokenId && (
+                                <div className="mt-5 p-4 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900">
+                                    <h3 className="text-sm font-semibold mb-3">{t('cardSectionTitle')}</h3>
+                                    <MpCardForm
+                                        onToken={(token) => setCardTokenId(token)}
+                                        submitLabel={t('saveCard')}
+                                    />
+                                </div>
+                            )}
+
+                            {planSlug !== "starter" && cardTokenId && (
+                                <div className="mt-5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-sm text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                                    <span>✓ {t('cardReady')}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCardTokenId(null)}
+                                        className="text-xs underline hover:no-underline"
+                                    >
+                                        {t('changeCard')}
+                                    </button>
+                                </div>
+                            )}
 
                             <p className="text-xs text-muted-foreground mt-4 text-center">{t('planStarterNote')}</p>
                         </div>

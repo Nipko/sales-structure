@@ -198,12 +198,59 @@ async function main() {
     sub2?.status === 'cancelled' ? ok(`status = ${sub2.status}`) : ko(`expected cancelled, got ${sub2?.status}`);
     sub2?.cancelledAt ? ok('cancelled_at populated') : ko('cancelled_at missing');
 
-    step('9. billing_events audit log has webhook entry');
+    step('9. Create a second tenant and upgrade to Pro with a mock card token');
+    const tenantPro = await prisma.tenant.create({
+        data: {
+            name: `Test Pro ${testId}`,
+            slug: `${slug}-pro`,
+            industry: 'testing',
+            schemaName: `${schemaName}_pro`,
+            plan: 'starter',
+            paymentProvider: 'mock',
+            billingCountry: 'CO',
+            billingEmail: `test-${testId}-pro@example.com`,
+        },
+    });
+    try {
+        // Pro requires a card — send a mock token; MockPaymentProvider accepts any string
+        const proRes = await http(token, 'POST', `/billing/${tenantPro.id}/subscription`, {
+            planSlug: 'pro',
+            cardTokenId: `mock_card_token_${testId}`,
+            billingCountry: 'CO',
+        });
+        (proRes.status === 200 || proRes.status === 201) ? ok(`Pro trial started HTTP ${proRes.status}`) : ko(`Pro trial HTTP ${proRes.status}: ${proRes.text.slice(0, 200)}`);
+        const proSub = await prisma.billingSubscription.findUnique({ where: { tenantId: tenantPro.id } });
+        proSub?.status === 'trialing' ? ok(`Pro subscription in trialing`) : ko(`Pro expected trialing, got ${proSub?.status}`);
+
+        // Reject Pro creation without card
+        const tenantProNoCard = await prisma.tenant.create({
+            data: {
+                name: `Test Pro NoCard ${testId}`,
+                slug: `${slug}-pro-nocard`,
+                industry: 'testing',
+                schemaName: `${schemaName}_pro_nocard`,
+                plan: 'starter',
+                paymentProvider: 'mock',
+                billingCountry: 'CO',
+                billingEmail: `test-${testId}-pro-nocard@example.com`,
+            },
+        });
+        const rejectRes = await http(token, 'POST', `/billing/${tenantProNoCard.id}/subscription`, {
+            planSlug: 'pro',
+            billingCountry: 'CO',
+        });
+        rejectRes.status === 400 || rejectRes.status === 403 ? ok(`Pro without card correctly rejected HTTP ${rejectRes.status}`) : ko(`Expected 400/403 for Pro without card, got ${rejectRes.status}`);
+        await prisma.tenant.delete({ where: { id: tenantProNoCard.id } });
+    } finally {
+        await prisma.tenant.delete({ where: { id: tenantPro.id } });
+    }
+
+    step('10. billing_events audit log has webhook entry');
     const events = await prisma.billingEvent.findMany({ where: { tenantId: tenant.id }, orderBy: { processedAt: 'asc' } });
     events.length >= 1 ? ok(`${events.length} webhook event(s) recorded`) : ko('no billing_events rows created — webhook processing failed');
     events.forEach(e => console.log(`    • ${e.eventType} (${e.provider}/${e.providerEventId})`));
 
-    step('10. Summary');
+    step('11. Summary');
     console.log(`\n  ${pass} passed, ${fail} failed.\n`);
     if (fail > 0) process.exitCode = 1;
 }

@@ -7,8 +7,9 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
-    Zap, Rocket, Briefcase, Sparkles, Loader2,
+    Zap, Rocket, Briefcase, Sparkles, Loader2, X,
 } from "lucide-react";
+import MpCardForm from "@/components/billing/MpCardForm";
 
 type SubscriptionStatus = "pending_auth" | "trialing" | "active" | "past_due" | "cancelled" | "expired";
 
@@ -102,6 +103,11 @@ export default function BillingPage() {
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
 
+    // Modal state — "upgrade" when user is about to subscribe/change to a paid plan
+    // that needs a card; "change-card" when rotating the card on an existing sub.
+    const [modal, setModal] = useState<null | { kind: "upgrade"; planSlug: string } | { kind: "change-card" }>(null);
+    const [modalSubmitting, setModalSubmitting] = useState(false);
+
     const load = useCallback(async () => {
         if (!activeTenantId) return;
         setLoading(true);
@@ -127,26 +133,54 @@ export default function BillingPage() {
         [plans, subscription?.planId],
     );
 
-    const handleUpgrade = async (planSlug: string) => {
+    const handleUpgrade = async (planSlug: string, cardTokenId?: string) => {
         if (!activeTenantId) return;
         setAction("upgrade");
         setTargetPlan(planSlug);
         try {
+            const plan = plans.find((p) => p.slug === planSlug);
+            const needsCard = plan?.requiresCardForTrial && !subscription;
+            if (needsCard && !cardTokenId) {
+                // Open the card modal; the modal's submit will call back into
+                // handleUpgrade with the token.
+                setModal({ kind: "upgrade", planSlug });
+                setAction(null);
+                setTargetPlan(null);
+                return;
+            }
+
             if (!subscription) {
-                const res = await api.startBillingTrial(activeTenantId, { planSlug });
+                const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId });
                 if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
                 setToast(t("trialStarted"));
             } else {
-                const res = await api.upgradeBillingPlan(activeTenantId, { planSlug });
+                const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId });
                 if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
                 setToast(t("planChanged"));
             }
+            setModal(null);
             await load();
         } catch (err: any) {
             setError(err?.message || t("actionFailed"));
         } finally {
             setAction(null);
             setTargetPlan(null);
+        }
+    };
+
+    const handleChangeCard = async (cardTokenId: string) => {
+        if (!activeTenantId) return;
+        setModalSubmitting(true);
+        try {
+            const res = await api.updateBillingPaymentMethod(activeTenantId, { cardTokenId });
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            setToast(t("cardUpdated"));
+            setModal(null);
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setModalSubmitting(false);
         }
     };
 
@@ -240,6 +274,14 @@ export default function BillingPage() {
                     )}
 
                     <div className="mt-5 flex flex-wrap gap-2">
+                        {(subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due") && (
+                            <button
+                                onClick={() => setModal({ kind: "change-card" })}
+                                className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900"
+                            >
+                                {t("changeCard")}
+                            </button>
+                        )}
                         {(subscription.status === "active" || subscription.status === "trialing") && !subscription.cancelAtPeriodEnd && (
                             <>
                                 <button
@@ -304,7 +346,7 @@ export default function BillingPage() {
                                     </ul>
                                     <button
                                         onClick={() => handleUpgrade(plan.slug)}
-                                        disabled={isCurrent || action !== null || (plan.requiresCardForTrial && !subscription)}
+                                        disabled={isCurrent || action !== null}
                                         className={cn(
                                             "mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                                             isCurrent
@@ -317,14 +359,42 @@ export default function BillingPage() {
                                          subscription ? t("changeToPlan", { name: plan.name }) :
                                          t("startTrial")}
                                     </button>
-                                    {plan.requiresCardForTrial && !subscription && (
-                                        <p className="text-[11px] text-neutral-500 mt-2 text-center">{t("cardPickerPending")}</p>
-                                    )}
                                 </div>
                             );
                         })}
                 </div>
             </section>
+
+            {/* Card modal — upgrade-to-paid flow and change-card flow */}
+            {modal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !modalSubmitting && setModal(null)}>
+                    <div className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">
+                                {modal.kind === "upgrade" ? t("modalUpgradeTitle") : t("modalChangeCardTitle")}
+                            </h3>
+                            <button onClick={() => !modalSubmitting && setModal(null)} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {modal.kind === "upgrade" && (
+                            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                                {t("modalUpgradeSubtitle", { name: plans.find(p => p.slug === modal.planSlug)?.name ?? modal.planSlug })}
+                            </p>
+                        )}
+
+                        <MpCardForm
+                            onToken={(token) => {
+                                if (modal.kind === "upgrade") handleUpgrade(modal.planSlug, token);
+                                else handleChangeCard(token);
+                            }}
+                            submitting={modalSubmitting || action !== null}
+                            submitLabel={modal.kind === "upgrade" ? t("modalUpgradeSubmit") : t("modalChangeCardSubmit")}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* Invoice history */}
             {subscription && subscription.payments.length > 0 && (

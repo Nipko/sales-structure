@@ -308,3 +308,85 @@ model BillingPayment {
   @@schema("public")
 }
 
+// ============================================
+// FINANCIALS — Platform-level SaaS metrics
+// ============================================
+
+// ---- Monthly Financial Snapshot (global) ----
+model FinancialSnapshot {
+  id                    String   @id @default(uuid())
+  snapshotMonth         DateTime @unique @map("snapshot_month")
+  mrrCents              Int      @default(0) @map("mrr_cents")
+  newMrrCents           Int      @default(0) @map("new_mrr_cents")
+  expansionMrrCents     Int      @default(0) @map("expansion_mrr_cents")
+  contractionMrrCents   Int      @default(0) @map("contraction_mrr_cents")
+  churnedMrrCents       Int      @default(0) @map("churned_mrr_cents")
+  reactivationMrrCents  Int      @default(0) @map("reactivation_mrr_cents")
+  activeCustomers       Int      @default(0) @map("active_customers")
+  newCustomers          Int      @default(0) @map("new_customers")
+  churnedCustomers      Int      @default(0) @map("churned_customers")
+  trialingCustomers     Int      @default(0) @map("trialing_customers")
+  trialsStarted         Int      @default(0) @map("trials_started")
+  trialsConverted       Int      @default(0) @map("trials_converted")
+  revenueCollectedCents Int      @default(0) @map("revenue_collected_cents")
+  paymentsSucceeded     Int      @default(0) @map("payments_succeeded")
+  paymentsFailed        Int      @default(0) @map("payments_failed")
+  llmCostCents          Int      @default(0) @map("llm_cost_cents")
+  infraCostCents        Int      @default(0) @map("infra_cost_cents")
+  planDistribution      Json     @default("{}") @map("plan_distribution")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("financial_snapshots")
+  @@schema("public")
+}
+
+// ---- Per-Tenant Monthly Snapshot ----
+model TenantFinancialSnapshot {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  snapshotMonth DateTime @map("snapshot_month")
+  planSlug      String   @map("plan_slug")
+  mrrCents      Int      @default(0) @map("mrr_cents")
+  status        String
+  revenueCents  Int      @default(0) @map("revenue_cents")
+  llmCostCents  Int      @default(0) @map("llm_cost_cents")
+  aiMessages    Int      @default(0) @map("ai_messages")
+  conversations Int      @default(0)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, snapshotMonth])
+  @@map("tenant_financial_snapshots")
+  @@schema("public")
+}
+
+// ---- Infrastructure Costs ----
+model InfraCost {
+  id          String   @id @default(uuid())
+  month       DateTime
+  category    String
+  description String?
+  amountCents Int      @map("amount_cents")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([month, category])
+  @@map("infra_costs")
+  @@schema("public")
+}
+
+// ---- Exchange Rates ----
+model ExchangeRate {
+  id           String   @id @default(uuid())
+  rateDate     DateTime @map("rate_date")
+  fromCurrency String   @map("from_currency")
+  toCurrency   String   @map("to_currency")
+  rate         Decimal
+  source       String   @default("manual")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([rateDate, fromCurrency, toCurrency])
+  @@map("exchange_rates")
+  @@schema("public")
+}
+

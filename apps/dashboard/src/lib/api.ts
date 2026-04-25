@@ -697,6 +697,19 @@ export const api = {
         apiPost(`/offboarding/${tenantId}/cancel`, { reason }),
     getOffboardingStatus: (tenantId: string) =>
         apiGet<{ subscriptionStatus: string; currentPeriodEnd: string | null }>(`/offboarding/${tenantId}/status`),
+
+    // ─── Financials (super_admin) ───
+    getFinancialsOverview: () => apiGet("/financials/overview"),
+    getMrrTrend: (months = 12) => apiGet(`/financials/mrr-trend?months=${months}`),
+    getRevenueTrend: (months = 12) => apiGet(`/financials/revenue?months=${months}`),
+    getChurnTrend: (months = 12) => apiGet(`/financials/churn-trend?months=${months}`),
+    getCostsTrend: (months = 12) => apiGet(`/financials/costs?months=${months}`),
+    getTenantProfitability: (month?: string) => apiGet(`/financials/tenant-profitability${month ? `?month=${month}` : ''}`),
+    getTrialMetrics: () => apiGet("/financials/trial-metrics"),
+    getInfraCosts: (year: number) => apiGet(`/financials/infra-costs?year=${year}`),
+    saveInfraCost: (data: any) => apiPost("/financials/infra-costs", data),
+    saveExchangeRate: (data: any) => apiPost("/financials/exchange-rates", data),
+    generateSnapshot: (month: string) => apiPost("/financials/snapshot/generate", { month }),
 };
 
 // ============================================

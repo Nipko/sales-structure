@@ -64,7 +64,8 @@
       "identity": "Identity",
       "users": "Users",
       "settings": "Settings",
-      "tenants": "Tenants"
+      "tenants": "Tenants",
+      "financials": "Financials"
     }
   },
   "topbar": {
@@ -2470,6 +2471,80 @@
       "pastDue": "Payment due",
       "cancelled": "Cancelled",
       "expired": "Expired"
+    }
+  },
+  "financials": {
+    "title": "Financials",
+    "subtitle": "Financial metrics and accounting",
+    "tabs": {
+      "overview": "Overview",
+      "revenue": "Revenue",
+      "customers": "Customers",
+      "costs": "Costs",
+      "settings": "Settings"
+    },
+    "kpi": {
+      "mrr": "MRR",
+      "arr": "ARR",
+      "activeCustomers": "Active Customers",
+      "arpu": "ARPU",
+      "customerChurn": "Customer Churn",
+      "revenueChurn": "Revenue Churn",
+      "quickRatio": "Quick Ratio",
+      "ltv": "LTV",
+      "grossMargin": "Gross Margin",
+      "llmCost": "AI Cost",
+      "infraCost": "Infra Cost",
+      "conversionRate": "Conversion Rate",
+      "activeTrials": "Active Trials",
+      "trialsEndingSoon": "Trials Ending Soon"
+    },
+    "charts": {
+      "mrrTrend": "MRR Trend",
+      "mrrMovements": "MRR Movements",
+      "revenueTrend": "Revenue Trend",
+      "paymentSuccessRate": "Payment Success Rate",
+      "revenueByPlan": "Revenue by Plan",
+      "churnTrend": "Churn Trend",
+      "costTrend": "Cost Trend",
+      "grossMarginTrend": "Gross Margin Trend"
+    },
+    "table": {
+      "tenant": "Tenant",
+      "plan": "Plan",
+      "revenue": "Revenue",
+      "llmCost": "AI Cost",
+      "profit": "Profit",
+      "margin": "Margin",
+      "amount": "Amount",
+      "status": "Status",
+      "date": "Date",
+      "trialEndsAt": "Trial Ends At",
+      "daysLeft": "Days Left",
+      "category": "Category",
+      "description": "Description"
+    },
+    "movements": {
+      "new": "New",
+      "expansion": "Expansion",
+      "contraction": "Contraction",
+      "churned": "Churned",
+      "reactivation": "Reactivation"
+    },
+    "settings": {
+      "infraCosts": "Infrastructure Costs",
+      "exchangeRates": "Exchange Rates",
+      "snapshotManagement": "Snapshot Management",
+      "generateSnapshot": "Generate Snapshot",
+      "saveRate": "Save Rate",
+      "saveCost": "Save Cost"
+    },
+    "categories": {
+      "server": "Server",
+      "database": "Database",
+      "storage": "Storage",
+      "whatsapp_api": "WhatsApp API",
+      "other": "Other"
     }
   }
 }

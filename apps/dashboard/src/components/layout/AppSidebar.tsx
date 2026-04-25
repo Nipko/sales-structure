@@ -30,6 +30,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Building2,
+  DollarSign,
   CalendarDays,
   Bell,
   Package,
@@ -226,6 +227,23 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                     >
                       <Building2 size={18} className="shrink-0" />
                       {showExpanded && <span>Tenants</span>}
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      href="/admin/financials"
+                      title={!showExpanded ? tNav('items.financials') : undefined}
+                      onClick={handleNavClick}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                        showExpanded ? "px-3 py-2" : "justify-center px-2 py-2.5",
+                        isActive("/admin/financials")
+                          ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                          : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
+                      )}
+                    >
+                      <DollarSign size={18} className="shrink-0" />
+                      {showExpanded && <span>{tNav('items.financials')}</span>}
                     </Link>
                   </li>
                 </ul>

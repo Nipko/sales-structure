@@ -64,7 +64,8 @@
       "identity": "Identité",
       "users": "Utilisateurs",
       "settings": "Paramètres",
-      "tenants": "Tenants"
+      "tenants": "Tenants",
+      "financials": "Finances"
     }
   },
   "topbar": {
@@ -2470,6 +2471,80 @@
       "pastDue": "Paiement en retard",
       "cancelled": "Annule",
       "expired": "Expire"
+    }
+  },
+  "financials": {
+    "title": "Finances",
+    "subtitle": "Metriques financieres et comptabilite",
+    "tabs": {
+      "overview": "Apercu",
+      "revenue": "Revenus",
+      "customers": "Clients",
+      "costs": "Couts",
+      "settings": "Parametres"
+    },
+    "kpi": {
+      "mrr": "MRR",
+      "arr": "ARR",
+      "activeCustomers": "Clients Actifs",
+      "arpu": "ARPU",
+      "customerChurn": "Churn Clients",
+      "revenueChurn": "Churn Revenus",
+      "quickRatio": "Quick Ratio",
+      "ltv": "LTV",
+      "grossMargin": "Marge Brute",
+      "llmCost": "Cout IA",
+      "infraCost": "Cout Infra",
+      "conversionRate": "Taux de Conversion",
+      "activeTrials": "Essais Actifs",
+      "trialsEndingSoon": "Essais a Expirer"
+    },
+    "charts": {
+      "mrrTrend": "Tendance MRR",
+      "mrrMovements": "Mouvements MRR",
+      "revenueTrend": "Tendance Revenus",
+      "paymentSuccessRate": "Taux de Succes",
+      "revenueByPlan": "Revenus par Plan",
+      "churnTrend": "Tendance Churn",
+      "costTrend": "Tendance Couts",
+      "grossMarginTrend": "Tendance Marge"
+    },
+    "table": {
+      "tenant": "Tenant",
+      "plan": "Plan",
+      "revenue": "Revenus",
+      "llmCost": "Cout IA",
+      "profit": "Benefice",
+      "margin": "Marge",
+      "amount": "Montant",
+      "status": "Statut",
+      "date": "Date",
+      "trialEndsAt": "Fin d'essai",
+      "daysLeft": "Jours Restants",
+      "category": "Categorie",
+      "description": "Description"
+    },
+    "movements": {
+      "new": "Nouveau",
+      "expansion": "Expansion",
+      "contraction": "Contraction",
+      "churned": "Perdu",
+      "reactivation": "Reactivation"
+    },
+    "settings": {
+      "infraCosts": "Couts d'Infrastructure",
+      "exchangeRates": "Taux de Change",
+      "snapshotManagement": "Gestion des Snapshots",
+      "generateSnapshot": "Generer Snapshot",
+      "saveRate": "Enregistrer Taux",
+      "saveCost": "Enregistrer Cout"
+    },
+    "categories": {
+      "server": "Serveur",
+      "database": "Base de Donnees",
+      "storage": "Stockage",
+      "whatsapp_api": "API WhatsApp",
+      "other": "Autres"
     }
   }
 }

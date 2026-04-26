@@ -182,7 +182,7 @@ export default function MessengerSetupPage() {
                             <MessageCircle size={20} className="text-white" />
                         </div>
                         <h1 className="text-[28px] font-semibold m-0 text-foreground">
-                            Facebook Messenger
+                            {t("messengerTitle")}
                         </h1>
                     </div>
                     <p className="text-[var(--text-secondary)] mt-1">
@@ -278,7 +278,7 @@ export default function MessengerSetupPage() {
                                         {page.profile_picture_url ? (
                                             <img
                                                 src={page.profile_picture_url}
-                                                alt={page.display_name || "Page"}
+                                                alt={page.display_name || t("messengerPage")}
                                                 className="w-12 h-12 rounded-full object-cover"
                                             />
                                         ) : (
@@ -310,17 +310,17 @@ export default function MessengerSetupPage() {
                             <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                                 <Shield size={18} className="text-[#e67e22]" />
                                 <h2 className="text-base font-semibold m-0 text-foreground">
-                                    Webhook
+                                    {t("webhook")}
                                 </h2>
                             </div>
                             <div className="p-6">
                                 <label className="text-[13px] font-semibold mb-2 block text-foreground">
-                                    Callback URL
+                                    {t("callbackUrl")}
                                 </label>
                                 <div
                                     className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
                                     onClick={() => config?.webhookUrl && copyToClipboard(config.webhookUrl, "url")}
-                                    title="Click to copy"
+                                    title={tc("clickToCopy")}
                                 >
                                     {config.webhookUrl}
                                     <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />

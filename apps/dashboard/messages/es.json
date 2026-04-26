@@ -35,7 +35,8 @@
     "accountSuspendedDesc": "Tu cuenta ha sido desactivada. Contacta a soporte para reactivar.",
     "cancelAccount": "Cancelar cuenta",
     "cancelAccountConfirm": "¿Estás seguro? Esta acción desactivará tu cuenta al final del periodo de facturación.",
-    "copied": "Copiado"
+    "copied": "Copiado",
+    "clickToCopy": "Clic para copiar"
   },
   "nav": {
     "sections": {
@@ -1282,34 +1283,34 @@
     },
     "messenger": {
       "connectTitle": "Conectar Messenger",
-      "connectDesc": "Haz clic en el boton para conectar tu pagina de Facebook y empezar a recibir mensajes de Messenger automaticamente.",
+      "connectDesc": "Haz clic en el botón para conectar tu página de Facebook y empezar a recibir mensajes de Messenger automáticamente.",
       "connectWithFacebook": "Conectar con Facebook",
       "oauthConnecting": "Conectando...",
       "loadingSdk": "Cargando SDK de Facebook...",
-      "sdkNotLoaded": "El SDK de Facebook aun no esta listo. Intenta de nuevo.",
+      "sdkNotLoaded": "El SDK de Facebook aún no está listo. Intenta de nuevo.",
       "connectSuccess": "Canal de Messenger conectado correctamente.",
       "connectFailed": "Error al conectar Messenger. Intenta de nuevo.",
-      "connectedPage": "Pagina conectada",
-      "pagesConnected": "{count} pagina(s) conectada(s)",
+      "connectedPage": "Página conectada",
+      "pagesConnected": "{count} página(s) conectada(s)",
       "disconnectTitle": "Desconectar Messenger",
-      "disconnectDesc": "Se dejaran de recibir mensajes de esta pagina",
+      "disconnectDesc": "Se dejarán de recibir mensajes de esta página",
       "disconnect": "Desconectar",
       "disconnectConfirm": "Seguro que deseas desconectar Messenger?",
       "disconnectSuccess": "Messenger desconectado correctamente."
     },
     "instagram": {
       "connectTitle": "Conectar Instagram",
-      "connectDesc": "Haz clic en el boton para conectar tu cuenta de Instagram Business y empezar a recibir mensajes directos automaticamente.",
+      "connectDesc": "Haz clic en el botón para conectar tu cuenta de Instagram Business y empezar a recibir mensajes directos automáticamente.",
       "connectWithInstagram": "Conectar con Instagram",
       "oauthConnecting": "Conectando...",
       "connectSuccess": "Canal de Instagram conectado correctamente.",
       "connectFailed": "Error al conectar Instagram. Intenta de nuevo.",
       "connectedAccount": "Cuenta conectada",
-      "tokenExpiresIn": "El token expira en {days} dias",
+      "tokenExpiresIn": "El token expira en {days} días",
       "tokenExpired": "Token expirado. Por favor reconecta tu cuenta.",
       "reconnect": "Reconectar",
       "disconnectTitle": "Desconectar Instagram",
-      "disconnectDesc": "Se dejaran de recibir mensajes directos de esta cuenta",
+      "disconnectDesc": "Se dejarán de recibir mensajes directos de esta cuenta",
       "disconnect": "Desconectar",
       "disconnectConfirm": "Seguro que deseas desconectar Instagram?",
       "disconnectSuccess": "Instagram desconectado correctamente."
@@ -1342,7 +1343,12 @@
       "disconnectTitle": "Desconectar bot",
       "disconnectDesc": "Se eliminara el webhook y dejara de recibir mensajes",
       "disconnect": "Desconectar"
-    }
+    },
+    "webhook": "Webhook",
+    "callbackUrl": "URL de Callback",
+    "messengerTitle": "Facebook Messenger",
+    "messengerPage": "Página",
+    "instagramTitle": "Instagram DM"
   },
   "agent": {
     "title": "Agente IA",

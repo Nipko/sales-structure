@@ -35,7 +35,8 @@
     "accountSuspendedDesc": "Votre compte a ete desactive. Contactez le support pour le reactiver.",
     "cancelAccount": "Annuler le compte",
     "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation.",
-    "copied": "Copie"
+    "copied": "Copie",
+    "clickToCopy": "Cliquez pour copier"
   },
   "nav": {
     "sections": {
@@ -1342,7 +1343,12 @@
       "disconnectTitle": "Deconnecter le bot",
       "disconnectDesc": "Le webhook sera supprime et cessera de recevoir des messages",
       "disconnect": "Deconnecter"
-    }
+    },
+    "webhook": "Webhook",
+    "callbackUrl": "URL de Callback",
+    "messengerTitle": "Facebook Messenger",
+    "messengerPage": "Page",
+    "instagramTitle": "Instagram DM"
   },
   "agent": {
     "title": "Agent IA",

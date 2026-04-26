@@ -265,17 +265,12 @@ export class ChannelManagementController {
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
         // Step 1: Exchange code for user access token
-        // When using FB SDK (FB.login), the redirect_uri must match what the SDK used internally.
-        // The SDK uses its own xd_arbiter redirect, so we must NOT send our custom redirect_uri.
-        // Instead, use the dashboard origin as redirect_uri (Meta validates the domain).
+        // FB.login() JS SDK uses its own internal xd_arbiter redirect. For the token
+        // exchange, we must NOT include redirect_uri at all (not even empty).
+        const appId = this.configService.get<string>('META_APP_ID') || '';
+        const appSecret = this.configService.get<string>('META_APP_SECRET') || '';
         const tokenRes = await fetch(
-            `https://graph.facebook.com/${graphVersion}/oauth/access_token?` +
-            new URLSearchParams({
-                client_id: this.configService.get<string>('META_APP_ID') || '',
-                client_secret: this.configService.get<string>('META_APP_SECRET') || '',
-                redirect_uri: '',
-                code,
-            }),
+            `https://graph.facebook.com/${graphVersion}/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`,
         );
         const tokenData = await tokenRes.json() as any;
         if (tokenData.error) {

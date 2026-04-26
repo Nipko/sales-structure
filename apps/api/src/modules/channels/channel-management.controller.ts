@@ -79,7 +79,7 @@ export class ChannelManagementController {
                     metadata: accounts[0].metadata,
                     channelType: accounts[0].channelType,
                 } : null,
-                accounts: accounts.map(a => ({
+                accounts: accounts.map((a: any) => ({
                     accountId: a.accountId,
                     displayName: a.displayName,
                     metadata: a.metadata,

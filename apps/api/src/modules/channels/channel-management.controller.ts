@@ -265,15 +265,15 @@ export class ChannelManagementController {
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
         // Step 1: Exchange code for user access token
+        // When using FB SDK (FB.login), the redirect_uri must match what the SDK used internally.
+        // The SDK uses its own xd_arbiter redirect, so we must NOT send our custom redirect_uri.
+        // Instead, use the dashboard origin as redirect_uri (Meta validates the domain).
         const tokenRes = await fetch(
             `https://graph.facebook.com/${graphVersion}/oauth/access_token?` +
             new URLSearchParams({
                 client_id: this.configService.get<string>('META_APP_ID') || '',
                 client_secret: this.configService.get<string>('META_APP_SECRET') || '',
-                redirect_uri: this.configService.get<string>(
-                    'MESSENGER_REDIRECT_URI',
-                    'https://admin.parallly-chat.cloud/admin/channels/messenger/callback',
-                ) || '',
+                redirect_uri: '',
                 code,
             }),
         );

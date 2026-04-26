@@ -11,6 +11,7 @@ import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.process
 import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
+import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
@@ -32,6 +33,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         OutboundQueueProcessor,
         OutboundQueueService,
         ChannelTokenService,
+        InstagramTokenRefreshService,
     ],
     exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, OutboundQueueService, ChannelTokenService],
 })

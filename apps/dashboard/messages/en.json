@@ -34,7 +34,8 @@
     "accountSuspended": "Account suspended",
     "accountSuspendedDesc": "Your account has been deactivated. Contact support to reactivate.",
     "cancelAccount": "Cancel account",
-    "cancelAccountConfirm": "Are you sure? This action will deactivate your account at the end of the billing period."
+    "cancelAccountConfirm": "Are you sure? This action will deactivate your account at the end of the billing period.",
+    "copied": "Copied"
   },
   "nav": {
     "sections": {
@@ -1276,6 +1277,40 @@
       "smsDisconnected": "SMS disconnected",
       "webhookCopied": "Webhook URL copied!",
       "testFailed": "Test failed"
+    },
+    "messenger": {
+      "connectTitle": "Connect Messenger",
+      "connectDesc": "Click the button to connect your Facebook Page and start receiving Messenger messages automatically.",
+      "connectWithFacebook": "Connect with Facebook",
+      "oauthConnecting": "Connecting...",
+      "loadingSdk": "Loading Facebook SDK...",
+      "sdkNotLoaded": "Facebook SDK is not ready yet. Please try again.",
+      "connectSuccess": "Messenger channel connected successfully.",
+      "connectFailed": "Failed to connect Messenger. Please try again.",
+      "connectedPage": "Connected Page",
+      "pagesConnected": "{count} page(s) connected",
+      "disconnectTitle": "Disconnect Messenger",
+      "disconnectDesc": "Messages will no longer be received from this page",
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Are you sure you want to disconnect Messenger?",
+      "disconnectSuccess": "Messenger disconnected successfully."
+    },
+    "instagram": {
+      "connectTitle": "Connect Instagram",
+      "connectDesc": "Click the button to connect your Instagram Business account and start receiving direct messages automatically.",
+      "connectWithInstagram": "Connect with Instagram",
+      "oauthConnecting": "Connecting...",
+      "connectSuccess": "Instagram channel connected successfully.",
+      "connectFailed": "Failed to connect Instagram. Please try again.",
+      "connectedAccount": "Connected Account",
+      "tokenExpiresIn": "Token expires in {days} days",
+      "tokenExpired": "Token expired. Please reconnect your account.",
+      "reconnect": "Reconnect",
+      "disconnectTitle": "Disconnect Instagram",
+      "disconnectDesc": "Direct messages will no longer be received from this account",
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Are you sure you want to disconnect Instagram?",
+      "disconnectSuccess": "Instagram disconnected successfully."
     },
     "telegram": {
       "setupTitle": "Connect Telegram",

@@ -247,6 +247,374 @@ export class ChannelManagementController {
     }
 
     // ==========================================
+    // Messenger OAuth
+    // ==========================================
+
+    @Post('messenger/oauth-connect')
+    @ApiOperation({ summary: 'Exchange Facebook OAuth code for page tokens, subscribe webhooks, store encrypted credentials' })
+    async messengerOAuthConnect(
+        @Body() body: { code: string },
+        @Req() req: any,
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        const code = body.code;
+        if (!code) throw new BadRequestException('OAuth code is required');
+
+        const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
+
+        // Step 1: Exchange code for user access token
+        const tokenRes = await fetch(
+            `https://graph.facebook.com/${graphVersion}/oauth/access_token?` +
+            new URLSearchParams({
+                client_id: this.configService.get<string>('META_APP_ID') || '',
+                client_secret: this.configService.get<string>('META_APP_SECRET') || '',
+                redirect_uri: this.configService.get<string>(
+                    'MESSENGER_REDIRECT_URI',
+                    'https://admin.parallly-chat.cloud/admin/channels/messenger/callback',
+                ) || '',
+                code,
+            }),
+        );
+        const tokenData = await tokenRes.json() as any;
+        if (tokenData.error) {
+            this.logger.warn(`Messenger token exchange failed: ${tokenData.error.message}`);
+            throw new BadRequestException(`Token exchange failed: ${tokenData.error.message}`);
+        }
+        const userAccessToken: string = tokenData.access_token;
+
+        // Step 2: List pages the user manages
+        const pagesRes = await fetch(
+            `https://graph.facebook.com/${graphVersion}/me/accounts?` +
+            new URLSearchParams({
+                fields: 'id,name,category,picture,access_token,tasks',
+                access_token: userAccessToken,
+            }),
+        );
+        const pagesData = await pagesRes.json() as any;
+        if (pagesData.error) {
+            throw new BadRequestException(`Page listing failed: ${pagesData.error.message}`);
+        }
+
+        const pages = (pagesData.data || []).filter(
+            (p: any) => p.tasks?.includes('MESSAGING') || p.tasks?.includes('MANAGE'),
+        );
+        if (pages.length === 0) {
+            throw new BadRequestException('No Facebook pages with messaging permission found');
+        }
+
+        // Step 3: For each page, subscribe webhook and store
+        const connected: { id: string; name: string; picture?: string }[] = [];
+        for (const page of pages) {
+            try {
+                // Subscribe app webhooks to the page
+                const subRes = await fetch(
+                    `https://graph.facebook.com/${graphVersion}/${page.id}/subscribed_apps`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({
+                            subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads,messaging_referrals',
+                            access_token: page.access_token,
+                        }),
+                    },
+                );
+                const subData = await subRes.json();
+                if (subData.error) {
+                    this.logger.warn(`Webhook subscription failed for page ${page.id}: ${subData.error.message}`);
+                }
+
+                // Encrypt page access token
+                const encrypted = this.cryptoService.encryptToken(page.access_token);
+                const pictureUrl = page.picture?.data?.url || null;
+
+                // Upsert ChannelAccount (unique on [channelType, accountId])
+                const existingAccount = await this.prisma.channelAccount.findFirst({
+                    where: { channelType: 'messenger', accountId: page.id },
+                });
+
+                if (existingAccount) {
+                    await this.prisma.channelAccount.update({
+                        where: { id: existingAccount.id },
+                        data: {
+                            tenantId,
+                            displayName: page.name,
+                            accessToken: 'encrypted_ref',
+                            isActive: true,
+                            metadata: {
+                                source: 'oauth_connect',
+                                category: page.category,
+                                picture: pictureUrl,
+                                tasks: page.tasks,
+                            },
+                        },
+                    });
+                } else {
+                    await this.prisma.channelAccount.create({
+                        data: {
+                            tenantId,
+                            channelType: 'messenger',
+                            accountId: page.id,
+                            displayName: page.name,
+                            accessToken: 'encrypted_ref',
+                            isActive: true,
+                            metadata: {
+                                source: 'oauth_connect',
+                                category: page.category,
+                                picture: pictureUrl,
+                                tasks: page.tasks,
+                            },
+                        },
+                    });
+                }
+
+                // Store encrypted credential (messenger_token per tenant)
+                const existingCred = await this.prisma.whatsappCredential.findFirst({
+                    where: { tenantId, credentialType: 'messenger_token' },
+                });
+
+                if (existingCred) {
+                    await this.prisma.whatsappCredential.update({
+                        where: { id: existingCred.id },
+                        data: { encryptedValue: encrypted, rotationState: 'active' },
+                    });
+                } else {
+                    await this.prisma.whatsappCredential.create({
+                        data: {
+                            tenantId,
+                            credentialType: 'messenger_token',
+                            encryptedValue: encrypted,
+                            rotationState: 'active',
+                        },
+                    });
+                }
+
+                connected.push({ id: page.id, name: page.name, picture: pictureUrl });
+            } catch (e: any) {
+                this.logger.warn(`Failed to connect Messenger page ${page.id}: ${e.message}`);
+            }
+        }
+
+        if (connected.length === 0) {
+            throw new BadRequestException('Failed to connect any Facebook page');
+        }
+
+        this.logger.log(`Messenger OAuth: ${connected.length} page(s) connected for tenant ${tenantId}`);
+        return { success: true, data: { connected, total: pages.length } };
+    }
+
+    @Delete('messenger/disconnect')
+    @ApiOperation({ summary: 'Disconnect Messenger — unsubscribe webhooks and deactivate channel' })
+    async disconnectMessenger(@Req() req: any) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        // Try to unsubscribe webhook (best effort)
+        try {
+            const creds = await this.channelToken.getChannelToken(tenantId, 'messenger');
+            if (creds?.accessToken) {
+                const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
+                await fetch(
+                    `https://graph.facebook.com/${graphVersion}/${creds.accountId}/subscribed_apps?access_token=${creds.accessToken}`,
+                    { method: 'DELETE' },
+                ).catch(() => { /* best effort */ });
+            }
+        } catch {
+            // No credentials — continue with deactivation
+        }
+
+        await this.prisma.channelAccount.updateMany({
+            where: { tenantId, channelType: 'messenger' },
+            data: { isActive: false },
+        });
+
+        this.logger.log(`Messenger disconnected for tenant ${tenantId}`);
+        return { success: true, message: 'Messenger disconnected' };
+    }
+
+    // ==========================================
+    // Instagram OAuth
+    // ==========================================
+
+    @Post('instagram/oauth-connect')
+    @ApiOperation({ summary: 'Exchange Instagram OAuth code for long-lived token, fetch profile, store encrypted credentials' })
+    async instagramOAuthConnect(
+        @Body() body: { code: string },
+        @Req() req: any,
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        const code = body.code;
+        if (!code) throw new BadRequestException('OAuth code is required');
+
+        const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
+
+        // Step 1: Exchange code for short-lived token
+        const shortRes = await fetch('https://api.instagram.com/oauth/access_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: this.configService.get<string>('INSTAGRAM_APP_ID') || '',
+                client_secret: this.configService.get<string>('INSTAGRAM_APP_SECRET') || '',
+                grant_type: 'authorization_code',
+                redirect_uri: this.configService.get<string>(
+                    'INSTAGRAM_REDIRECT_URI',
+                    'https://admin.parallly-chat.cloud/admin/channels/instagram/callback',
+                ) || '',
+                code,
+            }),
+        });
+        const shortData = await shortRes.json() as any;
+        const shortToken: string | undefined = shortData.access_token || shortData.data?.[0]?.access_token;
+        const igUserId: string = String(shortData.user_id || shortData.data?.[0]?.user_id || '');
+
+        if (!shortToken) {
+            this.logger.warn(`Instagram short-lived token exchange failed: ${JSON.stringify(shortData)}`);
+            throw new BadRequestException('Instagram token exchange failed');
+        }
+
+        // Step 2: Exchange short-lived → long-lived (60 days)
+        const longRes = await fetch(
+            `https://graph.instagram.com/access_token?` +
+            new URLSearchParams({
+                grant_type: 'ig_exchange_token',
+                client_secret: this.configService.get<string>('INSTAGRAM_APP_SECRET') || '',
+                access_token: shortToken,
+            }),
+        );
+        const longData = await longRes.json() as any;
+        if (!longData.access_token) {
+            this.logger.warn(`Instagram long-lived token exchange failed: ${JSON.stringify(longData)}`);
+            throw new BadRequestException('Instagram long-lived token exchange failed');
+        }
+
+        const longLivedToken: string = longData.access_token;
+        const expiresAt = new Date(Date.now() + (longData.expires_in || 5184000) * 1000);
+
+        // Step 3: Fetch profile info
+        const profileRes = await fetch(
+            `https://graph.instagram.com/${graphVersion}/me?` +
+            new URLSearchParams({
+                fields: 'user_id,username,name,profile_picture_url,account_type',
+                access_token: longLivedToken,
+            }),
+        );
+        const profile = await profileRes.json() as any;
+
+        // Step 4: Encrypt and store
+        const encrypted = this.cryptoService.encryptToken(longLivedToken);
+        const displayName = profile.username ? `@${profile.username}` : profile.name || igUserId;
+        const pictureUrl = profile.profile_picture_url || null;
+
+        // Upsert ChannelAccount (unique on [channelType, accountId])
+        const existingAccount = await this.prisma.channelAccount.findFirst({
+            where: { channelType: 'instagram', accountId: igUserId },
+        });
+
+        if (existingAccount) {
+            await this.prisma.channelAccount.update({
+                where: { id: existingAccount.id },
+                data: {
+                    tenantId,
+                    displayName,
+                    accessToken: 'encrypted_ref',
+                    isActive: true,
+                    metadata: {
+                        source: 'oauth_connect',
+                        username: profile.username,
+                        accountType: profile.account_type,
+                        profilePicture: pictureUrl,
+                    },
+                },
+            });
+        } else {
+            await this.prisma.channelAccount.create({
+                data: {
+                    tenantId,
+                    channelType: 'instagram',
+                    accountId: igUserId,
+                    displayName,
+                    accessToken: 'encrypted_ref',
+                    isActive: true,
+                    metadata: {
+                        source: 'oauth_connect',
+                        username: profile.username,
+                        accountType: profile.account_type,
+                        profilePicture: pictureUrl,
+                    },
+                },
+            });
+        }
+
+        // Store encrypted credential with expiration
+        const existingCred = await this.prisma.whatsappCredential.findFirst({
+            where: { tenantId, credentialType: 'instagram_token' },
+        });
+
+        if (existingCred) {
+            await this.prisma.whatsappCredential.update({
+                where: { id: existingCred.id },
+                data: {
+                    encryptedValue: encrypted,
+                    rotationState: 'active',
+                    expiresAt,
+                },
+            });
+        } else {
+            await this.prisma.whatsappCredential.create({
+                data: {
+                    tenantId,
+                    credentialType: 'instagram_token',
+                    encryptedValue: encrypted,
+                    rotationState: 'active',
+                    expiresAt,
+                },
+            });
+        }
+
+        this.logger.log(`Instagram OAuth: ${displayName} connected for tenant ${tenantId}`);
+        return {
+            success: true,
+            data: {
+                id: igUserId,
+                username: profile.username,
+                name: profile.name,
+                picture: pictureUrl,
+            },
+        };
+    }
+
+    @Delete('instagram/disconnect')
+    @ApiOperation({ summary: 'Disconnect Instagram — revoke permissions and deactivate channel' })
+    async disconnectInstagram(@Req() req: any) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        // Try to revoke permissions (best effort)
+        try {
+            const creds = await this.channelToken.getChannelToken(tenantId, 'instagram');
+            if (creds?.accessToken) {
+                await fetch(
+                    `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
+                    { method: 'DELETE' },
+                ).catch(() => { /* best effort */ });
+            }
+        } catch {
+            // No credentials — continue with deactivation
+        }
+
+        await this.prisma.channelAccount.updateMany({
+            where: { tenantId, channelType: 'instagram' },
+            data: { isActive: false },
+        });
+
+        this.logger.log(`Instagram disconnected for tenant ${tenantId}`);
+        return { success: true, message: 'Instagram disconnected' };
+    }
+
+    // ==========================================
     // SMS / Twilio
     // ==========================================
 

@@ -364,6 +364,10 @@ export const api = {
     
     // --- Channels ---
     getWhatsappConfig: () => apiGet("/channels/whatsapp/config"),
+    messengerOAuthConnect: (code: string) =>
+        apiPost("/channels/messenger/oauth-connect", { code }),
+    instagramOAuthConnect: (code: string) =>
+        apiPost("/channels/instagram/oauth-connect", { code }),
 
     // --- Users ---
     getUsers: () => apiGet("/auth/users"),

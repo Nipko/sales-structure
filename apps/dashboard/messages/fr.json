@@ -34,7 +34,8 @@
     "accountSuspended": "Compte suspendu",
     "accountSuspendedDesc": "Votre compte a ete desactive. Contactez le support pour le reactiver.",
     "cancelAccount": "Annuler le compte",
-    "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation."
+    "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation.",
+    "copied": "Copie"
   },
   "nav": {
     "sections": {
@@ -1276,6 +1277,40 @@
       "smsDisconnected": "SMS deconnecte",
       "webhookCopied": "URL du webhook copiee !",
       "testFailed": "Echec du test"
+    },
+    "messenger": {
+      "connectTitle": "Connecter Messenger",
+      "connectDesc": "Cliquez sur le bouton pour connecter votre page Facebook et commencer a recevoir des messages Messenger automatiquement.",
+      "connectWithFacebook": "Connecter avec Facebook",
+      "oauthConnecting": "Connexion...",
+      "loadingSdk": "Chargement du SDK Facebook...",
+      "sdkNotLoaded": "Le SDK Facebook n'est pas encore pret. Veuillez reessayer.",
+      "connectSuccess": "Canal Messenger connecte avec succes.",
+      "connectFailed": "Echec de la connexion Messenger. Veuillez reessayer.",
+      "connectedPage": "Page connectee",
+      "pagesConnected": "{count} page(s) connectee(s)",
+      "disconnectTitle": "Deconnecter Messenger",
+      "disconnectDesc": "Les messages de cette page ne seront plus recus",
+      "disconnect": "Deconnecter",
+      "disconnectConfirm": "Etes-vous sur de vouloir deconnecter Messenger ?",
+      "disconnectSuccess": "Messenger deconnecte avec succes."
+    },
+    "instagram": {
+      "connectTitle": "Connecter Instagram",
+      "connectDesc": "Cliquez sur le bouton pour connecter votre compte Instagram Business et commencer a recevoir des messages directs automatiquement.",
+      "connectWithInstagram": "Connecter avec Instagram",
+      "oauthConnecting": "Connexion...",
+      "connectSuccess": "Canal Instagram connecte avec succes.",
+      "connectFailed": "Echec de la connexion Instagram. Veuillez reessayer.",
+      "connectedAccount": "Compte connecte",
+      "tokenExpiresIn": "Le token expire dans {days} jours",
+      "tokenExpired": "Token expire. Veuillez reconnecter votre compte.",
+      "reconnect": "Reconnecter",
+      "disconnectTitle": "Deconnecter Instagram",
+      "disconnectDesc": "Les messages directs de ce compte ne seront plus recus",
+      "disconnect": "Deconnecter",
+      "disconnectConfirm": "Etes-vous sur de vouloir deconnecter Instagram ?",
+      "disconnectSuccess": "Instagram deconnecte avec succes."
     },
     "telegram": {
       "setupTitle": "Connecter Telegram",

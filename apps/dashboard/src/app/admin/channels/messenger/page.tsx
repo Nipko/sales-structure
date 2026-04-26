@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
@@ -13,35 +13,70 @@ import {
     Copy,
     Link as LinkIcon,
     User,
+    LogOut,
+    Loader2,
 } from "lucide-react";
 
+declare global {
+    interface Window {
+        FB: any;
+        fbAsyncInit: () => void;
+    }
+}
+
 const BRAND_COLOR = "#0084FF";
+const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
+const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID || "";
 
 export default function MessengerSetupPage() {
+    const t = useTranslations("channels");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
     const [status, setStatus] = useState<any>(null);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
 
-    const [pageId, setPageId] = useState("");
-    const [accessToken, setAccessToken] = useState("");
-    const [displayName, setDisplayName] = useState("");
-
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
+    const [connecting, setConnecting] = useState(false);
+    const [disconnecting, setDisconnecting] = useState(false);
+    const [sdkLoaded, setSdkLoaded] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
 
-    const loadData = async () => {
+    // Load Facebook SDK
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (window.FB) {
+            setSdkLoaded(true);
+            return;
+        }
+
+        window.fbAsyncInit = function () {
+            window.FB.init({
+                appId: META_APP_ID,
+                cookie: true,
+                xfbml: false,
+                version: "v21.0",
+            });
+            setSdkLoaded(true);
+        };
+
+        const script = document.createElement("script");
+        script.src = "https://connect.facebook.net/en_US/sdk.js";
+        script.async = true;
+        script.defer = true;
+        document.body.appendChild(script);
+
+        return () => {
+            // Cleanup not needed — SDK persists across navigations
+        };
+    }, []);
+
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const statusRes = await api.fetch("/channels/messenger/status");
             setStatus(statusRes);
-            if (statusRes?.channel) {
-                setPageId(statusRes.channel.page_id || statusRes.channel.account_id || "");
-                setDisplayName(statusRes.channel.display_name || "");
-            }
         } catch (e) {
             console.error("Failed to load Messenger status", e);
         }
@@ -54,30 +89,59 @@ export default function MessengerSetupPage() {
             console.error("Failed to load Messenger config", e);
         }
         setLoading(false);
+    }, [activeTenantId]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handleOAuthConnect = () => {
+        if (!sdkLoaded || !window.FB) {
+            setMessage({ type: "error", text: t("messenger.sdkNotLoaded") });
+            return;
+        }
+
+        setConnecting(true);
+        setMessage({ type: "", text: "" });
+
+        window.FB.login(
+            async (response: any) => {
+                if (response.authResponse?.code) {
+                    try {
+                        const result = await api.messengerOAuthConnect(response.authResponse.code);
+                        if (result.success) {
+                            setMessage({ type: "success", text: t("messenger.connectSuccess") });
+                            await loadData();
+                        } else {
+                            setMessage({ type: "error", text: result.error || t("messenger.connectFailed") });
+                        }
+                    } catch (err: any) {
+                        setMessage({ type: "error", text: err.message || t("messenger.connectFailed") });
+                    }
+                } else {
+                    // User cancelled
+                    setMessage({ type: "", text: "" });
+                }
+                setConnecting(false);
+            },
+            {
+                config_id: MESSENGER_CONFIG_ID,
+                response_type: "code",
+                override_default_response_type: true,
+            }
+        );
     };
 
-    useEffect(() => { loadData(); }, [activeTenantId]);
-
-    const handleConnect = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setSaving(true);
+    const handleDisconnect = async () => {
+        if (!confirm(t("messenger.disconnectConfirm"))) return;
+        setDisconnecting(true);
         setMessage({ type: "", text: "" });
         try {
-            await api.fetch("/channels/messenger/connect", {
-                method: "POST",
-                body: JSON.stringify({
-                    accountId: pageId,
-                    accessToken,
-                    displayName: displayName || undefined,
-                }),
-            });
-            setMessage({ type: "success", text: "Canal de Messenger conectado correctamente." });
-            setAccessToken("");
+            await api.fetch("/channels/messenger/disconnect", { method: "POST" });
+            setMessage({ type: "success", text: t("messenger.disconnectSuccess") });
             await loadData();
         } catch (err: any) {
             setMessage({ type: "error", text: err.message || tc("connectionError") });
         } finally {
-            setSaving(false);
+            setDisconnecting(false);
         }
     };
 
@@ -90,12 +154,13 @@ export default function MessengerSetupPage() {
     if (loading) {
         return (
             <div className="p-8 text-center text-[var(--text-secondary)]">
-                Cargando estado de Messenger...
+                {t("loading")}
             </div>
         );
     }
 
     const isConnected = status?.status === "connected";
+    const connectedPages = status?.pages || (status?.channel ? [status.channel] : []);
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -114,7 +179,7 @@ export default function MessengerSetupPage() {
                         </h1>
                     </div>
                     <p className="text-[var(--text-secondary)] mt-1">
-                        Conecta tu pagina de Facebook para recibir y responder mensajes de Messenger.
+                        {t("messengerDesc")}
                     </p>
                 </div>
                 <div
@@ -126,7 +191,7 @@ export default function MessengerSetupPage() {
                     )}
                 >
                     {isConnected ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                    {isConnected ? "Conectado" : "Desconectado"}
+                    {isConnected ? t("connected") : t("disconnected")}
                 </div>
             </div>
 
@@ -144,201 +209,149 @@ export default function MessengerSetupPage() {
                 </div>
             )}
 
-            {/* Webhook Config Card */}
-            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
-                <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
-                    <Shield size={18} className="text-[#e67e22]" />
-                    <h2 className="text-base font-semibold m-0 text-foreground">
-                        Configuracion del Webhook
-                    </h2>
-                    <span className="text-xs text-[var(--text-secondary)] ml-auto">
-                        Configura estos valores en tu App de Meta Developers
-                    </span>
-                </div>
-                <div className="p-6 flex gap-6">
-                    <div className="flex-1">
-                        <label className="text-[13px] font-semibold mb-2 block text-foreground">
-                            Callback URL
-                        </label>
-                        <div
-                            className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
-                            onClick={() => config?.webhookUrl && copyToClipboard(config.webhookUrl, "url")}
-                            title="Click para copiar"
-                        >
-                            {config?.webhookUrl || "No disponible — verifica la configuracion del servidor"}
-                            {config?.webhookUrl && (
-                                <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />
-                            )}
-                        </div>
-                        {copied === "url" && <span className="text-[11px] text-[var(--success)]">Copiado</span>}
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-[13px] font-semibold mb-2 block text-foreground">
-                            Verify Token
-                        </label>
-                        <div
-                            className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
-                            onClick={() => config?.verifyToken && copyToClipboard(config.verifyToken, "token")}
-                            title="Click para copiar"
-                        >
-                            {config?.verifyToken || "No configurado — agrega MESSENGER_VERIFY_TOKEN en el servidor"}
-                            {config?.verifyToken && (
-                                <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />
-                            )}
-                        </div>
-                        {copied === "token" && <span className="text-[11px] text-[var(--success)]">Copiado</span>}
-                    </div>
-                </div>
-            </div>
-
-            {/* Connection / Connected State */}
             {!isConnected ? (
+                /* ── Not Connected: OAuth Button ── */
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                     <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                         <LinkIcon size={18} style={{ color: BRAND_COLOR }} />
                         <h2 className="text-base font-semibold m-0 text-foreground">
-                            Conectar Messenger
+                            {t("messenger.connectTitle")}
                         </h2>
                     </div>
                     <div className="p-6">
-                        <form onSubmit={handleConnect} className="flex flex-col gap-4">
-                            <div>
-                                <label className="text-[13px] font-semibold mb-1 block text-foreground">
-                                    Facebook Page ID
-                                </label>
-                                <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">
-                                    El ID de tu pagina de Facebook. Lo encuentras en Configuracion de la pagina &rarr; Transparencia de la pagina
-                                </span>
-                                <input
-                                    type="text"
-                                    value={pageId}
-                                    onChange={(e) => setPageId(e.target.value)}
-                                    placeholder="Ej: 101234567890123"
-                                    required
-                                    className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[13px] font-semibold mb-1 block text-foreground">
-                                    Page Access Token
-                                </label>
-                                <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">
-                                    Token de acceso de la pagina con permisos de pages_messaging. Nunca se almacena en texto plano.
-                                </span>
-                                <input
-                                    type="password"
-                                    value={accessToken}
-                                    onChange={(e) => setAccessToken(e.target.value)}
-                                    placeholder="EAAG..."
-                                    required
-                                    className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm font-mono outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[13px] font-semibold mb-1 block text-foreground">
-                                    Nombre para mostrar
-                                </label>
-                                <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">
-                                    Nombre amigable para identificar este canal en el dashboard
-                                </span>
-                                <input
-                                    type="text"
-                                    value={displayName}
-                                    onChange={(e) => setDisplayName(e.target.value)}
-                                    placeholder="Ej: Mi Negocio - Messenger"
-                                    className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={saving}
-                                className={cn(
-                                    "mt-2 py-3 rounded-[10px] border-none text-white font-semibold text-sm cursor-pointer",
-                                    saving && "opacity-70"
-                                )}
-                                style={{ background: BRAND_COLOR }}
-                            >
-                                {saving ? "Conectando..." : "Conectar"}
-                            </button>
-                        </form>
+                        <p className="text-sm text-[var(--text-secondary)] mb-6">
+                            {t("messenger.connectDesc")}
+                        </p>
+                        <button
+                            onClick={handleOAuthConnect}
+                            disabled={connecting || !sdkLoaded}
+                            className={cn(
+                                "flex items-center justify-center gap-2 w-full py-3 rounded-[10px] border-none text-white font-semibold text-sm cursor-pointer transition-opacity",
+                                (connecting || !sdkLoaded) && "opacity-70 cursor-not-allowed"
+                            )}
+                            style={{ background: BRAND_COLOR }}
+                        >
+                            {connecting ? (
+                                <>
+                                    <Loader2 size={16} className="animate-spin" />
+                                    {t("messenger.oauthConnecting")}
+                                </>
+                            ) : (
+                                <>
+                                    <MessageCircle size={16} />
+                                    {t("messenger.connectWithFacebook")}
+                                </>
+                            )}
+                        </button>
+                        {!sdkLoaded && (
+                            <p className="text-xs text-[var(--text-secondary)] mt-2 text-center">
+                                {t("messenger.loadingSdk")}
+                            </p>
+                        )}
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-6 mb-6">
-                    {/* Account Info */}
-                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                /* ── Connected State ── */
+                <>
+                    {/* Connected Pages */}
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <User size={18} style={{ color: BRAND_COLOR }} />
                             <h2 className="text-base font-semibold m-0 text-foreground">
-                                Pagina Conectada
+                                {t("messenger.connectedPage")}
                             </h2>
+                            <span className="text-xs text-[var(--text-secondary)] ml-auto">
+                                {t("messenger.pagesConnected", { count: connectedPages.length })}
+                            </span>
                         </div>
                         <div className="p-6">
-                            <div className="flex flex-col gap-3.5">
-                                <div>
-                                    <span className="text-xs text-[var(--text-secondary)]">Nombre</span>
-                                    <p className="text-base font-semibold mt-1 mb-0 text-foreground">
-                                        {status?.channel?.display_name || displayName || "\u2014"}
-                                    </p>
-                                </div>
-                                <div>
-                                    <span className="text-xs text-[var(--text-secondary)]">Page ID</span>
-                                    <p className="text-xs font-mono mt-1 mb-0 text-[var(--text-secondary)]">
-                                        {status?.channel?.page_id || status?.channel?.account_id || pageId || "\u2014"}
-                                    </p>
-                                </div>
+                            <div className="flex flex-col gap-4">
+                                {connectedPages.map((page: any, idx: number) => (
+                                    <div key={page.page_id || page.account_id || idx} className="flex items-center gap-4 p-4 rounded-xl bg-[var(--bg-tertiary)] border border-border">
+                                        {page.profile_picture_url ? (
+                                            <img
+                                                src={page.profile_picture_url}
+                                                alt={page.display_name || "Page"}
+                                                className="w-12 h-12 rounded-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: BRAND_COLOR }}>
+                                                <MessageCircle size={20} className="text-white" />
+                                            </div>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-foreground truncate">
+                                                {page.display_name || "\u2014"}
+                                            </p>
+                                            <p className="text-xs font-mono text-[var(--text-secondary)] mt-0.5">
+                                                ID: {page.page_id || page.account_id || "\u2014"}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[rgba(0,214,143,0.1)] text-[var(--success)] border border-[rgba(0,214,143,0.2)]">
+                                            <CheckCircle size={12} />
+                                            {t("connected")}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
 
-                    {/* Update Token */}
-                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
-                        <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
-                            <LinkIcon size={18} className="text-primary" />
-                            <h2 className="text-base font-semibold m-0 text-foreground">
-                                Actualizar Token
-                            </h2>
-                        </div>
-                        <div className="p-6">
-                            <form onSubmit={handleConnect} className="flex flex-col gap-3.5">
-                                <div>
-                                    <label className="text-[13px] font-semibold mb-1.5 block text-foreground">
-                                        Page Access Token
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={accessToken}
-                                        onChange={(e) => setAccessToken(e.target.value)}
-                                        placeholder="Solo si necesitas actualizar"
-                                        className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm font-mono outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[13px] font-semibold mb-1.5 block text-foreground">
-                                        Nombre para mostrar
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={displayName}
-                                        onChange={(e) => setDisplayName(e.target.value)}
-                                        placeholder="Channel name"
-                                        className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    className={cn(
-                                        "py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground font-semibold text-[13px] cursor-pointer",
-                                        saving && "opacity-70"
-                                    )}
+                    {/* Webhook Config Card */}
+                    {config?.webhookUrl && (
+                        <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                            <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
+                                <Shield size={18} className="text-[#e67e22]" />
+                                <h2 className="text-base font-semibold m-0 text-foreground">
+                                    Webhook
+                                </h2>
+                            </div>
+                            <div className="p-6">
+                                <label className="text-[13px] font-semibold mb-2 block text-foreground">
+                                    Callback URL
+                                </label>
+                                <div
+                                    className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
+                                    onClick={() => config?.webhookUrl && copyToClipboard(config.webhookUrl, "url")}
+                                    title="Click to copy"
                                 >
-                                    {saving ? "Actualizando..." : "Actualizar Token"}
-                                </button>
-                            </form>
+                                    {config.webhookUrl}
+                                    <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />
+                                </div>
+                                {copied === "url" && <span className="text-[11px] text-[var(--success)]">{tc("copied")}</span>}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Disconnect */}
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                        <div className="p-6 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-semibold text-foreground mb-1">
+                                    {t("messenger.disconnectTitle")}
+                                </h3>
+                                <p className="text-xs text-[var(--text-secondary)]">
+                                    {t("messenger.disconnectDesc")}
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleDisconnect}
+                                disabled={disconnecting}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 rounded-[10px] border border-[rgba(255,71,87,0.3)] text-[var(--danger)] bg-transparent text-[13px] font-semibold cursor-pointer transition-opacity",
+                                    disconnecting && "opacity-70 cursor-not-allowed"
+                                )}
+                            >
+                                {disconnecting ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <LogOut size={14} />
+                                )}
+                                {t("messenger.disconnect")}
+                            </button>
                         </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

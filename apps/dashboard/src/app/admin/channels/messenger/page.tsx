@@ -103,24 +103,25 @@ export default function MessengerSetupPage() {
         setMessage({ type: "", text: "" });
 
         window.FB.login(
-            async (response: any) => {
+            (response: any) => {
                 if (response.authResponse?.code) {
-                    try {
-                        const result = await api.messengerOAuthConnect(response.authResponse.code);
-                        if (result.success) {
-                            setMessage({ type: "success", text: t("messenger.connectSuccess") });
-                            await loadData();
-                        } else {
-                            setMessage({ type: "error", text: result.error || t("messenger.connectFailed") });
-                        }
-                    } catch (err: any) {
-                        setMessage({ type: "error", text: err.message || t("messenger.connectFailed") });
-                    }
+                    api.messengerOAuthConnect(response.authResponse.code)
+                        .then((result: any) => {
+                            if (result.success) {
+                                setMessage({ type: "success", text: t("messenger.connectSuccess") });
+                                loadData();
+                            } else {
+                                setMessage({ type: "error", text: result.error || t("messenger.connectFailed") });
+                            }
+                        })
+                        .catch((err: any) => {
+                            setMessage({ type: "error", text: err.message || t("messenger.connectFailed") });
+                        })
+                        .finally(() => setConnecting(false));
                 } else {
-                    // User cancelled
                     setMessage({ type: "", text: "" });
+                    setConnecting(false);
                 }
-                setConnecting(false);
             },
             {
                 config_id: MESSENGER_CONFIG_ID,

@@ -31,7 +31,7 @@ Customer (WhatsApp/IG/Messenger/Telegram) → Meta Cloud API / Telegram Bot API 
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. Core business logic, 37 modules
+  api/          — NestJS 10, port 3000. Core business logic, 40 modules
   dashboard/    — Next.js 16, port 3001. Admin panel (50+ pages), React 19, Tailwind + shadcn/ui + recharts
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud), 4-language i18n
@@ -98,17 +98,18 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 
 `LanguageDetectorService` heuristically detects es/en/pt/fr from the inbound message. Default is the configured agent language; auto-override when the customer switches languages mid-conversation. Fed into `<turn><language>` so the LLM answers in the customer's language.
 
-## API modules (37 total)
+## API modules (40 total)
 
 | Category | Modules |
 |----------|---------|
 | **Infrastructure** | prisma, redis, health, throttle, internal |
-| **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + password reset + session management), tenants, settings |
-| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram/SMS adapters), conversations, whatsapp, handoff, agent-console |
+| **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + password reset + session management + impersonation), tenants, settings |
+| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram/SMS adapters + IG OAuth + Messenger FB SDK + IG token refresh cron), conversations, whatsapp, handoff, agent-console |
 | **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
-| **Operations** | broadcast, inventory, orders, compliance, email, email-templates |
+| **Billing & Finance** | billing (MercadoPago adapter, webhook, reconciliation cron, email listeners, plan quotas), financials (SaaS metrics, snapshots, infra costs, exchange rates), offboarding (tenant lifecycle, grace enforcer cron, archive cleaner) |
+| **Operations** | broadcast, inventory, orders, compliance, email, email-templates, offers, business-info |
 | **Media & Files** | media (upload, resize, logo, tags, serve) |
 | **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection, multi-calendar, Google/Microsoft sync) |
 | **Identity** | identity (unified profiles, merge suggestions) |
@@ -121,9 +122,12 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 WhatsappModule → ConversationsModule → [PersonaModule, AIModule, ChannelsModule, HandoffModule, IdentityModule]
                                                                       ↓ (EventEmitter)
                                                               AgentConsoleModule
-ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, adapters (WA/IG/Messenger/Telegram/SMS)
+ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, InstagramTokenRefreshService, adapters (WA/IG/Messenger/Telegram/SMS)
 ThrottleModule: @Global — TenantThrottleService available everywhere
 AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsService, ScheduledReportsService, BIApiController
+BillingModule provides: BillingService, MercadoPagoAdapter, ReconciliationProcessor, BillingEmailService
+FinancialsModule provides: FinancialsService, FinancialSnapshotService (super_admin only)
+OffboardingModule provides: OffboardingService, OffboardingCronService (depends on all 5 BullMQ queues)
 ```
 
 ## Key files for common tasks
@@ -165,7 +169,7 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | **Session modal** | `dashboard/src/components/SessionTimeoutModal.tsx` |
 | DB tenant schema | `apps/api/prisma/tenant-schema.sql` |
 | Shared types | `packages/shared/src/index.ts` |
-| Dashboard API client | `apps/dashboard/src/lib/api.ts` (110+ methods) |
+| Dashboard API client | `apps/dashboard/src/lib/api.ts` (105+ methods) |
 | Dashboard auth | `apps/dashboard/src/contexts/AuthContext.tsx` |
 | Media management | `media/media.service.ts`, `media/media.controller.ts` |
 | Email templates | `email-templates/email-templates.service.ts` |
@@ -180,27 +184,42 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | Agent list | `dashboard/src/app/admin/agent/page.tsx` |
 | Setup banner | `dashboard/src/components/SetupBanner.tsx` |
 | SMS adapter | `channels/sms/sms.adapter.ts` |
+| IG token refresh | `channels/instagram-token-refresh.service.ts` (daily @6AM, 30-day pre-expiry) |
+| Offboarding | `offboarding/offboarding.service.ts` (7-step pipeline: channels, sessions, queues, deactivate, cache, audit, event) |
+| Offboarding cron | `offboarding/offboarding-cron.service.ts` (grace enforcer @3AM, archive cleaner @4AM) |
+| Financials | `financials/financials.service.ts` (MRR, ARR, ARPU, churn, LTV, quick ratio, tenant profitability) |
+| Financial snapshots | `financials/financial-snapshot.service.ts` (monthly @1AM, MRR movements, per-tenant snapshots) |
+| Billing | `billing/billing.service.ts` (MercadoPago adapter, subscription lifecycle, plan quotas) |
+| Billing webhooks | `billing/webhook.controller.ts` (HMAC-SHA256 verify + idempotency + dispatch) |
+| Billing reconciliation | `billing/processors/reconciliation.processor.ts` (hourly past_due sweep + daily drift) |
+| Impersonation | `auth/auth.service.ts` (impersonate method, 1h tokens, audit trail) |
+| Suspended screen | `dashboard/src/components/SuspendedScreen.tsx` |
+| Impersonation banner | `dashboard/src/components/ImpersonationBanner.tsx` |
+| Financials dashboard | `dashboard/src/app/admin/financials/page.tsx` (5 tabs) |
+| Billing settings | `dashboard/src/app/admin/settings/billing/page.tsx` |
 | Booking engine | `appointments/booking-engine.service.ts` (deterministic flow, Redis state) |
 | Booking i18n | `appointments/booking-messages.ts` (21 directives x 4 languages) |
 | Calendar integrations | `appointments/calendar-integration.service.ts` (Google/Microsoft sync) |
 | Intent interpreter | `appointments/intent-interpreter.service.ts` (NLP for booking intents) |
 
-## Dashboard pages (50+)
+## Dashboard pages (60+)
 
 | Section | Pages |
 |---------|-------|
 | **Auth** | Login (Remember Me, session expired banner), Forgot Password (OTP), Setup Password (Google OAuth), Verify Email (6-digit OTP) |
-| **Onboarding** | 4-step company wizard |
-| **Core** | Dashboard, Inbox (WhatsApp-style chat + notifications) |
+| **Onboarding** | 5-step company wizard (step 5: plan picker — Starter self-serve, Pro/Enterprise tagged for contact) |
+| **Core** | Dashboard, Inbox (WhatsApp-style chat + channel identification + notifications), Trial Countdown Banner (persistent, all admin pages) |
 | **CRM** | Contacts, Lead Detail, Pipeline (Kanban), Segments |
 | **AI** | Agent List (multi-agent management, templates), Agent Editor (/agent/[agentId] — hub card grid + channel assignment + custom prompt mode), AI Settings |
 | **Automation** | Rules (4-step wizard), Settings |
 | **Analytics** | Analytics V2 (8 tabs: Overview/AI & Bot/Automation/Campaigns/Channels/CSAT/Anomalies/Cohorts), Agent Performance (legacy 4 tabs) |
-| **Channels** | Overview, WhatsApp Setup, Instagram Setup, Messenger Setup, Telegram Setup, SMS/Twilio Setup |
+| **Channels** | Overview, WhatsApp Setup, Instagram Setup (OAuth popup + callback), Messenger Setup (FB SDK Login), Telegram Setup, SMS/Twilio Setup |
 | **Identity** | Merge Suggestions (approve/reject) |
-| **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports** (threshold alerts + scheduled email reports) |
+| **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports**, **Billing** (plan, countdown, actions, payment history) |
 | **Scheduling** | Appointments (week/day calendar, agenda, services + staff + modality, config + multi-calendar, analytics), Public Booking (/book/:tenantSlug) |
 | **Operations** | Broadcast, Inventory, Orders, Compliance, Knowledge Base |
+| **Super Admin** | Tenants Hub (6 tabs: Overview/Onboarding/Offboarding/Billing/Usage/Platform + detail page + impersonation), Financials (5 tabs: Overview/Revenue/Customers/Costs/Settings) |
+| **Suspended** | SuspendedScreen (full-page block for suspended tenants) |
 | **Public** | `/kb/[tenantSlug]` (public help center, light theme, no auth) |
 
 ## Analytics System (Comprehensive)
@@ -241,7 +260,11 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 ### Cron Jobs
 | Cron | Service | Purpose |
 |------|---------|---------|
+| `0 1 1 * *` | FinancialSnapshotService | Monthly financial snapshot (1st, 1AM) |
 | `0 2 * * *` | MetricsAggregationService | Nightly aggregation into daily_metrics |
+| `0 3 * * *` | OffboardingCronService | Grace period enforcer (past_due >7d → offboard, cancelled period ended → offboard) |
+| `0 4 * * *` | OffboardingCronService | Archive cleaner (drop schemas of tenants inactive >90 days) |
+| `0 6 * * *` | InstagramTokenRefreshService | Refresh IG tokens expiring within 30 days |
 | `*/15 * * * *` | AlertsService | Evaluate threshold alert rules |
 | `0 8 * * 1` | ScheduledReportsService | Send weekly email reports (Monday 8AM) |
 | `0 8 1 * *` | ScheduledReportsService | Send monthly email reports (1st, 8AM) |
@@ -251,6 +274,8 @@ AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsSer
 | `*/15 * * * *` | AppointmentRemindersService | Send 24h appointment reminders |
 | `3,18,33,48 * * * *` | AppointmentRemindersService | Send 1h appointment reminders |
 | `5,35 * * * *` | AppointmentRemindersService | Auto-mark no-shows + send follow-up |
+| daily | BillingService | Trial ending soon (3 days before trial end) |
+| hourly | ReconciliationProcessor | Past_due sweep + daily drift detection |
 
 ### Redis Keys (Analytics)
 ```
@@ -263,6 +288,8 @@ analytics:{tenantId}:{YYYY-MM-DD}:hourly:{0-23}           — Volume per hour
 refresh:{userId}:{tokenId}                                — Refresh tokens (8h or 14d TTL)
 booking:{conversationId}                                  — Booking engine state (1h TTL)
 lock:conv:{conversationId}                                — Conversation processing mutex (30s TTL)
+offboard:past_due:{tenantId}                              — Past-due timer start (30d TTL, 7d grace)
+tenant_plan:{tenantId}                                    — Cached plan info (invalidated on offboard/reactivate)
 ```
 
 ### Tenant Schema Tables (Analytics)
@@ -281,6 +308,64 @@ agent_templates        — Reusable agent templates (builtin + tenant-created)
 calendar_integrations  — External calendar connections (Google/Microsoft), label, assignment_type, assignment_id
 services               — Bookable services (+ location_type: in_person/online/hybrid, location_address, meeting_link)
 ```
+
+### Global Prisma Tables (Billing & Finance)
+```
+billing_plans              — 4 plan definitions (starter/pro/enterprise/custom) with prices
+billing_subscriptions      — Per-tenant subscription (status, trial, MercadoPago external IDs)
+billing_payments           — Payment history (amount, status, provider reference)
+financial_snapshots        — Monthly platform-wide SaaS metrics (MRR, churn, costs, plan distribution)
+tenant_financial_snapshots — Per-tenant monthly snapshots (revenue, LLM cost, plan, message count)
+infra_costs                — Monthly infrastructure costs by category (VPS, domain, etc.)
+exchange_rates             — Currency exchange rates for multi-currency support
+audit_logs                 — Offboarding and billing audit trail
+```
+
+## Billing System (Apr 2026)
+
+- **Payment provider**: MercadoPago (LatAm market). Adapter pattern via `IPaymentProvider` interface
+- **Plans**: 4 plans seeded in `billing_plans` table, synced to MercadoPago via `sync-mp-plans.js`
+- **Subscription lifecycle**: trialing → active → past_due → cancelled/expired. State machine in `BillingService`
+- **Trial**: Created at end of onboarding (`completeOnboarding`). Daily cron fires `trial.ending_soon` 3 days before end
+- **Webhooks**: `POST /billing/webhooks/mercadopago` with HMAC-SHA256 verification + Redis idempotency
+- **Reconciliation**: Hourly past_due sweep + daily drift detection via `ReconciliationProcessor`
+- **Plan quotas**: Server-side enforcement on services count, automation rules count, broadcast limits
+- **Email templates**: 5 billing-specific templates (payment_success, payment_failed, trial_ending, subscription_cancelled, plan_upgraded)
+- **Dashboard pages**: `/admin/settings/billing` (plan info, countdown, actions, payment history), onboarding step 5 (plan picker)
+- **Card tokenization**: MercadoPago card tokenization for Pro/Enterprise self-serve checkout
+
+## Offboarding System (Apr 2026)
+
+- **Tenant lifecycle**: active → cancelled (voluntary, keeps access until period end) → offboarded (7-step pipeline) → archived (schema dropped after 90d inactive)
+- **7-step offboarding pipeline**: (1) disconnect all channels (WhatsApp WABA unsubscribe, Telegram webhook delete), (2) revoke all user sessions, (3) drain BullMQ queues, (4) deactivate tenant + users, (5) invalidate Redis caches, (6) audit log, (7) emit `tenant.offboarded` event
+- **Grace period**: past_due tenants get 7-day grace via Redis key `offboard:past_due:{tenantId}`. Cron at 3AM enforces
+- **Archive cleaner**: Cron at 4AM drops schemas of tenants inactive >90 days
+- **Admin actions**: suspend (immediate offboard), reactivate (restore access), extend trial
+- **Billing event listeners**: `billing.payment.failed` starts grace timer, `billing.payment.succeeded` clears it
+- **Endpoints**: `POST /offboarding/:tenantId/cancel` (tenant_admin), `POST /offboarding/:tenantId/suspend` (super_admin), `GET /offboarding/:tenantId/status`, `POST /offboarding/:tenantId/reactivate`, `POST /offboarding/:tenantId/extend-trial`
+
+## Financials System (Apr 2026)
+
+- **SaaS metrics**: MRR, ARR, ARPU, customer/revenue churn rate, LTV, quick ratio
+- **Monthly snapshots**: Platform-wide + per-tenant. MRR movements (new, expansion, contraction, churned, reactivation)
+- **Infra costs**: Manual entry by category (VPS, domain, etc.) + LLM costs aggregated from tenant schemas
+- **Tenant profitability**: Revenue minus LLM cost per tenant, with margin calculation
+- **Trial metrics**: Active trials, ending soon (7d), conversion rate
+- **Endpoints**: 11 endpoints under `/financials/` (overview, mrr-trend, revenue, churn-trend, costs, tenant-profitability, trial-metrics, infra-costs GET/POST, exchange-rates, snapshot/generate). All super_admin only
+
+## Super Admin Dashboard (Apr 2026)
+
+- **Tenants Hub** (`/admin/tenants`): 6 tabs — Overview (all tenants + KPIs), Onboarding (new tenants), Offboarding (cancelled/suspended), Billing (subscription status), Usage (platform metrics), Platform (health)
+- **Tenant Detail** (`/admin/tenants/[tenantId]`): 4 tabs — Info, Users, Channels, Billing. Edit tenant, suspend, impersonate
+- **Impersonation**: `POST /auth/impersonate/:tenantId` generates 1h tokens with `isImpersonation: true` + `impersonatedBy` in JWT. Dashboard shows amber `ImpersonationBanner` with "Exit" button. LocalStorage-based state preservation
+- **Suspended Screen**: Full-page block (`SuspendedScreen` component) shown when tenant `isActive: false`. Only action: logout
+- **Financials** (`/admin/financials`): 5 tabs — Overview (KPIs: MRR, ARR, ARPU, churn, LTV), Revenue (trend + payments), Customers (churn trend + profitability), Costs (LLM + infra), Settings (infra cost entry, exchange rates, manual snapshot)
+
+## Channel OAuth Flows (Apr 2026)
+
+- **Instagram OAuth**: User clicks "Connect" → opens popup to `https://www.instagram.com/oauth/authorize` with `instagram_basic,instagram_manage_messages` scopes → callback page at `/admin/channels/instagram/callback` exchanges code for long-lived token → stored encrypted. Daily cron refreshes tokens expiring within 30 days
+- **Messenger FB SDK**: Page loads Facebook SDK → `FB.login()` with `pages_messaging,pages_manage_metadata` permissions → exchanges short-lived token for page token → stored encrypted. Uses `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID` for FB Login configuration
+- **Environment vars**: `NEXT_PUBLIC_INSTAGRAM_APP_ID`, `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI`, `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID`
 
 ## Auth & Session Management
 
@@ -391,12 +476,18 @@ See `.env.example`. Key ones:
 - `GOOGLE_OAUTH_CLIENT_ID` — Google Sign-In client ID
 - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` — Email service
 - `MEDIA_STORAGE_PATH` — /data/media (Docker volume)
+- `MERCADOPAGO_ACCESS_TOKEN` — MercadoPago API token (sandbox or production)
+- `MERCADOPAGO_PUBLIC_KEY` — MercadoPago public key (for card tokenization)
+- `MERCADOPAGO_WEBHOOK_SECRET` — HMAC-SHA256 secret for webhook verification
+- `NEXT_PUBLIC_INSTAGRAM_APP_ID` — Instagram OAuth app ID
+- `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` — Instagram OAuth redirect URI
+- `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID` — Facebook Login configuration ID for Messenger
 
 ## Production
 
 - Landing: https://parallly-chat.cloud (static, nginx container, 4-language i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui + recharts)
-- API: https://api.parallly-chat.cloud (NestJS, 37 modules, multi-agent)
+- API: https://api.parallly-chat.cloud (NestJS, 40 modules, multi-agent)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)

@@ -54,32 +54,32 @@ export default function EditTenantModal({ tenant, onClose, onSave }: Props) {
           <div>
             <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">{t("industry")}</label>
             <select value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm">
-              <option value="turismo">Tourism</option>
-              <option value="restaurante">Restaurant</option>
-              <option value="ecommerce">E-Commerce</option>
-              <option value="servicios">Services</option>
-              <option value="salud">Health</option>
-              <option value="educacion">Education</option>
-              <option value="otro">Other</option>
+              <option value="turismo">{t("industries.turismo")}</option>
+              <option value="restaurante">{t("industries.restaurante")}</option>
+              <option value="ecommerce">{t("industries.ecommerce")}</option>
+              <option value="servicios">{t("industries.servicios")}</option>
+              <option value="salud">{t("industries.salud")}</option>
+              <option value="educacion">{t("industries.educacion")}</option>
+              <option value="otro">{t("industries.otro")}</option>
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">{t("modals.language")}</label>
             <select value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm">
-              <option value="es-CO">Spanish (CO)</option>
-              <option value="es-MX">Spanish (MX)</option>
-              <option value="es-ES">Spanish (ES)</option>
-              <option value="en-US">English (US)</option>
-              <option value="pt-BR">Portuguese (BR)</option>
+              <option value="es-CO">{t("languages.es-CO")}</option>
+              <option value="es-MX">{t("languages.es-MX")}</option>
+              <option value="es-ES">{t("languages.es-ES")}</option>
+              <option value="en-US">{t("languages.en-US")}</option>
+              <option value="pt-BR">{t("languages.pt-BR")}</option>
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">{t("plan")}</label>
             <select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm">
-              <option value="starter">Starter</option>
-              <option value="professional">Professional</option>
-              <option value="enterprise">Enterprise</option>
-              <option value="custom">Custom</option>
+              <option value="starter">{t("plans.starter")}</option>
+              <option value="professional">{t("plans.professional")}</option>
+              <option value="enterprise">{t("plans.enterprise")}</option>
+              <option value="custom">{t("plans.custom")}</option>
             </select>
           </div>
           <div className="flex gap-3 justify-end pt-2">

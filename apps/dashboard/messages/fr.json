@@ -1247,6 +1247,8 @@
     "messengerDesc": "Messenger via integration de page Facebook",
     "telegramDesc": "Telegram Bot API — messages directs automatises",
     "smsDesc": "Twilio SMS — messages texte bidirectionnels",
+    "configIdNotSet": "Facebook Login Configuration ID non configure. Contactez le support.",
+    "connectingInstagram": "Connexion Instagram...",
     "sms": {
       "title": "SMS (Twilio)",
       "subtitle": "Envoyez et recevez des SMS via Twilio",
@@ -1978,6 +1980,32 @@
       "language": "Langue",
       "name": "Nom"
     },
+    "slugLabel": "Slug",
+    "companyPlaceholder": "Ex: Mon Entreprise",
+    "tenantLabel": "Tenant",
+    "onboardingFunnelTitle": "Entonnoir d'integration",
+    "industries": {
+      "turismo": "Tourisme",
+      "restaurante": "Restaurant",
+      "ecommerce": "E-Commerce",
+      "servicios": "Services",
+      "salud": "Sante",
+      "educacion": "Education",
+      "otro": "Autre"
+    },
+    "languages": {
+      "es-CO": "Espagnol (CO)",
+      "es-MX": "Espagnol (MX)",
+      "es-ES": "Espagnol (ES)",
+      "en-US": "English (US)",
+      "pt-BR": "Portugais (BR)"
+    },
+    "plans": {
+      "starter": "Starter",
+      "professional": "Professional",
+      "enterprise": "Enterprise",
+      "custom": "Custom"
+    },
     "onboardingFunnel": {
       "signedUp": "Inscrits",
       "onboardingComplete": "Onboarding termine",
@@ -2574,6 +2602,9 @@
       "saveRate": "Enregistrer Taux",
       "saveCost": "Enregistrer Cout"
     },
+    "fromLabel": "De",
+    "toLabel": "A",
+    "rateLabel": "Taux",
     "categories": {
       "server": "Serveur",
       "database": "Base de Donnees",

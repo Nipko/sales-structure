@@ -217,7 +217,7 @@ export default function SettingsTab({ onRefresh }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs text-neutral-500 mb-1">From</label>
+            <label className="block text-xs text-neutral-500 mb-1">{t("fromLabel")}</label>
             <input
               type="text"
               value={rateForm.fromCurrency}
@@ -226,7 +226,7 @@ export default function SettingsTab({ onRefresh }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs text-neutral-500 mb-1">To</label>
+            <label className="block text-xs text-neutral-500 mb-1">{t("toLabel")}</label>
             <input
               type="text"
               value={rateForm.toCurrency}
@@ -235,7 +235,7 @@ export default function SettingsTab({ onRefresh }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs text-neutral-500 mb-1">Rate</label>
+            <label className="block text-xs text-neutral-500 mb-1">{t("rateLabel")}</label>
             <input
               type="number"
               step="0.000001"

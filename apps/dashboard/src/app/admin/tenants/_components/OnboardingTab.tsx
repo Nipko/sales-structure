@@ -76,7 +76,7 @@ export default function OnboardingTab({ tenants, stats }: Props) {
 
       {/* Onboarding Funnel */}
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Onboarding Funnel</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("onboardingFunnelTitle")}</h3>
         <div className="space-y-3">
           {funnelSteps.map((step) => {
             const pct = (step.value / funnelMax) * 100;

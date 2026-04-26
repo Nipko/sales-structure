@@ -41,7 +41,7 @@ export default function SuspendModal({ tenant, onClose, onSuspend }: Props) {
           {t("modals.suspendMessage")}
         </p>
         <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-4">
-          Tenant: <strong>{tenant.name}</strong>
+          {t("tenantLabel")}: <strong>{tenant.name}</strong>
         </p>
 
         <div className="mb-5">

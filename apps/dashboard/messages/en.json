@@ -1247,6 +1247,8 @@
     "messengerDesc": "Messenger via Facebook Page integration",
     "telegramDesc": "Telegram Bot API — automated direct messages",
     "smsDesc": "Twilio SMS — two-way text messages",
+    "configIdNotSet": "Facebook Login Configuration ID not set. Contact support.",
+    "connectingInstagram": "Connecting Instagram...",
     "sms": {
       "title": "SMS (Twilio)",
       "subtitle": "Send and receive SMS messages via Twilio",
@@ -1978,6 +1980,32 @@
       "language": "Language",
       "name": "Name"
     },
+    "slugLabel": "Slug",
+    "companyPlaceholder": "e.g.: My Company",
+    "tenantLabel": "Tenant",
+    "onboardingFunnelTitle": "Onboarding Funnel",
+    "industries": {
+      "turismo": "Tourism",
+      "restaurante": "Restaurant",
+      "ecommerce": "E-Commerce",
+      "servicios": "Services",
+      "salud": "Health",
+      "educacion": "Education",
+      "otro": "Other"
+    },
+    "languages": {
+      "es-CO": "Spanish (CO)",
+      "es-MX": "Spanish (MX)",
+      "es-ES": "Spanish (ES)",
+      "en-US": "English (US)",
+      "pt-BR": "Portuguese (BR)"
+    },
+    "plans": {
+      "starter": "Starter",
+      "professional": "Professional",
+      "enterprise": "Enterprise",
+      "custom": "Custom"
+    },
     "onboardingFunnel": {
       "signedUp": "Signed Up",
       "onboardingComplete": "Onboarding Complete",
@@ -2574,6 +2602,9 @@
       "saveRate": "Save Rate",
       "saveCost": "Save Cost"
     },
+    "fromLabel": "From",
+    "toLabel": "To",
+    "rateLabel": "Rate",
     "categories": {
       "server": "Server",
       "database": "Database",

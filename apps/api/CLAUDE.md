@@ -1,7 +1,7 @@
 # API Service — Claude Code Context
 
 ## Overview
-NestJS 10 backend with 34 modules. Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 40 modules. Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 
@@ -13,16 +13,17 @@ NestJS 10 backend with 34 modules. Port 3000. Global prefix: `/api/v1`.
 - `internal/` — Service-to-service endpoint (POST /internal/inbound-message)
 
 **Auth & Tenants**:
-- `auth/` — JWT login/register/refresh. Bcrypt 12 rounds. `signupWithTenant()` creates tenant+user atomically
+- `auth/` — JWT login/register/refresh. Bcrypt 12 rounds. `signupWithTenant()` creates tenant+user atomically. `impersonate(tenantId)` generates 1h tokens with audit trail (super_admin only)
 - `tenants/` — CRUD tenants. Each gets a PostgreSQL schema `tenant_{slug}`
 - `settings/` — Platform settings CRUD from `platform_settings` table
 
 **Message pipeline** (the core flow):
-- `channels/` — Adapter pattern. WhatsApp/Instagram/Messenger/Telegram. `ChannelGatewayService` routes
+- `channels/` — Adapter pattern. WhatsApp/Instagram/Messenger/Telegram/SMS. `ChannelGatewayService` routes
 - `channels/channel-token.service.ts` — Resolves access tokens per tenant (cached 5min in Redis)
 - `channels/outbound-queue.service.ts` — BullMQ queue (3 retries, priority by tenant plan)
-- `channels/channel-management.controller.ts` — Generic channel connect/status/config endpoints
+- `channels/channel-management.controller.ts` — Generic channel connect/status/config endpoints + Instagram OAuth + Messenger FB SDK token exchange
 - `channels/meta-signature.util.ts` — Shared HMAC-SHA256 webhook validator
+- `channels/instagram-token-refresh.service.ts` — Daily @6AM cron refreshes IG tokens expiring within 30 days (60-day lifetime)
 - `conversations/` — Main orchestrator. `processIncomingMessage()` is the entry point. Updates `conversation.updated_at` on every message
 - `conversations/` — Redis-backed booking state (primary Redis `booking:{conversationId}`, backup PG). Conversation mutex via Redis SETNX lock (`lock:conv:{conversationId}`, 30s TTL)
 - `conversations/` — History limited to 4 messages when in directive (booking) mode
@@ -49,6 +50,16 @@ NestJS 10 backend with 34 modules. Port 3000. Global prefix: `/api/v1`.
 - `automation/` — Event-driven rules (trigger→conditions→actions), nurturing sequences, BullMQ processors
 - `analytics/` — Redis counters + DB persistence. CSAT surveys + trigger. Agent performance reports
 
+**Billing & Finance**:
+- `billing/` — MercadoPago integration. Subscription lifecycle (create/cancel/pause/resume/change). Webhook verification (HMAC-SHA256) + idempotency. Plan quotas enforcement. 5 billing email templates. Card tokenization for self-serve checkout
+- `billing/adapters/mercadopago.adapter.ts` — IPaymentProvider implementation for MercadoPago Preapproval API
+- `billing/webhook.controller.ts` — POST /billing/webhooks/mercadopago (verify + dispatch)
+- `billing/processors/reconciliation.processor.ts` — Hourly past_due sweep + daily drift detection
+- `financials/` — SaaS metrics (MRR, ARR, ARPU, churn, LTV, quick ratio). 11 endpoints under /financials/. Super_admin only
+- `financials/financial-snapshot.service.ts` — Monthly cron (1st @1AM) snapshots MRR movements, per-tenant P&L, LLM costs from tenant schemas
+- `offboarding/` — Tenant lifecycle management. 7-step offboarding pipeline (channels, sessions, queues, deactivate, cache, audit, event)
+- `offboarding/offboarding-cron.service.ts` — Grace enforcer (3AM: past_due >7d → offboard) + archive cleaner (4AM: drop schemas inactive >90d)
+
 **Operations**:
 - `broadcast/` — Mass template sending via BullMQ (80msg/s rate limit)
 - `catalog/` — Products/courses/campaigns
@@ -57,6 +68,8 @@ NestJS 10 backend with 34 modules. Port 3000. Global prefix: `/api/v1`.
 - `compliance/` — Opt-out detection, consent records, audit logging
 - `email/` — Email service via nodemailer
 - `intake/` — Landing page forms
+- `offers/` — Promotional offers management
+- `business-info/` — Tenant business identity (company details for prompt Layer 3)
 
 **Media & Templates**:
 - `media/` — Image upload (multer+sharp→webp), resize, serve, tags, company logo
@@ -158,8 +171,21 @@ await this.prisma.executeInTenantSchema(schemaName,
 - Email layouts: email/email-layouts.ts (professional templates for auth flows)
 - Google Calendar integration: `appointments/calendar-integration.service.ts` (multi-calendar, 3-tier resolution, auto meeting links)
 
+## New Prisma Models (Apr 2026 — global schema)
+
+- `BillingPlan` — 4 plans (slug, name, priceUsdCents, trialDays, features JSONB)
+- `BillingSubscription` — Per-tenant (status: trialing/active/past_due/cancelled/expired, MercadoPago external IDs, trial dates)
+- `BillingPayment` — Payment history (amountCents, status, provider reference, tenantId)
+- `FinancialSnapshot` — Monthly platform-wide metrics (MRR, churn, costs, plan distribution). Unique on snapshotMonth
+- `TenantFinancialSnapshot` — Per-tenant monthly (revenue, LLM cost, plan, messages). Unique on tenantId+snapshotMonth
+- `InfraCost` — Monthly infra costs by category. Unique on month+category
+- `ExchangeRate` — Currency rates. Unique on rateDate+fromCurrency+toCurrency
+- `AuditLog` — Offboarding and billing audit trail (tenantId, action, resource, details JSONB)
+
 ## Redis Keys (API-specific)
 ```
 booking:{conversationId}        — Booking engine state (1h TTL)
 lock:conv:{conversationId}      — Conversation processing mutex via SETNX (30s TTL)
+offboard:past_due:{tenantId}    — Past-due grace period timer (30d TTL, offboard after 7d)
+tenant_plan:{tenantId}          — Cached plan info (invalidated on subscription change)
 ```

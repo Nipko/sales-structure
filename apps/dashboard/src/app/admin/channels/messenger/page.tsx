@@ -99,7 +99,7 @@ export default function MessengerSetupPage() {
             return;
         }
         if (!MESSENGER_CONFIG_ID) {
-            setMessage({ type: "error", text: "Facebook Login Configuration ID not set. Contact support." });
+            setMessage({ type: "error", text: t("configIdNotSet") });
             return;
         }
 

@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 
 export default function InstagramCallback() {
+    const t = useTranslations("channels");
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
@@ -59,7 +62,7 @@ export default function InstagramCallback() {
         <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
             <div className="text-center">
                 <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-                <p className="text-neutral-600 dark:text-neutral-400">Connecting Instagram...</p>
+                <p className="text-neutral-600 dark:text-neutral-400">{t("connectingInstagram")}</p>
             </div>
         </div>
     );

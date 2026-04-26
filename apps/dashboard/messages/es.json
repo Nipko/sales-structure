@@ -1247,6 +1247,8 @@
     "messengerDesc": "Messenger via integracion de pagina de Facebook",
     "telegramDesc": "Telegram Bot API — mensajes directos automatizados",
     "smsDesc": "Twilio SMS — mensajes de texto bidireccionales",
+    "configIdNotSet": "Facebook Login Configuration ID no configurado. Contacta a soporte.",
+    "connectingInstagram": "Conectando Instagram...",
     "sms": {
       "title": "SMS (Twilio)",
       "subtitle": "Envia y recibe mensajes SMS via Twilio",
@@ -1978,6 +1980,32 @@
       "language": "Idioma",
       "name": "Nombre"
     },
+    "slugLabel": "Slug",
+    "companyPlaceholder": "Ej: Mi Empresa",
+    "tenantLabel": "Tenant",
+    "onboardingFunnelTitle": "Embudo de Onboarding",
+    "industries": {
+      "turismo": "Turismo",
+      "restaurante": "Restaurante",
+      "ecommerce": "E-Commerce",
+      "servicios": "Servicios",
+      "salud": "Salud",
+      "educacion": "Educacion",
+      "otro": "Otro"
+    },
+    "languages": {
+      "es-CO": "Espanol (CO)",
+      "es-MX": "Espanol (MX)",
+      "es-ES": "Espanol (ES)",
+      "en-US": "English (US)",
+      "pt-BR": "Portugues (BR)"
+    },
+    "plans": {
+      "starter": "Starter",
+      "professional": "Professional",
+      "enterprise": "Enterprise",
+      "custom": "Custom"
+    },
     "onboardingFunnel": {
       "signedUp": "Registrados",
       "onboardingComplete": "Onboarding completo",
@@ -2574,6 +2602,9 @@
       "saveRate": "Guardar Tasa",
       "saveCost": "Guardar Costo"
     },
+    "fromLabel": "Desde",
+    "toLabel": "Hasta",
+    "rateLabel": "Tasa",
     "categories": {
       "server": "Servidor",
       "database": "Base de Datos",

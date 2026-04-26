@@ -26,15 +26,15 @@
     "saved": "Guardado!",
     "saveChanges": "Guardar cambios",
     "errorSaving": "Error al guardar",
-    "connectionError": "Error de conexion",
+    "connectionError": "Error de conexión",
     "noData": "Sin datos disponibles",
-    "deleteConfirm": "Estas seguro de que deseas eliminar?",
+    "deleteConfirm": "¿Estás seguro de que deseas eliminar?",
     "select": "Seleccionar...",
     "logout": "Cerrar sesion",
     "accountSuspended": "Cuenta suspendida",
     "accountSuspendedDesc": "Tu cuenta ha sido desactivada. Contacta a soporte para reactivar.",
     "cancelAccount": "Cancelar cuenta",
-    "cancelAccountConfirm": "Estas seguro? Esta accion desactivara tu cuenta al final del periodo de facturacion.",
+    "cancelAccountConfirm": "¿Estás seguro? Esta acción desactivará tu cuenta al final del periodo de facturación.",
     "copied": "Copiado"
   },
   "nav": {
@@ -354,7 +354,7 @@
     "snoozeMonday": "Proximo lunes",
     "you": "Tu",
     "estimatedValue": "Valor estimado",
-    "conversation": "Conversacion",
+    "conversation": "Conversación",
     "company": "Empresa",
     "addCompany": "Agregar empresa...",
     "city": "Ciudad",
@@ -400,12 +400,12 @@
     "companyDesc": "Configuracion del workspace y tu organización",
     "general": "General",
     "generalDesc": "Nombre, industria, logo y datos de la empresa",
-    "localization": "Localizacion",
+    "localization": "Localización",
     "localizationDesc": "Zona horaria, moneda, formato de fecha e idioma",
     "businessHours": "Horarios de negocio",
     "businessHoursDesc": "Horarios por dia, festivos y mensaje fuera de horario",
-    "billing": "Facturacion",
-    "billingDesc": "Plan, metodo de pago e historial de facturas",
+    "billing": "Facturación",
+    "billingDesc": "Plan, método de pago e historial de facturas",
     "tools": {
       "customAttributes": "Atributos Personalizados",
       "macros": "Macros",
@@ -588,7 +588,7 @@
       "saved": "Guardado",
       "saveChanges": "Guardar cambios",
       "errorSaving": "Error al guardar",
-      "connectionError": "Error de conexion",
+      "connectionError": "Error de conexión",
       "retail": "Retail / Comercio",
       "education": "Educación",
       "health": "Salud",
@@ -1147,9 +1147,9 @@
     "noConditions": "Sin condiciones — la regla se ejecutara siempre que ocurra el trigger",
     "addCondition": "Agregar condicion",
     "actionQuestion": "Que acciones ejecutar?",
-    "actionDesc": "Define las acciones que se realizaran cuando se active la regla",
-    "noActions": "Agrega al menos una accion",
-    "addAction": "Agregar accion",
+    "actionDesc": "Define las acciones que se realizarán cuando se active la regla",
+    "noActions": "Agrega al menos una acción",
+    "addAction": "Agregar acción",
     "confirmDelete": "¿Seguro que quieres eliminar esta regla?",
     "loadingRules": "Cargando reglas...",
     "executionHistory": "Historial de ejecuciones",
@@ -1275,7 +1275,7 @@
       "allRequired": "Todos los campos son requeridos",
       "invalidCreds": "Credenciales de Twilio invalidas",
       "smsConnected": "SMS conectado!",
-      "connectionFailed": "Error de conexion",
+      "connectionFailed": "Error de conexión",
       "smsDisconnected": "SMS desconectado",
       "webhookCopied": "URL del webhook copiada!",
       "testFailed": "Error en la prueba"
@@ -1654,10 +1654,10 @@
         "published": "Publicada (visible al agente)"
       },
       "placeholders": {
-        "question": "¿Cuál es la política de devoluciones?",
-        "answer": "Aceptamos devoluciones dentro de los primeros 30 días...",
+        "question": "¿Cuál es la política de devoluciónes?",
+        "answer": "Aceptamos devoluciónes dentro de los primeros 30 días...",
         "category": "Ventas, Soporte, Envíos",
-        "tags": "devolucion, reembolso"
+        "tags": "devolución, reembolso"
       },
       "errors": {
         "required": "Pregunta y respuesta son obligatorias",
@@ -1899,12 +1899,12 @@
     "schema": "Schema",
     "industry": "Industria",
     "activeUsers": "Usuarios activos",
-    "subtitle": "Gestiona organizaciónes y suscripciones",
+    "subtitle": "Gestiona organizaciones y suscripciónes",
     "tabs": {
       "overview": "General",
       "onboarding": "Onboarding",
       "offboarding": "Offboarding",
-      "billing": "Facturacion",
+      "billing": "Facturación",
       "usage": "Uso",
       "platform": "Plataforma"
     },
@@ -1915,7 +1915,7 @@
       "cancelled": "Cancelados",
       "mrr": "MRR",
       "suspended": "Suspendidos",
-      "pendingDeletion": "Pendientes de eliminacion",
+      "pendingDeletion": "Pendientes de eliminación",
       "signups7d": "Registros (7d)",
       "signups30d": "Registros (30d)",
       "conversionRate": "Tasa de conversion",
@@ -1973,7 +1973,7 @@
     "modals": {
       "editTitle": "Editar tenant",
       "suspendTitle": "Suspender tenant",
-      "suspendMessage": "Estas seguro de que deseas suspender este tenant? Los usuarios no podran acceder.",
+      "suspendMessage": "¿Estás seguro de que deseas suspender este tenant? Los usuarios no podrán acceder.",
       "suspendReason": "Razon de suspension",
       "createTitle": "Nuevo tenant",
       "companyName": "Nombre de empresa",
@@ -1994,9 +1994,9 @@
       "otro": "Otro"
     },
     "languages": {
-      "es-CO": "Espanol (CO)",
-      "es-MX": "Espanol (MX)",
-      "es-ES": "Espanol (ES)",
+      "es-CO": "Español (CO)",
+      "es-MX": "Español (MX)",
+      "es-ES": "Español (ES)",
       "en-US": "English (US)",
       "pt-BR": "Português (BR)"
     },
@@ -2029,9 +2029,9 @@
       "info": "Información",
       "users": "Usuarios",
       "channels": "Canales",
-      "billing": "Facturacion",
+      "billing": "Facturación",
       "companyDetails": "Detalles de empresa",
-      "subscriptionStatus": "Estado de suscripcion",
+      "subscriptionStatus": "Estado de suscripción",
       "trialEnd": "Fin de prueba",
       "noUsers": "Sin usuarios en este tenant",
       "noChannels": "Sin canales conectados"
@@ -2332,7 +2332,7 @@
     "thinking": "Pensando...",
     "inputPlaceholder": "Preguntame cualquier cosa...",
     "errorProcessing": "Lo siento, no pude procesar tu solicitud. Intenta de nuevo.",
-    "errorConnection": "Error de conexion. Verifica tu internet e intentalo de nuevo."
+    "errorConnection": "Error de conexión. Verifica tu internet e inténtalo de nuevo."
   },
   "checklist": {
     "title": "Tu Progreso",
@@ -2448,7 +2448,7 @@
     "rejectionReason": "Motivo del rechazo",
     "submittedAt": "Enviada",
     "lastSync": "Ultima sincronizacion",
-    "emptyTitle": "Aun no hay plantillas sincronizadas",
+    "emptyTitle": "Aún no hay plantillas sincronizadas",
     "emptyBody": "Presiona \"Sincronizar desde Meta\" para descargar las plantillas aprobadas en tu cuenta.",
     "emptyFilterTitle": "No hay plantillas con este estado",
     "emptyFilterBody": "Prueba con otro filtro o sincroniza desde Meta."
@@ -2478,10 +2478,10 @@
   },
   "billingPage": {
     "title": "Facturacion y plan",
-    "subtitle": "Administra tu suscripcion, metodo de pago y factura.",
+    "subtitle": "Administra tu suscripción, método de pago y factura.",
     "loading": "Cargando...",
-    "loadError": "No pudimos cargar tu suscripcion. Intenta de nuevo.",
-    "actionFailed": "No se pudo completar la accion.",
+    "loadError": "No pudimos cargar tu suscripción. Intenta de nuevo.",
+    "actionFailed": "No se pudo completar la acción.",
     "trialStarted": "Prueba gratuita iniciada.",
     "planChanged": "Plan actualizado.",
     "cancelled": "Suscripcion cancelada.",
@@ -2499,12 +2499,12 @@
     "nextBilling": "Proximo cobro",
     "accessUntil": "Acceso hasta",
     "provider": "Procesador",
-    "scheduledCancelNotice": "Tu suscripcion se cancelara el {date}.",
+    "scheduledCancelNotice": "Tu suscripción se cancelará el {date}.",
     "cancelAtPeriodEnd": "Cancelar al final del periodo",
     "cancelImmediate": "Cancelar ahora",
-    "confirmCancelImmediate": "Vas a cancelar ahora y perder el acceso inmediatamente. Continuar?",
-    "confirmCancelAtPeriodEnd": "Tu suscripcion se cancelara al terminar el periodo actual. Conservas el acceso hasta entonces. Continuar?",
-    "noSubscription": "Aun no tienes suscripcion activa.",
+    "confirmCancelImmediate": "Vas a cancelar ahora y perder el acceso inmediatamente. ¿Continuar?",
+    "confirmCancelAtPeriodEnd": "Tu suscripción se cancelará al terminar el periodo actual. Conservas el acceso hasta entonces. ¿Continuar?",
+    "noSubscription": "Aún no tienes suscripción activa.",
     "noSubscriptionHint": "Elige uno de los planes de abajo para arrancar con 7 o 15 dias de prueba gratuita.",
     "availablePlans": "Planes disponibles",
     "agentsUpTo": "Hasta {n} agente(s) IA",
@@ -2590,9 +2590,9 @@
     "movements": {
       "new": "Nuevo",
       "expansion": "Expansion",
-      "contraction": "Contraccion",
+      "contraction": "Contracción",
       "churned": "Perdido",
-      "reactivation": "Reactivacion"
+      "reactivation": "Reactivación"
     },
     "settings": {
       "infraCosts": "Costos de Infraestructura",

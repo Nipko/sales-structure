@@ -26,7 +26,7 @@ declare global {
 
 const BRAND_COLOR = "#0084FF";
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
-const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID || "";
+const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID || "1288798860026149";
 
 export default function MessengerSetupPage() {
     const t = useTranslations("channels");

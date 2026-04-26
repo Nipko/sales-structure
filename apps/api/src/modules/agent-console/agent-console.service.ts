@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
@@ -73,6 +74,7 @@ export class AgentConsoleService {
         private channelGateway: ChannelGatewayService,
         private whatsappConnection: WhatsappConnectionService,
         private llmRouter: LLMRouterService,
+        private eventEmitter: EventEmitter2,
     ) { }
 
     /**
@@ -507,6 +509,112 @@ Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
         if (lastMsgAge > 30 * 60 * 1000) return 'high'; // > 30 min
         if (lastMsgAge > 10 * 60 * 1000) return 'normal'; // > 10 min
         return 'low';
+    }
+
+    /**
+     * Archive a conversation
+     */
+    async archiveConversation(tenantId: string, conversationId: string, agentId: string): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new Error('Tenant not found');
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversations SET status = 'archived', updated_at = NOW() WHERE id = $1::uuid`,
+            [conversationId],
+        );
+
+        this.logger.log(`Conversation ${conversationId} archived by agent ${agentId}`);
+        this.eventEmitter.emit('conversation.archived', { tenantId, conversationId });
+    }
+
+    /**
+     * Delete a conversation and all its messages/notes
+     */
+    async deleteConversation(tenantId: string, conversationId: string): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new Error('Tenant not found');
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM messages WHERE conversation_id = $1::uuid`,
+            [conversationId],
+        );
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM internal_notes WHERE conversation_id = $1::uuid`,
+            [conversationId],
+        );
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM conversations WHERE id = $1::uuid`,
+            [conversationId],
+        );
+
+        this.logger.log(`Conversation ${conversationId} permanently deleted`);
+        this.eventEmitter.emit('conversation.deleted', { tenantId, conversationId });
+    }
+
+    /**
+     * Delete a single message
+     */
+    async deleteMessage(tenantId: string, messageId: string): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new Error('Tenant not found');
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM messages WHERE id = $1::uuid`,
+            [messageId],
+        );
+
+        this.logger.log(`Message ${messageId} deleted`);
+    }
+
+    /**
+     * Bulk archive conversations
+     */
+    async bulkArchive(tenantId: string, conversationIds: string[]): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new Error('Tenant not found');
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversations SET status = 'archived', updated_at = NOW() WHERE id = ANY($1::uuid[])`,
+            [conversationIds],
+        );
+
+        this.logger.log(`Bulk archived ${conversationIds.length} conversations`);
+    }
+
+    /**
+     * Bulk delete conversations
+     */
+    async bulkDelete(tenantId: string, conversationIds: string[]): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new Error('Tenant not found');
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM messages WHERE conversation_id = ANY($1::uuid[])`,
+            [conversationIds],
+        );
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM internal_notes WHERE conversation_id = ANY($1::uuid[])`,
+            [conversationIds],
+        );
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM conversations WHERE id = ANY($1::uuid[])`,
+            [conversationIds],
+        );
+
+        this.logger.log(`Bulk deleted ${conversationIds.length} conversations`);
     }
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {

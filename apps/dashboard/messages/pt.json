@@ -382,7 +382,13 @@
     "additionalInfo": "Informação adicional",
     "client": "Cliente",
     "agent": "Agente",
-    "subtitle": "Conversas em tempo real em todos os canais"
+    "subtitle": "Conversas em tempo real em todos os canais",
+    "archive": "Arquivar",
+    "archiveConfirm": "Arquivar esta conversa? Ela será movida para o arquivo e não aparecerá na caixa de entrada.",
+    "archiveSuccess": "Conversa arquivada",
+    "deleteConversation": "Excluir",
+    "deleteConfirm": "Excluir esta conversa? Todas as mensagens serão removidas permanentemente.",
+    "deleteSuccess": "Conversa excluída"
   },
   "settings": {
     "title": "Configuracoes",

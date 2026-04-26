@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AgentConsoleService } from './agent-console.service';
 import { CannedResponsesService } from './canned-responses.service';
@@ -212,5 +212,54 @@ export class AgentConsoleController {
     ) {
         const result = await this.macrosService.executeMacro(tenantId, macroId, body.conversationId, body.agentId);
         return { success: true, data: result };
+    }
+
+    // ---- Archive & Delete ----
+
+    @Put('conversation/:tenantId/:conversationId/archive')
+    async archiveConversation(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Body() body: { agentId: string },
+    ) {
+        await this.agentConsoleService.archiveConversation(tenantId, conversationId, body.agentId);
+        return { success: true, message: 'Conversation archived' };
+    }
+
+    @Delete('conversation/:tenantId/:conversationId')
+    async deleteConversation(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+    ) {
+        await this.agentConsoleService.deleteConversation(tenantId, conversationId);
+        return { success: true, message: 'Conversation deleted' };
+    }
+
+    @Delete('conversation/:tenantId/:conversationId/message/:messageId')
+    async deleteMessage(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Param('messageId') messageId: string,
+    ) {
+        await this.agentConsoleService.deleteMessage(tenantId, messageId);
+        return { success: true, message: 'Message deleted' };
+    }
+
+    @Post('conversations/:tenantId/bulk-archive')
+    async bulkArchive(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { conversationIds: string[] },
+    ) {
+        await this.agentConsoleService.bulkArchive(tenantId, body.conversationIds);
+        return { success: true, message: 'Conversations archived' };
+    }
+
+    @Post('conversations/:tenantId/bulk-delete')
+    async bulkDelete(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { conversationIds: string[] },
+    ) {
+        await this.agentConsoleService.bulkDelete(tenantId, body.conversationIds);
+        return { success: true, message: 'Conversations deleted' };
     }
 }

@@ -228,6 +228,18 @@ export const api = {
     unsnoozeConversation: (tenantId: string, convId: string) =>
         apiPut(`/agent-console/conversation/${tenantId}/${convId}/unsnooze`, {}),
 
+    // --- Archive & Delete ---
+    archiveConversation: (tenantId: string, conversationId: string, agentId?: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${conversationId}/archive`, { agentId }),
+    deleteConversation: (tenantId: string, conversationId: string) =>
+        apiDelete(`/agent-console/conversation/${tenantId}/${conversationId}`),
+    deleteMessage: (tenantId: string, conversationId: string, messageId: string) =>
+        apiDelete(`/agent-console/conversation/${tenantId}/${conversationId}/message/${messageId}`),
+    bulkArchiveConversations: (tenantId: string, ids: string[]) =>
+        apiPost(`/agent-console/conversations/${tenantId}/bulk-archive`, { conversationIds: ids }),
+    bulkDeleteConversations: (tenantId: string, ids: string[]) =>
+        apiPost(`/agent-console/conversations/${tenantId}/bulk-delete`, { conversationIds: ids }),
+
     // --- Macros ---
     getMacros: (tenantId: string) => apiGet(`/agent-console/macros/${tenantId}`),
     createMacro: (tenantId: string, data: any) => apiPost(`/agent-console/macros/${tenantId}`, data),

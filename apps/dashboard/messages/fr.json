@@ -382,7 +382,13 @@
     "additionalInfo": "Informations supplementaires",
     "client": "Client",
     "agent": "Agent",
-    "subtitle": "Conversations en temps reel sur tous les canaux"
+    "subtitle": "Conversations en temps reel sur tous les canaux",
+    "archive": "Archiver",
+    "archiveConfirm": "Archiver cette conversation ? Elle sera deplacee dans les archives et n'apparaitra plus dans la boite de reception.",
+    "archiveSuccess": "Conversation archivee",
+    "deleteConversation": "Supprimer",
+    "deleteConfirm": "Supprimer cette conversation ? Tous les messages seront definitivement supprimes.",
+    "deleteSuccess": "Conversation supprimee"
   },
   "settings": {
     "title": "Parametres",

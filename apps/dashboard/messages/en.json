@@ -382,7 +382,13 @@
     "additionalInfo": "Additional information",
     "client": "Client",
     "agent": "Agent",
-    "subtitle": "Real-time conversations across all channels"
+    "subtitle": "Real-time conversations across all channels",
+    "archive": "Archive",
+    "archiveConfirm": "Archive this conversation? It will be moved to the archive and won't appear in the inbox.",
+    "archiveSuccess": "Conversation archived",
+    "deleteConversation": "Delete",
+    "deleteConfirm": "Delete this conversation? All messages will be permanently removed.",
+    "deleteSuccess": "Conversation deleted"
   },
   "settings": {
     "title": "Settings",

@@ -13,6 +13,7 @@ import {
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
     ArrowRight, ArrowLeft, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
     Bell, Globe, Building2, MapPin, Instagram, Facebook, Linkedin, ExternalLink, Edit2, Save,
+    Archive, Trash2,
 } from "lucide-react";
 
 // ============================================
@@ -350,6 +351,36 @@ export default function InboxPage() {
         } catch (err) {
             console.error("Macro execution failed:", err);
         }
+    };
+
+    // --- Archive & Delete State ---
+    const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+    const handleArchive = async () => {
+        if (!activeTenantId || !selectedConv) return;
+        try {
+            await api.archiveConversation(activeTenantId, selectedConv.id, user?.id);
+            setConversations(prev => prev.filter(c => c.id !== selectedConv.id));
+            setSelectedConv(null);
+            setMessages([]);
+        } catch (err) {
+            console.error("Archive failed:", err);
+        }
+        setShowArchiveConfirm(false);
+    };
+
+    const handleDeleteConversation = async () => {
+        if (!activeTenantId || !selectedConv) return;
+        try {
+            await api.deleteConversation(activeTenantId, selectedConv.id);
+            setConversations(prev => prev.filter(c => c.id !== selectedConv.id));
+            setSelectedConv(null);
+            setMessages([]);
+        } catch (err) {
+            console.error("Delete failed:", err);
+        }
+        setShowDeleteConfirm(false);
     };
 
     // --- Total unread count for bell badge ---
@@ -1110,8 +1141,58 @@ export default function InboxPage() {
                                         </div>
                                     )}
                                 </div>
+                                {/* Archive Button */}
+                                <button
+                                    onClick={() => setShowArchiveConfirm(true)}
+                                    className="py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                >
+                                    <Archive size={14} /> {t('archive')}
+                                </button>
+                                {/* Delete Button */}
+                                <button
+                                    onClick={() => setShowDeleteConfirm(true)}
+                                    className="py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors bg-transparent text-red-400 border-border hover:bg-red-500/10"
+                                >
+                                    <Trash2 size={14} /> {t('deleteConversation')}
+                                </button>
                             </div>
                         </div>
+
+                        {/* Archive Confirm Dialog */}
+                        {showArchiveConfirm && (
+                            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowArchiveConfirm(false)}>
+                                <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                                    <h3 className="text-base font-semibold text-foreground mb-2">{t('archive')}</h3>
+                                    <p className="text-sm text-muted-foreground mb-5">{t('archiveConfirm')}</p>
+                                    <div className="flex gap-3 justify-end">
+                                        <button onClick={() => setShowArchiveConfirm(false)} className="py-2 px-4 rounded-lg border border-border bg-transparent text-foreground text-sm cursor-pointer hover:bg-muted transition-colors">
+                                            {t('filterAll') === 'All' ? 'Cancel' : 'Cancelar'}
+                                        </button>
+                                        <button onClick={handleArchive} className="py-2 px-4 rounded-lg border-none bg-indigo-600 text-white text-sm cursor-pointer hover:bg-indigo-700 transition-colors">
+                                            {t('archive')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Delete Confirm Dialog */}
+                        {showDeleteConfirm && (
+                            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
+                                <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                                    <h3 className="text-base font-semibold text-foreground mb-2">{t('deleteConversation')}</h3>
+                                    <p className="text-sm text-muted-foreground mb-5">{t('deleteConfirm')}</p>
+                                    <div className="flex gap-3 justify-end">
+                                        <button onClick={() => setShowDeleteConfirm(false)} className="py-2 px-4 rounded-lg border border-border bg-transparent text-foreground text-sm cursor-pointer hover:bg-muted transition-colors">
+                                            {t('filterAll') === 'All' ? 'Cancel' : 'Cancelar'}
+                                        </button>
+                                        <button onClick={handleDeleteConversation} className="py-2 px-4 rounded-lg border-none bg-red-600 text-white text-sm cursor-pointer hover:bg-red-700 transition-colors">
+                                            {t('deleteConversation')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Messages Area */}
                         <div

@@ -312,4 +312,26 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         });
         this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
     }
+
+    /**
+     * Listen for conversation archived events.
+     */
+    @OnEvent('conversation.archived')
+    handleConversationArchived(event: { tenantId: string; conversationId: string }) {
+        this.server?.to(`tenant:${event.tenantId}`).emit('conversation:archived', {
+            conversationId: event.conversationId,
+        });
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+    }
+
+    /**
+     * Listen for conversation deleted events.
+     */
+    @OnEvent('conversation.deleted')
+    handleConversationDeleted(event: { tenantId: string; conversationId: string }) {
+        this.server?.to(`tenant:${event.tenantId}`).emit('conversation:deleted', {
+            conversationId: event.conversationId,
+        });
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+    }
 }

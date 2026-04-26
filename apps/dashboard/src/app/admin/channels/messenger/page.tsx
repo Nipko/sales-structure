@@ -142,7 +142,7 @@ export default function MessengerSetupPage() {
         setDisconnecting(true);
         setMessage({ type: "", text: "" });
         try {
-            await api.fetch("/channels/messenger/disconnect", { method: "POST" });
+            await api.fetch("/channels/messenger/disconnect", { method: "DELETE" });
             setMessage({ type: "success", text: t("messenger.disconnectSuccess") });
             await loadData();
         } catch (err: any) {
@@ -166,8 +166,9 @@ export default function MessengerSetupPage() {
         );
     }
 
-    const isConnected = status?.status === "connected";
-    const connectedPages = status?.pages || (status?.channel ? [status.channel] : []);
+    const statusData = status?.data || status;
+    const isConnected = statusData?.connected === true;
+    const connectedPages = statusData?.account ? [statusData.account] : [];
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -274,11 +275,11 @@ export default function MessengerSetupPage() {
                         <div className="p-6">
                             <div className="flex flex-col gap-4">
                                 {connectedPages.map((page: any, idx: number) => (
-                                    <div key={page.page_id || page.account_id || idx} className="flex items-center gap-4 p-4 rounded-xl bg-[var(--bg-tertiary)] border border-border">
-                                        {page.profile_picture_url ? (
+                                    <div key={page.accountId || page.page_id || page.account_id || idx} className="flex items-center gap-4 p-4 rounded-xl bg-[var(--bg-tertiary)] border border-border">
+                                        {page.metadata?.picture || page.profile_picture_url ? (
                                             <img
-                                                src={page.profile_picture_url}
-                                                alt={page.display_name || t("messengerPage")}
+                                                src={page.metadata?.picture || page.profile_picture_url}
+                                                alt={page.displayName || page.display_name || t("messengerPage")}
                                                 className="w-12 h-12 rounded-full object-cover"
                                             />
                                         ) : (
@@ -288,10 +289,10 @@ export default function MessengerSetupPage() {
                                         )}
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-semibold text-foreground truncate">
-                                                {page.display_name || "\u2014"}
+                                                {page.displayName || page.display_name || "\u2014"}
                                             </p>
                                             <p className="text-xs font-mono text-[var(--text-secondary)] mt-0.5">
-                                                ID: {page.page_id || page.account_id || "\u2014"}
+                                                ID: {page.accountId || page.page_id || page.account_id || "\u2014"}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[rgba(0,214,143,0.1)] text-[var(--success)] border border-[rgba(0,214,143,0.2)]">

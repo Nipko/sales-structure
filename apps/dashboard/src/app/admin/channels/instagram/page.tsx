@@ -117,7 +117,7 @@ export default function InstagramSetupPage() {
         setDisconnecting(true);
         setMessage({ type: "", text: "" });
         try {
-            await api.fetch("/channels/instagram/disconnect", { method: "POST" });
+            await api.fetch("/channels/instagram/disconnect", { method: "DELETE" });
             setMessage({ type: "success", text: t("instagram.disconnectSuccess") });
             await loadData();
         } catch (err: any) {
@@ -141,8 +141,9 @@ export default function InstagramSetupPage() {
         );
     }
 
-    const isConnected = status?.status === "connected";
-    const channel = status?.channel;
+    const statusData = status?.data || status;
+    const isConnected = statusData?.connected === true;
+    const channel = statusData?.account;
 
     // Token expiration
     const tokenExpiresAt = channel?.token_expires_at ? new Date(channel.token_expires_at) : null;
@@ -152,7 +153,7 @@ export default function InstagramSetupPage() {
         : null;
     const isTokenExpired = daysUntilExpiry !== null && daysUntilExpiry <= 0;
     const isTokenExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 7;
-    const hasTokenError = status?.status === "error" || isTokenExpired;
+    const hasTokenError = statusData?.status === "error" || isTokenExpired;
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -270,8 +271,8 @@ export default function InstagramSetupPage() {
                             <div className="flex items-center gap-4">
                                 {channel?.profile_picture_url ? (
                                     <img
-                                        src={channel.profile_picture_url}
-                                        alt={channel.display_name || "Instagram"}
+                                        src={channel.metadata?.profilePicture || channel.profile_picture_url}
+                                        alt={channel.displayName || channel.display_name || "Instagram"}
                                         className="w-16 h-16 rounded-full object-cover border-2 border-border"
                                     />
                                 ) : (
@@ -281,7 +282,7 @@ export default function InstagramSetupPage() {
                                 )}
                                 <div className="flex-1 min-w-0">
                                     <p className="text-base font-semibold text-foreground">
-                                        {channel?.display_name ? `@${channel.display_name}` : "\u2014"}
+                                        {channel?.display_name ? `@${channel.displayName || channel.display_name}` : "\u2014"}
                                     </p>
                                     {channel?.metadata?.account_type && (
                                         <p className="text-xs text-[var(--text-secondary)] mt-0.5">

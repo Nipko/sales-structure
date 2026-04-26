@@ -378,13 +378,13 @@
     "assignedAgent": "Agente asignado",
     "lastActivity": "Ultima actividad",
     "priority": "Prioridad",
-    "additionalInfo": "Informacion adicional",
+    "additionalInfo": "Información adicional",
     "client": "Cliente",
     "agent": "Agente",
     "subtitle": "Conversaciones en tiempo real en todos los canales"
   },
   "settings": {
-    "title": "Configuracion",
+    "title": "Configuración",
     "subtitle": "Gestiona tu cuenta, empresa, canales y herramientas",
     "account": "Mi Cuenta",
     "accountDesc": "Tu perfil, seguridad y preferencias personales",
@@ -397,7 +397,7 @@
     "appearance": "Apariencia",
     "appearanceDesc": "Tema claro, oscuro o automatico",
     "company": "Empresa",
-    "companyDesc": "Configuracion del workspace y tu organizacion",
+    "companyDesc": "Configuracion del workspace y tu organización",
     "general": "General",
     "generalDesc": "Nombre, industria, logo y datos de la empresa",
     "localization": "Localizacion",
@@ -430,7 +430,7 @@
     "channelConfig": "Configuracion de canales",
     "channelConfigDesc": "API keys y credenciales de cada canal",
     "aiModels": "IA y Modelos",
-    "aiModelsDesc": "Proveedores de lenguaje y configuracion del router IA",
+    "aiModelsDesc": "Proveedores de lenguaje y configuración del router IA",
     "llmProviders": "Proveedores LLM",
     "llmProvidersDesc": "API keys de OpenAI, Anthropic, Google AI y mas",
     "aiConfig": "Configuracion IA",
@@ -572,7 +572,7 @@
     },
     "companyPage": {
       "title": "Empresa",
-      "subtitle": "Informacion general de tu organizacion",
+      "subtitle": "Información general de tu organización",
       "companyName": "Nombre de la empresa",
       "website": "Sitio web",
       "industry": "Industria",
@@ -590,7 +590,7 @@
       "errorSaving": "Error al guardar",
       "connectionError": "Error de conexion",
       "retail": "Retail / Comercio",
-      "education": "Educacion",
+      "education": "Educación",
       "health": "Salud",
       "tourism": "Turismo / Hospitalidad",
       "technology": "Tecnologia",
@@ -1093,7 +1093,7 @@
     "subtitle": "Arrastra oportunidades entre etapas"
   },
   "automation": {
-    "title": "Automatizacion",
+    "title": "Automatización",
     "rules": "Reglas",
     "newRule": "Nueva regla",
     "editRule": "Editar Regla",
@@ -1392,7 +1392,7 @@
     "tplLeadQualifierName": "Calificador de Leads",
     "tplLeadQualifierDesc": "Agente estrategico que califica leads a traves de conversacion inteligente",
     "tplBlankName": "Agente en Blanco",
-    "tplBlankDesc": "Empieza desde cero con una configuracion limpia",
+    "tplBlankDesc": "Empieza desde cero con una configuración limpia",
     "backToAgents": "Volver a agentes",
     "defaultAgent": "Agente predeterminado",
     "guidedSetup": "Configuración guiada",
@@ -1899,7 +1899,7 @@
     "schema": "Schema",
     "industry": "Industria",
     "activeUsers": "Usuarios activos",
-    "subtitle": "Gestiona organizaciones y suscripciones",
+    "subtitle": "Gestiona organizaciónes y suscripciones",
     "tabs": {
       "overview": "General",
       "onboarding": "Onboarding",
@@ -1958,7 +1958,7 @@
       "daysPastDue": "Dias vencido",
       "suspendedDate": "Fecha suspension",
       "failureReason": "Razon de fallo",
-      "automation": "Automatizacion",
+      "automation": "Automatización",
       "outbound": "Salientes"
     },
     "actions": {
@@ -1990,7 +1990,7 @@
       "ecommerce": "E-Commerce",
       "servicios": "Servicios",
       "salud": "Salud",
-      "educacion": "Educacion",
+      "educacion": "Educación",
       "otro": "Otro"
     },
     "languages": {
@@ -1998,7 +1998,7 @@
       "es-MX": "Espanol (MX)",
       "es-ES": "Espanol (ES)",
       "en-US": "English (US)",
-      "pt-BR": "Portugues (BR)"
+      "pt-BR": "Português (BR)"
     },
     "plans": {
       "starter": "Starter",
@@ -2026,7 +2026,7 @@
       "channelDistribution": "Distribucion de canales"
     },
     "detail": {
-      "info": "Informacion",
+      "info": "Información",
       "users": "Usuarios",
       "channels": "Canales",
       "billing": "Facturacion",
@@ -2544,7 +2544,7 @@
       "revenue": "Ingresos",
       "customers": "Clientes",
       "costs": "Costos",
-      "settings": "Configuracion"
+      "settings": "Configuración"
     },
     "kpi": {
       "mrr": "MRR",
@@ -2585,7 +2585,7 @@
       "trialEndsAt": "Fin Trial",
       "daysLeft": "Dias Restantes",
       "category": "Categoria",
-      "description": "Descripcion"
+      "description": "Descripción"
     },
     "movements": {
       "new": "Nuevo",

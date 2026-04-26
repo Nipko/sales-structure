@@ -98,6 +98,10 @@ export default function MessengerSetupPage() {
             setMessage({ type: "error", text: t("messenger.sdkNotLoaded") });
             return;
         }
+        if (!MESSENGER_CONFIG_ID) {
+            setMessage({ type: "error", text: "Facebook Login Configuration ID not set. Contact support." });
+            return;
+        }
 
         setConnecting(true);
         setMessage({ type: "", text: "" });

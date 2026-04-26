@@ -116,6 +116,9 @@ jobs:
             NEXT_PUBLIC_META_BUSINESS_ID=${{ secrets.META_BUSINESS_ID }}
             NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+            NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}
+            NEXT_PUBLIC_INSTAGRAM_APP_ID=1472258884595741
+            NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback
             NEXT_PUBLIC_APP_VERSION=${{ github.sha }}
             NEXT_PUBLIC_MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}
           cache-from: type=gha,scope=billing-v2
@@ -313,6 +316,13 @@ jobs:
             echo "SYSTEM_USER_ID=${PROD_SYSTEM_USER_ID}" >> .env
             echo "INTERNAL_API_KEY=${PROD_INTERNAL_API_KEY}" >> .env
             echo "WHATSAPP_VERIFY_TOKEN=${PROD_META_VERIFY_TOKEN}" >> .env
+            echo "# Messenger OAuth" >> .env
+            echo "MESSENGER_FB_LOGIN_CONFIG_ID=${PROD_MESSENGER_FB_LOGIN_CONFIG_ID}" >> .env
+            echo "MESSENGER_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/messenger" >> .env
+            echo "# Instagram OAuth" >> .env
+            echo "INSTAGRAM_APP_ID=1472258884595741" >> .env
+            echo "INSTAGRAM_APP_SECRET=${PROD_INSTAGRAM_APP_SECRET}" >> .env
+            echo "INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback" >> .env
             echo "OPENAI_API_KEY=${PROD_OPENAI_API_KEY}" >> .env
             echo "ANTHROPIC_API_KEY=${PROD_ANTHROPIC_API_KEY}" >> .env
             echo "GOOGLE_GENERATIVE_AI_API_KEY=${PROD_GOOGLE_AI_KEY}" >> .env

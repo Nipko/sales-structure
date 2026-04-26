@@ -251,33 +251,21 @@ export class ChannelManagementController {
     // ==========================================
 
     @Post('messenger/oauth-connect')
-    @ApiOperation({ summary: 'Exchange Facebook OAuth code for page tokens, subscribe webhooks, store encrypted credentials' })
+    @ApiOperation({ summary: 'Receive user access token from FB.login(), list pages, subscribe webhooks, store encrypted credentials' })
     async messengerOAuthConnect(
-        @Body() body: { code: string },
+        @Body() body: { userAccessToken: string },
         @Req() req: any,
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        const code = body.code;
-        if (!code) throw new BadRequestException('OAuth code is required');
+        const userAccessToken = body.userAccessToken;
+        if (!userAccessToken) throw new BadRequestException('User access token is required');
 
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
-        // Step 1: Exchange code for user access token
-        // FB.login() JS SDK uses its own internal xd_arbiter redirect. For the token
-        // exchange, we must NOT include redirect_uri at all (not even empty).
-        const appId = this.configService.get<string>('META_APP_ID') || '';
-        const appSecret = this.configService.get<string>('META_APP_SECRET') || '';
-        const tokenRes = await fetch(
-            `https://graph.facebook.com/${graphVersion}/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`,
-        );
-        const tokenData = await tokenRes.json() as any;
-        if (tokenData.error) {
-            this.logger.warn(`Messenger token exchange failed: ${tokenData.error.message}`);
-            throw new BadRequestException(`Token exchange failed: ${tokenData.error.message}`);
-        }
-        const userAccessToken: string = tokenData.access_token;
+        // No code exchange needed — FB.login() with response_type:'token' provides
+        // the user access token directly. We use it to list pages and get page tokens.
 
         // Step 2: List pages the user manages
         const pagesRes = await fetch(

@@ -108,8 +108,10 @@ export default function MessengerSetupPage() {
 
         window.FB.login(
             (response: any) => {
-                if (response.authResponse?.code) {
-                    api.messengerOAuthConnect(response.authResponse.code)
+                const accessToken = response.authResponse?.accessToken;
+                if (accessToken) {
+                    // Send the user access token directly (no code exchange needed)
+                    api.messengerOAuthConnect(accessToken)
                         .then((result: any) => {
                             if (result.success) {
                                 setMessage({ type: "success", text: t("messenger.connectSuccess") });
@@ -129,7 +131,7 @@ export default function MessengerSetupPage() {
             },
             {
                 config_id: MESSENGER_CONFIG_ID,
-                response_type: "code",
+                response_type: "token",
                 override_default_response_type: true,
             }
         );

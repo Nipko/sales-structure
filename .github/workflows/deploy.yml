@@ -321,7 +321,7 @@ jobs:
             echo "MESSENGER_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/messenger" >> .env
             echo "# Instagram OAuth" >> .env
             echo "INSTAGRAM_APP_ID=1472258884595741" >> .env
-            echo "INSTAGRAM_APP_SECRET=${PROD_INSTAGRAM_APP_SECRET}" >> .env
+            echo "INSTAGRAM_APP_SECRET=${{ secrets.INSTAGRAM_APP_SECRET }}" >> .env
             echo "INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback" >> .env
             echo "OPENAI_API_KEY=${PROD_OPENAI_API_KEY}" >> .env
             echo "ANTHROPIC_API_KEY=${PROD_ANTHROPIC_API_KEY}" >> .env

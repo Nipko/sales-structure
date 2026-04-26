@@ -40,10 +40,12 @@ export default function WhatsAppSetupPage() {
         try {
             const statusRes = await api.fetch("/channels/whatsapp/status");
             setStatus(statusRes);
-            if (statusRes?.channel) {
-                setPhoneNumber(statusRes.channel.display_phone_number || "");
-                setPhoneNumberId(statusRes.channel.phone_number_id || "");
-                setWabaId(statusRes.channel.meta_waba_id || "");
+            // Support both formats: legacy (statusRes.channel) and generic API (statusRes.data.account)
+            const channelData = statusRes?.channel || statusRes?.data?.account;
+            if (channelData) {
+                setPhoneNumber(channelData.display_phone_number || channelData.metadata?.displayPhoneNumber || channelData.accountId || "");
+                setPhoneNumberId(channelData.phone_number_id || channelData.metadata?.phoneNumberId || channelData.accountId || "");
+                setWabaId(channelData.meta_waba_id || channelData.metadata?.wabaId || "");
             }
         } catch (e) { console.error("Failed to load WA status", e); }
 
@@ -105,7 +107,9 @@ export default function WhatsAppSetupPage() {
         return <div className="p-8 text-center text-[var(--text-secondary)]">Cargando estado de WhatsApp...</div>;
     }
 
-    const isConnected = status?.status === "connected";
+    // Support both formats: WhatsApp-specific (status.status) and generic channel API (data.connected)
+    const statusData = status?.data || status;
+    const isConnected = statusData?.connected === true || status?.status === "connected";
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -286,32 +290,37 @@ export default function WhatsAppSetupPage() {
                             <h2 className="text-base font-semibold m-0">Canal Activo</h2>
                         </div>
                         <div className="p-6">
-                            <div className="flex flex-col gap-3.5">
-                                <div>
-                                    <span className="text-xs text-[var(--text-secondary)]">Numero</span>
-                                    <p className="text-base font-semibold mt-1 mb-0">
-                                        {status?.channel?.display_phone_number || phoneNumberId || "\u2014"}
-                                    </p>
-                                </div>
-                                <div>
-                                    <span className="text-xs text-[var(--text-secondary)]">Nombre verificado</span>
-                                    <p className="text-sm mt-1 mb-0">
-                                        {status?.channel?.display_name || status?.channel?.verified_name || "\u2014"}
-                                    </p>
-                                </div>
-                                <div>
-                                    <span className="text-xs text-[var(--text-secondary)]">Calidad</span>
-                                    <span className="inline-block ml-2 px-2.5 py-0.5 rounded-xl text-xs font-semibold bg-[rgba(46,204,113,0.1)] text-[#2ecc71]">
-                                        {status?.channel?.quality_rating || "GREEN"}
-                                    </span>
-                                </div>
-                                <div>
-                                    <span className="text-xs text-[var(--text-secondary)]">Phone Number ID</span>
-                                    <p className="text-xs font-mono mt-1 mb-0 text-[var(--text-secondary)]">
-                                        {status?.channel?.phone_number_id || phoneNumberId || "\u2014"}
-                                    </p>
-                                </div>
-                            </div>
+                            {(() => {
+                                const ch = status?.channel || statusData?.account;
+                                return (
+                                    <div className="flex flex-col gap-3.5">
+                                        <div>
+                                            <span className="text-xs text-[var(--text-secondary)]">Numero</span>
+                                            <p className="text-base font-semibold mt-1 mb-0">
+                                                {ch?.display_phone_number || ch?.metadata?.displayPhoneNumber || ch?.accountId || phoneNumberId || "\u2014"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-[var(--text-secondary)]">Nombre verificado</span>
+                                            <p className="text-sm mt-1 mb-0">
+                                                {ch?.display_name || ch?.verified_name || ch?.displayName || ch?.metadata?.verifiedName || "\u2014"}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-[var(--text-secondary)]">Calidad</span>
+                                            <span className="inline-block ml-2 px-2.5 py-0.5 rounded-xl text-xs font-semibold bg-[rgba(46,204,113,0.1)] text-[#2ecc71]">
+                                                {ch?.quality_rating || ch?.metadata?.qualityRating || "GREEN"}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-[var(--text-secondary)]">Phone Number ID</span>
+                                            <p className="text-xs font-mono mt-1 mb-0 text-[var(--text-secondary)]">
+                                                {ch?.phone_number_id || ch?.metadata?.phoneNumberId || ch?.accountId || phoneNumberId || "\u2014"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 

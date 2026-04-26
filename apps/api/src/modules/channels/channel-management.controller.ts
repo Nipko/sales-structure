@@ -56,19 +56,35 @@ export class ChannelManagementController {
         const tenantId = req.user?.tenantId;
         if (!tenantId) return { success: true, data: { connected: false } };
 
-        const account = await this.prisma.channelAccount.findFirst({
+        const accounts = await this.prisma.channelAccount.findMany({
             where: { tenantId, channelType, isActive: true },
         });
+
+        // Get token expiration for Instagram
+        let tokenExpiresAt: Date | null = null;
+        if (channelType === 'instagram' && accounts.length > 0) {
+            const cred = await this.prisma.whatsappCredential.findFirst({
+                where: { tenantId, credentialType: 'instagram_token', rotationState: 'active' },
+            });
+            tokenExpiresAt = cred?.expiresAt || null;
+        }
 
         return {
             success: true,
             data: {
-                connected: !!account,
-                account: account ? {
-                    accountId: account.accountId,
-                    displayName: account.displayName,
-                    metadata: account.metadata,
+                connected: accounts.length > 0,
+                account: accounts[0] ? {
+                    accountId: accounts[0].accountId,
+                    displayName: accounts[0].displayName,
+                    metadata: accounts[0].metadata,
+                    channelType: accounts[0].channelType,
                 } : null,
+                accounts: accounts.map(a => ({
+                    accountId: a.accountId,
+                    displayName: a.displayName,
+                    metadata: a.metadata,
+                })),
+                tokenExpiresAt,
             },
         };
     }

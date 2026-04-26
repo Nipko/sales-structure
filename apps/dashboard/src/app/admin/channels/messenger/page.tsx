@@ -168,7 +168,9 @@ export default function MessengerSetupPage() {
 
     const statusData = status?.data || status;
     const isConnected = statusData?.connected === true;
-    const connectedPages = statusData?.account ? [statusData.account] : [];
+    const connectedPages = statusData?.accounts?.length > 0
+        ? statusData.accounts
+        : statusData?.account ? [statusData.account] : [];
 
     return (
         <div className="mx-auto max-w-[960px]">

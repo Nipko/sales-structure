@@ -145,8 +145,9 @@ export default function InstagramSetupPage() {
     const isConnected = statusData?.connected === true;
     const channel = statusData?.account;
 
-    // Token expiration
-    const tokenExpiresAt = channel?.token_expires_at ? new Date(channel.token_expires_at) : null;
+    // Token expiration — read from API's tokenExpiresAt field
+    const rawExpiry = statusData?.tokenExpiresAt || channel?.token_expires_at;
+    const tokenExpiresAt = rawExpiry ? new Date(rawExpiry) : null;
     const now = new Date();
     const daysUntilExpiry = tokenExpiresAt
         ? Math.ceil((tokenExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -269,7 +270,7 @@ export default function InstagramSetupPage() {
                         </div>
                         <div className="p-6">
                             <div className="flex items-center gap-4">
-                                {channel?.profile_picture_url ? (
+                                {(channel?.metadata?.profilePicture || channel?.profile_picture_url) ? (
                                     <img
                                         src={channel.metadata?.profilePicture || channel.profile_picture_url}
                                         alt={channel.displayName || channel.display_name || "Instagram"}
@@ -282,15 +283,15 @@ export default function InstagramSetupPage() {
                                 )}
                                 <div className="flex-1 min-w-0">
                                     <p className="text-base font-semibold text-foreground">
-                                        {channel?.display_name ? `@${channel.displayName || channel.display_name}` : "\u2014"}
+                                        {channel?.displayName || channel?.display_name || "\u2014"}
                                     </p>
-                                    {channel?.metadata?.account_type && (
+                                    {(channel?.metadata?.accountType || channel?.metadata?.account_type) && (
                                         <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                                            {channel.metadata.account_type}
+                                            {channel.metadata.accountType || channel.metadata.account_type}
                                         </p>
                                     )}
                                     <p className="text-xs font-mono text-[var(--text-secondary)] mt-1">
-                                        ID: {channel?.account_id || "\u2014"}
+                                        ID: {channel?.accountId || channel?.account_id || "\u2014"}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[rgba(0,214,143,0.1)] text-[var(--success)] border border-[rgba(0,214,143,0.2)]">

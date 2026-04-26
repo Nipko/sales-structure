@@ -317,7 +317,7 @@ jobs:
             echo "INTERNAL_API_KEY=${PROD_INTERNAL_API_KEY}" >> .env
             echo "WHATSAPP_VERIFY_TOKEN=${PROD_META_VERIFY_TOKEN}" >> .env
             echo "# Messenger OAuth" >> .env
-            echo "MESSENGER_FB_LOGIN_CONFIG_ID=${PROD_MESSENGER_FB_LOGIN_CONFIG_ID}" >> .env
+            echo "MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}" >> .env
             echo "MESSENGER_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/messenger" >> .env
             echo "# Instagram OAuth" >> .env
             echo "INSTAGRAM_APP_ID=1472258884595741" >> .env

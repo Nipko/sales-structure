@@ -364,31 +364,39 @@ export default function InboxPage() {
     // --- Archive & Delete State ---
     const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [archiving, setArchiving] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const handleArchive = async () => {
-        if (!activeTenantId || !selectedConv) return;
+        if (!activeTenantId || !selectedConv || archiving) return;
+        setArchiving(true);
         try {
             await api.archiveConversation(activeTenantId, selectedConv.id, user?.id);
             setConversations(prev => prev.filter(c => c.id !== selectedConv.id));
             setSelectedConv(null);
             setMessages([]);
+            setShowArchiveConfirm(false);
         } catch (err) {
             console.error("Archive failed:", err);
+        } finally {
+            setArchiving(false);
         }
-        setShowArchiveConfirm(false);
     };
 
     const handleDeleteConversation = async () => {
-        if (!activeTenantId || !selectedConv) return;
+        if (!activeTenantId || !selectedConv || deleting) return;
+        setDeleting(true);
         try {
             await api.deleteConversation(activeTenantId, selectedConv.id);
             setConversations(prev => prev.filter(c => c.id !== selectedConv.id));
             setSelectedConv(null);
             setMessages([]);
+            setShowDeleteConfirm(false);
         } catch (err) {
             console.error("Delete failed:", err);
+        } finally {
+            setDeleting(false);
         }
-        setShowDeleteConfirm(false);
     };
 
     // --- Total unread count for bell badge ---
@@ -563,18 +571,45 @@ export default function InboxPage() {
             // bubbles to the top — users expect the freshest chat on top
             // without having to reload or navigate away.
             setConversations((prev: any[]) => {
-                const updated = prev.map(c => {
-                    if (c.id === conversationId) {
-                        return {
-                            ...c,
-                            lastMessage: uiMsg.content,
-                            lastMessageAt: formatTime(uiMsg.rawDate),
-                            lastMessageAtRaw: uiMsg.rawDate,
-                            unreadCount: isViewing ? 0 : (c.unreadCount || 0) + 1,
-                        };
-                    }
-                    return c;
-                });
+                const exists = prev.some(c => c.id === conversationId);
+                let updated: any[];
+                if (exists) {
+                    updated = prev.map(c => {
+                        if (c.id === conversationId) {
+                            return {
+                                ...c,
+                                lastMessage: uiMsg.content,
+                                lastMessageAt: formatTime(uiMsg.rawDate),
+                                lastMessageAtRaw: uiMsg.rawDate,
+                                unreadCount: isViewing ? 0 : (c.unreadCount || 0) + 1,
+                            };
+                        }
+                        return c;
+                    });
+                } else {
+                    // New conversation — add to list (will be populated fully on next load)
+                    updated = [...prev, {
+                        id: conversationId,
+                        contactName: message.contact_name || message.contactName || t('unknown'),
+                        contactPhone: message.contact_phone || message.contactPhone || '',
+                        contactEmail: '',
+                        lastMessage: uiMsg.content,
+                        lastMessageAt: formatTime(uiMsg.rawDate),
+                        lastMessageAtRaw: uiMsg.rawDate,
+                        status: 'active',
+                        channel: message.channel_type || message.channelType || 'whatsapp',
+                        channelAccountName: '',
+                        channelAccountPicture: '',
+                        unreadCount: 1,
+                        priority: 'normal',
+                        tags: [],
+                        isAiHandled: true,
+                        assignedAgentId: '',
+                        assignedAgentName: '',
+                        contactId: '',
+                        estimatedValue: 0,
+                    }];
+                }
                 return updated.sort((a: any, b: any) =>
                     new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
                 );
@@ -1206,16 +1241,17 @@ export default function InboxPage() {
 
                         {/* Archive Confirm Dialog */}
                         {showArchiveConfirm && (
-                            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowArchiveConfirm(false)}>
+                            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !archiving && setShowArchiveConfirm(false)}>
                                 <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
                                     <h3 className="text-base font-semibold text-foreground mb-2">{t('archive')}</h3>
                                     <p className="text-sm text-muted-foreground mb-5">{t('archiveConfirm')}</p>
                                     <div className="flex gap-3 justify-end">
-                                        <button onClick={() => setShowArchiveConfirm(false)} className="py-2 px-4 rounded-lg border border-border bg-transparent text-foreground text-sm cursor-pointer hover:bg-muted transition-colors">
-                                            {t('filterAll') === 'All' ? 'Cancel' : 'Cancelar'}
+                                        <button onClick={() => setShowArchiveConfirm(false)} disabled={archiving} className="py-2 px-4 rounded-lg border border-border bg-transparent text-foreground text-sm cursor-pointer hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                            {t('cancel')}
                                         </button>
-                                        <button onClick={handleArchive} className="py-2 px-4 rounded-lg border-none bg-indigo-600 text-white text-sm cursor-pointer hover:bg-indigo-700 transition-colors">
-                                            {t('archive')}
+                                        <button onClick={handleArchive} disabled={archiving} className="py-2 px-4 rounded-lg border-none bg-indigo-600 text-white text-sm cursor-pointer hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                            {archiving && <Loader2 size={14} className="animate-spin" />}
+                                            {archiving ? t('saving') : t('archive')}
                                         </button>
                                     </div>
                                 </div>
@@ -1224,16 +1260,17 @@ export default function InboxPage() {
 
                         {/* Delete Confirm Dialog */}
                         {showDeleteConfirm && (
-                            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
+                            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !deleting && setShowDeleteConfirm(false)}>
                                 <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
                                     <h3 className="text-base font-semibold text-foreground mb-2">{t('deleteConversation')}</h3>
                                     <p className="text-sm text-muted-foreground mb-5">{t('deleteConfirm')}</p>
                                     <div className="flex gap-3 justify-end">
-                                        <button onClick={() => setShowDeleteConfirm(false)} className="py-2 px-4 rounded-lg border border-border bg-transparent text-foreground text-sm cursor-pointer hover:bg-muted transition-colors">
-                                            {t('filterAll') === 'All' ? 'Cancel' : 'Cancelar'}
+                                        <button onClick={() => setShowDeleteConfirm(false)} disabled={deleting} className="py-2 px-4 rounded-lg border border-border bg-transparent text-foreground text-sm cursor-pointer hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                            {t('cancel')}
                                         </button>
-                                        <button onClick={handleDeleteConversation} className="py-2 px-4 rounded-lg border-none bg-red-600 text-white text-sm cursor-pointer hover:bg-red-700 transition-colors">
-                                            {t('deleteConversation')}
+                                        <button onClick={handleDeleteConversation} disabled={deleting} className="py-2 px-4 rounded-lg border-none bg-red-600 text-white text-sm cursor-pointer hover:bg-red-700 transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                            {deleting && <Loader2 size={14} className="animate-spin" />}
+                                            {deleting ? t('saving') : t('deleteConversation')}
                                         </button>
                                     </div>
                                 </div>

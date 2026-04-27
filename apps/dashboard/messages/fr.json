@@ -393,7 +393,8 @@
     "saving": "Enregistrement...",
     "hidePanel": "Masquer le panneau",
     "showPanel": "Afficher le panneau",
-    "noMacros": "Aucune macro configurée"
+    "noMacros": "Aucune macro configurée",
+    "cancel": "Annuler"
   },
   "settings": {
     "title": "Parametres",

@@ -393,7 +393,8 @@
     "saving": "Saving...",
     "hidePanel": "Hide panel",
     "showPanel": "Show panel",
-    "noMacros": "No macros configured"
+    "noMacros": "No macros configured",
+    "cancel": "Cancel"
   },
   "settings": {
     "title": "Settings",

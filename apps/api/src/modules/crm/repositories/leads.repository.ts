@@ -48,14 +48,23 @@ export class LeadsRepository {
     const { search, stage, assignedTo, courseId, isVip, includeArchived, scoreMin, scoreMax, dateFrom, dateTo, tags: filterTags, page = 1, limit = 25 } = params;
     const offset = (page - 1) * limit;
 
-    let q = `SELECT l.*, c.name as company_name,
-             ct.channel_type as contact_channel,
-             (SELECT COUNT(*) FROM conversations cv WHERE cv.contact_id = l.contact_id) as conversations_count,
-             (SELECT MAX(m2.created_at) FROM messages m2 JOIN conversations cv2 ON cv2.id = m2.conversation_id WHERE cv2.contact_id = l.contact_id) as last_message_at
-             FROM leads l
-             LEFT JOIN companies c ON c.id = l.company_id
-             LEFT JOIN contacts ct ON ct.id = l.contact_id
-             WHERE 1=1`;
+    // Consolidated query: one row per person (grouped by customer_profile_id)
+    // Falls back to one row per lead for leads without a profile link
+    let q = `WITH lead_data AS (
+      SELECT l.*,
+        c.name as company_name,
+        ct.channel_type as contact_channel,
+        ci.customer_profile_id as profile_id,
+        ROW_NUMBER() OVER (
+          PARTITION BY COALESCE(ci.customer_profile_id, l.id)
+          ORDER BY l.score DESC, l.updated_at DESC
+        ) as rn
+      FROM leads l
+      LEFT JOIN companies c ON c.id = l.company_id
+      LEFT JOIN contacts ct ON ct.id = l.contact_id
+      LEFT JOIN contact_identities ci ON ci.contact_id = l.contact_id
+      WHERE 1=1`;
+
     const p: any[] = [];
     let n = 1;
 
@@ -80,20 +89,38 @@ export class LeadsRepository {
       p.push(`{${filterTags.join(',')}}`);
     }
 
-    q += ` ORDER BY l.score DESC, l.created_at DESC LIMIT $${n++} OFFSET $${n++}`;
+    q += `)
+    SELECT ld.*,
+      (SELECT COUNT(*) FROM conversations cv
+       JOIN contacts ct2 ON ct2.id = cv.contact_id
+       LEFT JOIN contact_identities ci2 ON ci2.contact_id = ct2.id
+       WHERE COALESCE(ci2.customer_profile_id, ct2.id) = COALESCE(ld.profile_id, ld.contact_id)
+      ) as conversations_count,
+      (SELECT ARRAY_AGG(DISTINCT ct3.channel_type) FROM contacts ct3
+       LEFT JOIN contact_identities ci3 ON ci3.contact_id = ct3.id
+       WHERE ci3.customer_profile_id = ld.profile_id AND ld.profile_id IS NOT NULL
+      ) as channels,
+      (SELECT MAX(m2.created_at) FROM messages m2
+       JOIN conversations cv2 ON cv2.id = m2.conversation_id
+       WHERE cv2.contact_id = ld.contact_id
+      ) as last_message_at
+    FROM lead_data ld
+    WHERE ld.rn = 1
+    ORDER BY ld.score DESC, ld.created_at DESC
+    LIMIT $${n++} OFFSET $${n++}`;
     p.push(limit, offset);
 
-    const [rows, total] = await Promise.all([
-        this.prisma.executeInTenantSchema<any[]>(schema, q, p),
-        this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*) as total FROM leads WHERE 1=1`,
-            []
-        ),
-    ]);
+    const rows = await this.prisma.executeInTenantSchema<any[]>(schema, q, p);
+
+    const countQ = `SELECT COUNT(DISTINCT COALESCE(ci.customer_profile_id, l.id)) as total
+      FROM leads l
+      LEFT JOIN contact_identities ci ON ci.contact_id = l.contact_id
+      WHERE l.archived_at IS NULL`;
+    const total = await this.prisma.executeInTenantSchema<any[]>(schema, countQ, []);
 
     return {
-        data: rows,
-        total: parseInt((total as any)[0]?.total || '0'),
+        data: rows || [],
+        total: parseInt((total as any)?.[0]?.total || '0'),
         page,
         limit,
     };

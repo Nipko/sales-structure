@@ -88,6 +88,11 @@ export default function ContactsPage() {
                        if (["perdido", "no_interesado"].includes(l.stage)) segmentType = "churned";
                        if (["contactado", "respondio"].includes(l.stage)) segmentType = "lead";
 
+                       // channels: array of channel types from all linked contacts, or single channel
+                       const channelList: string[] = l.channels && Array.isArray(l.channels) && l.channels.length > 0
+                           ? l.channels
+                           : [l.contact_channel || 'whatsapp'];
+
                        return {
                            id: l.id,
                            name: `${l.first_name || ''} ${l.last_name || ''}`.trim() || t('unknown'),
@@ -95,7 +100,7 @@ export default function ContactsPage() {
                            email: l.email || '',
                            tags: l.tags?.map((tg:any) => tg.name) || [],
                            segment: segmentType,
-                           channel: l.contact_channel || 'whatsapp',
+                           channels: channelList,
                            conversations: Number(l.conversations_count ?? 0),
                            lifetimeValue: Number(l.lifetime_value ?? 0),
                            lastInteraction: l.last_message_at ? new Date(l.last_message_at).toLocaleDateString(undefined) : (l.created_at ? new Date(l.created_at).toLocaleDateString(undefined) : t('noInteraction')),
@@ -408,14 +413,28 @@ export default function ContactsPage() {
                                             <Badge variant="secondary" className={cn("rounded-md text-xs font-semibold", segClass)}>
                                                 {t(`segments.${contact.segment}`)}
                                             </Badge>
-                                            {contact.channel === 'instagram' && <Instagram size={13} className="text-pink-500" />}
-                                            {contact.channel === 'messenger' && <MessageSquare size={13} className="text-blue-500" />}
-                                            {contact.channel === 'telegram' && <SendIcon size={13} className="text-sky-500" />}
-                                            {contact.channel === 'whatsapp' && (
-                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                                                    <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="#25D366" />
-                                                </svg>
-                                            )}
+                                            <div className="flex items-center gap-0.5">
+                                                {contact.channels?.includes('whatsapp') && (
+                                                    <div className="w-5 h-5 rounded-full bg-[#25D366]/15 flex items-center justify-center" title="WhatsApp">
+                                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg>
+                                                    </div>
+                                                )}
+                                                {contact.channels?.includes('instagram') && (
+                                                    <div className="w-5 h-5 rounded-full bg-pink-500/15 flex items-center justify-center" title="Instagram">
+                                                        <Instagram size={11} className="text-pink-500" />
+                                                    </div>
+                                                )}
+                                                {contact.channels?.includes('messenger') && (
+                                                    <div className="w-5 h-5 rounded-full bg-blue-500/15 flex items-center justify-center" title="Messenger">
+                                                        <MessageSquare size={11} className="text-blue-500" />
+                                                    </div>
+                                                )}
+                                                {contact.channels?.includes('telegram') && (
+                                                    <div className="w-5 h-5 rounded-full bg-sky-500/15 flex items-center justify-center" title="Telegram">
+                                                        <SendIcon size={11} className="text-sky-500" />
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">

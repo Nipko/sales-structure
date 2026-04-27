@@ -77,6 +77,17 @@ export default function InstagramSetupPage() {
         return () => window.removeEventListener("message", handleMessage);
     }, [loadData, t]);
 
+    // Fallback: reload data when window regains focus (in case postMessage failed)
+    useEffect(() => {
+        if (!connecting) return;
+        const handleFocus = () => {
+            setConnecting(false);
+            loadData();
+        };
+        window.addEventListener("focus", handleFocus);
+        return () => window.removeEventListener("focus", handleFocus);
+    }, [connecting, loadData]);
+
     const handleOAuthConnect = () => {
         const state = crypto.randomUUID();
         sessionStorage.setItem("ig_oauth_state", state);

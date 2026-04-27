@@ -150,10 +150,14 @@ export class ChannelsController {
                     );
                     if (profileRes.ok) {
                         const profile = await profileRes.json() as any;
+                        const username = profile.username || '';
+                        const displayName = profile.name
+                            ? (username ? `${profile.name} (@${username})` : profile.name)
+                            : (username ? `@${username}` : '');
                         normalized.metadata = {
                             ...normalized.metadata,
-                            contactName: profile.name || profile.username || '',
-                            contactUsername: profile.username || '',
+                            contactName: displayName,
+                            contactUsername: username,
                             contactProfilePic: profile.profile_pic || '',
                         };
                     }

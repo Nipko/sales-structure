@@ -8,6 +8,7 @@ export default function InstagramCallback() {
     const t = useTranslations("channels");
     const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
     const [errorMessage, setErrorMessage] = useState("");
+    const [showCloseHint, setShowCloseHint] = useState(false);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -24,7 +25,6 @@ export default function InstagramCallback() {
             return;
         }
 
-        // Exchange code via backend
         api.instagramOAuthConnect(code)
             .then((data: any) => {
                 if (data.success) {
@@ -46,22 +46,39 @@ export default function InstagramCallback() {
             ? { type: result === "success" ? "ig_oauth_success" : "ig_oauth_error", message }
             : { type: "ig_oauth_success" };
 
-        // Try postMessage to opener (works if popup wasn't navigated)
+        // 1) Try postMessage to opener
         if (window.opener && !window.opener.closed) {
             try {
                 window.opener.postMessage(payload, window.location.origin);
-                setTimeout(() => window.close(), 600);
-                return;
             } catch (e) {
-                // postMessage failed — fall through to redirect
+                // ignore
             }
         }
 
-        // Popup lost opener after navigation — redirect back after brief delay
-        if (result === "success") {
-            setTimeout(() => {
-                window.location.href = "/admin/channels/instagram";
-            }, 1500);
+        // 2) Detect if we're inside a popup (window.name survives cross-origin navigation)
+        const isPopup = window.name === "instagram_oauth";
+
+        if (isPopup) {
+            // Try to close immediately, then retry a few times
+            tryClose(0);
+        } else {
+            // Full redirect flow (popup was blocked) — go back to setup page
+            if (result === "success") {
+                setTimeout(() => {
+                    window.location.href = "/admin/channels/instagram";
+                }, 1200);
+            }
+        }
+    }
+
+    function tryClose(attempt: number) {
+        window.close();
+        // If window.close() didn't work, retry up to 3 times
+        if (attempt < 3) {
+            setTimeout(() => tryClose(attempt + 1), 400);
+        } else {
+            // Browser blocked window.close() — show hint to close manually
+            setShowCloseHint(true);
         }
     }
 
@@ -86,7 +103,13 @@ export default function InstagramCallback() {
                         </svg>
                     </div>
                     <p className="text-neutral-800 dark:text-neutral-200 font-semibold">{t("instagram.connectSuccess")}</p>
-                    <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">{t("instagram.redirecting")}</p>
+                    {showCloseHint ? (
+                        <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2">
+                            {t("instagram.closeWindow")}
+                        </p>
+                    ) : (
+                        <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">{t("instagram.redirecting")}</p>
+                    )}
                 </div>
             </div>
         );
@@ -102,12 +125,11 @@ export default function InstagramCallback() {
                 </div>
                 <p className="text-neutral-800 dark:text-neutral-200 font-semibold">{t("instagram.connectFailed")}</p>
                 <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">{errorMessage}</p>
-                <a
-                    href="/admin/channels/instagram"
-                    className="inline-block mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium no-underline hover:bg-indigo-700 transition-colors"
-                >
-                    {t("instagram.backToSetup")}
-                </a>
+                {showCloseHint && (
+                    <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2">
+                        {t("instagram.closeWindow")}
+                    </p>
+                )}
             </div>
         </div>
     );

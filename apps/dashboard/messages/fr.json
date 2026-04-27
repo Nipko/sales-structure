@@ -1326,7 +1326,8 @@
       "disconnectConfirm": "Etes-vous sur de vouloir deconnecter Instagram ?",
       "disconnectSuccess": "Instagram deconnecte avec succes.",
       "redirecting": "Redirection...",
-      "backToSetup": "Retour a la configuration"
+      "backToSetup": "Retour a la configuration",
+      "closeWindow": "Vous pouvez fermer cette fenêtre."
     },
     "telegram": {
       "setupTitle": "Connecter Telegram",

@@ -18,7 +18,7 @@ import { v4 as uuid } from 'uuid';
 export class InstagramAdapter implements IChannelAdapter {
     readonly channelType: ChannelType = 'instagram';
     private readonly logger = new Logger(InstagramAdapter.name);
-    private readonly apiUrl = 'https://graph.facebook.com/v21.0';
+    private readonly apiUrl = 'https://graph.instagram.com/v21.0';
 
     constructor(private configService: ConfigService) { }
 

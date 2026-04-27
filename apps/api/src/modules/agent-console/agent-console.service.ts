@@ -10,6 +10,7 @@ export interface InboxConversation {
     id: string;
     contactName: string;
     contactPhone: string;
+    contactEmail?: string;
     contactAvatar?: string;
     lastMessage: string;
     lastMessageAt: string;
@@ -17,6 +18,8 @@ export interface InboxConversation {
     assignedAgentId?: string;
     assignedAgentName?: string;
     channel: string;
+    channelAccountName?: string;
+    channelAccountPicture?: string;
     unreadCount: number;
     priority: 'low' | 'normal' | 'high' | 'urgent';
     tags: string[];
@@ -43,6 +46,8 @@ export interface ConversationDetail {
     assignedAgent?: { id: string; name: string };
     status: string;
     channel: string;
+    channelAccountName?: string;
+    channelAccountPicture?: string;
     startedAt: string;
     aiSummary?: string;
 }
@@ -107,12 +112,15 @@ export class AgentConsoleService {
             schemaName,
             `SELECT
         c.id, c.status, c.channel_type as channel, c.created_at as started_at, c.metadata,
+        c.channel_account_id,
         ct.name as contact_name, ct.phone as contact_phone, ct.email as contact_email,
         ct.tags as contact_tags,
         m.content_text as last_message, m.created_at as last_message_at, m.direction as last_sender,
-        c.assigned_to as assigned_agent_id
+        c.assigned_to as assigned_agent_id,
+        ca.display_name as channel_account_name, ca.metadata as channel_account_metadata
       FROM conversations c
       LEFT JOIN contacts ct ON c.contact_id = ct.id
+      LEFT JOIN public.channel_accounts ca ON ca.id::text = c.channel_account_id AND ca.tenant_id = '${tenantId}'
       LEFT JOIN LATERAL (
         SELECT content_text, created_at, direction FROM messages
         WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
@@ -128,11 +136,14 @@ export class AgentConsoleService {
             id: c.id,
             contactName: c.contact_name || 'Unknown',
             contactPhone: c.contact_phone || '',
+            contactEmail: c.contact_email || '',
             lastMessage: c.last_message || '',
             lastMessageAt: c.last_message_at || c.started_at,
             status: c.status,
             assignedAgentId: c.assigned_agent_id,
             channel: c.channel || 'whatsapp',
+            channelAccountName: c.channel_account_name || '',
+            channelAccountPicture: c.channel_account_metadata?.picture || c.channel_account_metadata?.profilePicture || '',
             unreadCount: 0,
             priority: this.calculatePriority(c),
             tags: c.contact_tags || [],
@@ -150,9 +161,11 @@ export class AgentConsoleService {
         const convRows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT c.*, ct.name as contact_name, ct.phone as contact_phone, ct.email as contact_email,
-              ct.tags, ct.metadata as custom_fields, ct.first_contact_at as last_interaction, ct.id as contact_id
+              ct.tags, ct.metadata as custom_fields, ct.first_contact_at as last_interaction, ct.id as contact_id,
+              ca.display_name as channel_account_name, ca.metadata as channel_account_metadata
        FROM conversations c
        LEFT JOIN contacts ct ON c.contact_id = ct.id
+       LEFT JOIN public.channel_accounts ca ON ca.id::text = c.channel_account_id AND ca.tenant_id = '${tenantId}'
        WHERE c.id = $1::uuid`,
             [conversationId],
         );
@@ -213,7 +226,9 @@ export class AgentConsoleService {
                 createdAt: n.created_at,
             })),
             status: conv.status,
-            channel: conv.channel || 'whatsapp',
+            channel: conv.channel_type || conv.channel || 'whatsapp',
+            channelAccountName: conv.channel_account_name || '',
+            channelAccountPicture: conv.channel_account_metadata?.picture || conv.channel_account_metadata?.profilePicture || '',
             startedAt: conv.started_at,
         };
     }

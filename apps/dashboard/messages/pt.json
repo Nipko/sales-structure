@@ -388,7 +388,12 @@
     "archiveSuccess": "Conversa arquivada",
     "deleteConversation": "Excluir",
     "deleteConfirm": "Excluir esta conversa? Todas as mensagens serão removidas permanentemente.",
-    "deleteSuccess": "Conversa excluída"
+    "deleteSuccess": "Conversa excluída",
+    "saveChanges": "Salvar alterações",
+    "saving": "Salvando...",
+    "hidePanel": "Ocultar painel",
+    "showPanel": "Mostrar painel",
+    "noMacros": "Nenhuma macro configurada"
   },
   "settings": {
     "title": "Configuracoes",
@@ -1319,7 +1324,9 @@
       "disconnectDesc": "As mensagens diretas desta conta deixarão de ser recebidas",
       "disconnect": "Desconectar",
       "disconnectConfirm": "Tem certeza que deseja desconectar o Instagram?",
-      "disconnectSuccess": "Instagram desconectado com sucesso."
+      "disconnectSuccess": "Instagram desconectado com sucesso.",
+      "redirecting": "Redirecionando...",
+      "backToSetup": "Voltar à configuração"
     },
     "telegram": {
       "setupTitle": "Conectar Telegram",

@@ -13,7 +13,7 @@ import {
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
     ArrowRight, ArrowLeft, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
     Bell, Globe, Building2, MapPin, Instagram, Facebook, Linkedin, ExternalLink, Edit2, Save,
-    Archive, Trash2,
+    Archive, Trash2, PanelRightClose, PanelRightOpen, MoreHorizontal,
 } from "lucide-react";
 
 // ============================================
@@ -237,11 +237,12 @@ export default function InboxPage() {
     const [macrosLoaded, setMacrosLoaded] = useState(false);
     const macrosRef = useRef<HTMLDivElement>(null);
 
-    // Close snooze/macros on outside click
+    // Close snooze/macros/more on outside click
     useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) setShowSnoozeMenu(false);
             if (macrosRef.current && !macrosRef.current.contains(e.target as Node)) setShowMacrosMenu(false);
+            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setShowMoreMenu(false);
         };
         document.addEventListener("mousedown", handler);
         return () => document.removeEventListener("mousedown", handler);
@@ -353,6 +354,13 @@ export default function InboxPage() {
         }
     };
 
+    // --- Contact Panel Visibility ---
+    const [showContactPanel, setShowContactPanel] = useState(true);
+
+    // --- More Actions Menu ---
+    const [showMoreMenu, setShowMoreMenu] = useState(false);
+    const moreMenuRef = useRef<HTMLDivElement>(null);
+
     // --- Archive & Delete State ---
     const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -422,6 +430,8 @@ export default function InboxPage() {
                         lastMessageAtRaw: c.last_message_at || '',
                         status: c.status || 'open',
                         channel: c.channel_type || c.channel || 'whatsapp',
+                        channelAccountName: c.channel_account_name || c.channelAccountName || '',
+                        channelAccountPicture: c.channel_account_picture || c.channelAccountPicture || '',
                         unreadCount: c.unread_count || c.unreadCount || 0,
                         priority: c.priority || 'normal',
                         tags: c.tags || [],
@@ -1016,74 +1026,81 @@ export default function InboxPage() {
                                         </span>
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                                        <span>{channelLabel}</span>
-                                        {selectedConv.contactPhone && (
+                                        <span className="truncate">{selectedConv.channelAccountName || channelLabel}</span>
+                                        {selectedConv.channelAccountName && (
                                             <>
-                                                <span className="opacity-40">|</span>
-                                                <span>{selectedConv.contactPhone}</span>
+                                                <span className="opacity-40">·</span>
+                                                <span className="hidden sm:inline">{channelLabel}</span>
                                             </>
                                         )}
-                                        {selectedConv.contactEmail && (
+                                        {selectedConv.contactPhone && (
                                             <>
-                                                <span className="opacity-40">|</span>
-                                                <span className="truncate">{selectedConv.contactEmail}</span>
+                                                <span className="opacity-40">·</span>
+                                                <span className="hidden md:inline">{selectedConv.contactPhone}</span>
                                             </>
                                         )}
                                     </div>
                                 </div>
                             </div>
-                            {/* Action buttons */}
-                            <div className="flex gap-1.5 md:gap-2 flex-wrap justify-end flex-shrink-0 items-center">
+                            {/* Action buttons — compact responsive toolbar */}
+                            <div className="flex gap-1 md:gap-1.5 items-center flex-shrink-0">
+                                {/* Notes toggle */}
                                 <button
                                     onClick={() => setShowNotes(!showNotes)}
                                     className={cn(
-                                        "py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors",
+                                        "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
                                         showNotes
                                             ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
                                             : "bg-transparent text-muted-foreground border-border hover:bg-muted"
                                     )}
+                                    title={t("contact.notes")}
                                 >
-                                    <StickyNote size={14} /> Notas
+                                    <StickyNote size={14} />
+                                    <span className="hidden xl:inline">{t("contact.notes")}</span>
                                 </button>
-                                {selectedConv.assignedAgentName && (
-                                    <div className="py-1 px-2.5 rounded-xl text-[11px] bg-blue-500/10 text-blue-500 flex gap-1 items-center font-medium border border-blue-500/20">
-                                        <UserCheck size={12} />
-                                        {selectedConv.assignedAgentName}
-                                    </div>
-                                )}
+                                {/* Resolve */}
                                 <button
                                     onClick={handleResolve}
-                                    className="py-1.5 px-3 rounded-xl border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1.5 items-center hover:bg-emerald-600 transition-colors"
+                                    className="p-1.5 md:py-1.5 md:px-2.5 rounded-lg border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1 items-center hover:bg-emerald-600 transition-colors"
+                                    title={t("resolve")}
                                 >
-                                    <CheckCircle size={14} /> Resolver
+                                    <CheckCircle size={14} />
+                                    <span className="hidden lg:inline">{t("resolve")}</span>
                                 </button>
+                                {/* Assign */}
                                 <button
                                     onClick={handleAssign}
                                     disabled={assignLoading}
                                     className={cn(
-                                        "py-1.5 px-3 rounded-xl border-none text-xs font-semibold flex gap-1.5 items-center transition-all",
+                                        "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border-none text-xs font-semibold flex gap-1 items-center transition-all",
                                         assignLoading
                                             ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
                                             : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                                     )}
+                                    title={t("assignToMe")}
                                 >
                                     {assignLoading
-                                        ? <><Loader2 size={14} className="animate-spin" /> Asignando...</>
-                                        : <><ArrowRight size={14} /> {selectedConv.assignedAgentId === user?.id ? t('reassignToMe') : t('assignToMe')}</>
+                                        ? <Loader2 size={14} className="animate-spin" />
+                                        : <ArrowRight size={14} />
                                     }
+                                    <span className="hidden lg:inline">
+                                        {assignLoading ? '...' : (selectedConv.assignedAgentId === user?.id ? t('reassignToMe') : t('assignToMe'))}
+                                    </span>
                                 </button>
-                                {/* Snooze Button */}
+                                {/* Snooze */}
                                 <div ref={snoozeRef} className="relative">
                                     <button
                                         onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
                                         className={cn(
-                                            "py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors",
+                                            "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
                                             showSnoozeMenu
                                                 ? "bg-indigo-600 text-white border-indigo-600"
                                                 : "bg-transparent text-muted-foreground border-border hover:bg-muted"
                                         )}
+                                        title="Snooze"
                                     >
-                                        <Clock size={14} /> Snooze
+                                        <Clock size={14} />
+                                        <span className="hidden xl:inline">Snooze</span>
                                     </button>
                                     {showSnoozeMenu && (
                                         <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[170px] shadow-lg">
@@ -1105,24 +1122,26 @@ export default function InboxPage() {
                                         </div>
                                     )}
                                 </div>
-                                {/* Macros Button */}
+                                {/* Macros */}
                                 <div ref={macrosRef} className="relative">
                                     <button
                                         onClick={() => setShowMacrosMenu(!showMacrosMenu)}
                                         className={cn(
-                                            "py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors",
+                                            "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
                                             showMacrosMenu
                                                 ? "bg-indigo-600 text-white border-indigo-600"
                                                 : "bg-transparent text-muted-foreground border-border hover:bg-muted"
                                         )}
+                                        title="Macros"
                                     >
-                                        <Zap size={14} /> Macros
+                                        <Zap size={14} />
+                                        <span className="hidden xl:inline">Macros</span>
                                     </button>
                                     {showMacrosMenu && (
                                         <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[220px] max-h-60 overflow-y-auto shadow-lg">
                                             {macros.length === 0 ? (
                                                 <div className="py-3 px-3.5 text-[13px] text-muted-foreground">
-                                                    No hay macros configurados
+                                                    {t("noConversations")}
                                                 </div>
                                             ) : macros.map((m: any) => (
                                                 <button
@@ -1133,7 +1152,7 @@ export default function InboxPage() {
                                                     <span>{m.name}</span>
                                                     {m.actions && (
                                                         <span className="text-[11px] text-muted-foreground">
-                                                            {Array.isArray(m.actions) ? m.actions.length : 0} acciones
+                                                            {Array.isArray(m.actions) ? m.actions.length : 0}
                                                         </span>
                                                     )}
                                                 </button>
@@ -1141,19 +1160,46 @@ export default function InboxPage() {
                                         </div>
                                     )}
                                 </div>
-                                {/* Archive Button */}
+                                {/* More actions (Archive, Delete) */}
+                                <div ref={moreMenuRef} className="relative">
+                                    <button
+                                        onClick={() => setShowMoreMenu(!showMoreMenu)}
+                                        className={cn(
+                                            "p-1.5 rounded-lg border text-xs cursor-pointer flex items-center transition-colors",
+                                            showMoreMenu
+                                                ? "bg-muted text-foreground border-border"
+                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                        )}
+                                        title={t("additionalInfo")}
+                                    >
+                                        <MoreHorizontal size={14} />
+                                    </button>
+                                    {showMoreMenu && (
+                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[180px] shadow-lg">
+                                            <button
+                                                onClick={() => { setShowArchiveConfirm(true); setShowMoreMenu(false); }}
+                                                className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                            >
+                                                <Archive size={13} className="text-muted-foreground" />
+                                                {t('archive')}
+                                            </button>
+                                            <button
+                                                onClick={() => { setShowDeleteConfirm(true); setShowMoreMenu(false); }}
+                                                className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-red-400 text-[13px] cursor-pointer text-left hover:bg-red-500/10 transition-colors"
+                                            >
+                                                <Trash2 size={13} />
+                                                {t('deleteConversation')}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Toggle contact panel */}
                                 <button
-                                    onClick={() => setShowArchiveConfirm(true)}
-                                    className="py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors bg-transparent text-muted-foreground border-border hover:bg-muted"
+                                    onClick={() => setShowContactPanel(!showContactPanel)}
+                                    className="hidden lg:flex p-1.5 rounded-lg border border-border bg-transparent text-muted-foreground cursor-pointer items-center hover:bg-muted transition-colors"
+                                    title={showContactPanel ? "Ocultar panel" : "Mostrar panel"}
                                 >
-                                    <Archive size={14} /> {t('archive')}
-                                </button>
-                                {/* Delete Button */}
-                                <button
-                                    onClick={() => setShowDeleteConfirm(true)}
-                                    className="py-1.5 px-3 rounded-xl border text-xs cursor-pointer flex gap-1.5 items-center transition-colors bg-transparent text-red-400 border-border hover:bg-red-500/10"
-                                >
-                                    <Trash2 size={14} /> {t('deleteConversation')}
+                                    {showContactPanel ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
                                 </button>
                             </div>
                         </div>
@@ -1438,8 +1484,11 @@ export default function InboxPage() {
                 )}
             </div>
 
-            {/* ======== RIGHT COLUMN: Contact Panel (350px, collapsible) ======== */}
-            <div className="inbox-scrollbar hidden lg:flex lg:flex-col w-[350px] border-l border-border overflow-auto bg-card flex-shrink-0">
+            {/* ======== RIGHT COLUMN: Contact Panel (320px, collapsible) ======== */}
+            <div className={cn(
+                "inbox-scrollbar border-l border-border overflow-auto bg-card flex-shrink-0 flex-col transition-all duration-200",
+                showContactPanel ? "hidden lg:flex w-[320px]" : "hidden"
+            )}>
                 {selectedConv ? (
                     <div className="p-5">
                         {/* Contact Avatar & Name */}
@@ -1492,13 +1541,24 @@ export default function InboxPage() {
 
                         {/* Channel Info Card */}
                         <div className="rounded-xl border border-border bg-muted/30 p-3.5 mb-4">
-                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Canal</div>
+                            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">{t("contact.channel")}</div>
                             <div className="flex items-center gap-2.5">
-                                <ChannelIcon channel={selectedConv.channel} size={28} />
-                                <div>
-                                    <div className="text-sm font-medium">{channelLabel}</div>
-                                    <div className="text-[11px] text-muted-foreground">
-                                        {selectedConv.contactPhone && `via ${selectedConv.contactPhone}`}
+                                {selectedConv.channelAccountPicture ? (
+                                    <img
+                                        src={selectedConv.channelAccountPicture}
+                                        alt={selectedConv.channelAccountName || channelLabel}
+                                        className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+                                    />
+                                ) : (
+                                    <ChannelIcon channel={selectedConv.channel} size={28} />
+                                )}
+                                <div className="min-w-0">
+                                    <div className="text-sm font-medium truncate">
+                                        {selectedConv.channelAccountName || channelLabel}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground truncate">
+                                        {selectedConv.channelAccountName ? channelLabel : ''}
+                                        {selectedConv.contactPhone && ` · ${selectedConv.contactPhone}`}
                                     </div>
                                 </div>
                             </div>
@@ -1523,7 +1583,7 @@ export default function InboxPage() {
                                 </div>
                             ) : (
                                 <div className="px-3.5 py-2.5 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground text-center">
-                                    Sin asignar
+                                    {t("filterUnassigned")}
                                 </div>
                             )}
                         </div>
@@ -1790,8 +1850,8 @@ export default function InboxPage() {
                                     )}
                                 >
                                     {contactMetaSaving
-                                        ? <><Loader2 size={14} className="animate-spin" /> Guardando...</>
-                                        : <><Save size={14} /> Guardar cambios</>
+                                        ? <><Loader2 size={14} className="animate-spin" /> {t("saving")}</>
+                                        : <><Save size={14} /> {t("saveChanges")}</>
                                     }
                                 </button>
                             )}
@@ -1801,7 +1861,7 @@ export default function InboxPage() {
                         {customAttrDefs.length > 0 && (
                             <div className="mb-4">
                                 <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <Hash size={12} /> Atributos personalizados
+                                    <Hash size={12} /> {t("additionalInfo")}
                                 </div>
                                 <div className="flex flex-col gap-2.5">
                                     {customAttrDefs.map((attr: any) => {
@@ -1846,7 +1906,7 @@ export default function InboxPage() {
                                         href={`/admin/contacts/${selectedConv.contactId}`}
                                         className="flex-1 py-2 px-3 rounded-xl border border-border bg-transparent text-foreground text-xs font-medium cursor-pointer flex gap-1.5 items-center justify-center hover:bg-muted transition-colors no-underline"
                                     >
-                                        <ExternalLink size={12} /> Ver en CRM
+                                        <ExternalLink size={12} /> {t("contact.viewInCrm")}
                                     </a>
                                 )}
                                 {selectedConv.contactPhone && (
@@ -1854,7 +1914,7 @@ export default function InboxPage() {
                                         onClick={() => navigator.clipboard.writeText(selectedConv.contactPhone)}
                                         className="flex-1 py-2 px-3 rounded-xl border border-border bg-transparent text-foreground text-xs font-medium cursor-pointer flex gap-1.5 items-center justify-center hover:bg-muted transition-colors"
                                     >
-                                        <Phone size={12} /> Copiar tel.
+                                        <Phone size={12} /> {t("contact.copyPhone")}
                                     </button>
                                 )}
                             </div>

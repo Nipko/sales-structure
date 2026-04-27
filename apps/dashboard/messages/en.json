@@ -388,7 +388,12 @@
     "archiveSuccess": "Conversation archived",
     "deleteConversation": "Delete",
     "deleteConfirm": "Delete this conversation? All messages will be permanently removed.",
-    "deleteSuccess": "Conversation deleted"
+    "deleteSuccess": "Conversation deleted",
+    "saveChanges": "Save changes",
+    "saving": "Saving...",
+    "hidePanel": "Hide panel",
+    "showPanel": "Show panel",
+    "noMacros": "No macros configured"
   },
   "settings": {
     "title": "Settings",
@@ -1319,7 +1324,9 @@
       "disconnectDesc": "Direct messages will no longer be received from this account",
       "disconnect": "Disconnect",
       "disconnectConfirm": "Are you sure you want to disconnect Instagram?",
-      "disconnectSuccess": "Instagram disconnected successfully."
+      "disconnectSuccess": "Instagram disconnected successfully.",
+      "redirecting": "Redirecting...",
+      "backToSetup": "Back to setup"
     },
     "telegram": {
       "setupTitle": "Connect Telegram",

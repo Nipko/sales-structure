@@ -10,6 +10,7 @@ import { LeadScoringService } from './services/lead-scoring/lead-scoring.service
 import { CustomAttributesService } from './services/custom-attributes/custom-attributes.service';
 import { SegmentsService } from './services/segments/segments.service';
 import { ImportExportService } from './services/import-export/import-export.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -28,6 +29,7 @@ export class CrmController {
         private customAttrs: CustomAttributesService,
         private segmentsService: SegmentsService,
         private importExportService: ImportExportService,
+        private prisma: PrismaService,
     ) {}
 
     // ---- Kanban (Pipeline Board using Opportunities) ----
@@ -58,6 +60,12 @@ export class CrmController {
         @Query('assignedTo') assignedTo?: string,
         @Query('courseId') courseId?: string,
         @Query('isVip') isVip?: string,
+        @Query('scoreMin') scoreMin?: string,
+        @Query('scoreMax') scoreMax?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('tags') tags?: string,
+        @Query('includeArchived') includeArchived?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
     ) {
@@ -67,6 +75,12 @@ export class CrmController {
             assignedTo,
             courseId,
             isVip: isVip !== undefined ? isVip === 'true' : undefined,
+            scoreMin: scoreMin ? parseInt(scoreMin) : undefined,
+            scoreMax: scoreMax ? parseInt(scoreMax) : undefined,
+            dateFrom,
+            dateTo,
+            tags: tags ? tags.split(',') : undefined,
+            includeArchived: includeArchived === 'true',
             page: page ? parseInt(page) : 1,
             limit: limit ? parseInt(limit) : 25,
         });
@@ -105,6 +119,15 @@ export class CrmController {
             await this.leadsRepo.updateLeadTags(tenantId, leadId, tags);
         }
         return { success: true, message: 'Lead updated' };
+    }
+
+    @Post('leads/:tenantId/bulk-update')
+    async bulkUpdateLeads(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { leadIds: string[]; action: string; payload: any },
+    ) {
+        const result = await this.leadsRepo.bulkUpdate(tenantId, body.leadIds, body.action, body.payload || {});
+        return { success: true, data: result };
     }
 
     @Delete('leads/:tenantId/:leadId')
@@ -411,5 +434,87 @@ export class CrmController {
     async getImportTemplate() {
         const template = this.importExportService.getImportTemplate();
         return { success: true, data: template };
+    }
+
+    // ---- Pipeline Stages ----
+
+    private async getSchema(tenantId: string): Promise<string> {
+        const tenant = await this.prisma.$queryRaw<any[]>`SELECT schema_name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1`;
+        if (!tenant?.[0]?.schema_name) throw new Error('Tenant not found');
+        return tenant[0].schema_name;
+    }
+
+    @Get('pipeline-stages/:tenantId')
+    async getPipelineStages(@Param('tenantId') tenantId: string) {
+        const schema = await this.getSchema(tenantId);
+        const stages = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT * FROM pipeline_stages WHERE tenant_id = $1 ORDER BY position ASC`,
+            [tenantId],
+        );
+        return { success: true, data: stages || [] };
+    }
+
+    @Post('pipeline-stages/:tenantId')
+    async createPipelineStage(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean },
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        const result = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, body.is_terminal ?? false],
+        );
+        return { success: true, data: result?.[0] };
+    }
+
+    @Put('pipeline-stages/:tenantId/:stageId')
+    async updatePipelineStage(
+        @Param('tenantId') tenantId: string,
+        @Param('stageId') stageId: string,
+        @Body() body: Record<string, any>,
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal'];
+        const fields = Object.keys(body).filter(k => allowed.includes(k) && body[k] !== undefined);
+        if (fields.length === 0) return { success: true };
+
+        const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
+        const values = [stageId, ...fields.map(k => body[k])];
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE pipeline_stages SET ${setClause} WHERE id = $1::uuid`,
+            values,
+        );
+        return { success: true, message: 'Stage updated' };
+    }
+
+    @Delete('pipeline-stages/:tenantId/:stageId')
+    async deletePipelineStage(
+        @Param('tenantId') tenantId: string,
+        @Param('stageId') stageId: string,
+    ) {
+        const schema = await this.getSchema(tenantId);
+        await this.prisma.executeInTenantSchema(schema,
+            `DELETE FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+            [stageId, tenantId],
+        );
+        return { success: true, message: 'Stage deleted' };
+    }
+
+    @Put('pipeline-stages/:tenantId/reorder')
+    async reorderPipelineStages(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { stageIds: string[] },
+    ) {
+        const schema = await this.getSchema(tenantId);
+        for (let i = 0; i < body.stageIds.length; i++) {
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE pipeline_stages SET position = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`,
+                [i, body.stageIds[i], tenantId],
+            );
+        }
+        return { success: true, message: 'Stages reordered' };
     }
 }

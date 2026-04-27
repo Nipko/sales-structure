@@ -34,13 +34,18 @@ export class LeadsRepository {
     courseId?: string;
     isVip?: boolean;
     includeArchived?: boolean;
+    scoreMin?: number;
+    scoreMax?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    tags?: string[];
     page?: number;
     limit?: number;
   }) {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) throw new Error('Tenant not found');
 
-    const { search, stage, assignedTo, courseId, isVip, includeArchived, page = 1, limit = 25 } = params;
+    const { search, stage, assignedTo, courseId, isVip, includeArchived, scoreMin, scoreMax, dateFrom, dateTo, tags: filterTags, page = 1, limit = 25 } = params;
     const offset = (page - 1) * limit;
 
     let q = `SELECT l.*, c.name as company_name FROM leads l
@@ -61,6 +66,14 @@ export class LeadsRepository {
     if (assignedTo) { q += ` AND l.assigned_to = $${n++}`; p.push(assignedTo); }
     if (courseId) { q += ` AND l.course_id = $${n++}`; p.push(courseId); }
     if (isVip !== undefined) { q += ` AND l.is_vip = $${n++}`; p.push(isVip); }
+    if (scoreMin !== undefined) { q += ` AND l.score >= $${n++}`; p.push(scoreMin); }
+    if (scoreMax !== undefined) { q += ` AND l.score <= $${n++}`; p.push(scoreMax); }
+    if (dateFrom) { q += ` AND l.created_at >= $${n++}`; p.push(dateFrom); }
+    if (dateTo) { q += ` AND l.created_at <= $${n++}`; p.push(dateTo); }
+    if (filterTags && filterTags.length > 0) {
+      q += ` AND EXISTS (SELECT 1 FROM lead_tags lt2 JOIN tags t2 ON t2.id = lt2.tag_id WHERE lt2.lead_id = l.id AND t2.name = ANY($${n++}::text[]))`;
+      p.push(`{${filterTags.join(',')}}`);
+    }
 
     q += ` ORDER BY l.score DESC, l.created_at DESC LIMIT $${n++} OFFSET $${n++}`;
     p.push(limit, offset);
@@ -199,6 +212,59 @@ export class LeadsRepository {
     );
     const resultsArray = results as any[];
     return resultsArray && resultsArray.length > 0 ? resultsArray[0] : null;
+  }
+
+  async bulkUpdate(tenantId: string, leadIds: string[], action: string, payload: any): Promise<{ updated: number }> {
+    const schema = await this.getTenantSchema(tenantId);
+    if (!schema) throw new Error('Tenant not found');
+    if (!leadIds.length) return { updated: 0 };
+
+    const idsParam = `{${leadIds.join(',')}}`;
+
+    switch (action) {
+      case 'stage': {
+        const result = await this.prisma.executeInTenantSchema<any[]>(schema,
+          `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
+          [payload.stage, idsParam],
+        );
+        return { updated: result?.length || 0 };
+      }
+      case 'assign': {
+        const result = await this.prisma.executeInTenantSchema<any[]>(schema,
+          `UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
+          [payload.assignedTo, idsParam],
+        );
+        return { updated: result?.length || 0 };
+      }
+      case 'archive': {
+        const result = await this.prisma.executeInTenantSchema<any[]>(schema,
+          `UPDATE leads SET archived_at = NOW(), updated_at = NOW() WHERE id = ANY($1::uuid[]) RETURNING id`,
+          [idsParam],
+        );
+        return { updated: result?.length || 0 };
+      }
+      case 'tag': {
+        const tagName = payload.tag;
+        if (!tagName) return { updated: 0 };
+        // Ensure tag exists
+        await this.prisma.executeInTenantSchema(schema,
+          `INSERT INTO tags (name, color) VALUES ($1, '#6366f1') ON CONFLICT (name) DO NOTHING`,
+          [tagName.trim()],
+        );
+        // Add tag to all selected leads
+        for (const leadId of leadIds) {
+          await this.prisma.executeInTenantSchema(schema,
+            `INSERT INTO lead_tags (lead_id, tag_id)
+             SELECT $1::uuid, t.id FROM tags t WHERE t.name = $2
+             ON CONFLICT DO NOTHING`,
+            [leadId, tagName.trim()],
+          );
+        }
+        return { updated: leadIds.length };
+      }
+      default:
+        throw new Error(`Unknown bulk action: ${action}`);
+    }
   }
 
   async updateLeadTags(tenantId: string, leadId: string, tagNames: string[]): Promise<void> {

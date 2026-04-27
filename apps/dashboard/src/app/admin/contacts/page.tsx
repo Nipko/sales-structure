@@ -29,6 +29,10 @@ import {
     ArrowUpDown,
     Eye,
     X,
+    Loader2,
+    CheckSquare,
+    Square,
+    Archive,
 } from "lucide-react";
 
 const segmentStyles: Record<string, string> = {
@@ -57,6 +61,12 @@ export default function ContactsPage() {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createForm, setCreateForm] = useState({ first_name: "", last_name: "", phone: "", email: "", stage: "nuevo" });
     const [creating, setCreating] = useState(false);
+
+    // Bulk selection
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkAction, setBulkAction] = useState("");
+    const [bulkPayload, setBulkPayload] = useState("");
+    const [bulking, setBulking] = useState(false);
 
     // Load contacts from API
     useEffect(() => {
@@ -231,11 +241,115 @@ export default function ContactsPage() {
                 />
             </div>
 
+            {/* Bulk Actions Bar */}
+            {selectedIds.size > 0 && (
+                <div className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                    <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                        {selectedIds.size} {t('bulkActions.selected')}
+                    </span>
+                    <div className="flex items-center gap-2 ml-auto">
+                        <select
+                            value={bulkAction}
+                            onChange={e => { setBulkAction(e.target.value); setBulkPayload(""); }}
+                            className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 outline-none"
+                        >
+                            <option value="">{t('bulkActions.selectAction')}</option>
+                            <option value="stage">{t('bulkActions.changeStage')}</option>
+                            <option value="tag">{t('bulkActions.addTag')}</option>
+                            <option value="archive">{t('bulkActions.archive')}</option>
+                        </select>
+                        {bulkAction === 'stage' && (
+                            <select
+                                value={bulkPayload}
+                                onChange={e => setBulkPayload(e.target.value)}
+                                className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 outline-none"
+                            >
+                                <option value="">—</option>
+                                <option value="nuevo">Nuevo</option>
+                                <option value="contactado">Contactado</option>
+                                <option value="calificado">Calificado</option>
+                                <option value="ganado">Ganado</option>
+                                <option value="perdido">Perdido</option>
+                            </select>
+                        )}
+                        {bulkAction === 'tag' && (
+                            <input
+                                type="text"
+                                value={bulkPayload}
+                                onChange={e => setBulkPayload(e.target.value)}
+                                placeholder={t('bulkActions.tagName')}
+                                className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 outline-none w-40"
+                            />
+                        )}
+                        <button
+                            onClick={async () => {
+                                if (!activeTenantId || !bulkAction) return;
+                                setBulking(true);
+                                try {
+                                    const payload = bulkAction === 'stage' ? { stage: bulkPayload }
+                                        : bulkAction === 'tag' ? { tag: bulkPayload }
+                                        : {};
+                                    await api.fetch(`/crm/leads/${activeTenantId}/bulk-update`, {
+                                        method: 'POST',
+                                        body: JSON.stringify({ leadIds: Array.from(selectedIds), action: bulkAction, payload }),
+                                    });
+                                    setSelectedIds(new Set());
+                                    setBulkAction("");
+                                    setBulkPayload("");
+                                    // Reload
+                                    const data = await api.fetch(`/crm/leads/${activeTenantId}`);
+                                    if (data.success && Array.isArray(data.data)) {
+                                        const mapped = data.data.map((l: any) => {
+                                            let seg = "new";
+                                            if (["calificado", "tibio", "caliente", "listo_cierre"].includes(l.stage)) seg = "qualified";
+                                            if (["ganado"].includes(l.stage)) seg = "customer";
+                                            if (["perdido", "no_interesado"].includes(l.stage)) seg = "churned";
+                                            if (["contactado", "respondio"].includes(l.stage)) seg = "lead";
+                                            return { id: l.id, name: `${l.first_name || ''} ${l.last_name || ''}`.trim() || 'Unknown', phone: l.phone || '', email: l.email || '', tags: l.tags?.map((tg: any) => tg.name) || [], segment: seg, conversations: 0, lifetimeValue: 0, lastInteraction: l.created_at ? new Date(l.created_at).toLocaleDateString() : '', city: l.company_name || '' };
+                                        });
+                                        setContacts(mapped);
+                                    }
+                                } catch (err) {
+                                    console.error("Bulk action failed:", err);
+                                } finally {
+                                    setBulking(false);
+                                }
+                            }}
+                            disabled={bulking || !bulkAction || (bulkAction !== 'archive' && !bulkPayload)}
+                            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg border-none bg-indigo-600 text-white text-sm font-semibold cursor-pointer hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {bulking ? <Loader2 size={14} className="animate-spin" /> : null}
+                            {t('bulkActions.apply')}
+                        </button>
+                        <button
+                            onClick={() => { setSelectedIds(new Set()); setBulkAction(""); }}
+                            className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-transparent text-sm text-neutral-600 cursor-pointer hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                        >
+                            {tc("cancel")}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Table */}
             <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                            <th className="w-10 px-3 py-3">
+                                <button
+                                    onClick={() => {
+                                        if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+                                        else setSelectedIds(new Set(filtered.map(c => c.id)));
+                                    }}
+                                    className="bg-transparent border-none cursor-pointer p-0 text-neutral-400 hover:text-primary"
+                                >
+                                    {selectedIds.size > 0 && selectedIds.size === filtered.length
+                                        ? <CheckSquare size={16} className="text-primary" />
+                                        : <Square size={16} />
+                                    }
+                                </button>
+                            </th>
                             {[t('title'), t('segment'), t('conversations'), t('lifetimeValue'), t('lastInteraction'), t('tags'), ""].map(h => (
                                 <th
                                     key={h}
@@ -254,6 +368,25 @@ export default function ContactsPage() {
                                     key={contact.id}
                                     className="border-b border-neutral-100 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/50"
                                 >
+                                    <td className="w-10 px-3 py-3">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedIds(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(contact.id)) next.delete(contact.id);
+                                                    else next.add(contact.id);
+                                                    return next;
+                                                });
+                                            }}
+                                            className="bg-transparent border-none cursor-pointer p-0 text-neutral-400 hover:text-primary"
+                                        >
+                                            {selectedIds.has(contact.id)
+                                                ? <CheckSquare size={16} className="text-primary" />
+                                                : <Square size={16} />
+                                            }
+                                        </button>
+                                    </td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2.5">
                                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-sm font-semibold text-white">

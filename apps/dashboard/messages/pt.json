@@ -226,6 +226,15 @@
       "customer": "Clientes",
       "churned": "Perdidos"
     },
+    "bulkActions": {
+      "selected": "selecionados",
+      "selectAction": "Selecionar ação",
+      "changeStage": "Alterar etapa",
+      "addTag": "Adicionar tag",
+      "archive": "Arquivar",
+      "tagName": "Nome da tag",
+      "apply": "Aplicar"
+    },
     "createModal": {
       "title": "Novo contato",
       "firstName": "Nome",

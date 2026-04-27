@@ -226,6 +226,15 @@
       "customer": "Customers",
       "churned": "Churned"
     },
+    "bulkActions": {
+      "selected": "selected",
+      "selectAction": "Select action",
+      "changeStage": "Change stage",
+      "addTag": "Add tag",
+      "archive": "Archive",
+      "tagName": "Tag name",
+      "apply": "Apply"
+    },
     "createModal": {
       "title": "New contact",
       "firstName": "First name",

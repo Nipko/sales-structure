@@ -218,6 +218,7 @@
     "lastInteraction": "Dernière interaction",
     "tags": "Tags",
     "noInteraction": "Aucune interaction",
+    "unknown": "Inconnu",
     "segments": {
       "all": "Tous",
       "new": "Nouveaux",

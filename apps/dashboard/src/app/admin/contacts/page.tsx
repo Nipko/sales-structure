@@ -33,6 +33,8 @@ import {
     CheckSquare,
     Square,
     Archive,
+    Instagram,
+    Send as SendIcon,
 } from "lucide-react";
 
 const segmentStyles: Record<string, string> = {
@@ -80,7 +82,6 @@ export default function ContactsPage() {
                 if (data.success && Array.isArray(data.data)) {
                     // Map Real Lead data to UI variables we use
                     const mappedLeads = data.data.map((l: any) => {
-                       // We extrapolate 'customer', 'qualified', 'new' from stages
                        let segmentType = "new";
                        if (["calificado", "tibio", "caliente", "listo_cierre"].includes(l.stage)) segmentType = "qualified";
                        if (["ganado"].includes(l.stage)) segmentType = "customer";
@@ -89,11 +90,12 @@ export default function ContactsPage() {
 
                        return {
                            id: l.id,
-                           name: `${l.first_name || 'Desconocido'} ${l.last_name || ''}`.trim(),
-                           phone: l.phone || tc('noData'),
+                           name: `${l.first_name || ''} ${l.last_name || ''}`.trim() || t('unknown'),
+                           phone: l.phone || '',
                            email: l.email || '',
-                           tags: l.tags?.map((t:any) => t.name) || [],
+                           tags: l.tags?.map((tg:any) => tg.name) || [],
                            segment: segmentType,
+                           channel: l.contact_channel || 'whatsapp',
                            conversations: Number(l.conversations_count ?? 0),
                            lifetimeValue: Number(l.lifetime_value ?? 0),
                            lastInteraction: l.last_message_at ? new Date(l.last_message_at).toLocaleDateString(undefined) : (l.created_at ? new Date(l.created_at).toLocaleDateString(undefined) : t('noInteraction')),
@@ -402,9 +404,19 @@ export default function ContactsPage() {
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
-                                        <Badge variant="secondary" className={cn("rounded-md text-xs font-semibold", segClass)}>
-                                            {contact.segment}
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5">
+                                            <Badge variant="secondary" className={cn("rounded-md text-xs font-semibold", segClass)}>
+                                                {t(`segments.${contact.segment}`)}
+                                            </Badge>
+                                            {contact.channel === 'instagram' && <Instagram size={13} className="text-pink-500" />}
+                                            {contact.channel === 'messenger' && <MessageSquare size={13} className="text-blue-500" />}
+                                            {contact.channel === 'telegram' && <SendIcon size={13} className="text-sky-500" />}
+                                            {contact.channel === 'whatsapp' && (
+                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                                                    <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.955 9.955 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z" fill="#25D366" />
+                                                </svg>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-1 text-sm text-neutral-700 dark:text-neutral-300">

@@ -48,8 +48,13 @@ export class LeadsRepository {
     const { search, stage, assignedTo, courseId, isVip, includeArchived, scoreMin, scoreMax, dateFrom, dateTo, tags: filterTags, page = 1, limit = 25 } = params;
     const offset = (page - 1) * limit;
 
-    let q = `SELECT l.*, c.name as company_name FROM leads l
+    let q = `SELECT l.*, c.name as company_name,
+             ct.channel_type as contact_channel,
+             (SELECT COUNT(*) FROM conversations cv WHERE cv.contact_id = l.contact_id) as conversations_count,
+             (SELECT MAX(m2.created_at) FROM messages m2 JOIN conversations cv2 ON cv2.id = m2.conversation_id WHERE cv2.contact_id = l.contact_id) as last_message_at
+             FROM leads l
              LEFT JOIN companies c ON c.id = l.company_id
+             LEFT JOIN contacts ct ON ct.id = l.contact_id
              WHERE 1=1`;
     const p: any[] = [];
     let n = 1;

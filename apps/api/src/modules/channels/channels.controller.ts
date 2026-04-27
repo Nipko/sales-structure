@@ -26,6 +26,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { WhatsappWebhookService } from '../whatsapp/services/whatsapp-webhook.service';
+import { ChannelTokenService } from './channel-token.service';
 import { validateMetaSignature } from './meta-signature.util';
 
 @ApiTags('channels')
@@ -46,6 +47,7 @@ export class ChannelsController {
         private whatsappWebhookService: WhatsappWebhookService,
         private configService: ConfigService,
         private redis: RedisService,
+        private channelToken: ChannelTokenService,
     ) { }
 
     // ==========================================
@@ -138,6 +140,28 @@ export class ChannelsController {
             if (!normalized) return;
 
             normalized.tenantId = channelAccount.tenantId;
+
+            // Fetch sender profile (name + profile picture) from Instagram Graph API
+            if (normalized.contactId && !normalized.metadata?.contactName) {
+                try {
+                    const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'instagram');
+                    const profileRes = await fetch(
+                        `https://graph.instagram.com/v21.0/${normalized.contactId}?fields=name,username,profile_pic&access_token=${token.accessToken}`,
+                    );
+                    if (profileRes.ok) {
+                        const profile = await profileRes.json() as any;
+                        normalized.metadata = {
+                            ...normalized.metadata,
+                            contactName: profile.name || profile.username || '',
+                            contactUsername: profile.username || '',
+                            contactProfilePic: profile.profile_pic || '',
+                        };
+                    }
+                } catch (e: any) {
+                    this.logger.warn(`Could not fetch IG sender profile: ${e.message}`);
+                }
+            }
+
             this.logger.log(`Incoming Instagram DM for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
             await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
@@ -199,6 +223,27 @@ export class ChannelsController {
             if (!normalized) return;
 
             normalized.tenantId = channelAccount.tenantId;
+
+            // Fetch sender profile from Facebook Graph API
+            if (normalized.contactId && !normalized.metadata?.contactName) {
+                try {
+                    const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'messenger');
+                    const profileRes = await fetch(
+                        `https://graph.facebook.com/v21.0/${normalized.contactId}?fields=name,profile_pic&access_token=${token.accessToken}`,
+                    );
+                    if (profileRes.ok) {
+                        const profile = await profileRes.json() as any;
+                        normalized.metadata = {
+                            ...normalized.metadata,
+                            contactName: profile.name || '',
+                            contactProfilePic: profile.profile_pic || '',
+                        };
+                    }
+                } catch (e: any) {
+                    this.logger.warn(`Could not fetch Messenger sender profile: ${e.message}`);
+                }
+            }
+
             this.logger.log(`Incoming Messenger message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
             await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {

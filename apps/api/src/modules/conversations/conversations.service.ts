@@ -261,10 +261,18 @@ export class ConversationsService {
         ).then(res => res[0]);
 
         if (!contact) {
+            const contactName = (msg.metadata as any)?.contactName || 'Unknown';
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `INSERT INTO contacts (external_id, channel_type, name, phone) VALUES ($1, $2, $3, $4) RETURNING *`,
-                [contactId, channelType, msg.metadata?.contactName || 'Unknown', contactId],
+                [contactId, channelType, contactName, contactId],
             ).then(res => res[0]);
+        } else if (contact.name === 'Unknown' && (msg.metadata as any)?.contactName) {
+            // Update name if it was Unknown and we now have the real name
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE contacts SET name = $1 WHERE id = $2::uuid`,
+                [(msg.metadata as any).contactName, contact.id],
+            );
+            contact.name = (msg.metadata as any).contactName;
         }
 
         // 1b. Resolve unified identity

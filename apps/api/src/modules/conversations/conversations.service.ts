@@ -293,9 +293,9 @@ export class ConversationsService {
         ).then(res => res[0]);
 
         let isNewLead = false;
+        const resolvedName = (msg.metadata as any)?.contactName as string || '';
         if (!lead) {
-            const contactName = (msg.metadata as any)?.contactName as string || '';
-            const nameParts = contactName.split(' ');
+            const nameParts = resolvedName.split(' ');
             const firstName = nameParts[0] || 'Unknown';
             const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
 
@@ -304,12 +304,18 @@ export class ConversationsService {
                 [contactIdStr, firstName, lastName, contactId],
             ).then(res => res[0]);
             isNewLead = true;
+        } else if (lead.first_name === 'Unknown' && resolvedName) {
+            const nameParts = resolvedName.split(' ');
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE leads SET first_name = $1, last_name = $2 WHERE id = $3::uuid`,
+                [nameParts[0], nameParts.length > 1 ? nameParts.slice(1).join(' ') : null, lead.id],
+            );
         }
 
-        // 3. Find active conversation or create new
+        // 3. Find active conversation for same channel, or create new
         let conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM conversations WHERE contact_id = $1::uuid AND status IN ('active', 'waiting_human', 'with_human') ORDER BY created_at DESC LIMIT 1`,
-            [contactIdStr],
+            `SELECT * FROM conversations WHERE contact_id = $1::uuid AND channel_type = $2 AND status IN ('active', 'waiting_human', 'with_human') ORDER BY created_at DESC LIMIT 1`,
+            [contactIdStr, msg.channelType],
         ).then(res => res[0]);
 
         if (!conversation) {

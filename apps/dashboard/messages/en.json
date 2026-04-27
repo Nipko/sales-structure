@@ -226,6 +226,16 @@
       "customer": "Customers",
       "churned": "Churned"
     },
+    "createModal": {
+      "title": "New contact",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "phone": "Phone",
+      "email": "Email",
+      "stage": "Stage",
+      "create": "Create contact",
+      "creating": "Creating..."
+    },
     "importModal": {
       "title": "Import contacts",
       "downloadTemplate": "Download CSV template",
@@ -288,7 +298,29 @@
         "create": "Create segment"
       }
     },
-    "subtitle": "Manage your contacts, leads and segments"
+    "subtitle": "Manage your contacts, leads and segments",
+    "leadDetail": {
+      "loading": "Loading profile...",
+      "contact": "Contact",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "archive": "Archive",
+      "archiveTitle": "Archive contact",
+      "archiveMessage": "This action will permanently remove this contact. Are you sure?",
+      "confirmArchive": "Archive",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "email": "Email",
+      "phone": "Phone",
+      "stage": "Stage",
+      "vip": "VIP",
+      "tags": "Tags",
+      "tagsPlaceholder": "tag1, tag2, tag3",
+      "opportunities": "Opportunities",
+      "noOpportunities": "No opportunities",
+      "opportunity": "Opportunity"
+    }
   },
   "inbox": {
     "title": "Inbox",

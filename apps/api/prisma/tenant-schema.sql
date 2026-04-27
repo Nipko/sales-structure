@@ -359,6 +359,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."leads" (
     "opted_out_at"        TIMESTAMP,
     "last_contacted_at"   TIMESTAMP,
     "metadata"            JSONB DEFAULT '{}',
+    "archived_at"         TIMESTAMP DEFAULT NULL,
     "created_at"          TIMESTAMP DEFAULT NOW(),
     "updated_at"          TIMESTAMP DEFAULT NOW()
 );
@@ -368,6 +369,7 @@ CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("score");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("campaign_id");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("course_id");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("opted_out");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("archived_at") WHERE archived_at IS NOT NULL;
 CREATE UNIQUE INDEX ON "{{SCHEMA_NAME}}"."leads" ("phone", "campaign_id") WHERE campaign_id IS NOT NULL;
 
 -- ---- Opportunities (CRM deal tracking) ----

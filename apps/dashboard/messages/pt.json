@@ -226,6 +226,16 @@
       "customer": "Clientes",
       "churned": "Perdidos"
     },
+    "createModal": {
+      "title": "Novo contato",
+      "firstName": "Nome",
+      "lastName": "Sobrenome",
+      "phone": "Telefone",
+      "email": "Email",
+      "stage": "Etapa",
+      "create": "Criar contato",
+      "creating": "Criando..."
+    },
     "importModal": {
       "title": "Importar contatos",
       "downloadTemplate": "Baixar modelo CSV",
@@ -288,7 +298,29 @@
         "create": "Criar segmento"
       }
     },
-    "subtitle": "Gerencie seus contatos, leads e segmentos"
+    "subtitle": "Gerencie seus contatos, leads e segmentos",
+    "leadDetail": {
+      "loading": "Carregando perfil...",
+      "contact": "Contato",
+      "edit": "Editar",
+      "save": "Salvar",
+      "cancel": "Cancelar",
+      "archive": "Arquivar",
+      "archiveTitle": "Arquivar contato",
+      "archiveMessage": "Esta acao removera permanentemente este contato. Tem certeza?",
+      "confirmArchive": "Arquivar",
+      "firstName": "Nome",
+      "lastName": "Sobrenome",
+      "email": "E-mail",
+      "phone": "Telefone",
+      "stage": "Etapa",
+      "vip": "VIP",
+      "tags": "Tags",
+      "tagsPlaceholder": "tag1, tag2, tag3",
+      "opportunities": "Oportunidades",
+      "noOpportunities": "Sem oportunidades",
+      "opportunity": "Oportunidade"
+    }
   },
   "inbox": {
     "title": "Caixa de entrada",

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
@@ -97,8 +97,32 @@ export class CrmController {
         @Param('leadId') leadId: string,
         @Body() body: Record<string, any>,
     ) {
-        await this.leadsRepo.updateLead(tenantId, leadId, body);
+        const { tags, ...leadData } = body;
+        if (Object.keys(leadData).length > 0) {
+            await this.leadsRepo.updateLead(tenantId, leadId, leadData);
+        }
+        if (Array.isArray(tags)) {
+            await this.leadsRepo.updateLeadTags(tenantId, leadId, tags);
+        }
         return { success: true, message: 'Lead updated' };
+    }
+
+    @Delete('leads/:tenantId/:leadId')
+    async archiveLead(
+        @Param('tenantId') tenantId: string,
+        @Param('leadId') leadId: string,
+    ) {
+        await this.leadsRepo.archiveLead(tenantId, leadId);
+        return { success: true, message: 'Lead archived' };
+    }
+
+    @Put('leads/:tenantId/:leadId/restore')
+    async restoreLead(
+        @Param('tenantId') tenantId: string,
+        @Param('leadId') leadId: string,
+    ) {
+        await this.leadsRepo.restoreLead(tenantId, leadId);
+        return { success: true, message: 'Lead restored' };
     }
 
     // ---- Lead Scoring ----

@@ -32,13 +32,14 @@ export class LeadsRepository {
     assignedTo?: string;
     courseId?: string;
     isVip?: boolean;
+    includeArchived?: boolean;
     page?: number;
     limit?: number;
   }) {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) throw new Error('Tenant not found');
 
-    const { search, stage, assignedTo, courseId, isVip, page = 1, limit = 25 } = params;
+    const { search, stage, assignedTo, courseId, isVip, includeArchived, page = 1, limit = 25 } = params;
     const offset = (page - 1) * limit;
 
     let q = `SELECT l.*, c.name as company_name FROM leads l
@@ -47,6 +48,9 @@ export class LeadsRepository {
     const p: any[] = [];
     let n = 1;
 
+    if (!includeArchived) {
+        q += ` AND l.archived_at IS NULL`;
+    }
     if (search) {
         q += ` AND (l.first_name ILIKE $${n} OR l.last_name ILIKE $${n} OR l.phone ILIKE $${n} OR l.email ILIKE $${n})`;
         p.push(`%${search}%`);
@@ -171,7 +175,9 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = data as Record<string, any>;
-    const fields = Object.keys(record).filter(k => record[k] !== undefined);
+    // Filter out non-column fields and undefined values
+    const skipFields = ['tags', 'id'];
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && !skipFields.includes(k));
     if (fields.length === 0) return this.getLeadById(tenantId, id);
 
     const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
@@ -184,5 +190,54 @@ export class LeadsRepository {
     );
     const resultsArray = results as any[];
     return resultsArray && resultsArray.length > 0 ? resultsArray[0] : null;
+  }
+
+  async updateLeadTags(tenantId: string, leadId: string, tagNames: string[]): Promise<void> {
+    const schema = await this.getTenantSchema(tenantId);
+    if (!schema) return;
+
+    // Remove existing tags
+    await this.prisma.executeInTenantSchema(schema,
+      `DELETE FROM lead_tags WHERE lead_id = $1::uuid`,
+      [leadId],
+    );
+
+    if (tagNames.length === 0) return;
+
+    // Ensure tags exist (create if not)
+    for (const name of tagNames) {
+      await this.prisma.executeInTenantSchema(schema,
+        `INSERT INTO tags (name, color) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`,
+        [name.trim(), '#6366f1'],
+      );
+    }
+
+    // Re-link tags to lead
+    for (const name of tagNames) {
+      await this.prisma.executeInTenantSchema(schema,
+        `INSERT INTO lead_tags (lead_id, tag_id)
+         SELECT $1::uuid, t.id FROM tags t WHERE t.name = $2
+         ON CONFLICT DO NOTHING`,
+        [leadId, name.trim()],
+      );
+    }
+  }
+
+  async archiveLead(tenantId: string, id: string): Promise<void> {
+    const schema = await this.getTenantSchema(tenantId);
+    if (!schema) throw new Error('Tenant not found');
+    await this.prisma.executeInTenantSchema(schema,
+      `UPDATE leads SET archived_at = NOW(), updated_at = NOW() WHERE id = $1::uuid`,
+      [id],
+    );
+  }
+
+  async restoreLead(tenantId: string, id: string): Promise<void> {
+    const schema = await this.getTenantSchema(tenantId);
+    if (!schema) throw new Error('Tenant not found');
+    await this.prisma.executeInTenantSchema(schema,
+      `UPDATE leads SET archived_at = NULL, updated_at = NOW() WHERE id = $1::uuid`,
+      [id],
+    );
   }
 }

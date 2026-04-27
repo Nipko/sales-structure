@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,8 @@ import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
     ChevronDown, CheckCircle, Circle, AlertCircle, Briefcase,
-    TrendingUp, Calendar, Zap, Send,
+    TrendingUp, Calendar, Zap, Send, Edit2, Save, X,
+    Archive, Loader2,
 } from "lucide-react";
 
 const STAGES: Record<string, { label: string; color: string }> = {
@@ -31,10 +33,21 @@ const EVENT_ICONS: Record<string, typeof MessageSquare> = {
     note: StickyNote, task: CheckSquare, stage_change: TrendingUp, event: Zap, message: MessageSquare,
 };
 
+interface EditForm {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    stage: string;
+    is_vip: boolean;
+    tags: string;
+}
+
 export default function Lead360Page() {
     const params = useParams();
     const router = useRouter();
     const { activeTenantId } = useTenant();
+    const t = useTranslations("contacts");
     const leadId = params?.leadId as string;
 
     const [lead360, setLead360] = useState<any>(null);
@@ -48,6 +61,23 @@ export default function Lead360Page() {
     const [addingNote, setAddingNote] = useState(false);
     const [newTask, setNewTask] = useState({ title: "", dueAt: "", type: "follow_up" });
     const [addingTask, setAddingTask] = useState(false);
+
+    // Edit mode state
+    const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [editForm, setEditForm] = useState<EditForm>({
+        first_name: "",
+        last_name: "",
+        email: "",
+        phone: "",
+        stage: "nuevo",
+        is_vip: false,
+        tags: "",
+    });
+
+    // Archive state
+    const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+    const [archiving, setArchiving] = useState(false);
 
     const tenantId = activeTenantId;
 
@@ -73,6 +103,69 @@ export default function Lead360Page() {
     }, [tenantId, leadId]);
 
     useEffect(() => { load(); }, [load]);
+
+    const enterEditMode = () => {
+        if (!lead360?.lead) return;
+        const { lead, tags = [] } = lead360;
+        setEditForm({
+            first_name: lead.first_name || "",
+            last_name: lead.last_name || "",
+            email: lead.email || "",
+            phone: lead.phone || "",
+            stage: lead.stage || "nuevo",
+            is_vip: !!lead.is_vip,
+            tags: tags.map((tg: any) => tg.name).join(", "),
+        });
+        setEditing(true);
+    };
+
+    const cancelEdit = () => {
+        setEditing(false);
+    };
+
+    const handleSave = async () => {
+        if (!tenantId || !leadId) return;
+        setSaving(true);
+        try {
+            const tagsArray = editForm.tags
+                .split(",")
+                .map((tg) => tg.trim())
+                .filter(Boolean);
+            await api.fetch(`/crm/leads/${tenantId}/${leadId}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    first_name: editForm.first_name,
+                    last_name: editForm.last_name,
+                    email: editForm.email,
+                    phone: editForm.phone,
+                    stage: editForm.stage,
+                    is_vip: editForm.is_vip,
+                    tags: tagsArray,
+                }),
+            });
+            setEditing(false);
+            await load();
+        } catch (e) {
+            console.error("Error saving lead:", e);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleArchive = async () => {
+        if (!tenantId || !leadId) return;
+        setArchiving(true);
+        try {
+            await api.fetch(`/crm/leads/${tenantId}/${leadId}`, {
+                method: "DELETE",
+            });
+            router.push("/admin/contacts");
+        } catch (e) {
+            console.error("Error archiving lead:", e);
+            setArchiving(false);
+            setShowArchiveConfirm(false);
+        }
+    };
 
     const handleAddNote = async () => {
         if (!newNote.trim() || !tenantId) return;
@@ -102,7 +195,7 @@ export default function Lead360Page() {
         return (
             <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                Loading profile...
+                {t("leadDetail.loading")}
             </div>
         );
     }
@@ -120,7 +213,7 @@ export default function Lead360Page() {
                 breadcrumbs={
                     <Breadcrumbs items={[
                         { label: "CRM", href: "/admin/contacts" },
-                        { label: lead?.name || "Contact" },
+                        { label: lead?.name || t("leadDetail.contact") },
                     ]} />
                 }
             />
@@ -130,16 +223,76 @@ export default function Lead360Page() {
                 <div className="flex flex-col gap-4">
                     {/* Profile Card */}
                     <div className="bg-card rounded-xl border border-border p-5">
-                        <div className="flex items-center gap-3.5 mb-4">
+                        {/* Header row with avatar, name, and action buttons */}
+                        <div className="flex items-start gap-3.5 mb-4">
                             <div className="w-[52px] h-[52px] rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white font-semibold text-xl shrink-0">
                                 {(lead.first_name || "?").charAt(0)}
                             </div>
-                            <div>
-                                <div className="font-semibold text-lg">{lead.first_name} {lead.last_name}</div>
-                                {lead.company_name && (
-                                    <div className="text-[13px] text-muted-foreground flex items-center gap-1">
-                                        <Building2 size={12} /> {lead.company_name}
+                            <div className="flex-1 min-w-0">
+                                {!editing ? (
+                                    <>
+                                        <div className="font-semibold text-lg">{lead.first_name} {lead.last_name}</div>
+                                        {lead.company_name && (
+                                            <div className="text-[13px] text-muted-foreground flex items-center gap-1">
+                                                <Building2 size={12} /> {lead.company_name}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col gap-2">
+                                        <input
+                                            type="text"
+                                            value={editForm.first_name}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))}
+                                            placeholder={t("leadDetail.firstName")}
+                                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={editForm.last_name}
+                                            onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))}
+                                            placeholder={t("leadDetail.lastName")}
+                                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                        />
                                     </div>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                                {!editing ? (
+                                    <>
+                                        <button
+                                            onClick={enterEditMode}
+                                            title={t("leadDetail.edit")}
+                                            className="p-1.5 rounded-lg bg-transparent border-none cursor-pointer text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                                        >
+                                            <Edit2 size={15} />
+                                        </button>
+                                        <button
+                                            onClick={() => setShowArchiveConfirm(true)}
+                                            title={t("leadDetail.archive")}
+                                            className="p-1.5 rounded-lg bg-transparent border-none cursor-pointer text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                        >
+                                            <Archive size={15} />
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            onClick={handleSave}
+                                            disabled={saving}
+                                            title={t("leadDetail.save")}
+                                            className="p-1.5 rounded-lg bg-transparent border-none cursor-pointer text-emerald-500 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                                        >
+                                            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                                        </button>
+                                        <button
+                                            onClick={cancelEdit}
+                                            title={t("leadDetail.cancel")}
+                                            className="p-1.5 rounded-lg bg-transparent border-none cursor-pointer text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                        >
+                                            <X size={15} />
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -156,35 +309,125 @@ export default function Lead360Page() {
                         </div>
 
                         {/* Stage */}
-                        <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: `${stageInfo.color}22`, color: stageInfo.color }}>
-                            {stageInfo.label}
-                        </span>
-                        {lead.is_vip && (
-                            <span className="ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
-                                ⭐ VIP
-                            </span>
+                        {!editing ? (
+                            <div>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: `${stageInfo.color}22`, color: stageInfo.color }}>
+                                    {stageInfo.label}
+                                </span>
+                                {lead.is_vip && (
+                                    <span className="ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
+                                        VIP
+                                    </span>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-2.5">
+                                <div>
+                                    <label className="text-[11px] text-muted-foreground mb-1 block">{t("leadDetail.stage")}</label>
+                                    <select
+                                        value={editForm.stage}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, stage: e.target.value }))}
+                                        className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                    >
+                                        {Object.entries(STAGES).map(([key, val]) => (
+                                            <option key={key} value={key}>{val.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={editForm.is_vip}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, is_vip: e.target.checked }))}
+                                        className="w-4 h-4 rounded border-border accent-primary"
+                                    />
+                                    <Star size={14} className="text-amber-400" />
+                                    <span className="text-muted-foreground">{t("leadDetail.vip")}</span>
+                                </label>
+                            </div>
                         )}
 
-                        <div className="mt-4 flex flex-col gap-2">
-                            {lead.phone && (
-                                <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-[13px] text-muted-foreground no-underline">
-                                    <Phone size={14} className="text-primary" /> {lead.phone}
-                                </a>
-                            )}
-                            {lead.email && (
-                                <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-[13px] text-muted-foreground no-underline">
-                                    <Mail size={14} className="text-primary" /> {lead.email}
-                                </a>
-                            )}
-                        </div>
+                        {/* Contact info */}
+                        {!editing ? (
+                            <div className="mt-4 flex flex-col gap-2">
+                                {lead.phone && (
+                                    <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-[13px] text-muted-foreground no-underline">
+                                        <Phone size={14} className="text-primary" /> {lead.phone}
+                                    </a>
+                                )}
+                                {lead.email && (
+                                    <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-[13px] text-muted-foreground no-underline">
+                                        <Mail size={14} className="text-primary" /> {lead.email}
+                                    </a>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="mt-3 flex flex-col gap-2">
+                                <div>
+                                    <label className="text-[11px] text-muted-foreground mb-1 block">{t("leadDetail.email")}</label>
+                                    <input
+                                        type="email"
+                                        value={editForm.email}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                                        placeholder={t("leadDetail.email")}
+                                        className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] text-muted-foreground mb-1 block">{t("leadDetail.phone")}</label>
+                                    <input
+                                        type="tel"
+                                        value={editForm.phone}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                                        placeholder={t("leadDetail.phone")}
+                                        className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                    />
+                                </div>
+                            </div>
+                        )}
 
-                        {tags.length > 0 && (
-                            <div className="mt-3 flex flex-wrap gap-1">
-                                {tags.map((t: any) => (
-                                    <span key={t.name} className="text-[10px] px-2 py-0.5 rounded font-semibold" style={{ background: `${t.color}22`, color: t.color }}>
-                                        {t.name}
-                                    </span>
-                                ))}
+                        {/* Tags */}
+                        {!editing ? (
+                            tags.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-1">
+                                    {tags.map((tg: any) => (
+                                        <span key={tg.name} className="text-[10px] px-2 py-0.5 rounded font-semibold" style={{ background: `${tg.color}22`, color: tg.color }}>
+                                            {tg.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )
+                        ) : (
+                            <div className="mt-3">
+                                <label className="text-[11px] text-muted-foreground mb-1 block">{t("leadDetail.tags")}</label>
+                                <input
+                                    type="text"
+                                    value={editForm.tags}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, tags: e.target.value }))}
+                                    placeholder={t("leadDetail.tagsPlaceholder")}
+                                    className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                />
+                            </div>
+                        )}
+
+                        {/* Save / Cancel buttons at bottom of card when editing */}
+                        {editing && (
+                            <div className="mt-4 flex gap-2">
+                                <button
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className="flex-1 px-3 py-2 rounded-lg border-none bg-primary text-white font-semibold text-[13px] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                >
+                                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    {t("leadDetail.save")}
+                                </button>
+                                <button
+                                    onClick={cancelEdit}
+                                    className="px-3 py-2 rounded-lg border border-border bg-transparent text-muted-foreground font-semibold text-[13px] cursor-pointer flex items-center justify-center gap-1.5 hover:bg-muted transition-colors"
+                                >
+                                    <X size={14} />
+                                    {t("leadDetail.cancel")}
+                                </button>
                             </div>
                         )}
                     </div>
@@ -192,13 +435,13 @@ export default function Lead360Page() {
                     {/* Opportunities */}
                     <div className="bg-card rounded-xl border border-border p-4">
                         <h3 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
-                            <Briefcase size={14} className="text-primary" /> Opportunities
+                            <Briefcase size={14} className="text-primary" /> {t("leadDetail.opportunities")}
                         </h3>
                         {opportunities.length === 0 ? (
-                            <p className="text-[13px] text-muted-foreground m-0">No opportunities</p>
+                            <p className="text-[13px] text-muted-foreground m-0">{t("leadDetail.noOpportunities")}</p>
                         ) : opportunities.map((op: any) => (
                             <div key={op.id} className="py-2 border-b border-border">
-                                <div className="text-[13px] font-semibold">{op.course_name || "Opportunity"}</div>
+                                <div className="text-[13px] font-semibold">{op.course_name || t("leadDetail.opportunity")}</div>
                                 <div className="flex gap-2 mt-1">
                                     <span className="text-[11px] text-muted-foreground">{STAGES[op.stage]?.label || op.stage}</span>
                                     {op.estimated_value && (
@@ -219,7 +462,7 @@ export default function Lead360Page() {
                         {[
                             { key: "timeline", label: "Timeline", icon: Clock },
                             { key: "notes", label: `Notes (${notes.length})`, icon: StickyNote },
-                            { key: "tasks", label: `Tasks (${tasks.filter((t: any) => t.status !== "done").length})`, icon: CheckSquare },
+                            { key: "tasks", label: `Tasks (${tasks.filter((tk: any) => tk.status !== "done").length})`, icon: CheckSquare },
                         ].map(tab => (
                             <button
                                 key={tab.key}
@@ -306,14 +549,14 @@ export default function Lead360Page() {
                                 <div className="mb-4 p-3 bg-muted rounded-[10px] flex flex-col gap-2">
                                     <input
                                         value={newTask.title}
-                                        onChange={e => setNewTask(t => ({ ...t, title: e.target.value }))}
+                                        onChange={e => setNewTask(tk => ({ ...tk, title: e.target.value }))}
                                         placeholder="New task... (e.g.: Call client)"
                                         className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-[13px] outline-none box-border"
                                     />
                                     <div className="flex gap-2">
                                         <select
                                             value={newTask.type}
-                                            onChange={e => setNewTask(t => ({ ...t, type: e.target.value }))}
+                                            onChange={e => setNewTask(tk => ({ ...tk, type: e.target.value }))}
                                             className="flex-1 px-2.5 py-2 rounded-lg border border-border bg-card text-foreground text-xs outline-none"
                                         >
                                             <option value="follow_up">Follow-up</option>
@@ -325,7 +568,7 @@ export default function Lead360Page() {
                                         <input
                                             type="datetime-local"
                                             value={newTask.dueAt}
-                                            onChange={e => setNewTask(t => ({ ...t, dueAt: e.target.value }))}
+                                            onChange={e => setNewTask(tk => ({ ...tk, dueAt: e.target.value }))}
                                             className="flex-1 px-2.5 py-2 rounded-lg border border-border bg-card text-foreground text-xs outline-none"
                                         />
                                         <button
@@ -372,6 +615,40 @@ export default function Lead360Page() {
                     </div>
                 </div>
             </div>
+
+            {/* Archive Confirmation Dialog */}
+            {showArchiveConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !archiving && setShowArchiveConfirm(false)}>
+                    <div className="bg-card rounded-xl border border-border p-6 w-full max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                                <Archive size={20} className="text-red-500" />
+                            </div>
+                            <div>
+                                <h3 className="m-0 text-base font-semibold">{t("leadDetail.archiveTitle")}</h3>
+                                <p className="m-0 text-[13px] text-muted-foreground">{t("leadDetail.archiveMessage")}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                onClick={() => setShowArchiveConfirm(false)}
+                                disabled={archiving}
+                                className="px-4 py-2 rounded-lg border border-border bg-transparent text-muted-foreground font-semibold text-[13px] cursor-pointer hover:bg-muted transition-colors"
+                            >
+                                {t("leadDetail.cancel")}
+                            </button>
+                            <button
+                                onClick={handleArchive}
+                                disabled={archiving}
+                                className="px-4 py-2 rounded-lg border-none bg-red-500 text-white font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                                {archiving ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                                {t("leadDetail.confirmArchive")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

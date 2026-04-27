@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 
@@ -249,5 +250,52 @@ export class SegmentsService {
             whereClause: conditions.join(' AND '),
             params,
         };
+    }
+
+    /**
+     * Hourly cron: refresh contact_count for all dynamic segments across all tenants.
+     */
+    @Cron('0 * * * *')
+    async refreshDynamicSegments() {
+        try {
+            const tenants = await this.prisma.$queryRaw<any[]>`SELECT id, schema_name FROM tenants WHERE is_active = true`;
+            let refreshed = 0;
+
+            for (const tenant of (tenants || [])) {
+                const schema = tenant.schema_name;
+                const segments = await this.prisma.executeInTenantSchema<any[]>(schema,
+                    `SELECT id, filter_rules FROM contact_segments WHERE is_dynamic = true`,
+                    [],
+                );
+
+                for (const seg of (segments || [])) {
+                    try {
+                        const rules: FilterRule[] = typeof seg.filter_rules === 'string' ? JSON.parse(seg.filter_rules) : seg.filter_rules;
+                        if (!rules || rules.length === 0) continue;
+
+                        const { whereClause, params } = this.buildFilterSQL(rules);
+                        const count = await this.prisma.executeInTenantSchema<any[]>(schema,
+                            `SELECT COUNT(*) as total FROM leads WHERE archived_at IS NULL AND ${whereClause}`,
+                            params,
+                        );
+                        const newCount = Number(count?.[0]?.total || 0);
+
+                        await this.prisma.executeInTenantSchema(schema,
+                            `UPDATE contact_segments SET contact_count = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                            [newCount, seg.id],
+                        );
+                        refreshed++;
+                    } catch (e: any) {
+                        this.logger.warn(`Segment refresh failed for ${seg.id}: ${e.message}`);
+                    }
+                }
+            }
+
+            if (refreshed > 0) {
+                this.logger.log(`[Segments] Refreshed ${refreshed} dynamic segment(s)`);
+            }
+        } catch (e: any) {
+            this.logger.error(`[Segments] Dynamic refresh cron failed: ${e.message}`);
+        }
     }
 }

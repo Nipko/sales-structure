@@ -392,6 +392,9 @@ CREATE TABLE "{{SCHEMA_NAME}}"."opportunities" (
     "lost_at"         TIMESTAMP,
     "loss_reason"     TEXT,
     "assigned_to"     VARCHAR(255),
+    "approval_status" VARCHAR(20) DEFAULT NULL,    -- pending, approved, rejected
+    "approval_stage"  VARCHAR(50) DEFAULT NULL,    -- target stage awaiting approval
+    "approved_by"     VARCHAR(255),
     "metadata"        JSONB DEFAULT '{}',
     "created_at"      TIMESTAMP DEFAULT NOW(),
     "updated_at"      TIMESTAMP DEFAULT NOW()
@@ -1081,6 +1084,20 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."custom_attribute_values" (
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."custom_attribute_values" ("entity_id", "entity_type");
 
+-- ---- Scoring Configuration (per tenant) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."scoring_config" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id" UUID NOT NULL,
+    "weights" JSONB NOT NULL DEFAULT '{"engagement":0.25,"intent":0.30,"recency":0.20,"stageProgress":0.15,"profileCompleteness":0.10}',
+    "purchase_keywords" TEXT[] DEFAULT '{}',
+    "decay_enabled" BOOLEAN DEFAULT false,
+    "decay_days" INTEGER DEFAULT 30,
+    "decay_factor" DECIMAL(3,2) DEFAULT 0.50,
+    "is_active" BOOLEAN DEFAULT true,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
 -- ---- Contact Segments (C2) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."contact_segments" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -1089,6 +1106,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."contact_segments" (
     "description" TEXT,
     "filter_rules" JSONB NOT NULL DEFAULT '[]',
     "contact_count" INTEGER DEFAULT 0,
+    "is_dynamic" BOOLEAN DEFAULT false,
     "created_by" VARCHAR(255),
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()

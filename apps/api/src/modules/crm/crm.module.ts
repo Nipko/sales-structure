@@ -11,11 +11,13 @@ import { CustomAttributesService } from './services/custom-attributes/custom-att
 import { SegmentsService } from './services/segments/segments.service';
 import { ImportExportService } from './services/import-export/import-export.service';
 import { CrmAnalyticsService } from './services/crm-analytics/crm-analytics.service';
+import { CrmInsightsService } from './services/crm-insights/crm-insights.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { AIModule } from '../ai/ai.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule],
+    imports: [PrismaModule, RedisModule, AIModule],
     controllers: [CrmController],
     providers: [
         NotesService,
@@ -29,6 +31,7 @@ import { RedisModule } from '../redis/redis.module';
         SegmentsService,
         ImportExportService,
         CrmAnalyticsService,
+        CrmInsightsService,
     ],
     exports: [
         NotesService,
@@ -42,6 +45,7 @@ import { RedisModule } from '../redis/redis.module';
         SegmentsService,
         ImportExportService,
         CrmAnalyticsService,
+        CrmInsightsService,
     ],
 })
 export class CrmModule {}

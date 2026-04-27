@@ -26,7 +26,7 @@ export interface ScoringResult {
 // Constants
 // ============================================
 
-const WEIGHTS = {
+const DEFAULT_WEIGHTS = {
     engagement: 0.25,
     intent: 0.30,
     recency: 0.20,
@@ -34,12 +34,20 @@ const WEIGHTS = {
     profileCompleteness: 0.10,
 };
 
-const PURCHASE_KEYWORDS = [
+const DEFAULT_KEYWORDS = [
     'precio', 'costo', 'comprar', 'reservar', 'disponible',
     'cuánto vale', 'cuanto vale', 'quiero', 'inscribir',
     'matricular', 'pagar', 'descuento', 'promoción', 'promocion',
     'oferta', 'financiación', 'financiacion', 'cuotas',
 ];
+
+interface ScoringConfig {
+    weights: typeof DEFAULT_WEIGHTS;
+    keywords: string[];
+    decayEnabled: boolean;
+    decayDays: number;
+    decayFactor: number;
+}
 
 const STAGE_SCORES: Record<string, number> = {
     nuevo: 10,
@@ -71,6 +79,59 @@ export class LeadScoringService {
     ) {}
 
     // ------------------------------------------------------------------
+    // Config loader (per-tenant, Redis cached)
+    // ------------------------------------------------------------------
+
+    private async getConfig(tenantId: string): Promise<ScoringConfig> {
+        const cacheKey = `scoring_config:${tenantId}`;
+        const cached = await this.redis.getJson<ScoringConfig>(cacheKey);
+        if (cached) return cached;
+
+        try {
+            const schema = await this.getSchema(tenantId);
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT weights, purchase_keywords, decay_enabled, decay_days, decay_factor
+                 FROM scoring_config WHERE tenant_id = $1::uuid AND is_active = true LIMIT 1`,
+                [tenantId],
+            );
+
+            if (rows?.length > 0) {
+                const row = rows[0];
+                const config: ScoringConfig = {
+                    weights: { ...DEFAULT_WEIGHTS, ...(row.weights || {}) },
+                    keywords: row.purchase_keywords?.length > 0 ? row.purchase_keywords : DEFAULT_KEYWORDS,
+                    decayEnabled: !!row.decay_enabled,
+                    decayDays: row.decay_days || 30,
+                    decayFactor: Number(row.decay_factor) || 0.5,
+                };
+                await this.redis.setJson(cacheKey, config, 600); // 10 min cache
+                return config;
+            }
+        } catch (e: any) {
+            this.logger.warn(`Could not load scoring config for tenant ${tenantId}: ${e.message}`);
+        }
+
+        // Fallback to defaults
+        const defaults: ScoringConfig = {
+            weights: DEFAULT_WEIGHTS,
+            keywords: DEFAULT_KEYWORDS,
+            decayEnabled: false,
+            decayDays: 30,
+            decayFactor: 0.5,
+        };
+        await this.redis.setJson(cacheKey, defaults, 600);
+        return defaults;
+    }
+
+    private async getSchema(tenantId: string): Promise<string> {
+        const cached = await this.redis.get(`tenant:${tenantId}:schema`);
+        if (cached) return cached;
+        const tenant = await this.prisma.$queryRaw<any[]>`SELECT schema_name FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1`;
+        if (!tenant?.[0]?.schema_name) throw new Error('Tenant not found');
+        return tenant[0].schema_name;
+    }
+
+    // ------------------------------------------------------------------
     // Public API
     // ------------------------------------------------------------------
 
@@ -87,8 +148,9 @@ export class LeadScoringService {
             return this.defaultResult();
         }
 
-        const factors = await this.computeFactors(schema, leadId);
-        const result = this.buildResult(factors);
+        const config = await this.getConfig(tenantId);
+        const factors = await this.computeFactors(schema, leadId, config);
+        const result = this.buildResult(factors, config);
 
         // Cache result
         await this.redis.setJson(cacheKey, result, CACHE_TTL_SECONDS);
@@ -104,8 +166,9 @@ export class LeadScoringService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return this.defaultResult();
 
-        const factors = await this.computeFactors(schema, leadId);
-        const result = this.buildResult(factors);
+        const config = await this.getConfig(tenantId);
+        const factors = await this.computeFactors(schema, leadId, config);
+        const result = this.buildResult(factors, config);
 
         // Persist score and scoring metadata on the lead
         const scoringJson = JSON.stringify({
@@ -188,10 +251,10 @@ export class LeadScoringService {
     // Factor computation (all simple SQL aggregates, no LLM)
     // ------------------------------------------------------------------
 
-    private async computeFactors(schema: string, leadId: string): Promise<ScoringFactors> {
+    private async computeFactors(schema: string, leadId: string, config?: ScoringConfig): Promise<ScoringFactors> {
         const [engagement, intent, recency, stageProgress, profileCompleteness] = await Promise.all([
             this.computeEngagement(schema, leadId),
-            this.computeIntent(schema, leadId),
+            this.computeIntent(schema, leadId, config),
             this.computeRecency(schema, leadId),
             this.computeStageProgress(schema, leadId),
             this.computeProfileCompleteness(schema, leadId),
@@ -238,7 +301,7 @@ export class LeadScoringService {
     /**
      * Intent: scan last 10 messages for purchase keywords
      */
-    private async computeIntent(schema: string, leadId: string): Promise<number> {
+    private async computeIntent(schema: string, leadId: string, config?: ScoringConfig): Promise<number> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT m.content_text
@@ -259,7 +322,8 @@ export class LeadScoringService {
 
         for (const row of rows) {
             const text = (row.content_text || '').toLowerCase();
-            for (const keyword of PURCHASE_KEYWORDS) {
+            const keywords = config?.keywords || DEFAULT_KEYWORDS;
+            for (const keyword of keywords) {
                 if (text.includes(keyword)) {
                     keywordHits++;
                     break; // Count max 1 hit per message
@@ -353,13 +417,14 @@ export class LeadScoringService {
     // Helpers
     // ------------------------------------------------------------------
 
-    private buildResult(factors: ScoringFactors): ScoringResult {
+    private buildResult(factors: ScoringFactors, config?: ScoringConfig): ScoringResult {
+        const w = config?.weights || DEFAULT_WEIGHTS;
         const compositeScore =
-            factors.engagement * WEIGHTS.engagement +
-            factors.intent * WEIGHTS.intent +
-            factors.recency * WEIGHTS.recency +
-            factors.stageProgress * WEIGHTS.stageProgress +
-            factors.profileCompleteness * WEIGHTS.profileCompleteness;
+            factors.engagement * w.engagement +
+            factors.intent * w.intent +
+            factors.recency * w.recency +
+            factors.stageProgress * w.stageProgress +
+            factors.profileCompleteness * w.profileCompleteness;
 
         const score = Math.max(1, Math.min(10, Math.round(compositeScore / 10)));
 

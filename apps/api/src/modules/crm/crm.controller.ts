@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
@@ -11,6 +11,7 @@ import { CustomAttributesService } from './services/custom-attributes/custom-att
 import { SegmentsService } from './services/segments/segments.service';
 import { ImportExportService } from './services/import-export/import-export.service';
 import { CrmAnalyticsService } from './services/crm-analytics/crm-analytics.service';
+import { CrmInsightsService } from './services/crm-insights/crm-insights.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -31,6 +32,7 @@ export class CrmController {
         private segmentsService: SegmentsService,
         private importExportService: ImportExportService,
         private crmAnalytics: CrmAnalyticsService,
+        private crmInsights: CrmInsightsService,
         private prisma: PrismaService,
     ) {}
 
@@ -436,6 +438,110 @@ export class CrmController {
     async getImportTemplate() {
         const template = this.importExportService.getImportTemplate();
         return { success: true, data: template };
+    }
+
+    // ---- AI Insights ----
+
+    @Get('leads/:tenantId/:leadId/insight')
+    async getLeadInsight(
+        @Param('tenantId') tenantId: string,
+        @Param('leadId') leadId: string,
+    ) {
+        const data = await this.crmInsights.getInsight(tenantId, leadId);
+        return { success: true, data };
+    }
+
+    // ---- Deal Approval ----
+
+    @Put('opportunities/:tenantId/:opportunityId/request-approval')
+    async requestApproval(
+        @Param('tenantId') tenantId: string,
+        @Param('opportunityId') opportunityId: string,
+        @Body() body: { stage: string },
+    ) {
+        const schema = await this.getSchema(tenantId);
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE opportunities SET approval_status = 'pending', approval_stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+            [body.stage, opportunityId],
+        );
+        return { success: true, message: 'Approval requested' };
+    }
+
+    @Put('opportunities/:tenantId/:opportunityId/approve')
+    async approveOpportunity(
+        @Param('tenantId') tenantId: string,
+        @Param('opportunityId') opportunityId: string,
+        @Req() req: any,
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const opp = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT approval_stage FROM opportunities WHERE id = $1::uuid`, [opportunityId]);
+        if (!opp?.length) return { success: false, message: 'Not found' };
+
+        // Move to the approved stage
+        await this.oppsRepo.moveOpportunity(tenantId, opportunityId, opp[0].approval_stage);
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE opportunities SET approval_status = 'approved', approved_by = $1, updated_at = NOW() WHERE id = $2::uuid`,
+            [req.user?.sub || 'system', opportunityId],
+        );
+        return { success: true, message: 'Opportunity approved and moved' };
+    }
+
+    @Put('opportunities/:tenantId/:opportunityId/reject')
+    async rejectOpportunity(
+        @Param('tenantId') tenantId: string,
+        @Param('opportunityId') opportunityId: string,
+        @Req() req: any,
+        @Body() body: { reason?: string },
+    ) {
+        const schema = await this.getSchema(tenantId);
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE opportunities SET approval_status = 'rejected', approved_by = $1, loss_reason = COALESCE($2, loss_reason), updated_at = NOW() WHERE id = $3::uuid`,
+            [req.user?.sub || 'system', body.reason || null, opportunityId],
+        );
+        return { success: true, message: 'Opportunity rejected' };
+    }
+
+    // ---- Scoring Config ----
+
+    @Get('scoring-config/:tenantId')
+    async getScoringConfig(@Param('tenantId') tenantId: string) {
+        const schema = await this.getSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT * FROM scoring_config WHERE tenant_id = $1::uuid AND is_active = true LIMIT 1`,
+            [tenantId],
+        );
+        return { success: true, data: rows?.[0] || null };
+    }
+
+    @Post('scoring-config/:tenantId')
+    async saveScoringConfig(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { weights?: any; purchase_keywords?: string[]; decay_enabled?: boolean; decay_days?: number; decay_factor?: number },
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id FROM scoring_config WHERE tenant_id = $1::uuid LIMIT 1`,
+            [tenantId],
+        );
+
+        if (existing?.length > 0) {
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE scoring_config SET weights = $1::jsonb, purchase_keywords = $2::text[], decay_enabled = $3, decay_days = $4, decay_factor = $5, updated_at = NOW()
+                 WHERE id = $6::uuid`,
+                [JSON.stringify(body.weights || {}), body.purchase_keywords || [], body.decay_enabled ?? false, body.decay_days ?? 30, body.decay_factor ?? 0.5, existing[0].id],
+            );
+        } else {
+            await this.prisma.executeInTenantSchema(schema,
+                `INSERT INTO scoring_config (tenant_id, weights, purchase_keywords, decay_enabled, decay_days, decay_factor)
+                 VALUES ($1::uuid, $2::jsonb, $3::text[], $4, $5, $6)`,
+                [tenantId, JSON.stringify(body.weights || {}), body.purchase_keywords || [], body.decay_enabled ?? false, body.decay_days ?? 30, body.decay_factor ?? 0.5],
+            );
+        }
+
+        // Invalidate config cache
+        await this.prisma.executeInTenantSchema(schema, `SELECT 1`, []);
+        return { success: true, message: 'Scoring config saved' };
     }
 
     // ---- CRM Analytics ----

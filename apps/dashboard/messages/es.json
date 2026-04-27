@@ -57,16 +57,16 @@
       "inventory": "Inventario",
       "orders": "Pedidos",
       "channels": "Canales",
-      "analytics": "Analytics",
+      "analytics": "Análisis",
       "reports": "Reportes",
       "alerts": "Alertas",
-      "compliance": "Compliance",
+      "compliance": "Privacidad",
       "aiAgent": "Agente IA",
-      "knowledgeBase": "Knowledge Base",
+      "knowledgeBase": "Base de Conocimiento",
       "identity": "Identidad",
       "users": "Usuarios",
       "settings": "Configuración",
-      "tenants": "Tenants",
+      "tenants": "Empresas",
       "financials": "Finanzas"
     }
   },
@@ -86,7 +86,7 @@
       "all": "Todas",
       "chat": "Mensajes",
       "handoff": "Transferencias",
-      "compliance": "Compliance",
+      "compliance": "Privacidad",
       "appointment": "Citas",
       "automation": "Automatización",
       "order": "Órdenes",
@@ -620,7 +620,7 @@
         "chatDesc": "Cuando un cliente envía un mensaje nuevo",
         "handoff": "Transferencias",
         "handoffDesc": "Cuando una conversación se escala a un agente",
-        "compliance": "Compliance",
+        "compliance": "Privacidad",
         "complianceDesc": "Solicitudes de opt-out y consentimiento",
         "appointments": "Citas",
         "appointmentsDesc": "Nuevas citas, cancelaciones y recordatorios",
@@ -1085,12 +1085,12 @@
     }
   },
   "compliance": {
-    "title": "Compliance & Audit",
-    "subtitle": "Trazabilidad legal, consentimiento y privacidad",
-    "legalTexts": "Textos Legales",
+    "title": "Privacidad y Cumplimiento",
+    "subtitle": "Gestión de consentimiento, solicitudes de baja y trazabilidad legal",
+    "legalTexts": "Textos legales",
     "consents": "Consentimientos",
-    "optOuts": "Opt-Outs",
-    "deletionRequests": "Solicitudes de Borrado",
+    "optOuts": "Solicitudes de baja",
+    "deletionRequests": "Solicitudes de eliminación",
     "confirmOptOut": "Confirmar baja",
     "rejectOptOut": "Falso positivo",
     "detectedMessage": "Mensaje detectado",
@@ -1113,14 +1113,14 @@
     },
     "modal": {
       "newLegalText": "Nuevo texto legal",
-      "registerOptOut": "Registrar opt-out"
+      "registerOptOut": "Registrar solicitud de baja"
     },
     "empty": {
       "legal": "No hay textos legales configurados.",
       "consents": "Aún no hay consentimientos registrados.",
-      "optOuts": "No hay opt-outs registrados.",
-      "optOutsFiltered": "No hay opt-outs con estado \"{status}\".",
-      "deletions": "No hay solicitudes de borrado."
+      "optOuts": "No hay solicitudes de baja registradas.",
+      "optOutsFiltered": "No hay solicitudes de baja con estado \"{status}\".",
+      "deletions": "No hay solicitudes de eliminación."
     },
     "toast": {
       "legalCreated": "Texto legal creado",

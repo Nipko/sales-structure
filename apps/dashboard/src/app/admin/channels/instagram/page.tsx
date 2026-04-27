@@ -58,19 +58,21 @@ export default function InstagramSetupPage() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // Check for OAuth result from callback redirect (query params)
+    // Listen for OAuth result via BroadcastChannel (works across same-origin windows)
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const oauthResult = params.get("oauth_result");
-        if (oauthResult === "success") {
-            setMessage({ type: "success", text: t("instagram.connectSuccess") });
-            // Clean URL
-            window.history.replaceState({}, '', window.location.pathname);
-        } else if (oauthResult === "error") {
-            setMessage({ type: "error", text: params.get("error_message") || t("instagram.connectFailed") });
-            window.history.replaceState({}, '', window.location.pathname);
-        }
-    }, [t]);
+        const channel = new BroadcastChannel("ig_oauth");
+        channel.onmessage = (event) => {
+            if (event.data?.type === "ig_oauth_success") {
+                setMessage({ type: "success", text: t("instagram.connectSuccess") });
+                setConnecting(false);
+                loadData();
+            } else if (event.data?.type === "ig_oauth_error") {
+                setMessage({ type: "error", text: event.data.message || t("instagram.connectFailed") });
+                setConnecting(false);
+            }
+        };
+        return () => channel.close();
+    }, [loadData, t]);
 
     const handleOAuthConnect = () => {
         const state = crypto.randomUUID();
@@ -89,8 +91,22 @@ export default function InstagramSetupPage() {
             state,
         });
 
-        // Redirect in same window (popups don't close reliably after cross-origin navigation)
-        window.location.href = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+        const url = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+
+        const popup = window.open(
+            url,
+            "instagram_oauth",
+            `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+        );
+
+        if (!popup) {
+            // Popup blocked — fall back to same-window redirect
+            window.location.href = url;
+        }
     };
 
     const handleDisconnect = async () => {

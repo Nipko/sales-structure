@@ -114,7 +114,7 @@ export class ChannelTokenService {
         let accessToken: string;
         if (cred?.encryptedValue) {
             accessToken = this.decryptToken(cred.encryptedValue);
-        } else if (account.accessToken) {
+        } else if (account.accessToken && account.accessToken !== 'encrypted_ref') {
             // Fallback: encrypted token stored directly in channel_accounts
             accessToken = this.decryptToken(account.accessToken);
         } else {
@@ -124,6 +124,12 @@ export class ChannelTokenService {
         const result: GenericChannelCredentials = { accessToken, accountId: account.accountId, channelType };
         await this.redis.setJson(cacheKey, result, this.CACHE_TTL);
         return result;
+    }
+
+    /** Invalidate cached token for a channel+tenant */
+    async invalidateCache(channelType: string, tenantId: string): Promise<void> {
+        const cacheKey = `${channelType}_token:${tenantId}`;
+        await this.redis.del(cacheKey);
     }
 
     /** AES-256-GCM decryption — same logic as WhatsappCryptoService */

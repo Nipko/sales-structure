@@ -399,6 +399,9 @@ export class ChannelManagementController {
             throw new BadRequestException('Failed to connect any Facebook page');
         }
 
+        // Invalidate cached token so next message uses the fresh one
+        await this.channelToken.invalidateCache('messenger', tenantId);
+
         this.logger.log(`Messenger OAuth: ${connected.length} page(s) connected for tenant ${tenantId}`);
         return { success: true, data: { connected, total: pages.length } };
     }
@@ -584,6 +587,9 @@ export class ChannelManagementController {
                 },
             });
         }
+
+        // Invalidate cached token so next message uses the fresh one
+        await this.channelToken.invalidateCache('instagram', tenantId);
 
         this.logger.log(`Instagram OAuth: ${displayName} connected for tenant ${tenantId}`);
         return {

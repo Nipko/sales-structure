@@ -504,12 +504,23 @@ export class ChannelManagementController {
 
         // Step 4: Encrypt and store
         const encrypted = this.cryptoService.encryptToken(longLivedToken);
-        const displayName = profile.username ? `@${profile.username}` : profile.name || igUserId;
+        // Use the IG-scoped user ID from profile (matches webhook entry.id)
+        // profile.user_id or profile.id is the IGSID, while shortData.user_id is app-scoped
+        const igScopedId = String(profile.user_id || profile.id || igUserId);
+        const displayName = profile.username ? `@${profile.username}` : profile.name || igScopedId;
         const pictureUrl = profile.profile_picture_url || null;
 
+        this.logger.log(`Instagram OAuth: app-scoped=${igUserId}, ig-scoped=${igScopedId}, username=${profile.username}`);
+
         // Upsert ChannelAccount (unique on [channelType, accountId])
+        // Use igScopedId so it matches the webhook's entry[0].id
+        // Also check old app-scoped ID for migration
         const existingAccount = await this.prisma.channelAccount.findFirst({
-            where: { channelType: 'instagram', accountId: igUserId },
+            where: {
+                channelType: 'instagram',
+                tenantId,
+                accountId: { in: [igScopedId, igUserId] },
+            },
         });
 
         if (existingAccount) {
@@ -517,6 +528,7 @@ export class ChannelManagementController {
                 where: { id: existingAccount.id },
                 data: {
                     tenantId,
+                    accountId: igScopedId, // Fix: ensure we store the IG-scoped ID
                     displayName,
                     accessToken: 'encrypted_ref',
                     isActive: true,
@@ -533,7 +545,7 @@ export class ChannelManagementController {
                 data: {
                     tenantId,
                     channelType: 'instagram',
-                    accountId: igUserId,
+                    accountId: igScopedId,
                     displayName,
                     accessToken: 'encrypted_ref',
                     isActive: true,

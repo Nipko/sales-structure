@@ -41,46 +41,42 @@ export class ActivityService {
         if (!lead || lead.length === 0) throw new Error('Lead not found');
         const contactId = lead[0].contact_id;
 
-        // Parallel queries: notes, tasks, stage history, analytics events
-        const [notes, tasks, stageHistory, analyticsEvents, messages] = await Promise.all([
-            this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT 'note' as event_type, id, created_at, content as description, created_by as actor
-                 FROM notes WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-                [leadId]
-            ),
-            this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT 'task' as event_type, id, created_at, title as description, created_by as actor, status, due_at
-                 FROM tasks WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-                [leadId]
-            ),
-            this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT 'stage_change' as event_type, id, created_at, 
-                    (from_stage || ' → ' || to_stage) as description, triggered_by as actor
-                 FROM stage_history WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-                [leadId]
-            ),
-            this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT 'event' as event_type, id, created_at, event_type as description, NULL as actor
-                 FROM analytics_events WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-                [contactId]
-            ),
-            contactId
-                ? this.prisma.executeInTenantSchema<any[]>(schema,
-                    `SELECT 'message' as event_type, m.id, m.created_at, 
-                        COALESCE(m.content_text, '[media]') as description, m.direction as actor
-                     FROM messages m
-                     JOIN conversations c ON c.id = m.conversation_id
-                     WHERE c.contact_id = $1::uuid
-                     ORDER BY m.created_at DESC LIMIT 30`,
-                    [contactId]
-                )
-                : Promise.resolve([]),
-        ]);
+        // Sequential queries to avoid PgBouncer transaction timeout from 5 parallel connections
+        const notes = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT 'note' as event_type, id, created_at, content as description, created_by as actor
+             FROM notes WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
+            [leadId],
+        );
+        const tasks = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT 'task' as event_type, id, created_at, title as description, created_by as actor, status, due_at
+             FROM tasks WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
+            [leadId],
+        );
+        const stageHistory = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT 'stage_change' as event_type, id, created_at,
+                (from_stage || ' → ' || to_stage) as description, triggered_by as actor
+             FROM stage_history WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
+            [leadId],
+        );
+        const analyticsEvents = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT 'event' as event_type, id, created_at, event_type as description, NULL as actor
+             FROM analytics_events WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
+            [contactId],
+        );
+        const messages = contactId
+            ? await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT 'message' as event_type, m.id, m.created_at,
+                    COALESCE(m.content_text, '[media]') as description, m.direction as actor
+                 FROM messages m
+                 JOIN conversations c ON c.id = m.conversation_id
+                 WHERE c.contact_id = $1::uuid
+                 ORDER BY m.created_at DESC LIMIT 30`,
+                [contactId],
+            )
+            : [];
 
-        // Merge and sort all events by created_at DESC
-        const all = [...notes, ...tasks, ...stageHistory, ...analyticsEvents, ...messages];
+        const all = [...(notes || []), ...(tasks || []), ...(stageHistory || []), ...(analyticsEvents || []), ...(messages || [])];
         all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
         return all.slice(0, 100);
     }
 

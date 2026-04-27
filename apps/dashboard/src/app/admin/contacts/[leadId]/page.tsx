@@ -68,6 +68,10 @@ export default function Lead360Page() {
     const [customDirty, setCustomDirty] = useState(false);
     const [savingCustom, setSavingCustom] = useState(false);
 
+    // Score breakdown state
+    const [scoreData, setScoreData] = useState<any>(null);
+    const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
+
     // Edit mode state
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -101,6 +105,12 @@ export default function Lead360Page() {
             setTimeline(d2.data || []);
             setNotes(d3.data || []);
             setTasks(d4.data || []);
+
+            // Load score breakdown
+            try {
+                const scoreRes = await api.fetch(`/crm/leads/${tenantId}/${leadId}/score`);
+                setScoreData(scoreRes?.data);
+            } catch (e) { /* non-critical */ }
 
             // Load custom field definitions + values
             try {
@@ -324,11 +334,41 @@ export default function Lead360Page() {
                         <div className="mb-3.5">
                             <div className="flex justify-between text-xs mb-1">
                                 <span className="text-muted-foreground">Score</span>
-                                <span className="font-semibold" style={{ color: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }}>{score}/10</span>
+                                <button
+                                    onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
+                                    className="font-semibold bg-transparent border-none cursor-pointer hover:underline p-0"
+                                    style={{ color: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }}
+                                >
+                                    {score}/10 {showScoreBreakdown ? '▲' : '▼'}
+                                </button>
                             </div>
                             <div className="h-1.5 rounded bg-muted overflow-hidden">
                                 <div className="h-full rounded transition-[width] duration-500" style={{ width: `${score * 10}%`, background: score >= 7 ? "#2ecc71" : score >= 4 ? "#f39c12" : "#e74c3c" }} />
                             </div>
+                            {/* Score Breakdown */}
+                            {showScoreBreakdown && scoreData?.factors && (
+                                <div className="mt-2.5 p-3 rounded-lg bg-muted/50 border border-border">
+                                    <div className="text-[11px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">{t("leadDetail.scoreBreakdown")}</div>
+                                    {[
+                                        { key: 'engagement', label: t("leadDetail.factorEngagement"), value: scoreData.factors.engagement, color: '#6366f1' },
+                                        { key: 'intent', label: t("leadDetail.factorIntent"), value: scoreData.factors.intent, color: '#8b5cf6' },
+                                        { key: 'recency', label: t("leadDetail.factorRecency"), value: scoreData.factors.recency, color: '#22c55e' },
+                                        { key: 'stageProgress', label: t("leadDetail.factorStage"), value: scoreData.factors.stageProgress, color: '#f97316' },
+                                        { key: 'profileCompleteness', label: t("leadDetail.factorProfile"), value: scoreData.factors.profileCompleteness, color: '#ec4899' },
+                                    ].map(f => (
+                                        <div key={f.key} className="flex items-center gap-2 mb-1.5">
+                                            <span className="text-[10px] w-20 text-muted-foreground truncate">{f.label}</span>
+                                            <div className="flex-1 h-1.5 rounded bg-muted overflow-hidden">
+                                                <div className="h-full rounded" style={{ width: `${f.value}%`, background: f.color }} />
+                                            </div>
+                                            <span className="text-[10px] w-8 text-right font-semibold">{f.value}</span>
+                                        </div>
+                                    ))}
+                                    {scoreData.recommendation && (
+                                        <div className="mt-2 text-[11px] text-muted-foreground italic">{scoreData.recommendation}</div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Stage */}

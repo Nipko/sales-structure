@@ -329,7 +329,13 @@
       "opportunities": "Opportunities",
       "noOpportunities": "No opportunities",
       "opportunity": "Opportunity",
-      "customFields": "Custom fields"
+      "customFields": "Custom fields",
+      "scoreBreakdown": "Score breakdown",
+      "factorEngagement": "Engagement",
+      "factorIntent": "Intent",
+      "factorRecency": "Recency",
+      "factorStage": "Stage",
+      "factorProfile": "Profile"
     }
   },
   "inbox": {
@@ -1127,6 +1133,15 @@
       "confirmed": "Confirmed",
       "rejected": "Rejected"
     }
+  },
+  "crmAnalytics": {
+    "title": "CRM Analytics",
+    "subtitle": "Sales metrics, pipeline performance and team insights",
+    "tabs": { "overview": "Overview", "funnel": "Funnel", "velocity": "Velocity", "agents": "Agents" },
+    "kpi": { "totalLeads": "Total leads", "activeOpps": "Active opportunities", "pipelineValue": "Pipeline value", "avgScore": "Avg score", "convRate": "Conversion rate" },
+    "charts": { "leadsByStage": "Leads by stage", "leadSources": "Lead sources", "winLoss": "Won vs Lost", "conversionFunnel": "Conversion funnel", "pipelineVelocity": "Pipeline velocity", "agentLeaderboard": "Agent leaderboard" },
+    "won": "Won", "lost": "Lost", "winRate": "Win rate", "totalValue": "Total value", "lossReasons": "Loss reasons",
+    "agent": "Agent", "dealsClosed": "Deals closed", "avgDeal": "Average", "days": "Days", "avgDays": "Avg days", "noData": "No data available"
   },
   "pipeline": {
     "title": "Pipeline",

@@ -10,6 +10,7 @@ import { LeadScoringService } from './services/lead-scoring/lead-scoring.service
 import { CustomAttributesService } from './services/custom-attributes/custom-attributes.service';
 import { SegmentsService } from './services/segments/segments.service';
 import { ImportExportService } from './services/import-export/import-export.service';
+import { CrmAnalyticsService } from './services/crm-analytics/crm-analytics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -29,6 +30,7 @@ export class CrmController {
         private customAttrs: CustomAttributesService,
         private segmentsService: SegmentsService,
         private importExportService: ImportExportService,
+        private crmAnalytics: CrmAnalyticsService,
         private prisma: PrismaService,
     ) {}
 
@@ -434,6 +436,64 @@ export class CrmController {
     async getImportTemplate() {
         const template = this.importExportService.getImportTemplate();
         return { success: true, data: template };
+    }
+
+    // ---- CRM Analytics ----
+
+    @Get('analytics/:tenantId/overview')
+    async getCrmOverview(@Param('tenantId') tenantId: string) {
+        const data = await this.crmAnalytics.getOverviewKpis(tenantId);
+        return { success: true, data };
+    }
+
+    @Get('analytics/:tenantId/funnel')
+    async getConversionFunnel(
+        @Param('tenantId') tenantId: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const data = await this.crmAnalytics.getConversionFunnel(tenantId, dateFrom, dateTo);
+        return { success: true, data };
+    }
+
+    @Get('analytics/:tenantId/velocity')
+    async getPipelineVelocity(
+        @Param('tenantId') tenantId: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const data = await this.crmAnalytics.getPipelineVelocity(tenantId, dateFrom, dateTo);
+        return { success: true, data };
+    }
+
+    @Get('analytics/:tenantId/win-loss')
+    async getWinLossRate(
+        @Param('tenantId') tenantId: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const data = await this.crmAnalytics.getWinLossRate(tenantId, dateFrom, dateTo);
+        return { success: true, data };
+    }
+
+    @Get('analytics/:tenantId/leaderboard')
+    async getAgentLeaderboard(
+        @Param('tenantId') tenantId: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const data = await this.crmAnalytics.getAgentLeaderboard(tenantId, dateFrom, dateTo);
+        return { success: true, data };
+    }
+
+    @Get('analytics/:tenantId/sources')
+    async getSourceBreakdown(
+        @Param('tenantId') tenantId: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const data = await this.crmAnalytics.getSourceBreakdown(tenantId, dateFrom, dateTo);
+        return { success: true, data };
     }
 
     // ---- Pipeline Stages ----

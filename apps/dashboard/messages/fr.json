@@ -329,7 +329,13 @@
       "opportunities": "Opportunites",
       "noOpportunities": "Aucune opportunite",
       "opportunity": "Opportunite",
-      "customFields": "Champs personnalises"
+      "customFields": "Champs personnalises",
+      "scoreBreakdown": "Détail du score",
+      "factorEngagement": "Engagement",
+      "factorIntent": "Intention",
+      "factorRecency": "Récence",
+      "factorStage": "Étape",
+      "factorProfile": "Profil"
     }
   },
   "inbox": {
@@ -1127,6 +1133,15 @@
       "confirmed": "Confirmés",
       "rejected": "Rejetés"
     }
+  },
+  "crmAnalytics": {
+    "title": "Analyse CRM",
+    "subtitle": "Métriques de ventes, pipeline et performance de l'équipe",
+    "tabs": { "overview": "Aperçu", "funnel": "Entonnoir", "velocity": "Vélocité", "agents": "Agents" },
+    "kpi": { "totalLeads": "Total leads", "activeOpps": "Opportunités actives", "pipelineValue": "Valeur du pipeline", "avgScore": "Score moyen", "convRate": "Taux de conversion" },
+    "charts": { "leadsByStage": "Leads par étape", "leadSources": "Sources de leads", "winLoss": "Gagnés vs Perdus", "conversionFunnel": "Entonnoir de conversion", "pipelineVelocity": "Vélocité du pipeline", "agentLeaderboard": "Classement des agents" },
+    "won": "Gagnés", "lost": "Perdus", "winRate": "Taux de réussite", "totalValue": "Valeur totale", "lossReasons": "Raisons de perte",
+    "agent": "Agent", "dealsClosed": "Affaires conclues", "avgDeal": "Moyenne", "days": "Jours", "avgDays": "Jours moyens", "noData": "Aucune donnée disponible"
   },
   "pipeline": {
     "title": "Pipeline",

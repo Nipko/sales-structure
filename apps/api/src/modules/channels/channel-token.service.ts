@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import * as crypto from 'crypto';
 
 export interface ChannelCredentials {
@@ -29,6 +30,7 @@ export class ChannelTokenService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private cryptoService: WhatsappCryptoService,
     ) {}
 
     /**
@@ -61,7 +63,7 @@ export class ChannelTokenService {
         let accessToken: string;
 
         if (cred?.encryptedValue) {
-            accessToken = this.decryptToken(cred.encryptedValue);
+            accessToken = this.cryptoService.decryptToken(cred.encryptedValue);
         } else if (channel.access_token_ref && channel.access_token_ref !== 'credential_ref') {
             accessToken = channel.access_token_ref;
         } else {
@@ -113,10 +115,19 @@ export class ChannelTokenService {
 
         let accessToken: string;
         if (cred?.encryptedValue) {
-            accessToken = this.decryptToken(cred.encryptedValue);
+            try {
+                accessToken = this.cryptoService.decryptToken(cred.encryptedValue);
+            } catch (e: any) {
+                this.logger.error(`Failed to decrypt ${channelType} token for tenant ${tenantId}: ${e.message}`);
+                throw new Error(`Failed to decrypt ${channelType} token: ${e.message}`);
+            }
         } else if (account.accessToken && account.accessToken !== 'encrypted_ref') {
-            // Fallback: encrypted token stored directly in channel_accounts
-            accessToken = this.decryptToken(account.accessToken);
+            try {
+                accessToken = this.cryptoService.decryptToken(account.accessToken);
+            } catch (e: any) {
+                this.logger.error(`Failed to decrypt ${channelType} fallback token: ${e.message}`);
+                throw new Error(`Failed to decrypt ${channelType} token: ${e.message}`);
+            }
         } else {
             throw new Error(`No ${channelType} credentials for tenant ${tenantId}`);
         }
@@ -130,25 +141,5 @@ export class ChannelTokenService {
     async invalidateCache(channelType: string, tenantId: string): Promise<void> {
         const cacheKey = `${channelType}_token:${tenantId}`;
         await this.redis.del(cacheKey);
-    }
-
-    /** AES-256-GCM decryption — same logic as WhatsappCryptoService */
-    private decryptToken(ciphertext: string): string {
-        const key = process.env.ENCRYPTION_KEY;
-        if (!key || key.length < 32) {
-            return Buffer.from(ciphertext, 'base64').toString('utf8');
-        }
-        if (!ciphertext.includes(':')) return ciphertext;
-
-        const [ivHex, tagHex, encryptedHex] = ciphertext.split(':');
-        const decipher = crypto.createDecipheriv(
-            'aes-256-gcm',
-            Buffer.from(key, 'hex').subarray(0, 32),
-            Buffer.from(ivHex, 'hex'),
-        );
-        decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-        let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-        decrypted += decipher.final('utf8');
-        return decrypted;
     }
 }

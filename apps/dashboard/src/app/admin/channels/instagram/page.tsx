@@ -58,39 +58,23 @@ export default function InstagramSetupPage() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // Listen for postMessage from the OAuth callback popup
+    // Check for OAuth result from callback redirect (query params)
     useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            if (event.origin !== window.location.origin) return;
-
-            if (event.data?.type === "ig_oauth_success") {
-                setMessage({ type: "success", text: t("instagram.connectSuccess") });
-                setConnecting(false);
-                loadData();
-            } else if (event.data?.type === "ig_oauth_error") {
-                setMessage({ type: "error", text: event.data.message || t("instagram.connectFailed") });
-                setConnecting(false);
-            }
-        };
-
-        window.addEventListener("message", handleMessage);
-        return () => window.removeEventListener("message", handleMessage);
-    }, [loadData, t]);
-
-    // Fallback: reload data when window regains focus (in case postMessage failed)
-    useEffect(() => {
-        if (!connecting) return;
-        const handleFocus = () => {
-            setConnecting(false);
-            loadData();
-        };
-        window.addEventListener("focus", handleFocus);
-        return () => window.removeEventListener("focus", handleFocus);
-    }, [connecting, loadData]);
+        const params = new URLSearchParams(window.location.search);
+        const oauthResult = params.get("oauth_result");
+        if (oauthResult === "success") {
+            setMessage({ type: "success", text: t("instagram.connectSuccess") });
+            // Clean URL
+            window.history.replaceState({}, '', window.location.pathname);
+        } else if (oauthResult === "error") {
+            setMessage({ type: "error", text: params.get("error_message") || t("instagram.connectFailed") });
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+    }, [t]);
 
     const handleOAuthConnect = () => {
         const state = crypto.randomUUID();
-        sessionStorage.setItem("ig_oauth_state", state);
+        localStorage.setItem("ig_oauth_state", state);
 
         setConnecting(true);
         setMessage({ type: "", text: "" });
@@ -105,22 +89,8 @@ export default function InstagramSetupPage() {
             state,
         });
 
-        const url = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
-        const width = 600;
-        const height = 700;
-        const left = window.screenX + (window.outerWidth - width) / 2;
-        const top = window.screenY + (window.outerHeight - height) / 2;
-
-        const popup = window.open(
-            url,
-            "instagram_oauth",
-            `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
-        );
-
-        // If popup was blocked, fall back to redirect
-        if (!popup) {
-            window.location.href = url;
-        }
+        // Redirect in same window (popups don't close reliably after cross-origin navigation)
+        window.location.href = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
     };
 
     const handleDisconnect = async () => {

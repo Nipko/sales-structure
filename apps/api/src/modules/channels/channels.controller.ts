@@ -103,7 +103,10 @@ export class ChannelsController {
         @Req() req: RawBodyRequest<Request>,
         @Res() res: Response,
     ) {
-        const appSecret = this.configService.get<string>('META_APP_SECRET') || this.configService.get<string>('WHATSAPP_APP_SECRET');
+        // Instagram uses its own app secret (different Meta App than WhatsApp)
+        const appSecret = this.configService.get<string>('INSTAGRAM_APP_SECRET')
+            || this.configService.get<string>('META_APP_SECRET')
+            || this.configService.get<string>('WHATSAPP_APP_SECRET');
         if (!validateMetaSignature(req.rawBody, signature, appSecret)) {
             return res.status(401).send('Invalid signature');
         }

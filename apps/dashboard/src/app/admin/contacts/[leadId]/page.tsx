@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import {
-    ArrowLeft, User, Phone, Mail, Building2, Star, Tag,
+    ArrowLeft, User, Phone, Mail, Building2, Star, Tag, Hash,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
     ChevronDown, CheckCircle, Circle, AlertCircle, Briefcase,
     TrendingUp, Calendar, Zap, Send, Edit2, Save, X,
@@ -62,6 +62,12 @@ export default function Lead360Page() {
     const [newTask, setNewTask] = useState({ title: "", dueAt: "", type: "follow_up" });
     const [addingTask, setAddingTask] = useState(false);
 
+    // Custom fields state
+    const [customDefs, setCustomDefs] = useState<any[]>([]);
+    const [customValues, setCustomValues] = useState<Record<string, any>>({});
+    const [customDirty, setCustomDirty] = useState(false);
+    const [savingCustom, setSavingCustom] = useState(false);
+
     // Edit mode state
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -95,6 +101,23 @@ export default function Lead360Page() {
             setTimeline(d2.data || []);
             setNotes(d3.data || []);
             setTasks(d4.data || []);
+
+            // Load custom field definitions + values
+            try {
+                const [defsRes, valsRes] = await Promise.all([
+                    api.fetch(`/crm/custom-attributes/${tenantId}?entityType=lead`),
+                    api.fetch(`/crm/custom-attribute-values/${tenantId}/lead/${leadId}`),
+                ]);
+                setCustomDefs(defsRes?.data || []);
+                const valMap: Record<string, any> = {};
+                for (const v of (valsRes?.data || [])) {
+                    valMap[v.definition_id] = v.value_text ?? v.value_number ?? v.value_boolean ?? v.value_date ?? v.value_json ?? '';
+                }
+                setCustomValues(valMap);
+                setCustomDirty(false);
+            } catch (e) {
+                // Non-critical — custom fields may not exist yet
+            }
         } catch (e) {
             console.error("Error loading Lead 360:", e);
         } finally {
@@ -453,6 +476,111 @@ export default function Lead360Page() {
                             </div>
                         ))}
                     </div>
+
+                    {/* Custom Fields */}
+                    {customDefs.length > 0 && (
+                        <div className="bg-card rounded-xl border border-border p-4">
+                            <h3 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
+                                <Hash size={14} className="text-primary" /> {t("leadDetail.customFields")}
+                            </h3>
+                            <div className="flex flex-col gap-2.5">
+                                {customDefs.map((def: any) => {
+                                    const val = customValues[def.id] ?? '';
+                                    return (
+                                        <div key={def.id}>
+                                            <label className="text-[11px] text-muted-foreground mb-1 block">{def.attribute_label}</label>
+                                            {def.attribute_type === 'boolean' ? (
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!val}
+                                                        onChange={(e) => {
+                                                            setCustomValues(v => ({ ...v, [def.id]: e.target.checked }));
+                                                            setCustomDirty(true);
+                                                        }}
+                                                        className="w-4 h-4 accent-primary"
+                                                    />
+                                                    <span className="text-sm">{val ? 'Yes' : 'No'}</span>
+                                                </label>
+                                            ) : def.attribute_type === 'select' ? (
+                                                <select
+                                                    value={val}
+                                                    onChange={(e) => {
+                                                        setCustomValues(v => ({ ...v, [def.id]: e.target.value }));
+                                                        setCustomDirty(true);
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                                >
+                                                    <option value="">—</option>
+                                                    {(def.options || []).map((opt: string) => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
+                                            ) : def.attribute_type === 'date' ? (
+                                                <input
+                                                    type="date"
+                                                    value={val ? String(val).slice(0, 10) : ''}
+                                                    onChange={(e) => {
+                                                        setCustomValues(v => ({ ...v, [def.id]: e.target.value }));
+                                                        setCustomDirty(true);
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                                />
+                                            ) : def.attribute_type === 'number' ? (
+                                                <input
+                                                    type="number"
+                                                    value={val}
+                                                    onChange={(e) => {
+                                                        setCustomValues(v => ({ ...v, [def.id]: Number(e.target.value) }));
+                                                        setCustomDirty(true);
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                                />
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    value={val}
+                                                    onChange={(e) => {
+                                                        setCustomValues(v => ({ ...v, [def.id]: e.target.value }));
+                                                        setCustomDirty(true);
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
+                                                />
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            {customDirty && (
+                                <button
+                                    onClick={async () => {
+                                        if (!tenantId) return;
+                                        setSavingCustom(true);
+                                        try {
+                                            const values = Object.entries(customValues).map(([defId, value]) => ({
+                                                definitionId: defId,
+                                                value,
+                                            }));
+                                            await api.fetch(`/crm/custom-attribute-values/${tenantId}/lead/${leadId}`, {
+                                                method: 'POST',
+                                                body: JSON.stringify({ values }),
+                                            });
+                                            setCustomDirty(false);
+                                        } catch (e) {
+                                            console.error('Error saving custom fields:', e);
+                                        } finally {
+                                            setSavingCustom(false);
+                                        }
+                                    }}
+                                    disabled={savingCustom}
+                                    className="mt-3 w-full px-3 py-2 rounded-lg border-none bg-primary text-white font-semibold text-[13px] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                >
+                                    {savingCustom ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    {t("leadDetail.save")}
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* === RIGHT PANEL: Timeline / Notes / Tasks === */}

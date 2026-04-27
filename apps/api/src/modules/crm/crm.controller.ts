@@ -327,6 +327,29 @@ export class CrmController {
         return { success: true, data };
     }
 
+    // ---- Custom Attribute Values ----
+
+    @Get('custom-attribute-values/:tenantId/:entityType/:entityId')
+    async getCustomAttributeValues(
+        @Param('tenantId') tenantId: string,
+        @Param('entityType') entityType: string,
+        @Param('entityId') entityId: string,
+    ) {
+        const data = await this.customAttrs.getValuesForEntity(tenantId, entityType, entityId);
+        return { success: true, data };
+    }
+
+    @Post('custom-attribute-values/:tenantId/:entityType/:entityId')
+    async setCustomAttributeValues(
+        @Param('tenantId') tenantId: string,
+        @Param('entityType') entityType: string,
+        @Param('entityId') entityId: string,
+        @Body() body: { values: { definitionId: string; value: any }[] },
+    ) {
+        await this.customAttrs.setValuesForEntity(tenantId, entityType, entityId, body.values);
+        return { success: true, message: 'Custom attribute values saved' };
+    }
+
     // ---- Contact Segments ----
 
     @Get('segments/:tenantId')

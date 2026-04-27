@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { normalizePhoneE164 } from '../../common/utils/phone.util';
 
 @Injectable()
 export class IdentityService {
@@ -30,20 +31,23 @@ export class IdentityService {
         );
         if (existing && existing.length > 0) return; // Already linked
 
-        // Normalize phone: only use if it looks like a phone number (digits, +, spaces)
-        const phone = contact.phone && /^\+?[\d\s()-]{7,20}$/.test(contact.phone) ? contact.phone : null;
-        const email = contact.email && contact.email.includes('@') ? contact.email : null;
+        // Normalize phone for matching
+        const rawPhone = contact.phone && /^\+?[\d\s()-]{7,20}$/.test(contact.phone) ? contact.phone : null;
+        const phone = rawPhone;
+        const phoneNorm = rawPhone ? normalizePhoneE164(rawPhone) : null;
+        const email = contact.email && contact.email.includes('@') ? contact.email.toLowerCase().trim() : null;
 
-        // Search for matching profiles by phone or email (skip if null)
+        // Search for matching profiles by normalized phone or email (skip if null)
         let matchedProfile: any = null;
         let matchType = '';
 
-        if (phone) {
+        if (phoneNorm) {
+            // Match on normalized phone for better dedup ("+57 300 123 4567" = "3001234567")
             const phoneMatches = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT cp.id, cp.display_name, cp.phone FROM customer_profiles cp
-                 WHERE cp.phone IS NOT NULL AND cp.phone = $1 LIMIT 1`,
-                [phone],
+                 WHERE cp.phone IS NOT NULL AND (cp.phone = $1 OR cp.phone = $2) LIMIT 1`,
+                [phoneNorm, phone],
             );
             if (phoneMatches?.length > 0) {
                 matchedProfile = phoneMatches[0];
@@ -55,7 +59,7 @@ export class IdentityService {
             const emailMatches = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT cp.id, cp.display_name, cp.email FROM customer_profiles cp
-                 WHERE cp.email IS NOT NULL AND cp.email = $1 LIMIT 1`,
+                 WHERE cp.email IS NOT NULL AND LOWER(cp.email) = $1 LIMIT 1`,
                 [email],
             );
             if (emailMatches?.length > 0) {
@@ -64,12 +68,12 @@ export class IdentityService {
             }
         }
 
-        // Create a new profile for this contact
+        // Create a new profile for this contact (store normalized phone for dedup)
         const newProfile = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO customer_profiles (display_name, phone, email)
              VALUES ($1, $2, $3) RETURNING id`,
-            [contact.name || null, phone, email],
+            [contact.name || null, phoneNorm || phone, email],
         );
 
         if (!newProfile || newProfile.length === 0) {
@@ -87,7 +91,7 @@ export class IdentityService {
             [newProfileId, contact.id, contact.channelType, contact.externalId],
         );
 
-        // If there's a match, create a merge suggestion (don't auto-merge)
+        // If there's a match, auto-merge (high confidence) or create suggestion (low confidence)
         if (matchedProfile) {
             const matchedContact = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
@@ -102,20 +106,44 @@ export class IdentityService {
                     `SELECT id FROM merge_suggestions
                      WHERE ((contact_id_a = $1::uuid AND contact_id_b = $2::uuid)
                         OR (contact_id_a = $2::uuid AND contact_id_b = $1::uuid))
-                     AND status = 'pending' LIMIT 1`,
+                     LIMIT 1`,
                     [matchedContact[0].contact_id, contact.id],
                 );
 
                 if (!existingSuggestion?.length) {
                     const confidence = matchType === 'phone_match' ? 0.95 : 0.80;
-                    await this.prisma.executeInTenantSchema(
-                        schemaName,
-                        `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status)
-                         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'pending')`,
-                        [matchedProfile.id, newProfileId, matchedContact[0].contact_id, contact.id, matchType, confidence],
-                    );
 
-                    this.logger.log(`[Identity] Merge suggestion: ${matchType} (${confidence}) tenant=${tenantId}`);
+                    if (confidence >= 0.95) {
+                        // Auto-merge: link new contact to existing profile instead of creating a new one
+                        await this.prisma.executeInTenantSchema(
+                            schemaName,
+                            `UPDATE contact_identities SET customer_profile_id = $1::uuid WHERE contact_id = $2::uuid`,
+                            [matchedProfile.id, contact.id],
+                        );
+                        // Delete the duplicate profile we just created
+                        await this.prisma.executeInTenantSchema(
+                            schemaName,
+                            `DELETE FROM customer_profiles WHERE id = $1::uuid`,
+                            [newProfileId],
+                        );
+                        // Record as auto-merged suggestion
+                        await this.prisma.executeInTenantSchema(
+                            schemaName,
+                            `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status, reviewed_by, reviewed_at)
+                             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'approved', 'system-auto', NOW())`,
+                            [matchedProfile.id, newProfileId, matchedContact[0].contact_id, contact.id, matchType, confidence],
+                        );
+                        this.logger.log(`[Identity] Auto-merged: ${matchType} (${confidence}) → profile ${matchedProfile.id}`);
+                    } else {
+                        // Low confidence: create pending suggestion for manual review
+                        await this.prisma.executeInTenantSchema(
+                            schemaName,
+                            `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status)
+                             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'pending')`,
+                            [matchedProfile.id, newProfileId, matchedContact[0].contact_id, contact.id, matchType, confidence],
+                        );
+                        this.logger.log(`[Identity] Merge suggestion: ${matchType} (${confidence}) tenant=${tenantId}`);
+                    }
                 }
             }
         }

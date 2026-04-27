@@ -22,6 +22,7 @@ import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
 import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
+import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
@@ -262,9 +263,10 @@ export class ConversationsService {
 
         if (!contact) {
             const contactName = (msg.metadata as any)?.contactName || 'Unknown';
+            const phoneNorm = normalizePhoneE164(contactId);
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO contacts (external_id, channel_type, name, phone) VALUES ($1, $2, $3, $4) RETURNING *`,
-                [contactId, channelType, contactName, contactId],
+                `INSERT INTO contacts (external_id, channel_type, name, phone, phone_normalized) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+                [contactId, channelType, contactName, contactId, phoneNorm],
             ).then(res => res[0]);
         } else if (contact.name === 'Unknown' && (msg.metadata as any)?.contactName) {
             // Update name if it was Unknown and we now have the real name

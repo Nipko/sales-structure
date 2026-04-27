@@ -319,7 +319,8 @@
       "tagsPlaceholder": "tag1, tag2, tag3",
       "opportunities": "Opportunities",
       "noOpportunities": "No opportunities",
-      "opportunity": "Opportunity"
+      "opportunity": "Opportunity",
+      "customFields": "Custom fields"
     }
   },
   "inbox": {

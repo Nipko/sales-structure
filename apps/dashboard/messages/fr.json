@@ -319,7 +319,8 @@
       "tagsPlaceholder": "tag1, tag2, tag3",
       "opportunities": "Opportunites",
       "noOpportunities": "Aucune opportunite",
-      "opportunity": "Opportunite"
+      "opportunity": "Opportunite",
+      "customFields": "Champs personnalises"
     }
   },
   "inbox": {

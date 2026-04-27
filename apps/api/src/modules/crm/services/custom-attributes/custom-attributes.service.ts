@@ -129,4 +129,79 @@ export class CustomAttributesService {
 
         return result.length > 0;
     }
+
+    // ======= Custom Attribute VALUES =======
+
+    async getValuesForEntity(tenantId: string, entityType: string, entityId: string) {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) throw new Error('Tenant not found');
+
+        return this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT v.*, d.attribute_key, d.attribute_label, d.attribute_type, d.options
+             FROM custom_attribute_values v
+             JOIN custom_attribute_definitions d ON d.id = v.definition_id
+             WHERE v.entity_id = $1::uuid AND v.entity_type = $2
+             ORDER BY d.position ASC, d.attribute_label ASC`,
+            [entityId, entityType],
+        );
+    }
+
+    async setValuesForEntity(
+        tenantId: string,
+        entityType: string,
+        entityId: string,
+        values: { definitionId: string; value: any }[],
+    ) {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) throw new Error('Tenant not found');
+
+        for (const { definitionId, value } of values) {
+            // Determine which column to use based on value type
+            let valueText: string | null = null;
+            let valueNumber: number | null = null;
+            let valueBoolean: boolean | null = null;
+            let valueDate: string | null = null;
+            let valueJson: any = null;
+
+            if (value === null || value === undefined || value === '') {
+                // Delete the value
+                await this.prisma.executeInTenantSchema(schema,
+                    `DELETE FROM custom_attribute_values WHERE definition_id = $1::uuid AND entity_id = $2::uuid`,
+                    [definitionId, entityId],
+                );
+                continue;
+            }
+
+            if (typeof value === 'boolean') {
+                valueBoolean = value;
+            } else if (typeof value === 'number') {
+                valueNumber = value;
+            } else if (Array.isArray(value) || typeof value === 'object') {
+                valueJson = JSON.stringify(value);
+            } else {
+                // Check if it's a date
+                const dateTest = new Date(value);
+                if (!isNaN(dateTest.getTime()) && String(value).match(/^\d{4}-\d{2}/)) {
+                    valueDate = dateTest.toISOString();
+                } else {
+                    valueText = String(value);
+                }
+            }
+
+            await this.prisma.executeInTenantSchema(schema,
+                `INSERT INTO custom_attribute_values (definition_id, entity_id, entity_type, value_text, value_number, value_boolean, value_date, value_json)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::jsonb)
+                 ON CONFLICT (definition_id, entity_id) DO UPDATE SET
+                   value_text = EXCLUDED.value_text,
+                   value_number = EXCLUDED.value_number,
+                   value_boolean = EXCLUDED.value_boolean,
+                   value_date = EXCLUDED.value_date,
+                   value_json = EXCLUDED.value_json,
+                   updated_at = NOW()`,
+                [definitionId, entityId, entityType, valueText, valueNumber, valueBoolean, valueDate, valueJson],
+            );
+        }
+
+        return { success: true };
+    }
 }

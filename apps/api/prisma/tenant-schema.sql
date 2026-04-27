@@ -16,6 +16,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."contacts" (
     "channel_type" VARCHAR(50) NOT NULL,
     "name" VARCHAR(255),
     "phone" VARCHAR(50),
+    "phone_normalized" VARCHAR(20),
     "email" VARCHAR(255),
     "avatar_url" VARCHAR(500),
     "metadata" JSONB DEFAULT '{}',
@@ -26,6 +27,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."contacts" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE UNIQUE INDEX ON "{{SCHEMA_NAME}}"."contacts" ("channel_type", "external_id");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."contacts" ("phone_normalized");
 
 -- ---- Conversations ----
 CREATE TABLE "{{SCHEMA_NAME}}"."conversations" (
@@ -336,6 +338,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."leads" (
     "first_name"          VARCHAR(255),
     "last_name"           VARCHAR(255),
     "phone"               VARCHAR(50) NOT NULL,          -- E.164 format
+    "phone_normalized"    VARCHAR(20),                   -- E.164 normalized for dedup matching
     "email"               VARCHAR(255),
     "score"               INTEGER DEFAULT 0 CHECK (score >= 0 AND score <= 10),
     "stage"               VARCHAR(50) DEFAULT 'nuevo',   -- nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado
@@ -364,6 +367,7 @@ CREATE TABLE "{{SCHEMA_NAME}}"."leads" (
     "updated_at"          TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("phone");
+CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("phone_normalized");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("stage");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("score");
 CREATE INDEX ON "{{SCHEMA_NAME}}"."leads" ("campaign_id");
@@ -1059,6 +1063,23 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."custom_attribute_definitions" (
     UNIQUE ("tenant_id", "entity_type", "attribute_key")
 );
 CREATE INDEX IF NOT EXISTS "cad_entity_idx" ON "{{SCHEMA_NAME}}"."custom_attribute_definitions" ("tenant_id", "entity_type");
+
+-- ---- Custom Attribute Values ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."custom_attribute_values" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "definition_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."custom_attribute_definitions"("id") ON DELETE CASCADE,
+    "entity_id" UUID NOT NULL,
+    "entity_type" VARCHAR(50) NOT NULL DEFAULT 'lead',
+    "value_text" TEXT,
+    "value_number" DECIMAL(15, 4),
+    "value_boolean" BOOLEAN,
+    "value_date" TIMESTAMP,
+    "value_json" JSONB,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW(),
+    UNIQUE ("definition_id", "entity_id")
+);
+CREATE INDEX ON "{{SCHEMA_NAME}}"."custom_attribute_values" ("entity_id", "entity_type");
 
 -- ---- Contact Segments (C2) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."contact_segments" (

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Lead } from '../interfaces/lead.interface';
+import { normalizePhoneE164 } from '../../../common/utils/phone.util';
 
 @Injectable()
 export class LeadsRepository {
@@ -157,6 +158,10 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = data as Record<string, any>;
+    // Auto-normalize phone
+    if (record.phone) {
+      record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
+    }
     const fields = Object.keys(record).filter(k => record[k] !== undefined);
     const values = fields.map(k => record[k]);
     const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
@@ -175,6 +180,10 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = data as Record<string, any>;
+    // Auto-normalize phone on update
+    if (record.phone) {
+      record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
+    }
     // Filter out non-column fields and undefined values
     const skipFields = ['tags', 'id'];
     const fields = Object.keys(record).filter(k => record[k] !== undefined && !skipFields.includes(k));

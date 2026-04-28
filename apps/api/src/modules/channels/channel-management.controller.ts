@@ -27,7 +27,7 @@ export class ChannelManagementController {
     ) {}
 
     @Get('overview')
-    @ApiOperation({ summary: 'Get all connected channels for the authenticated tenant' })
+    @ApiOperation({ summary: 'Get all connected channels with agent assignment status' })
     async getOverview(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) return { success: true, data: [] };
@@ -36,6 +36,24 @@ export class ChannelManagementController {
             where: { tenantId, isActive: true },
             orderBy: { createdAt: 'desc' },
         });
+
+        // Fetch agent assignments from tenant schema
+        let agentAssignments: Record<string, { id: string; name: string }> = {};
+        try {
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+            if (tenant?.schemaName) {
+                const agents = await this.prisma.executeInTenantSchema<any[]>(
+                    tenant.schemaName,
+                    `SELECT id, name, channels FROM agent_personas WHERE is_active = true`,
+                    [],
+                );
+                for (const agent of (agents || [])) {
+                    for (const ch of (agent.channels || [])) {
+                        agentAssignments[ch] = { id: agent.id, name: agent.name };
+                    }
+                }
+            }
+        } catch (e) { /* agent_personas table may not exist yet */ }
 
         return {
             success: true,
@@ -46,6 +64,8 @@ export class ChannelManagementController {
                 displayName: a.displayName,
                 isActive: a.isActive,
                 metadata: a.metadata,
+                assignedAgent: agentAssignments[a.channelType] || null,
+                needsAssignment: !agentAssignments[a.channelType],
             })),
         };
     }

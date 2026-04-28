@@ -74,20 +74,26 @@ export default function AgentListPage() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [connectedChannels, setConnectedChannels] = useState<any[]>([]);
+  const [unassignedChannels, setUnassignedChannels] = useState<any[]>([]);
 
-  // ── Load agents + plan ─────────────────────────────────────
+  // ── Load agents + plan + channels ──────────────────────────
 
   const loadData = useCallback(async () => {
     if (!activeTenantId) return;
     setLoading(true);
     try {
-      const [agentsRes, planRes] = await Promise.all([
+      const [agentsRes, planRes, channelsRes] = await Promise.all([
         api.listAgents(activeTenantId),
         api.getPlanFeatures(activeTenantId).catch(() => null),
+        api.fetch('/channels/overview').catch(() => ({ data: [] })),
       ]);
       if (agentsRes?.success && Array.isArray(agentsRes.data)) {
         setAgents(agentsRes.data);
       }
+      const chList = channelsRes?.data || [];
+      setConnectedChannels(chList.map((c: any) => c.channelType));
+      setUnassignedChannels(chList.filter((c: any) => c.needsAssignment));
       if (planRes?.success && planRes.data) {
         setPlanFeatures(planRes.data);
       }
@@ -367,6 +373,32 @@ export default function AgentListPage() {
         else handleNewAgent();
       }} />
 
+      {/* Unassigned channels banner */}
+      {unassignedChannels.length > 0 && agents.length > 0 && (
+        <div className="rounded-xl border-2 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-500/20 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-900 dark:text-red-200 m-0">
+                {t("unassignedChannels", { count: unassignedChannels.length })}
+              </p>
+              <p className="text-xs text-red-700 dark:text-red-300/80 mt-1 m-0">
+                {unassignedChannels.map((c: any) => CHANNEL_META[c.channelType]?.label || c.channelType).join(", ")} — {t("unassignedDesc")}
+              </p>
+              <button
+                type="button"
+                onClick={() => { const first = agents[0]; if (first) router.push(`/admin/agent/${first.id}`); }}
+                className="mt-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer border-none flex items-center gap-1.5 transition-colors"
+              >
+                {t("assignNow")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Agent count */}
       <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
         {agents.length} {t("of")} {planFeatures.maxAgents} {t("agentsCount")}
@@ -380,6 +412,7 @@ export default function AgentListPage() {
             agent={agent}
             scheduleSummary={getScheduleSummary(agent)}
             menuOpen={menuOpen === agent.id}
+            connectedChannels={connectedChannels}
             onMenuToggle={() => setMenuOpen(prev => prev === agent.id ? null : agent.id)}
             onEdit={() => router.push(`/admin/agent/${agent.id}`)}
             onDuplicate={() => handleDuplicate(agent.id)}
@@ -483,9 +516,9 @@ interface AgentCardProps {
 }
 
 function AgentCard({
-  agent, scheduleSummary, menuOpen,
+  agent, scheduleSummary, menuOpen, connectedChannels = [],
   onMenuToggle, onEdit, onDuplicate, onSetDefault, onSaveAsTemplate, onDelete, t,
-}: AgentCardProps) {
+}: AgentCardProps & { connectedChannels?: string[] }) {
   const cfg = agent.config_json || {};
   const ruleCount = (cfg.behavior?.rules?.filter(Boolean)?.length || 0)
     + (cfg.behavior?.forbiddenTopics?.filter(Boolean)?.length || 0)
@@ -526,23 +559,30 @@ function AgentCard({
         </div>
       </div>
 
-      {/* Channel pills */}
+      {/* Channel pills — only show connected channels */}
       {agent.channels && agent.channels.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {agent.channels.map(ch => {
-            const meta = CHANNEL_META[ch];
-            if (!meta) return null;
-            const Icon = meta.icon;
-            return (
-              <span
-                key={ch}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-600 dark:text-neutral-300"
-              >
-                <Icon size={12} className={meta.color} />
-                {meta.label}
-              </span>
-            );
-          })}
+          {agent.channels
+            .filter(ch => connectedChannels.includes(ch))
+            .map(ch => {
+              const meta = CHANNEL_META[ch];
+              if (!meta) return null;
+              const Icon = meta.icon;
+              return (
+                <span
+                  key={ch}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-600 dark:text-neutral-300"
+                >
+                  <Icon size={12} className={meta.color} />
+                  {meta.label}
+                </span>
+              );
+            })}
+          {agent.channels.filter(ch => connectedChannels.includes(ch)).length === 0 && (
+            <span className="text-xs text-amber-500 flex items-center gap-1">
+              <AlertTriangle size={12} /> {t("noConnectedChannels")}
+            </span>
+          )}
         </div>
       )}
 

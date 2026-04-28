@@ -345,11 +345,17 @@ export class ConversationsService {
                 [contactIdStr, msg.channelType, msg.channelAccountId],
             ).then(res => res[0]);
 
-            // Create an active opportunity tied to this new conversation
-            await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1::uuid, $2::uuid, 'nuevo', 10)`,
-                [String(lead.id), String(conversation.id)],
+            // Create an opportunity only if the lead doesn't already have an active one
+            const existingOpp = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id FROM opportunities WHERE lead_id = $1::uuid AND stage NOT IN ('ganado', 'perdido', 'no_interesado') LIMIT 1`,
+                [String(lead.id)],
             );
+            if (!existingOpp?.length) {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1::uuid, $2::uuid, 'nuevo', 10)`,
+                    [String(lead.id), String(conversation.id)],
+                );
+            }
         }
 
         // Emit lead.captured event for new leads so automation rules can fire

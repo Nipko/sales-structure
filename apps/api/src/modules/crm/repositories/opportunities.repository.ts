@@ -108,7 +108,8 @@ export class OpportunitiesRepository {
       const schema = await this.getTenantSchema(tenantId);
       if (!schema) return { stages: [], forecast: { total: 0, weighted: 0, dealCount: 0, avgDealValue: 0 } };
 
-      const STAGES = [
+      // Load configurable stages from DB, fallback to defaults
+      const DEFAULT_STAGES = [
           { key: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, probability: 10 },
           { key: 'contactado', name: 'Contactado', color: '#3498db', position: 1, probability: 20 },
           { key: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, probability: 30 },
@@ -121,8 +122,29 @@ export class OpportunitiesRepository {
           { key: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, probability: 0 },
       ];
 
+      let STAGES = DEFAULT_STAGES;
+      try {
+          const dbStages = await this.prisma.executeInTenantSchema<any[]>(schema,
+              `SELECT slug as key, name, color, position, default_probability as probability, is_terminal
+               FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
+              [tenantId],
+          );
+          if (dbStages?.length > 0) {
+              STAGES = dbStages.map((s: any) => ({
+                  key: s.key || s.name.toLowerCase().replace(/\s+/g, '_'),
+                  name: s.name,
+                  color: s.color || '#3498db',
+                  position: s.position,
+                  probability: s.probability ?? 0,
+              }));
+          }
+      } catch (e) {
+          // Fallback to defaults if pipeline_stages table doesn't exist yet
+      }
+
+      // Deduplicate: show only the most recent opportunity per lead
       const opps = await this.prisma.executeInTenantSchema<any[]>(schema, `
-          SELECT o.*, 
+          SELECT DISTINCT ON (o.lead_id) o.*,
                  l.first_name, l.last_name, l.phone, l.email, l.score as lead_score,
                  crs.name as course_name, crs.price as course_price,
                  cam.name as campaign_name
@@ -130,8 +152,8 @@ export class OpportunitiesRepository {
           JOIN leads l ON l.id = o.lead_id
           LEFT JOIN courses crs ON crs.id = o.course_id
           LEFT JOIN campaigns cam ON cam.id = o.campaign_id
-          WHERE o.lost_at IS NULL OR o.stage NOT IN ('perdido', 'no_interesado')
-          ORDER BY o.updated_at DESC
+          WHERE l.archived_at IS NULL
+          ORDER BY o.lead_id, o.updated_at DESC
       `, []);
 
       const allOpps = opps || [];

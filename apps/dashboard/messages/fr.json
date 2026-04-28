@@ -1135,6 +1135,20 @@
       "rejected": "Rejetés"
     }
   },
+  "pipelineSettings": {
+    "title": "Étapes du Pipeline",
+    "subtitle": "Personnalisez les étapes de votre entonnoir de ventes. Glissez pour réorganiser.",
+    "name": "Nom",
+    "color": "Couleur",
+    "probability": "Probabilité",
+    "terminal": "Final",
+    "stageName": "Nom de l'étape",
+    "terminalYes": "Étape finale (fermée)",
+    "terminalNo": "Étape active",
+    "addStage": "Ajouter une étape",
+    "unsavedChanges": "Vous avez des modifications non enregistrées",
+    "reset": "Réinitialiser par défaut"
+  },
   "crmAnalytics": {
     "title": "Analyse CRM",
     "subtitle": "Métriques de ventes, pipeline et performance de l'équipe",

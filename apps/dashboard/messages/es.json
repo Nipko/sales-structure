@@ -1135,6 +1135,20 @@
       "rejected": "Rechazados"
     }
   },
+  "pipelineSettings": {
+    "title": "Etapas del Pipeline",
+    "subtitle": "Personaliza las etapas de tu embudo de ventas. Arrastra para reordenar.",
+    "name": "Nombre",
+    "color": "Color",
+    "probability": "Probabilidad",
+    "terminal": "Final",
+    "stageName": "Nombre de la etapa",
+    "terminalYes": "Etapa final (cerrada)",
+    "terminalNo": "Etapa activa",
+    "addStage": "Agregar etapa",
+    "unsavedChanges": "Tienes cambios sin guardar",
+    "reset": "Restaurar predeterminados"
+  },
   "crmAnalytics": {
     "title": "Análisis CRM",
     "subtitle": "Métricas de ventas, pipeline y rendimiento del equipo",

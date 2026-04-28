@@ -1135,6 +1135,20 @@
       "rejected": "Rejected"
     }
   },
+  "pipelineSettings": {
+    "title": "Pipeline Stages",
+    "subtitle": "Customize your sales funnel stages. Drag to reorder.",
+    "name": "Name",
+    "color": "Color",
+    "probability": "Probability",
+    "terminal": "Terminal",
+    "stageName": "Stage name",
+    "terminalYes": "Terminal stage (closed)",
+    "terminalNo": "Active stage",
+    "addStage": "Add stage",
+    "unsavedChanges": "You have unsaved changes",
+    "reset": "Reset to defaults"
+  },
   "crmAnalytics": {
     "title": "CRM Analytics",
     "subtitle": "Sales metrics, pipeline performance and team insights",

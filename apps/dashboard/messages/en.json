@@ -1461,7 +1461,7 @@
     "saveConfig": "Save configuration",
     "subtitle": "Configure your AI agent personality and tools",
     "loading": "Loading agent configuration...",
-    "newAgent": "+ New Agent",
+    "newAgent": "New Agent",
     "createFirst": "Create your first agent",
     "noAgents": "No agents configured",
     "noAgentsDesc": "Create your first AI agent to start automating conversations across your channels.",

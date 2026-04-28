@@ -1461,7 +1461,7 @@
     "saveConfig": "Enregistrer la configuration",
     "subtitle": "Configurez la personnalite et les outils de votre agent IA",
     "loading": "Chargement de la configuration de l'agent...",
-    "newAgent": "+ Nouvel agent",
+    "newAgent": "Nouvel agent",
     "createFirst": "Créez votre premier agent",
     "noAgents": "Aucun agent configuré",
     "noAgentsDesc": "Créez votre premier agent IA pour commencer à automatiser les conversations sur vos canaux.",

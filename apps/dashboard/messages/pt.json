@@ -1006,6 +1006,7 @@
       "serviceDeleted": "Serviço excluído",
       "calendarDisconnected": "Calendário desconectado"
     },
+    "confirmDisconnectCalendar": "Desconectar este calendário? Se houver compromissos futuros vinculados, não será possível desconectar até que sejam cancelados ou reatribuídos.",
     "status": {
       "pending": "Pendente",
       "confirmed": "Confirmado",

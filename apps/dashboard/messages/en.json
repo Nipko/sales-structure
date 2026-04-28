@@ -1006,6 +1006,7 @@
       "serviceDeleted": "Service deleted",
       "calendarDisconnected": "Calendar disconnected"
     },
+    "confirmDisconnectCalendar": "Disconnect this calendar? If there are future appointments linked to it, you won't be able to disconnect until they are cancelled or reassigned.",
     "status": {
       "pending": "Pending",
       "confirmed": "Confirmed",

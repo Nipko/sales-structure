@@ -1006,6 +1006,7 @@
       "serviceDeleted": "Service supprimé",
       "calendarDisconnected": "Calendrier déconnecté"
     },
+    "confirmDisconnectCalendar": "Déconnecter ce calendrier ? S'il y a des rendez-vous futurs liés, la déconnexion ne sera pas possible tant qu'ils ne seront pas annulés ou réattribués.",
     "status": {
       "pending": "En attente",
       "confirmed": "Confirmé",

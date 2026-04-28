@@ -653,12 +653,19 @@ export default function AppointmentsPage() {
 
   const handleDisconnectCalendar = async (integrationId: string) => {
     if (!activeTenantId) return;
+    if (!confirm(t("confirmDisconnectCalendar"))) return;
     try {
       await api.disconnectCalendar(activeTenantId, integrationId);
       loadCalendarIntegrations();
       showToast(t("toasts.calendarDisconnected"));
-    } catch {
-      showToast(t("errors.disconnectCalendar"));
+    } catch (err: any) {
+      // Show the backend's error message (e.g., "Cannot disconnect: 3 future appointments...")
+      const serverMsg = err?.message || err?.response?.data?.message || '';
+      if (serverMsg.includes('future appointment') || serverMsg.includes('Cannot disconnect')) {
+        showToast(serverMsg);
+      } else {
+        showToast(t("errors.disconnectCalendar"));
+      }
     }
   };
 

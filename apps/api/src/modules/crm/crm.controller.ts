@@ -614,7 +614,7 @@ export class CrmController {
     async getPipelineStages(@Param('tenantId') tenantId: string) {
         const schema = await this.getSchema(tenantId);
         const stages = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT * FROM pipeline_stages WHERE tenant_id = $1 ORDER BY position ASC`,
+            `SELECT * FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
             [tenantId],
         );
         return { success: true, data: stages || [] };

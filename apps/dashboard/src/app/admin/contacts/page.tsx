@@ -272,11 +272,9 @@ export default function ContactsPage() {
                                 className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 outline-none"
                             >
                                 <option value="">—</option>
-                                <option value="nuevo">Nuevo</option>
-                                <option value="contactado">Contactado</option>
-                                <option value="calificado">Calificado</option>
-                                <option value="ganado">Ganado</option>
-                                <option value="perdido">Perdido</option>
+                                {["nuevo","contactado","respondio","calificado","tibio","caliente","listo_cierre","ganado","perdido","no_interesado"].map(s => (
+                                    <option key={s} value={s}>{tc(`stages.${s}`)}</option>
+                                ))}
                             </select>
                         )}
                         {bulkAction === 'tag' && (
@@ -520,10 +518,9 @@ export default function ContactsPage() {
                                 <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.stage')}</label>
                                 <select value={createForm.stage} onChange={e => setCreateForm(f => ({ ...f, stage: e.target.value }))}
                                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
-                                    <option value="nuevo">Nuevo</option>
-                                    <option value="contactado">Contactado</option>
-                                    <option value="respondio">Respondió</option>
-                                    <option value="calificado">Calificado</option>
+                                    {["nuevo","contactado","respondio","calificado"].map(s => (
+                                        <option key={s} value={s}>{tc(`stages.${s}`)}</option>
+                                    ))}
                                 </select>
                             </div>
                         </div>

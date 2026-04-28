@@ -36,7 +36,19 @@
     "cancelAccount": "Annuler le compte",
     "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation.",
     "copied": "Copie",
-    "clickToCopy": "Cliquez pour copier"
+    "clickToCopy": "Cliquez pour copier",
+    "stages": {
+      "nuevo": "Nouveau",
+      "contactado": "Contacté",
+      "respondio": "A répondu",
+      "calificado": "Qualifié",
+      "tibio": "Tiède",
+      "caliente": "Chaud",
+      "listo_cierre": "Prêt à conclure",
+      "ganado": "Gagné",
+      "perdido": "Perdu",
+      "no_interesado": "Pas intéressé"
+    }
   },
   "nav": {
     "sections": {

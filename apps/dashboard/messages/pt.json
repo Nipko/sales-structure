@@ -36,7 +36,19 @@
     "cancelAccount": "Cancelar conta",
     "cancelAccountConfirm": "Tem certeza? Esta acao desativara sua conta no final do periodo de faturamento.",
     "copied": "Copiado",
-    "clickToCopy": "Clique para copiar"
+    "clickToCopy": "Clique para copiar",
+    "stages": {
+      "nuevo": "Novo",
+      "contactado": "Contatado",
+      "respondio": "Respondeu",
+      "calificado": "Qualificado",
+      "tibio": "Morno",
+      "caliente": "Quente",
+      "listo_cierre": "Pronto para fechar",
+      "ganado": "Ganho",
+      "perdido": "Perdido",
+      "no_interesado": "Sem interesse"
+    }
   },
   "nav": {
     "sections": {

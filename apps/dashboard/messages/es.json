@@ -36,7 +36,19 @@
     "cancelAccount": "Cancelar cuenta",
     "cancelAccountConfirm": "¿Estás seguro? Esta acción desactivará tu cuenta al final del periodo de facturación.",
     "copied": "Copiado",
-    "clickToCopy": "Clic para copiar"
+    "clickToCopy": "Clic para copiar",
+    "stages": {
+      "nuevo": "Nuevo",
+      "contactado": "Contactado",
+      "respondio": "Respondió",
+      "calificado": "Calificado",
+      "tibio": "Tibio",
+      "caliente": "Caliente",
+      "listo_cierre": "Listo para cierre",
+      "ganado": "Ganado",
+      "perdido": "Perdido",
+      "no_interesado": "No interesado"
+    }
   },
   "nav": {
     "sections": {

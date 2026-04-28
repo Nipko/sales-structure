@@ -36,7 +36,19 @@
     "cancelAccount": "Cancel account",
     "cancelAccountConfirm": "Are you sure? This action will deactivate your account at the end of the billing period.",
     "copied": "Copied",
-    "clickToCopy": "Click to copy"
+    "clickToCopy": "Click to copy",
+    "stages": {
+      "nuevo": "New",
+      "contactado": "Contacted",
+      "respondio": "Responded",
+      "calificado": "Qualified",
+      "tibio": "Warm",
+      "caliente": "Hot",
+      "listo_cierre": "Ready to close",
+      "ganado": "Won",
+      "perdido": "Lost",
+      "no_interesado": "Not interested"
+    }
   },
   "nav": {
     "sections": {

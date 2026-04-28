@@ -16,18 +16,13 @@ import {
     Archive, Loader2,
 } from "lucide-react";
 
-const STAGES: Record<string, { label: string; color: string }> = {
-    nuevo: { label: "New", color: "#95a5a6" },
-    contactado: { label: "Contacted", color: "#3498db" },
-    respondio: { label: "Responded", color: "#9b59b6" },
-    calificado: { label: "Qualified", color: "#f39c12" },
-    tibio: { label: "Warm", color: "#e67e22" },
-    caliente: { label: "Hot", color: "#e74c3c" },
-    listo_cierre: { label: "Ready to close", color: "#27ae60" },
-    ganado: { label: "Won", color: "#2ecc71" },
-    perdido: { label: "Lost", color: "#7f8c8d" },
-    no_interesado: { label: "Not interested", color: "#bdc3c7" },
+const STAGE_COLORS: Record<string, string> = {
+    nuevo: "#95a5a6", contactado: "#3498db", respondio: "#9b59b6",
+    calificado: "#f39c12", tibio: "#e67e22", caliente: "#e74c3c",
+    listo_cierre: "#27ae60", ganado: "#2ecc71", perdido: "#7f8c8d",
+    no_interesado: "#bdc3c7",
 };
+const STAGE_KEYS = Object.keys(STAGE_COLORS);
 
 const EVENT_ICONS: Record<string, typeof MessageSquare> = {
     note: StickyNote, task: CheckSquare, stage_change: TrendingUp, event: Zap, message: MessageSquare,
@@ -48,6 +43,7 @@ export default function Lead360Page() {
     const router = useRouter();
     const { activeTenantId } = useTenant();
     const t = useTranslations("contacts");
+    const tc = useTranslations("common");
     const leadId = params?.leadId as string;
 
     const [lead360, setLead360] = useState<any>(null);
@@ -236,7 +232,8 @@ export default function Lead360Page() {
     const { lead, opportunities = [], tags = [] } = lead360 || {};
     if (!lead) return null;
 
-    const stageInfo = STAGES[lead.stage] || STAGES.nuevo;
+    const stageColor = STAGE_COLORS[lead.stage] || STAGE_COLORS.nuevo;
+    const stageLabel = tc(`stages.${lead.stage}`) || lead.stage;
     const score = lead.score || 0;
 
     return (
@@ -374,8 +371,8 @@ export default function Lead360Page() {
                         {/* Stage */}
                         {!editing ? (
                             <div>
-                                <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: `${stageInfo.color}22`, color: stageInfo.color }}>
-                                    {stageInfo.label}
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: `${stageColor}22`, color: stageColor }}>
+                                    {stageLabel}
                                 </span>
                                 {lead.is_vip && (
                                     <span className="ml-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: "rgba(255,215,0,0.12)", color: "#f1c40f" }}>
@@ -392,8 +389,8 @@ export default function Lead360Page() {
                                         onChange={(e) => setEditForm((f) => ({ ...f, stage: e.target.value }))}
                                         className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
                                     >
-                                        {Object.entries(STAGES).map(([key, val]) => (
-                                            <option key={key} value={key}>{val.label}</option>
+                                        {STAGE_KEYS.map(key => (
+                                            <option key={key} value={key}>{tc(`stages.${key}`)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -506,7 +503,7 @@ export default function Lead360Page() {
                             <div key={op.id} className="py-2 border-b border-border">
                                 <div className="text-[13px] font-semibold">{op.course_name || t("leadDetail.opportunity")}</div>
                                 <div className="flex gap-2 mt-1">
-                                    <span className="text-[11px] text-muted-foreground">{STAGES[op.stage]?.label || op.stage}</span>
+                                    <span className="text-[11px] text-muted-foreground">{tc(`stages.${op.stage}`) || op.stage}</span>
                                     {op.estimated_value && (
                                         <span className="text-[11px] font-semibold text-emerald-500">
                                             ${Number(op.estimated_value).toLocaleString()} COP

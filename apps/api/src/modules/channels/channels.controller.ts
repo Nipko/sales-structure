@@ -141,9 +141,13 @@ export class ChannelsController {
 
             normalized.tenantId = channelAccount.tenantId;
 
-            // Fetch sender profile (name + profile picture) from Instagram Graph API
-            if (normalized.contactId && !normalized.metadata?.contactName) {
-                try {
+            // Fetch sender profile (name + profile picture) from Instagram Graph API — cached 1h
+            if (normalized.contactId) {
+                const igCacheKey = `ig_profile:${normalized.contactId}`;
+                const cachedProfile = await this.redis.getJson<any>(igCacheKey);
+                if (cachedProfile) {
+                    normalized.metadata = { ...normalized.metadata, ...cachedProfile };
+                } else try {
                     const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'instagram');
                     const profileRes = await fetch(
                         `https://graph.instagram.com/v21.0/${normalized.contactId}?fields=name,username,profile_pic&access_token=${token.accessToken}`,
@@ -154,12 +158,13 @@ export class ChannelsController {
                         const displayName = profile.name
                             ? (username ? `${profile.name} (@${username})` : profile.name)
                             : (username ? `@${username}` : '');
-                        normalized.metadata = {
-                            ...normalized.metadata,
+                        const profileData = {
                             contactName: displayName,
                             contactUsername: username,
                             contactProfilePic: profile.profile_pic || '',
                         };
+                        normalized.metadata = { ...normalized.metadata, ...profileData };
+                        await this.redis.setJson(igCacheKey, profileData, 3600);
                     }
                 } catch (e: any) {
                     this.logger.warn(`Could not fetch IG sender profile: ${e.message}`);
@@ -228,20 +233,27 @@ export class ChannelsController {
 
             normalized.tenantId = channelAccount.tenantId;
 
-            // Fetch sender profile from Facebook Graph API
-            if (normalized.contactId && !normalized.metadata?.contactName) {
-                try {
+            // Fetch sender profile from Facebook Graph API (name + photo) — cached 1h
+            if (normalized.contactId) {
+                const fbCacheKey = `fb_profile:${normalized.contactId}`;
+                const cachedFbProfile = await this.redis.getJson<any>(fbCacheKey);
+                if (cachedFbProfile) {
+                    normalized.metadata = { ...normalized.metadata, ...cachedFbProfile };
+                } else try {
                     const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'messenger');
                     const profileRes = await fetch(
                         `https://graph.facebook.com/v21.0/${normalized.contactId}?fields=name,profile_pic&access_token=${token.accessToken}`,
                     );
                     if (profileRes.ok) {
                         const profile = await profileRes.json() as any;
-                        normalized.metadata = {
-                            ...normalized.metadata,
-                            contactName: profile.name || '',
-                            contactProfilePic: profile.profile_pic || '',
-                        };
+                        if (profile.name || profile.profile_pic) {
+                            const profileData = {
+                                contactName: profile.name || '',
+                                contactProfilePic: profile.profile_pic || '',
+                            };
+                            normalized.metadata = { ...normalized.metadata, ...profileData };
+                            await this.redis.setJson(fbCacheKey, profileData, 3600);
+                        }
                     }
                 } catch (e: any) {
                     this.logger.warn(`Could not fetch Messenger sender profile: ${e.message}`);

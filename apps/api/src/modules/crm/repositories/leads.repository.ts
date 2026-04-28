@@ -68,8 +68,17 @@ export class LeadsRepository {
     const p: any[] = [];
     let n = 1;
 
+    // archived_at column may not exist on older tenants — check safely
     if (!includeArchived) {
-        q += ` AND l.archived_at IS NULL`;
+        try {
+            const hasCol = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'leads' AND column_name = 'archived_at' LIMIT 1`,
+                [schema],
+            );
+            if (hasCol?.length) {
+                q += ` AND l.archived_at IS NULL`;
+            }
+        } catch (e) { /* column check failed, skip filter */ }
     }
     if (search) {
         q += ` AND (l.first_name ILIKE $${n} OR l.last_name ILIKE $${n} OR l.phone ILIKE $${n} OR l.email ILIKE $${n})`;
@@ -112,10 +121,20 @@ export class LeadsRepository {
 
     const rows = await this.prisma.executeInTenantSchema<any[]>(schema, q, p);
 
-    const countQ = `SELECT COUNT(DISTINCT COALESCE(ci.customer_profile_id, l.id)) as total
+    let countQ = `SELECT COUNT(DISTINCT COALESCE(ci.customer_profile_id, l.id)) as total
       FROM leads l
       LEFT JOIN contact_identities ci ON ci.contact_id = l.contact_id
-      WHERE l.archived_at IS NULL`;
+      WHERE 1=1`;
+    // Safe: only filter archived if column exists (handled by the same check above)
+    if (!includeArchived) {
+        try {
+            const hasCol2 = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'leads' AND column_name = 'archived_at' LIMIT 1`,
+                [schema],
+            );
+            if (hasCol2?.length) countQ += ` AND l.archived_at IS NULL`;
+        } catch (e) { /* skip */ }
+    }
     const total = await this.prisma.executeInTenantSchema<any[]>(schema, countQ, []);
 
     return {

@@ -143,6 +143,13 @@ export class OpportunitiesRepository {
       }
 
       // Deduplicate: show only the most recent opportunity per lead
+      // Note: archived_at column may not exist on older tenants, so we use a safe check
+      const hasArchivedCol = await this.prisma.executeInTenantSchema<any[]>(schema,
+          `SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'leads' AND column_name = 'archived_at' LIMIT 1`,
+          [schema],
+      );
+      const archiveFilter = hasArchivedCol?.length ? 'AND l.archived_at IS NULL' : '';
+
       const opps = await this.prisma.executeInTenantSchema<any[]>(schema, `
           SELECT DISTINCT ON (o.lead_id) o.*,
                  l.first_name, l.last_name, l.phone, l.email, l.score as lead_score,
@@ -152,7 +159,7 @@ export class OpportunitiesRepository {
           JOIN leads l ON l.id = o.lead_id
           LEFT JOIN courses crs ON crs.id = o.course_id
           LEFT JOIN campaigns cam ON cam.id = o.campaign_id
-          WHERE l.archived_at IS NULL
+          WHERE 1=1 ${archiveFilter}
           ORDER BY o.lead_id, o.updated_at DESC
       `, []);
 

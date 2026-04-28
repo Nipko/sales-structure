@@ -291,6 +291,65 @@ export class IdentityService {
         };
     }
 
+    /**
+     * Manually merge two contacts into one unified profile.
+     * Creates a merge suggestion and auto-approves it.
+     */
+    async manualMerge(tenantId: string, contactIdA: string, contactIdB: string, userId: string): Promise<void> {
+        const schemaName = await this.getSchema(tenantId);
+
+        // Get or create profiles for both contacts
+        const getOrCreateProfile = async (contactId: string) => {
+            const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT ci.customer_profile_id FROM contact_identities ci WHERE ci.contact_id = $1::uuid LIMIT 1`,
+                [contactId],
+            );
+            if (existing?.length) return existing[0].customer_profile_id;
+
+            // Create profile from contact data
+            const contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT name, phone, email FROM contacts WHERE id = $1::uuid LIMIT 1`,
+                [contactId],
+            );
+            if (!contact?.length) throw new Error(`Contact ${contactId} not found`);
+
+            const profile = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO customer_profiles (display_name, phone, email) VALUES ($1, $2, $3) RETURNING id`,
+                [contact[0].name, contact[0].phone, contact[0].email],
+            );
+            const profileId = profile[0].id;
+
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO contact_identities (customer_profile_id, contact_id, channel_type, external_id, is_primary)
+                 SELECT $1::uuid, id, channel_type, external_id, true FROM contacts WHERE id = $2::uuid
+                 ON CONFLICT (contact_id) DO UPDATE SET customer_profile_id = $1::uuid`,
+                [profileId, contactId],
+            );
+            return profileId;
+        };
+
+        const profileIdA = await getOrCreateProfile(contactIdA);
+        const profileIdB = await getOrCreateProfile(contactIdB);
+
+        if (profileIdA === profileIdB) {
+            this.logger.log(`[Identity] Contacts already in same profile: ${profileIdA}`);
+            return;
+        }
+
+        // Create suggestion and auto-approve
+        const suggestion = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status, reviewed_by, reviewed_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'manual', 1.0, 'pending', $5, NOW()) RETURNING id`,
+            [profileIdA, profileIdB, contactIdA, contactIdB, userId],
+        );
+
+        if (suggestion?.length) {
+            await this.approveMerge(tenantId, suggestion[0].id, userId);
+        }
+
+        this.logger.log(`[Identity] Manual merge: contacts ${contactIdA} + ${contactIdB} → profile ${profileIdA}`);
+    }
+
     private async getSchema(tenantId: string): Promise<string> {
         const cached = await this.redis.get(`tenant:${tenantId}:schema`);
         if (cached) return cached;

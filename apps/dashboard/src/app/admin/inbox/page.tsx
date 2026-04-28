@@ -433,6 +433,7 @@ export default function InboxPage() {
                         contactName: c.contact_name || c.contactName || t('unknown'),
                         contactPhone: c.contact_phone || c.contactPhone || '',
                         contactEmail: c.contact_email || c.contactEmail || '',
+                        contactAvatar: c.contact_avatar || c.contactAvatar || '',
                         lastMessage: c.last_message || c.lastMessage || '',
                         lastMessageAt: c.last_message_at ? formatTime(c.last_message_at) : c.lastMessageAt || '',
                         lastMessageAtRaw: c.last_message_at || '',
@@ -1530,9 +1531,17 @@ export default function InboxPage() {
                     <div className="p-5">
                         {/* Contact Avatar & Name */}
                         <div className="text-center mb-6">
-                            <div className="w-[72px] h-[72px] rounded-xl mx-auto mb-3 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-semibold text-white shadow-lg shadow-indigo-500/20">
-                                {selectedConv.contactName?.charAt(0) || '?'}
-                            </div>
+                            {selectedConv.contactAvatar ? (
+                                <img
+                                    src={selectedConv.contactAvatar}
+                                    alt={selectedConv.contactName}
+                                    className="w-[72px] h-[72px] rounded-xl mx-auto mb-3 object-cover shadow-lg"
+                                />
+                            ) : (
+                                <div className="w-[72px] h-[72px] rounded-xl mx-auto mb-3 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-semibold text-white shadow-lg shadow-indigo-500/20">
+                                    {selectedConv.contactName?.charAt(0) || '?'}
+                                </div>
+                            )}
                             <div className="font-semibold text-base">{selectedConv.contactName}</div>
                             <div className="flex items-center justify-center gap-2 mt-1.5">
                                 <span

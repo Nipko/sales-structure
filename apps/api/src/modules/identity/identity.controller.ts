@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, Req, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { IdentityService } from './identity.service';
@@ -56,5 +56,17 @@ export class IdentityController {
     ) {
         const data = await this.identityService.getCustomerProfile(tenantId, profileId);
         return { success: true, data };
+    }
+
+    @Post(':tenantId/manual-merge')
+    @ApiOperation({ summary: 'Manually merge two contacts into one unified profile' })
+    async manualMerge(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { contactIdA: string; contactIdB: string },
+        @Req() req: any,
+    ) {
+        const userId = req.user?.sub || req.user?.id;
+        await this.identityService.manualMerge(tenantId, body.contactIdA, body.contactIdB, userId);
+        return { success: true, message: 'Contacts merged' };
     }
 }

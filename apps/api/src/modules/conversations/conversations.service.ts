@@ -261,20 +261,39 @@ export class ConversationsService {
             [contactId, channelType],
         ).then(res => res[0]);
 
+        const metaName = (msg.metadata as any)?.contactName || '';
+        const metaPic = (msg.metadata as any)?.contactProfilePic || '';
+
         if (!contact) {
-            const contactName = (msg.metadata as any)?.contactName || 'Unknown';
             const phoneNorm = normalizePhoneE164(contactId);
             contact = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO contacts (external_id, channel_type, name, phone, phone_normalized) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-                [contactId, channelType, contactName, contactId, phoneNorm],
+                `INSERT INTO contacts (external_id, channel_type, name, phone, phone_normalized, avatar_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                [contactId, channelType, metaName || 'Unknown', contactId, phoneNorm, metaPic || null],
             ).then(res => res[0]);
-        } else if (contact.name === 'Unknown' && (msg.metadata as any)?.contactName) {
-            // Update name if it was Unknown and we now have the real name
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE contacts SET name = $1 WHERE id = $2::uuid`,
-                [(msg.metadata as any).contactName, contact.id],
-            );
-            contact.name = (msg.metadata as any).contactName;
+        } else {
+            // Update name/avatar if we now have better data
+            const updates: string[] = [];
+            const updateParams: any[] = [];
+            let pn = 1;
+
+            if (contact.name === 'Unknown' && metaName) {
+                updates.push(`name = $${pn++}`);
+                updateParams.push(metaName);
+            }
+            if (!contact.avatar_url && metaPic) {
+                updates.push(`avatar_url = $${pn++}`);
+                updateParams.push(metaPic);
+            }
+
+            if (updates.length > 0) {
+                updateParams.push(contact.id);
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE contacts SET ${updates.join(', ')} WHERE id = $${pn}::uuid`,
+                    updateParams,
+                );
+                if (metaName && contact.name === 'Unknown') contact.name = metaName;
+                if (metaPic && !contact.avatar_url) contact.avatar_url = metaPic;
+            }
         }
 
         // 1b. Resolve unified identity

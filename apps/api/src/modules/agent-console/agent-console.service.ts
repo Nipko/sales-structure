@@ -114,7 +114,7 @@ export class AgentConsoleService {
         c.id, c.status, c.channel_type as channel, c.created_at as started_at, c.metadata,
         c.channel_account_id,
         ct.name as contact_name, ct.phone as contact_phone, ct.email as contact_email,
-        ct.tags as contact_tags,
+        ct.avatar_url as contact_avatar, ct.tags as contact_tags,
         m.content_text as last_message, m.created_at as last_message_at, m.direction as last_sender,
         c.assigned_to as assigned_agent_id,
         ca.display_name as channel_account_name, ca.metadata as channel_account_metadata
@@ -137,6 +137,7 @@ export class AgentConsoleService {
             contactName: c.contact_name || 'Unknown',
             contactPhone: c.contact_phone || '',
             contactEmail: c.contact_email || '',
+            contactAvatar: c.contact_avatar || '',
             lastMessage: c.last_message || '',
             lastMessageAt: c.last_message_at || c.started_at,
             status: c.status,

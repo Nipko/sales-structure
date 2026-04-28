@@ -570,15 +570,82 @@ export class CalendarIntegrationService {
         }
 
         if (futureCount > 0) {
-            throw new BadRequestException(
-                `Cannot disconnect: ${futureCount} future appointment${futureCount > 1 ? 's' : ''} must be reassigned or cancelled first`,
+            // Check if there are other active calendars to reassign to
+            const otherCalendars = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, label, account_email, provider FROM calendar_integrations WHERE id != $1::uuid AND is_active = true`,
+                [integrationId],
             );
+
+            throw new BadRequestException({
+                message: `Cannot disconnect: ${futureCount} future appointment${futureCount > 1 ? 's' : ''} must be reassigned or cancelled first`,
+                futureCount,
+                otherCalendars: (otherCalendars || []).map((c: any) => ({
+                    id: c.id,
+                    label: c.label || c.account_email,
+                    provider: c.provider,
+                })),
+                canReassign: (otherCalendars || []).length > 0,
+            });
         }
 
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE calendar_integrations SET is_active = false, updated_at = NOW() WHERE id = $1::uuid`,
             [integrationId],
         );
+    }
+
+    /**
+     * Reassign all future appointments from one calendar/staff to another, then disconnect.
+     */
+    async reassignAndDisconnect(
+        schemaName: string,
+        integrationId: string,
+        targetIntegrationId: string,
+    ): Promise<{ reassigned: number }> {
+        // Get source integration
+        const source = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT user_id, assignment_type, assignment_id FROM calendar_integrations WHERE id = $1::uuid`,
+            [integrationId],
+        );
+        if (!source?.length) throw new BadRequestException('Source calendar not found');
+
+        // Get target integration
+        const target = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT user_id, assignment_type, assignment_id FROM calendar_integrations WHERE id = $1::uuid AND is_active = true`,
+            [targetIntegrationId],
+        );
+        if (!target?.length) throw new BadRequestException('Target calendar not found');
+
+        const src = source[0];
+        const tgt = target[0];
+
+        // Reassign future appointments
+        let reassigned = 0;
+        if (src.assignment_type === 'staff' && src.assignment_id) {
+            const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE appointments SET assigned_to = $1::uuid, updated_at = NOW()
+                 WHERE assigned_to = $2::uuid AND start_at > NOW()
+                 AND status NOT IN ('cancelled', 'completed', 'no_show') RETURNING id`,
+                [tgt.assignment_id || tgt.user_id, src.assignment_id],
+            );
+            reassigned = result?.length || 0;
+        } else {
+            const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE appointments SET assigned_to = $1::uuid, updated_at = NOW()
+                 WHERE assigned_to = $2::uuid AND start_at > NOW()
+                 AND status NOT IN ('cancelled', 'completed', 'no_show') RETURNING id`,
+                [tgt.user_id, src.user_id],
+            );
+            reassigned = result?.length || 0;
+        }
+
+        // Now disconnect
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE calendar_integrations SET is_active = false, updated_at = NOW() WHERE id = $1::uuid`,
+            [integrationId],
+        );
+
+        return { reassigned };
     }
 
     // ── Update assignment ───────────────────────────────────────

@@ -1006,7 +1006,12 @@
       "serviceDeleted": "Service deleted",
       "calendarDisconnected": "Calendar disconnected"
     },
-    "confirmDisconnectCalendar": "Disconnect this calendar? If there are future appointments linked to it, you won't be able to disconnect until they are cancelled or reassigned.",
+    "confirmDisconnectCalendar": "Disconnect this calendar?",
+    "disconnectCalendarTitle": "Cannot disconnect",
+    "disconnectCalendarCount": "{count} future appointment(s) are linked to this calendar",
+    "reassignOption": "Reassign appointments to another calendar:",
+    "noOtherCalendar": "No other calendars connected. Connect another calendar first, or cancel pending appointments.",
+    "cancelAllAndDisconnect": "Cancel all appointments and disconnect",
     "status": {
       "pending": "Pending",
       "confirmed": "Confirmed",

@@ -30,6 +30,7 @@ import {
   Link2,
   Settings,
   BarChart3,
+  AlertTriangle,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -93,6 +94,7 @@ function MicrosoftIcon({ size = 18 }: { size?: number }) {
 
 export default function AppointmentsPage() {
   const t = useTranslations("appointments");
+  const tc = useTranslations("common");
   const locale = useLocale();
   const dateLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-MX";
   const { activeTenantId } = useTenant();
@@ -651,21 +653,78 @@ export default function AppointmentsPage() {
     setConnectingCalendar(false);
   };
 
+  // Calendar disconnect state
+  const [disconnectModal, setDisconnectModal] = useState<{ integrationId: string; futureCount: number; otherCalendars: any[]; canReassign: boolean } | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
   const handleDisconnectCalendar = async (integrationId: string) => {
     if (!activeTenantId) return;
-    if (!confirm(t("confirmDisconnectCalendar"))) return;
     try {
       await api.disconnectCalendar(activeTenantId, integrationId);
       loadCalendarIntegrations();
       showToast(t("toasts.calendarDisconnected"));
     } catch (err: any) {
-      // Show the backend's error message (e.g., "Cannot disconnect: 3 future appointments...")
-      const serverMsg = err?.message || err?.response?.data?.message || '';
-      if (serverMsg.includes('future appointment') || serverMsg.includes('Cannot disconnect')) {
-        showToast(serverMsg);
+      // Parse structured error from backend
+      const errorData = err?.response?.data || err?.data || {};
+      if (errorData.futureCount || (errorData.message && typeof errorData.message === 'object')) {
+        const data = typeof errorData.message === 'object' ? errorData.message : errorData;
+        setDisconnectModal({
+          integrationId,
+          futureCount: data.futureCount || 0,
+          otherCalendars: data.otherCalendars || [],
+          canReassign: data.canReassign || false,
+        });
       } else {
-        showToast(t("errors.disconnectCalendar"));
+        const msg = errorData.message || err?.message || '';
+        if (msg.includes('future appointment') || msg.includes('Cannot disconnect')) {
+          // Fallback: try to parse from text
+          const count = parseInt(msg.match(/(\d+) future/)?.[1] || '0');
+          setDisconnectModal({ integrationId, futureCount: count, otherCalendars: [], canReassign: false });
+        } else {
+          showToast(t("errors.disconnectCalendar"));
+        }
       }
+    }
+  };
+
+  const handleReassignAndDisconnect = async (targetId: string) => {
+    if (!activeTenantId || !disconnectModal) return;
+    setDisconnecting(true);
+    try {
+      await api.fetch(`/appointments/${activeTenantId}/calendar/${disconnectModal.integrationId}/reassign-disconnect`, {
+        method: 'POST',
+        body: JSON.stringify({ targetIntegrationId: targetId }),
+      });
+      setDisconnectModal(null);
+      loadCalendarIntegrations();
+      showToast(t("toasts.calendarDisconnected"));
+    } catch (err: any) {
+      showToast(err?.message || t("errors.disconnectCalendar"));
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const handleCancelAllAndDisconnect = async () => {
+    if (!activeTenantId || !disconnectModal) return;
+    setDisconnecting(true);
+    try {
+      // Cancel all future appointments, then disconnect
+      const appts = await api.fetch(`/appointments/${activeTenantId}?status=pending,confirmed`);
+      for (const appt of (appts?.data || [])) {
+        if (new Date(appt.startAt) > new Date()) {
+          await api.cancelAppointment(activeTenantId, appt.id).catch(() => {});
+        }
+      }
+      await api.disconnectCalendar(activeTenantId, disconnectModal.integrationId);
+      setDisconnectModal(null);
+      loadCalendarIntegrations();
+      loadAppointments();
+      showToast(t("toasts.calendarDisconnected"));
+    } catch (err: any) {
+      showToast(err?.message || t("errors.disconnectCalendar"));
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -865,6 +924,66 @@ export default function AppointmentsPage() {
 
 
       {/* TOAST */}
+      {/* Disconnect Calendar Modal */}
+      {disconnectModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !disconnecting && setDisconnectModal(null)}>
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold m-0">{t("disconnectCalendarTitle")}</h3>
+                <p className="text-xs text-muted-foreground m-0">{t("disconnectCalendarCount", { count: disconnectModal.futureCount })}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {disconnectModal.canReassign && disconnectModal.otherCalendars.length > 0 && (
+                <div className="p-3 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20">
+                  <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">{t("reassignOption")}</p>
+                  {disconnectModal.otherCalendars.map((cal: any) => (
+                    <button
+                      key={cal.id}
+                      onClick={() => handleReassignAndDisconnect(cal.id)}
+                      disabled={disconnecting}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-500/30 bg-white dark:bg-indigo-500/5 text-sm cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/15 transition-colors mb-1 disabled:opacity-50"
+                    >
+                      <span className="flex-1 text-left font-medium">{cal.label}</span>
+                      <span className="text-xs text-muted-foreground">{cal.provider}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {!disconnectModal.canReassign && (
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+                  <p className="text-xs text-amber-700 dark:text-amber-300">{t("noOtherCalendar")}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleCancelAllAndDisconnect}
+                disabled={disconnecting}
+                className="w-full py-2 px-3 rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-medium cursor-pointer hover:bg-red-100 dark:hover:bg-red-500/15 transition-colors disabled:opacity-50"
+              >
+                {t("cancelAllAndDisconnect")}
+              </button>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setDisconnectModal(null)}
+                disabled={disconnecting}
+                className="px-4 py-2 rounded-lg border border-border bg-transparent text-sm text-muted-foreground cursor-pointer hover:bg-muted transition-colors"
+              >
+                {tc("cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-4 py-2.5 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle2 size={16} className="text-emerald-400 dark:text-emerald-600" />

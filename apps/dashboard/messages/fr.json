@@ -1006,7 +1006,12 @@
       "serviceDeleted": "Service supprimé",
       "calendarDisconnected": "Calendrier déconnecté"
     },
-    "confirmDisconnectCalendar": "Déconnecter ce calendrier ? S'il y a des rendez-vous futurs liés, la déconnexion ne sera pas possible tant qu'ils ne seront pas annulés ou réattribués.",
+    "confirmDisconnectCalendar": "Déconnecter ce calendrier ?",
+    "disconnectCalendarTitle": "Impossible de déconnecter",
+    "disconnectCalendarCount": "{count} rendez-vous futur(s) sont liés à ce calendrier",
+    "reassignOption": "Réattribuer les rendez-vous à un autre calendrier :",
+    "noOtherCalendar": "Aucun autre calendrier connecté. Connectez un autre calendrier d'abord, ou annulez les rendez-vous en attente.",
+    "cancelAllAndDisconnect": "Annuler tous les rendez-vous et déconnecter",
     "status": {
       "pending": "En attente",
       "confirmed": "Confirmé",

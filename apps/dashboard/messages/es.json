@@ -1006,7 +1006,12 @@
       "serviceDeleted": "Servicio eliminado",
       "calendarDisconnected": "Calendario desconectado"
     },
-    "confirmDisconnectCalendar": "¿Desconectar este calendario? Si hay citas futuras asociadas, no se podrá desconectar hasta cancelarlas o reasignarlas.",
+    "confirmDisconnectCalendar": "¿Desconectar este calendario?",
+    "disconnectCalendarTitle": "No se puede desconectar",
+    "disconnectCalendarCount": "{count} cita(s) futura(s) están vinculadas a este calendario",
+    "reassignOption": "Reasignar citas a otro calendario:",
+    "noOtherCalendar": "No hay otros calendarios conectados. Conecta otro calendario primero, o cancela las citas pendientes.",
+    "cancelAllAndDisconnect": "Cancelar todas las citas y desconectar",
     "status": {
       "pending": "Pendiente",
       "confirmed": "Confirmada",

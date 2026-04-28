@@ -169,6 +169,19 @@ export class AppointmentsController {
         return { success: true };
     }
 
+    @Post(':tenantId/calendar/:integrationId/reassign-disconnect')
+    async reassignAndDisconnect(
+        @Param('tenantId') tenantId: string,
+        @Param('integrationId') integrationId: string,
+        @Body() body: { targetIntegrationId: string },
+        @CurrentUser() user: any,
+    ) {
+        const result = await this.calendarService.reassignAndDisconnect(
+            user.schemaName, integrationId, body.targetIntegrationId,
+        );
+        return { success: true, data: result };
+    }
+
     // ── Enhanced slots with service duration + calendar ───────────
 
     @Get(':tenantId/bookable-slots')

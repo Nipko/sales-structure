@@ -1829,7 +1829,16 @@
     "toast": {
       "merged": "Contacts merged successfully.",
       "rejected": "Suggestion rejected."
-    }
+    },
+    "tabSuggestions": "Automatic suggestions",
+    "tabManualMerge": "Manual merge",
+    "mergeTitle": "Merge two contacts",
+    "mergeDesc": "Select two contacts from the list to merge them into a single unified profile. Useful when the same person wrote via WhatsApp and Instagram with different accounts.",
+    "selectContactA": "Select the first contact",
+    "selectContactB": "Select the second contact",
+    "mergeButton": "Merge contacts",
+    "mergeSuccess": "Contacts merged successfully.",
+    "searchContacts": "Search by name, phone, or email..."
   },
   "users": {
     "title": "Users",

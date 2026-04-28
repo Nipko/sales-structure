@@ -1856,7 +1856,16 @@
     "toast": {
       "merged": "Contactos fusionados correctamente.",
       "rejected": "Sugerencia rechazada."
-    }
+    },
+    "tabSuggestions": "Sugerencias automáticas",
+    "tabManualMerge": "Fusionar manualmente",
+    "mergeTitle": "Fusionar dos contactos",
+    "mergeDesc": "Selecciona dos contactos de la lista para fusionarlos en un solo perfil unificado. Útil cuando la misma persona escribió por WhatsApp e Instagram con diferentes cuentas.",
+    "selectContactA": "Selecciona el primer contacto",
+    "selectContactB": "Selecciona el segundo contacto",
+    "mergeButton": "Fusionar contactos",
+    "mergeSuccess": "Contactos fusionados correctamente.",
+    "searchContacts": "Buscar por nombre, teléfono o email..."
   },
   "users": {
     "title": "Usuarios",

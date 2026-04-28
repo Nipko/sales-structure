@@ -2422,7 +2422,7 @@
     "items": {
       "createAccount": "Create account",
       "configureAgent": "Configure AI agent",
-      "connectWhatsapp": "Connect WhatsApp",
+      "connectChannel": "Connect a messaging channel",
       "sendTestMessage": "Send a test message",
       "addKnowledgeBase": "Add Knowledge Base (FAQs)",
       "inviteTeam": "Invite team",

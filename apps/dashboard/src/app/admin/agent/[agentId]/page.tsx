@@ -349,7 +349,7 @@ export default function AgentEditorPage() {
   // ── Render ─────────────────────────────────────────────────
 
   return (
-    <div>
+    <div className="pb-20">
       <PageHeader
         icon={Bot}
         title={config.persona.name || t("title")}
@@ -649,6 +649,30 @@ export default function AgentEditorPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sticky Save Bar — always visible at bottom */}
+      {mode === "guided" && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
+          <span className="text-xs text-neutral-400 mr-auto">{t("title")}</span>
+          <Link
+            href={`/admin/agent/${agentId}/test`}
+            className="px-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium no-underline flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <TestTube2 size={14} /> {t("testAgent")}
+          </Link>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className={cn(
+              "px-5 py-2 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
+              saving ? "bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed" : "bg-indigo-500 hover:bg-indigo-600"
+            )}
+          >
+            <Save size={14} /> {saving ? tc("saving") : tc("saveChanges")}
+          </button>
         </div>
       )}
 

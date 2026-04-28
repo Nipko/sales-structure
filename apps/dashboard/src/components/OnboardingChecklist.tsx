@@ -19,7 +19,7 @@ interface ChecklistItem {
 const ITEMS: ChecklistItem[] = [
     { key: "createAccount", essential: true, href: "", actionKey: "", timeMin: 0, check: () => true },
     { key: "configureAgent", essential: true, href: "/admin/agent", actionKey: "configure", timeMin: 3, check: (d) => d.hasPersona },
-    { key: "connectWhatsapp", essential: true, href: "/admin/channels/whatsapp", actionKey: "connect", timeMin: 3, check: (d) => d.hasWhatsapp },
+    { key: "connectChannel", essential: true, href: "/admin/channels", actionKey: "connect", timeMin: 3, check: (d) => d.hasAnyChannel },
     { key: "sendTestMessage", essential: true, href: "/admin/inbox", actionKey: "try", timeMin: 1, check: (d) => d.hasConversations },
     { key: "addKnowledgeBase", essential: false, href: "/admin/knowledge", actionKey: "configure", timeMin: 5, check: (d) => d.hasKnowledge },
     { key: "inviteTeam", essential: false, href: "/admin/users", actionKey: "invite", timeMin: 2, check: (d) => d.hasTeam },
@@ -56,13 +56,13 @@ export default function OnboardingChecklist() {
                 ]);
 
                 const channels = channelsRes?.channels || channelsRes?.data?.channels || [];
-                const hasWhatsapp = channels.some((c: any) => c.channel_type === "whatsapp" && c.is_active);
+                const hasAnyChannel = channels.some((c: any) => c.is_active);
                 const hasInstagram = channels.some((c: any) => c.channel_type === "instagram" && c.is_active);
 
                 setCheckData({
                     setupCompleted: setupRes?.data?.setupWizardCompleted || false,
                     hasPersona: setupRes?.data?.setupWizardCompleted || false,
-                    hasWhatsapp,
+                    hasAnyChannel,
                     hasInstagram,
                     hasConversations: false, // Would need a count check
                     hasKnowledge: false,

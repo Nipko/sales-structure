@@ -2449,7 +2449,7 @@
     "items": {
       "createAccount": "Crear cuenta",
       "configureAgent": "Configurar agente IA",
-      "connectWhatsapp": "Conectar WhatsApp",
+      "connectChannel": "Conectar un canal de mensajería",
       "sendTestMessage": "Enviar mensaje de prueba",
       "addKnowledgeBase": "Agregar Knowledge Base (FAQs)",
       "inviteTeam": "Invitar equipo",

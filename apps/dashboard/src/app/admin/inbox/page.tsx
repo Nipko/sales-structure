@@ -118,7 +118,17 @@ function ChannelIcon({ channel, size = 20 }: { channel: string; size?: number })
 // ============================================
 
 /** Locale-aware date formatting */
-/** Format a date for display — uses Intl.RelativeTimeFormat for "hoy"/"ayer" in any locale */
+/** Ensure no raw ISO string ever reaches the UI */
+function safeDate(dateStr: string): string {
+    if (!dateStr) return "";
+    // If it looks like an ISO string, format it
+    if (dateStr.includes('T') || dateStr.includes('Z') || dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+        return formatTime(dateStr);
+    }
+    return dateStr; // Already formatted
+}
+
+/** Format a date for display — uses locale-aware formatting */
 function formatTime(dateStr: string): string {
     try {
         if (!dateStr) return "";
@@ -990,7 +1000,7 @@ export default function InboxPage() {
                                                     "text-[11px] flex-shrink-0",
                                                     hasUnread ? "text-indigo-500 font-semibold" : "text-muted-foreground"
                                                 )}>
-                                                    {conv.lastMessageAt}
+                                                    {safeDate(conv.lastMessageAt)}
                                                 </span>
                                             </div>
                                             <div className="flex items-center justify-between gap-2 mt-1">
@@ -1323,7 +1333,7 @@ export default function InboxPage() {
                                                 {!isInbound && msg.senderLabel === t('agent') && <User size={10} />}
                                                 <span className="font-semibold">{msg.senderLabel || msg.senderName}</span>
                                                 <ChannelIcon channel={selectedConv.channel} size={14} />
-                                                <span className="opacity-50">{msg.timestamp}</span>
+                                                <span className="opacity-50">{safeDate(msg.timestamp)}</span>
                                             </div>
 
                                             {/* Bubble */}
@@ -1412,7 +1422,7 @@ export default function InboxPage() {
                                 {notes.length > 0 ? notes.map(note => (
                                     <div key={note.id} className="px-3 py-2 rounded-xl bg-card border border-border/50 mb-2 text-[13px]">
                                         <div>{note.content}</div>
-                                        <div className="text-[10px] text-muted-foreground mt-1.5">-- {note.agentName}, {note.createdAt}</div>
+                                        <div className="text-[10px] text-muted-foreground mt-1.5">-- {note.agentName}, {safeDate(note.createdAt)}</div>
                                     </div>
                                 )) : (
                                     <div className="text-xs text-muted-foreground opacity-60">{t("noNotes")}</div>
@@ -1655,7 +1665,7 @@ export default function InboxPage() {
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <Clock size={13} className="text-muted-foreground flex-shrink-0" />
                                     <span className="text-muted-foreground text-xs">{t('lastActivity')}:</span>
-                                    <span className="text-xs ml-auto">{selectedConv.lastMessageAt || 'N/A'}</span>
+                                    <span className="text-xs ml-auto">{safeDate(selectedConv.lastMessageAt) || 'N/A'}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <MessageSquare size={13} className="text-muted-foreground flex-shrink-0" />

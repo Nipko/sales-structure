@@ -2728,6 +2728,9 @@
   "featureRequests": {
     "title": "Feature Requests",
     "subtitle": "Suggest new features and vote on what matters most to you",
+    "viewBoard": "Requests",
+    "viewChangelog": "Changelog",
+    "changelogEmpty": "We haven't shipped public updates yet.",
     "submit": "Submit request",
     "submitting": "Submitting…",
     "submitted": "Request submitted",

@@ -118,8 +118,10 @@ function ChannelIcon({ channel, size = 20 }: { channel: string; size?: number })
 // ============================================
 
 /** Locale-aware date formatting */
-function formatTime(dateStr: string, todayLabel = "Today", yesterdayLabel = "Yesterday"): string {
+/** Format a date for display — uses Intl.RelativeTimeFormat for "hoy"/"ayer" in any locale */
+function formatTime(dateStr: string): string {
     try {
+        if (!dateStr) return "";
         const d = new Date(dateStr);
         if (isNaN(d.getTime())) return "";
         const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -129,24 +131,35 @@ function formatTime(dateStr: string, todayLabel = "Today", yesterdayLabel = "Yes
         const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
         const diffDays = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
 
-        if (diffDays === 0) return time;
-        if (diffDays === 1) return `${yesterdayLabel} ${time}`;
-        if (diffDays < 7) return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
-        return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${time}`;
+        if (diffDays === 0) return time; // Just "14:30"
+        if (diffDays === 1) return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`; // "dom. 14:30"
+        if (diffDays < 7) return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`; // "lun. 14:30"
+        return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + ` ${time}`; // "28 abr. 14:30"
     } catch {
         return "";
     }
 }
 
-function formatDateLabel(dateStr: string, todayLabel = "Today", yesterdayLabel = "Yesterday"): string {
+/** Format a date for the date separator between messages */
+function formatDateLabel(dateStr: string): string {
     try {
+        if (!dateStr) return "";
         const d = new Date(dateStr);
-        const today = new Date();
+        if (isNaN(d.getTime())) return "";
+        const now = new Date();
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
-        if (d.toDateString() === today.toDateString()) return todayLabel;
-        if (d.toDateString() === yesterday.toDateString()) return yesterdayLabel;
+        // Use locale-aware relative day names
+        if (d.toDateString() === now.toDateString()) {
+            // "Hoy" / "Today" / "Hoje" via Intl.RelativeTimeFormat
+            try { return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(0, 'day'); }
+            catch { return d.toLocaleDateString(undefined, { weekday: "long" }); }
+        }
+        if (d.toDateString() === yesterday.toDateString()) {
+            try { return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(-1, 'day'); }
+            catch { return d.toLocaleDateString(undefined, { weekday: "long" }); }
+        }
         return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
     } catch {
         return "";

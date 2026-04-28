@@ -646,6 +646,34 @@ export const api = {
     updateBillingPaymentMethod: (tenantId: string, data: { cardTokenId: string }) =>
         apiPost(`/billing/${tenantId}/subscription/payment-method`, data),
 
+    // --- Feature Requests (Apr 27) ---
+    listFeatureRequests: (params?: { status?: string; category?: string; search?: string; sort?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.category) qs.set("category", params.category);
+        if (params?.search) qs.set("search", params.search);
+        if (params?.sort) qs.set("sort", params.sort);
+        const q = qs.toString();
+        return apiGet<any[]>(`/feature-requests${q ? `?${q}` : ""}`);
+    },
+    getFeatureRequest: (id: string) => apiGet<any>(`/feature-requests/${id}`),
+    findSimilarFeatureRequests: (text: string) =>
+        apiGet<any[]>(`/feature-requests/similar?text=${encodeURIComponent(text)}`),
+    createFeatureRequest: (data: { title: string; description: string; category?: string }) =>
+        apiPost<any>(`/feature-requests`, data),
+    voteFeatureRequest: (id: string) => apiPost(`/feature-requests/${id}/vote`, {}),
+    unvoteFeatureRequest: (id: string) =>
+        authFetch(`/feature-requests/${id}/vote`, { method: "DELETE" }).then((r) => r.json()),
+    getFeatureRequestChangelog: () => apiGet<any[]>(`/feature-requests/changelog`),
+    listFeatureRequestComments: (id: string) =>
+        apiGet<any[]>(`/feature-requests/${id}/comments`),
+    commentFeatureRequest: (id: string, body: string) =>
+        apiPost(`/feature-requests/${id}/comments`, { body }),
+    updateFeatureRequestStatus: (id: string, data: { status: string; declinedReason?: string }) =>
+        apiPatch(`/feature-requests/${id}/status`, data),
+    mergeFeatureRequest: (sourceId: string, targetId: string) =>
+        apiPost(`/feature-requests/${sourceId}/merge`, { targetId }),
+
     fetch: async (endpoint: string, options: RequestInit = {}) => {
         const res = await authFetch(endpoint, options);
         if (!res.ok) {

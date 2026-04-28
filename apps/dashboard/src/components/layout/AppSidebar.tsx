@@ -36,6 +36,7 @@ import {
   Package,
   Boxes,
   ShoppingCart,
+  Lightbulb,
   type LucideIcon,
 } from "lucide-react";
 
@@ -93,6 +94,7 @@ const sectionDefs: NavSectionDef[] = [
       { labelKey: "knowledgeBase", href: "/admin/knowledge", icon: BookOpen },
       { labelKey: "identity", href: "/admin/identity", icon: Fingerprint },
       { labelKey: "users", href: "/admin/users", icon: Users },
+      { labelKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
       { labelKey: "settings", href: "/admin/settings", icon: Settings },
     ],
   },

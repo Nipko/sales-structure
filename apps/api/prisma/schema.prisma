@@ -390,3 +390,87 @@ model ExchangeRate {
   @@schema("public")
 }
 
+// ============================================
+// FEATURE REQUESTS — Global board (cross-tenant)
+// ============================================
+// Single global board: tenants submit and vote on Parallly platform features.
+// No per-tenant board — sub-boards add complexity for PYMEs that won't moderate.
+// Status workflow: open → under_review → planned → in_progress → shipped | declined
+// Ranking: weighted votes by lifetime MRR + recency decay + engagement bonus.
+
+model FeatureRequest {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  status          String   @default("open")           // open|under_review|planned|in_progress|shipped|declined
+  category        String?                              // ai|integrations|analytics|crm|billing|ux|other
+  authorUserId    String   @map("author_user_id")
+  authorTenantId  String?  @map("author_tenant_id")   // null if super_admin authored
+  voteCount       Int      @default(0) @map("vote_count")            // raw count, denormalized for sort
+  weightedScore   Float    @default(0) @map("weighted_score")        // ranking score, recomputed nightly
+  commentCount    Int      @default(0) @map("comment_count")
+  embedding       Unsupported("vector(1536)")?                       // for duplicate detection
+  mergedIntoId    String?  @map("merged_into_id")                    // when admin merges duplicates
+  shippedAt       DateTime? @map("shipped_at")
+  declinedReason  String?  @map("declined_reason")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  votes           FeatureRequestVote[]
+  comments        FeatureRequestComment[]
+  mergedInto      FeatureRequest?  @relation("MergedRequests", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  duplicates      FeatureRequest[] @relation("MergedRequests")
+
+  @@index([status, weightedScore(sort: Desc)])
+  @@index([authorTenantId])
+  @@index([category])
+  @@map("feature_requests")
+  @@schema("public")
+}
+
+model FeatureRequestVote {
+  id              String   @id @default(uuid())
+  requestId       String   @map("request_id")
+  userId          String   @map("user_id")
+  tenantId        String?  @map("tenant_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  request         FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, userId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("feature_request_votes")
+  @@schema("public")
+}
+
+model FeatureRequestComment {
+  id              String   @id @default(uuid())
+  requestId       String   @map("request_id")
+  userId          String   @map("user_id")
+  tenantId        String?  @map("tenant_id")
+  body            String
+  isAdminReply    Boolean  @default(false) @map("is_admin_reply")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  request         FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("feature_request_comments")
+  @@schema("public")
+}
+
+// Subscribers receive email notifications when status changes or admin comments.
+// Auto-subscribed on vote and on comment.
+model FeatureRequestSubscriber {
+  id          String   @id @default(uuid())
+  requestId   String   @map("request_id")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([requestId, userId])
+  @@map("feature_request_subscribers")
+  @@schema("public")
+}
+

@@ -52,6 +52,7 @@ import { PoliciesModule } from './modules/policies/policies.module';
 import { OffersModule } from './modules/offers/offers.module';
 import { OffboardingModule } from './modules/offboarding/offboarding.module';
 import { FinancialsModule } from './modules/financials/financials.module';
+import { FeatureRequestsModule } from './modules/feature-requests/feature-requests.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -159,6 +160,7 @@ import llmConfig from './config/llm.config';
         OffersModule,
         OffboardingModule,
         FinancialsModule,
+        FeatureRequestsModule,
     ],
 })
 export class AppModule { }

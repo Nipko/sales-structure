@@ -2728,6 +2728,9 @@
   "featureRequests": {
     "title": "Suggestions",
     "subtitle": "Proposez de nouvelles fonctionnalités et votez pour celles qui comptent le plus",
+    "viewBoard": "Suggestions",
+    "viewChangelog": "Nouveautés",
+    "changelogEmpty": "Aucune nouveauté publique pour le moment.",
     "submit": "Envoyer une suggestion",
     "submitting": "Envoi…",
     "submitted": "Suggestion envoyée",

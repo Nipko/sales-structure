@@ -21,9 +21,11 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
+const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio','caliente','listo_cierre','ganado','perdido','no_interesado'];
 
 export default function PipelinePage() {
     const t = useTranslations('pipeline');
+    const tc = useTranslations('common');
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [kanban, setKanban] = useState<any>(null);
@@ -145,7 +147,8 @@ export default function PipelinePage() {
                                                 method: "PUT",
                                                 body: JSON.stringify({ stage: stage.id }),
                                             });
-                                            setToast(t('movedTo', { stage: stage.name }));
+                                            const stageName = KNOWN_STAGE_KEYS.includes(stage.id) ? tc(`stages.${stage.id}`) : stage.name;
+                                            setToast(t('movedTo', { stage: stageName }));
                                             setTimeout(() => setToast(null), 2000);
                                         } catch (err) {
                                             console.error("Failed to move opportunity:", err);
@@ -169,7 +172,7 @@ export default function PipelinePage() {
                                                 className="w-2.5 h-2.5 rounded-full"
                                                 style={{ background: stage.color }}
                                             />
-                                            <span className="font-semibold text-[13px]">{stage.name}</span>
+                                            <span className="font-semibold text-[13px]">{KNOWN_STAGE_KEYS.includes(stage.id) ? tc(`stages.${stage.id}`) : stage.name}</span>
                                             <span className="text-[11px] px-1.5 py-px rounded-full bg-neutral-100 dark:bg-neutral-800 text-muted-foreground">
                                                 {stage.deals?.length || 0}
                                             </span>

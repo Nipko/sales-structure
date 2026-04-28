@@ -1645,6 +1645,9 @@
       "emojiHeavy": "Frecuente"
     },
     "behaviorSection": {
+      "safetyGuardrails": "Protecciones de seguridad (siempre activas)",
+      "safetyGuardrailsDesc": "Estas restricciones están siempre activas en todos los agentes y no pueden ser desactivadas. Cumplen con las políticas de Meta, OpenAI y normativas internacionales.",
+      "additionalTopics": "adicionales",
       "strictRules": "Reglas estrictas",
       "rulesPlaceholder": "ej.: Siempre confirmar disponibilidad antes de cotizar",
       "forbiddenTopics": "Temas prohibidos",

@@ -1618,6 +1618,9 @@
       "emojiHeavy": "Heavy"
     },
     "behaviorSection": {
+      "safetyGuardrails": "Safety guardrails (always active)",
+      "safetyGuardrailsDesc": "These restrictions are always active on all agents and cannot be disabled. They comply with Meta, OpenAI, and international regulations.",
+      "additionalTopics": "additional",
       "strictRules": "Strict rules",
       "rulesPlaceholder": "e.g.: Always confirm availability before quoting",
       "forbiddenTopics": "Forbidden topics",

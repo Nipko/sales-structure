@@ -1618,6 +1618,9 @@
       "emojiHeavy": "Fréquent"
     },
     "behaviorSection": {
+      "safetyGuardrails": "Protections de sécurité (toujours actives)",
+      "safetyGuardrailsDesc": "Ces restrictions sont toujours actives sur tous les agents et ne peuvent pas être désactivées. Elles sont conformes aux politiques de Meta, OpenAI et aux réglementations internationales.",
+      "additionalTopics": "supplémentaires",
       "strictRules": "Règles strictes",
       "rulesPlaceholder": "ex. : Toujours confirmer la disponibilité avant de coter",
       "forbiddenTopics": "Sujets interdits",

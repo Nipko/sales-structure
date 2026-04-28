@@ -2,9 +2,10 @@
 
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { Shield, AlertTriangle, MessageSquare, Plus, X, ClipboardList, Folder } from "lucide-react";
+import { Shield, AlertTriangle, MessageSquare, Plus, X, ClipboardList, Folder, Lock } from "lucide-react";
 import { inputCls } from "../_types";
 import type { PersonaConfig } from "../_types";
+import { UNIVERSAL_FORBIDDEN_TOPICS } from "@parallext/shared";
 
 interface BehaviorSectionProps {
   config: PersonaConfig;
@@ -43,10 +44,29 @@ export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
 
   return (
     <div className="flex flex-col gap-4 mt-3">
+      {/* Universal Safety Guardrails — always active, cannot be removed */}
+      <div>
+        <h4 className="text-[13px] font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-1.5">
+          <Lock size={14} /> {t("safetyGuardrails")}
+        </h4>
+        <div className="bg-red-50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-lg p-3">
+          <p className="text-[11px] text-red-600 dark:text-red-400/80 mb-2">{t("safetyGuardrailsDesc")}</p>
+          <div className="flex flex-col gap-1">
+            {UNIVERSAL_FORBIDDEN_TOPICS.map(topic => (
+              <div key={topic.key} className="flex items-center gap-2 text-[12px] text-red-700 dark:text-red-300/90">
+                <Lock size={10} className="shrink-0 opacity-50" />
+                <span>{topic.label.es}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {sectionDefs.map(section => (
         <div key={section.key}>
           <h4 className="text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2 flex items-center gap-1.5">
             <section.icon size={14} className="text-indigo-500" /> {t(section.titleKey)}
+            {section.key === 'forbiddenTopics' && <span className="text-[10px] text-muted-foreground font-normal ml-1">({t("additionalTopics")})</span>}
           </h4>
           <div className="flex flex-col gap-2">
             {config.behavior[section.key].map((item, idx) => (

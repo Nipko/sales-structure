@@ -506,3 +506,21 @@ export interface TestAgentResponse {
     reply: string;
     debug: TestAgentDebugInfo;
 }
+
+// ---- Universal Safety Guardrails ----
+// These forbidden topics are always active and cannot be removed by tenants.
+// They are enforced at Layer 1 (CONTRACT) of the system prompt.
+export const UNIVERSAL_FORBIDDEN_TOPICS = [
+    { key: 'csam', label: { es: 'Explotación o abuso de menores', en: 'Child exploitation or abuse', pt: 'Exploração ou abuso de menores', fr: 'Exploitation ou abus de mineurs' } },
+    { key: 'trafficking', label: { es: 'Trata de personas o trabajo forzado', en: 'Human trafficking or forced labor', pt: 'Tráfico de pessoas ou trabalho forçado', fr: 'Traite des personnes ou travail forcé' } },
+    { key: 'self_harm', label: { es: 'Instrucciones de autolesión o suicidio', en: 'Self-harm or suicide instructions', pt: 'Instruções de autolesão ou suicídio', fr: 'Instructions d\'automutilation ou de suicide' } },
+    { key: 'terrorism', label: { es: 'Terrorismo o extremismo violento', en: 'Terrorism or violent extremism', pt: 'Terrorismo ou extremismo violento', fr: 'Terrorisme ou extrémisme violent' } },
+    { key: 'illegal_drugs', label: { es: 'Producción o tráfico de drogas ilegales', en: 'Illegal drug production or trafficking', pt: 'Produção ou tráfico de drogas ilegais', fr: 'Production ou trafic de drogues illicites' } },
+    { key: 'weapons', label: { es: 'Fabricación de armas o explosivos', en: 'Weapons or explosives manufacturing', pt: 'Fabricação de armas ou explosivos', fr: 'Fabrication d\'armes ou d\'explosifs' } },
+    { key: 'non_consensual', label: { es: 'Contenido sexual no consentido', en: 'Non-consensual sexual content', pt: 'Conteúdo sexual não consensual', fr: 'Contenu sexuel non consenti' } },
+    { key: 'fraud', label: { es: 'Esquemas de fraude, estafas o phishing', en: 'Fraud schemes, scams, or phishing', pt: 'Esquemas de fraude, golpes ou phishing', fr: 'Fraude, escroqueries ou hameçonnage' } },
+    { key: 'financial_data', label: { es: 'Solicitar tarjetas de crédito, cuentas bancarias o documentos de identidad', en: 'Requesting credit cards, bank accounts, or government IDs', pt: 'Solicitar cartões de crédito, contas bancárias ou documentos de identidade', fr: 'Demander des cartes de crédit, comptes bancaires ou pièces d\'identité' } },
+    { key: 'other_customers', label: { es: 'Divulgar información personal de otros clientes', en: 'Disclosing other customers\' personal information', pt: 'Divulgar informações pessoais de outros clientes', fr: 'Divulguer les informations personnelles d\'autres clients' } },
+    { key: 'medical_advice', label: { es: 'Diagnóstico médico o prescripción de tratamiento', en: 'Medical diagnosis or treatment prescription', pt: 'Diagnóstico médico ou prescrição de tratamento', fr: 'Diagnostic médical ou prescription de traitement' } },
+    { key: 'legal_advice', label: { es: 'Asesoría legal como si fuera abogado', en: 'Legal advice as if an attorney', pt: 'Assessoria jurídica como se fosse advogado', fr: 'Conseils juridiques comme un avocat' } },
+];

@@ -18,7 +18,7 @@ const NAV_SECTIONS: NavSection[] = [
     {
         i18nKey: "account",
         items: [
-            { i18nKey: "profile.title", href: "/admin/settings/profile", icon: User },
+            { i18nKey: "profile", href: "/admin/settings/profile", icon: User },
             { i18nKey: "securityPage.title", href: "/admin/settings/security", icon: Shield },
             { i18nKey: "notifications", href: "/admin/settings/notifications", icon: Bell },
             { i18nKey: "appearance", href: "/admin/settings/appearance", icon: Palette },

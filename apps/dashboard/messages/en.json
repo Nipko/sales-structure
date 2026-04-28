@@ -61,7 +61,7 @@
       "dashboard": "Dashboard",
       "inbox": "Inbox",
       "crm": "CRM",
-      "pipeline": "Pipeline",
+      "pipeline": "Sales Funnel",
       "automation": "Automation",
       "campaigns": "Campaigns",
       "appointments": "Appointments",
@@ -77,6 +77,7 @@
       "knowledgeBase": "Knowledge Base",
       "identity": "Identity",
       "users": "Users",
+      "featureRequests": "Feature Requests",
       "settings": "Settings",
       "tenants": "Tenants",
       "financials": "Financials"
@@ -1171,9 +1172,11 @@
     "agent": "Agent", "dealsClosed": "Deals closed", "avgDeal": "Average", "days": "Days", "avgDays": "Avg days", "noData": "No data available"
   },
   "pipeline": {
-    "title": "Pipeline",
+    "title": "Sales Funnel",
+    "subtitle": "Drag opportunities between stages to advance the process",
     "dragHere": "Drag opportunities here",
-    "loading": "Loading pipeline...",
+    "loading": "Loading...",
+    "customizeStages": "Customize stages",
     "movedTo": "Opportunity moved to {stage}",
     "kpi": {
       "totalValue": "Total value",
@@ -2719,6 +2722,62 @@
       "database": "Database",
       "storage": "Storage",
       "whatsapp_api": "WhatsApp API",
+      "other": "Other"
+    }
+  },
+  "featureRequests": {
+    "title": "Feature Requests",
+    "subtitle": "Suggest new features and vote on what matters most to you",
+    "submit": "Submit request",
+    "submitting": "Submitting…",
+    "submitted": "Request submitted",
+    "loading": "Loading…",
+    "empty": "No requests yet. Be the first.",
+    "anonymous": "Anonymous",
+    "searchPlaceholder": "Search requests…",
+    "allCategories": "All categories",
+    "createTitle": "New feature request",
+    "titleLabel": "Title",
+    "titlePlaceholder": "e.g. Mailchimp integration",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "What problem does this solve, how would you use it, and why does it matter?",
+    "categoryLabel": "Category",
+    "noCategory": "No category",
+    "similarFound": "Similar requests found",
+    "similarHint": "Vote for an existing one instead of creating a duplicate",
+    "votesShort": "votes",
+    "match": "match",
+    "cancel": "Cancel",
+    "comments": "Comments",
+    "commentPlaceholder": "Write a comment…",
+    "post": "Post",
+    "teamReply": "Parallly Team",
+    "adminActions": "Team actions",
+    "apply": "Apply",
+    "statusUpdated": "Status updated",
+    "declinedReason": "Decline reason",
+    "declinedReasonPlaceholder": "Briefly explain why this won't be built",
+    "sort": {
+      "smart": "Recommended",
+      "topVoted": "Top voted",
+      "recent": "Most recent"
+    },
+    "status": {
+      "all": "All",
+      "open": "Open",
+      "under_review": "Under review",
+      "planned": "Planned",
+      "in_progress": "In progress",
+      "shipped": "Shipped",
+      "declined": "Declined"
+    },
+    "category": {
+      "ai": "AI",
+      "integrations": "Integrations",
+      "analytics": "Analytics",
+      "crm": "CRM",
+      "billing": "Billing",
+      "ux": "Experience",
       "other": "Other"
     }
   }

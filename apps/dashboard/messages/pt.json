@@ -61,7 +61,7 @@
       "dashboard": "Dashboard",
       "inbox": "Caixa de entrada",
       "crm": "CRM",
-      "pipeline": "Pipeline",
+      "pipeline": "Funil de vendas",
       "automation": "Automação",
       "campaigns": "Campanhas",
       "appointments": "Agendamentos",
@@ -77,6 +77,7 @@
       "knowledgeBase": "Base de Conhecimento",
       "identity": "Identidade",
       "users": "Usuários",
+      "featureRequests": "Sugestões",
       "settings": "Configurações",
       "tenants": "Tenants",
       "financials": "Financeiro"
@@ -1171,9 +1172,11 @@
     "agent": "Agente", "dealsClosed": "Negócios fechados", "avgDeal": "Média", "days": "Dias", "avgDays": "Dias médios", "noData": "Sem dados disponíveis"
   },
   "pipeline": {
-    "title": "Pipeline",
+    "title": "Funil de vendas",
+    "subtitle": "Arraste oportunidades entre etapas para avançar no processo",
     "dragHere": "Arraste oportunidades aqui",
-    "loading": "Carregando pipeline...",
+    "loading": "Carregando...",
+    "customizeStages": "Personalizar etapas",
     "movedTo": "Oportunidade movida para {stage}",
     "kpi": {
       "totalValue": "Valor total",
@@ -2720,6 +2723,62 @@
       "storage": "Armazenamento",
       "whatsapp_api": "API WhatsApp",
       "other": "Outros"
+    }
+  },
+  "featureRequests": {
+    "title": "Sugestões",
+    "subtitle": "Sugira novas funcionalidades e vote nas que mais importam para você",
+    "submit": "Enviar sugestão",
+    "submitting": "Enviando…",
+    "submitted": "Sugestão enviada",
+    "loading": "Carregando…",
+    "empty": "Ainda não há sugestões. Seja o primeiro.",
+    "anonymous": "Anônimo",
+    "searchPlaceholder": "Buscar sugestões…",
+    "allCategories": "Todas as categorias",
+    "createTitle": "Nova sugestão",
+    "titleLabel": "Título",
+    "titlePlaceholder": "Ex: Integração com Mailchimp",
+    "descriptionLabel": "Descrição",
+    "descriptionPlaceholder": "Qual problema isso resolve, como você usaria, e por que é importante?",
+    "categoryLabel": "Categoria",
+    "noCategory": "Sem categoria",
+    "similarFound": "Sugestões similares encontradas",
+    "similarHint": "Vote em uma existente em vez de criar duplicada",
+    "votesShort": "votos",
+    "match": "compatível",
+    "cancel": "Cancelar",
+    "comments": "Comentários",
+    "commentPlaceholder": "Escreva um comentário…",
+    "post": "Publicar",
+    "teamReply": "Equipe Parallly",
+    "adminActions": "Ações da equipe",
+    "apply": "Aplicar",
+    "statusUpdated": "Status atualizado",
+    "declinedReason": "Motivo da rejeição",
+    "declinedReasonPlaceholder": "Explique brevemente por que não será construída",
+    "sort": {
+      "smart": "Recomendado",
+      "topVoted": "Mais votadas",
+      "recent": "Mais recentes"
+    },
+    "status": {
+      "all": "Todas",
+      "open": "Aberta",
+      "under_review": "Em análise",
+      "planned": "Planejada",
+      "in_progress": "Em desenvolvimento",
+      "shipped": "Lançada",
+      "declined": "Rejeitada"
+    },
+    "category": {
+      "ai": "IA",
+      "integrations": "Integrações",
+      "analytics": "Analytics",
+      "crm": "CRM",
+      "billing": "Faturamento",
+      "ux": "Experiência",
+      "other": "Outro"
     }
   }
 }

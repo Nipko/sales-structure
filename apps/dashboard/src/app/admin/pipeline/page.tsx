@@ -2,6 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -24,6 +25,7 @@ const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 export default function PipelinePage() {
     const t = useTranslations('pipeline');
     const { activeTenantId } = useTenant();
+    const router = useRouter();
     const [kanban, setKanban] = useState<any>(null);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
     const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -69,8 +71,19 @@ export default function PipelinePage() {
                 {/* Header */}
                 <PageHeader
                     title={t('title')}
-                    subtitle={`${forecast.dealCount} ${t('deals')}`}
+                    subtitle={t('subtitle')}
                     badge={<DataSourceBadge isLive={isLive} />}
+                    action={
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">{forecast.dealCount} {t('deals')}</span>
+                            <button
+                                onClick={() => router.push('/admin/settings/pipeline')}
+                                className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
+                            >
+                                <GripVertical size={14} /> {t('customizeStages')}
+                            </button>
+                        </div>
+                    }
                 />
 
                 {/* Forecast Cards */}

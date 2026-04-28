@@ -61,7 +61,7 @@
       "dashboard": "Tableau de bord",
       "inbox": "Boîte de réception",
       "crm": "CRM",
-      "pipeline": "Pipeline",
+      "pipeline": "Entonnoir de ventes",
       "automation": "Automatisation",
       "campaigns": "Campagnes",
       "appointments": "Rendez-vous",
@@ -77,6 +77,7 @@
       "knowledgeBase": "Base de connaissances",
       "identity": "Identité",
       "users": "Utilisateurs",
+      "featureRequests": "Suggestions",
       "settings": "Paramètres",
       "tenants": "Tenants",
       "financials": "Finances"
@@ -1171,9 +1172,11 @@
     "agent": "Agent", "dealsClosed": "Affaires conclues", "avgDeal": "Moyenne", "days": "Jours", "avgDays": "Jours moyens", "noData": "Aucune donnée disponible"
   },
   "pipeline": {
-    "title": "Pipeline",
+    "title": "Entonnoir de ventes",
+    "subtitle": "Glissez les opportunités entre les étapes pour faire avancer le processus",
     "dragHere": "Glissez les opportunités ici",
-    "loading": "Chargement du pipeline...",
+    "loading": "Chargement...",
+    "customizeStages": "Personnaliser les étapes",
     "movedTo": "Opportunité déplacée vers {stage}",
     "kpi": {
       "totalValue": "Valeur totale",
@@ -2720,6 +2723,62 @@
       "storage": "Stockage",
       "whatsapp_api": "API WhatsApp",
       "other": "Autres"
+    }
+  },
+  "featureRequests": {
+    "title": "Suggestions",
+    "subtitle": "Proposez de nouvelles fonctionnalités et votez pour celles qui comptent le plus",
+    "submit": "Envoyer une suggestion",
+    "submitting": "Envoi…",
+    "submitted": "Suggestion envoyée",
+    "loading": "Chargement…",
+    "empty": "Aucune suggestion pour le moment. Soyez le premier.",
+    "anonymous": "Anonyme",
+    "searchPlaceholder": "Rechercher des suggestions…",
+    "allCategories": "Toutes les catégories",
+    "createTitle": "Nouvelle suggestion",
+    "titleLabel": "Titre",
+    "titlePlaceholder": "Ex : Intégration Mailchimp",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Quel problème cela résout-il, comment l'utiliseriez-vous et pourquoi est-ce important ?",
+    "categoryLabel": "Catégorie",
+    "noCategory": "Sans catégorie",
+    "similarFound": "Suggestions similaires trouvées",
+    "similarHint": "Votez pour une existante au lieu d'en créer une dupliquée",
+    "votesShort": "votes",
+    "match": "correspondance",
+    "cancel": "Annuler",
+    "comments": "Commentaires",
+    "commentPlaceholder": "Écrire un commentaire…",
+    "post": "Publier",
+    "teamReply": "Équipe Parallly",
+    "adminActions": "Actions de l'équipe",
+    "apply": "Appliquer",
+    "statusUpdated": "Statut mis à jour",
+    "declinedReason": "Raison du refus",
+    "declinedReasonPlaceholder": "Expliquez brièvement pourquoi cela ne sera pas construit",
+    "sort": {
+      "smart": "Recommandé",
+      "topVoted": "Plus votées",
+      "recent": "Plus récentes"
+    },
+    "status": {
+      "all": "Toutes",
+      "open": "Ouverte",
+      "under_review": "En examen",
+      "planned": "Planifiée",
+      "in_progress": "En cours",
+      "shipped": "Livrée",
+      "declined": "Refusée"
+    },
+    "category": {
+      "ai": "IA",
+      "integrations": "Intégrations",
+      "analytics": "Analytique",
+      "crm": "CRM",
+      "billing": "Facturation",
+      "ux": "Expérience",
+      "other": "Autre"
     }
   }
 }

@@ -101,6 +101,7 @@ export class AppointmentRemindersService {
     }
 
     private async processCSAT(tenantId: string, schemaName: string) {
+        const tz = await this.getTenantTimezone(tenantId);
         // Find completed appointments from 1-2 hours ago that haven't been rated
         const appointments = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT a.id, a.service_name, a.contact_id,
@@ -109,8 +110,8 @@ export class AppointmentRemindersService {
              LEFT JOIN contacts c ON c.id = a.contact_id
              WHERE a.status = 'completed'
                AND a.rating IS NULL
-               AND a.end_at > NOW() - interval '2 hours'
-               AND a.end_at <= NOW() - interval '1 hour'
+               AND a.end_at > (NOW() AT TIME ZONE '${tz}') - interval '2 hours'
+               AND a.end_at <= (NOW() AT TIME ZONE '${tz}') - interval '1 hour'
                AND c.phone IS NOT NULL`,
             [],
         );
@@ -147,11 +148,25 @@ export class AppointmentRemindersService {
         }
     }
 
+    private async getTenantTimezone(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            });
+            return (tenant?.settings as any)?.timezone || 'America/Bogota';
+        } catch {
+            return 'America/Bogota';
+        }
+    }
+
     private async processReminders(tenantId: string, schemaName: string, type: '24h' | '1h') {
         const flagColumn = type === '24h' ? 'reminder_24h_sent' : 'reminder_1h_sent';
         const minHours = type === '24h' ? 23 : 0.75;
         const maxHours = type === '24h' ? 25 : 1.25;
 
+        // Use tenant timezone for correct reminder timing
+        const tz = await this.getTenantTimezone(tenantId);
         const appointments = await this.prisma.executeInTenantSchema(schemaName,
             `SELECT a.id, a.service_name, a.start_at, a.end_at, a.location,
                     a.contact_id, a.assigned_to,
@@ -161,9 +176,9 @@ export class AppointmentRemindersService {
              LEFT JOIN contacts c ON c.id = a.contact_id
              WHERE a.status IN ('pending', 'confirmed')
                AND a.${flagColumn} = false
-               AND a.start_at > NOW()
-               AND a.start_at <= NOW() + interval '${maxHours} hours'
-               AND a.start_at >= NOW() + interval '${minHours} hours'
+               AND a.start_at > (NOW() AT TIME ZONE '${tz}')
+               AND a.start_at <= (NOW() AT TIME ZONE '${tz}') + interval '${maxHours} hours'
+               AND a.start_at >= (NOW() AT TIME ZONE '${tz}') + interval '${minHours} hours'
                AND c.phone IS NOT NULL`,
             [],
         );
@@ -205,16 +220,19 @@ export class AppointmentRemindersService {
             return;
         }
 
+        const tz = await this.getTenantTimezone(tenantId);
         const startDate = new Date(appt.start_at);
         const dateStr = startDate.toLocaleDateString('es-CO', {
             weekday: 'long',
             day: 'numeric',
             month: 'long',
+            timeZone: tz,
         });
         const timeStr = startDate.toLocaleTimeString('es-CO', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: true,
+            timeZone: tz,
         });
 
         // Get tenant slug for reschedule link
@@ -248,12 +266,13 @@ export class AppointmentRemindersService {
     }
 
     private async processNoShows(tenantId: string, schemaName: string) {
+        const tz = await this.getTenantTimezone(tenantId);
         // Find appointments that ended 30+ minutes ago and are still pending/confirmed
         const noShows = await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE appointments
              SET status = 'no_show', updated_at = NOW()
              WHERE status IN ('pending', 'confirmed')
-               AND end_at < NOW() - interval '30 minutes'
+               AND end_at < (NOW() AT TIME ZONE '${tz}') - interval '30 minutes'
              RETURNING id, service_name, contact_id, start_at`,
             [],
         );

@@ -152,16 +152,17 @@ export class ChannelsController {
                     const profileRes = await fetch(
                         `https://graph.instagram.com/v21.0/${normalized.contactId}?fields=name,username,profile_pic&access_token=${token.accessToken}`,
                     );
-                    if (profileRes.ok) {
-                        const profile = await profileRes.json() as any;
-                        const username = profile.username || '';
-                        const displayName = profile.name
-                            ? (username ? `${profile.name} (@${username})` : profile.name)
+                    const profileBody = await profileRes.json() as any;
+                    this.logger.log(`[IG Profile] ${normalized.contactId} → status=${profileRes.status} data=${JSON.stringify(profileBody)}`);
+                    if (profileRes.ok && !profileBody.error) {
+                        const username = profileBody.username || '';
+                        const displayName = profileBody.name
+                            ? (username ? `${profileBody.name} (@${username})` : profileBody.name)
                             : (username ? `@${username}` : '');
                         const profileData = {
                             contactName: displayName,
                             contactUsername: username,
-                            contactProfilePic: profile.profile_pic || '',
+                            contactProfilePic: profileBody.profile_pic || profileBody.profile_picture_url || '',
                         };
                         normalized.metadata = { ...normalized.metadata, ...profileData };
                         await this.redis.setJson(igCacheKey, profileData, 3600);
@@ -244,13 +245,14 @@ export class ChannelsController {
                     const profileRes = await fetch(
                         `https://graph.facebook.com/v21.0/${normalized.contactId}?fields=name,profile_pic&access_token=${token.accessToken}`,
                     );
-                    if (profileRes.ok) {
-                        const profile = await profileRes.json() as any;
-                        if (profile.name || profile.profile_pic) {
-                            const profileData = {
-                                contactName: profile.name || '',
-                                contactProfilePic: profile.profile_pic || '',
-                            };
+                    const fbProfileBody = await profileRes.json() as any;
+                    this.logger.log(`[FB Profile] ${normalized.contactId} → status=${profileRes.status} data=${JSON.stringify(fbProfileBody)}`);
+                    if (profileRes.ok && !fbProfileBody.error) {
+                        const profileData = {
+                            contactName: fbProfileBody.name || fbProfileBody.first_name || '',
+                            contactProfilePic: fbProfileBody.profile_pic || '',
+                        };
+                        if (profileData.contactName || profileData.contactProfilePic) {
                             normalized.metadata = { ...normalized.metadata, ...profileData };
                             await this.redis.setJson(fbCacheKey, profileData, 3600);
                         }
@@ -373,6 +375,40 @@ export class ChannelsController {
             if (!normalized) return;
 
             normalized.tenantId = channelAccount.tenantId;
+
+            // Telegram: get profile photo via Bot API if available
+            if (normalized.contactId && !(normalized.metadata as any)?.contactProfilePic) {
+                try {
+                    const tgSenderId = (normalized.metadata as any)?.tgSenderId;
+                    const botToken = channelAccount.accessToken !== 'encrypted_ref'
+                        ? channelAccount.accessToken : null;
+                    if (tgSenderId && botToken) {
+                        // Decrypt bot token
+                        const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'telegram');
+                        const photoRes = await fetch(
+                            `https://api.telegram.org/bot${token.accessToken}/getUserProfilePhotos?user_id=${tgSenderId}&limit=1`,
+                        );
+                        const photoData = await photoRes.json() as any;
+                        if (photoData.ok && photoData.result?.photos?.length > 0) {
+                            // Get file path for the smallest photo
+                            const fileId = photoData.result.photos[0]?.[0]?.file_id;
+                            if (fileId) {
+                                const fileRes = await fetch(
+                                    `https://api.telegram.org/bot${token.accessToken}/getFile?file_id=${fileId}`,
+                                );
+                                const fileData = await fileRes.json() as any;
+                                if (fileData.ok && fileData.result?.file_path) {
+                                    (normalized.metadata as any).contactProfilePic =
+                                        `https://api.telegram.org/file/bot${token.accessToken}/${fileData.result.file_path}`;
+                                }
+                            }
+                        }
+                    }
+                } catch (e: any) {
+                    // Non-critical — photo fetch failed
+                }
+            }
+
             this.logger.log(`Incoming Telegram message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
             await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {

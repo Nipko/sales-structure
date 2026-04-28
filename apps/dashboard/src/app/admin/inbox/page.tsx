@@ -1078,125 +1078,35 @@ export default function InboxPage() {
                                     </div>
                                 </div>
                             </div>
-                            {/* Action buttons — compact responsive toolbar */}
-                            <div className="flex gap-1 md:gap-1.5 items-center flex-shrink-0">
-                                {/* Notes toggle */}
-                                <button
-                                    onClick={() => setShowNotes(!showNotes)}
-                                    className={cn(
-                                        "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
-                                        showNotes
-                                            ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
-                                            : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                                    )}
-                                    title={t("contact.notes")}
-                                >
-                                    <StickyNote size={14} />
-                                    <span className="hidden xl:inline">{t("contact.notes")}</span>
-                                </button>
-                                {/* Resolve */}
+                            {/* Action buttons — only 3 always visible + More dropdown */}
+                            <div className="flex gap-1.5 items-center flex-shrink-0">
+                                {/* Resolve — always visible */}
                                 <button
                                     onClick={handleResolve}
-                                    className="p-1.5 md:py-1.5 md:px-2.5 rounded-lg border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1 items-center hover:bg-emerald-600 transition-colors"
+                                    className="py-1.5 px-2.5 rounded-lg border-none bg-emerald-500 text-white text-xs font-semibold cursor-pointer flex gap-1.5 items-center hover:bg-emerald-600 transition-colors"
                                     title={t("resolve")}
                                 >
                                     <CheckCircle size={14} />
-                                    <span className="hidden lg:inline">{t("resolve")}</span>
+                                    <span className="hidden md:inline">{t("resolve")}</span>
                                 </button>
-                                {/* Assign */}
+                                {/* Assign — always visible */}
                                 <button
                                     onClick={handleAssign}
                                     disabled={assignLoading}
                                     className={cn(
-                                        "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border-none text-xs font-semibold flex gap-1 items-center transition-all",
+                                        "py-1.5 px-2.5 rounded-lg border-none text-xs font-semibold flex gap-1.5 items-center transition-all",
                                         assignLoading
                                             ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
                                             : "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                                     )}
                                     title={t("assignToMe")}
                                 >
-                                    {assignLoading
-                                        ? <Loader2 size={14} className="animate-spin" />
-                                        : <ArrowRight size={14} />
-                                    }
-                                    <span className="hidden lg:inline">
+                                    {assignLoading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                                    <span className="hidden md:inline">
                                         {assignLoading ? '...' : (selectedConv.assignedAgentId === user?.id ? t('reassignToMe') : t('assignToMe'))}
                                     </span>
                                 </button>
-                                {/* Snooze */}
-                                <div ref={snoozeRef} className="relative">
-                                    <button
-                                        onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
-                                        className={cn(
-                                            "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
-                                            showSnoozeMenu
-                                                ? "bg-indigo-600 text-white border-indigo-600"
-                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                                        )}
-                                        title="Snooze"
-                                    >
-                                        <Clock size={14} />
-                                        <span className="hidden xl:inline">Snooze</span>
-                                    </button>
-                                    {showSnoozeMenu && (
-                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[170px] shadow-lg">
-                                            {[
-                                                { key: "1h", label: "1 hora" },
-                                                { key: "3h", label: "3 horas" },
-                                                { key: "tomorrow", label: t("snoozeTomorrow") },
-                                                { key: "monday", label: t("snoozeMonday") },
-                                            ].map(opt => (
-                                                <button
-                                                    key={opt.key}
-                                                    onClick={() => handleSnooze(opt.key)}
-                                                    className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
-                                                >
-                                                    <Clock size={13} className="text-muted-foreground" />
-                                                    {opt.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                {/* Macros */}
-                                <div ref={macrosRef} className="relative">
-                                    <button
-                                        onClick={() => setShowMacrosMenu(!showMacrosMenu)}
-                                        className={cn(
-                                            "p-1.5 md:py-1.5 md:px-2.5 rounded-lg border text-xs cursor-pointer flex gap-1 items-center transition-colors",
-                                            showMacrosMenu
-                                                ? "bg-indigo-600 text-white border-indigo-600"
-                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted"
-                                        )}
-                                        title="Macros"
-                                    >
-                                        <Zap size={14} />
-                                        <span className="hidden xl:inline">Macros</span>
-                                    </button>
-                                    {showMacrosMenu && (
-                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[220px] max-h-60 overflow-y-auto shadow-lg">
-                                            {macros.length === 0 ? (
-                                                <div className="py-3 px-3.5 text-[13px] text-muted-foreground">
-                                                    {t("noConversations")}
-                                                </div>
-                                            ) : macros.map((m: any) => (
-                                                <button
-                                                    key={m.id}
-                                                    onClick={() => handleExecuteMacro(m.id)}
-                                                    className="flex items-center justify-between w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
-                                                >
-                                                    <span>{m.name}</span>
-                                                    {m.actions && (
-                                                        <span className="text-[11px] text-muted-foreground">
-                                                            {Array.isArray(m.actions) ? m.actions.length : 0}
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                {/* More actions (Archive, Delete) */}
+                                {/* More actions — contains Notes, Snooze, Macros, Archive, Delete */}
                                 <div ref={moreMenuRef} className="relative">
                                     <button
                                         onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -1206,24 +1116,88 @@ export default function InboxPage() {
                                                 ? "bg-muted text-foreground border-border"
                                                 : "bg-transparent text-muted-foreground border-border hover:bg-muted"
                                         )}
-                                        title={t("additionalInfo")}
                                     >
-                                        <MoreHorizontal size={14} />
+                                        <MoreHorizontal size={16} />
                                     </button>
                                     {showMoreMenu && (
-                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[180px] shadow-lg">
+                                        <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[200px] shadow-lg">
+                                            {/* Notes */}
+                                            <button
+                                                onClick={() => { setShowNotes(!showNotes); setShowMoreMenu(false); }}
+                                                className={cn(
+                                                    "flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg text-[13px] cursor-pointer text-left transition-colors",
+                                                    showNotes ? "bg-amber-500/10 text-amber-500" : "bg-transparent text-foreground hover:bg-muted"
+                                                )}
+                                            >
+                                                <StickyNote size={14} /> {t("contact.notes")}
+                                            </button>
+                                            {/* Snooze submenu */}
+                                            <div ref={snoozeRef} className="relative">
+                                                <button
+                                                    onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
+                                                    className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                                >
+                                                    <Clock size={14} className="text-muted-foreground" /> Snooze
+                                                </button>
+                                                {showSnoozeMenu && (
+                                                    <div className="pl-6 pb-1">
+                                                        {[
+                                                            { key: "1h", label: "1 hora" },
+                                                            { key: "3h", label: "3 horas" },
+                                                            { key: "tomorrow", label: t("snoozeTomorrow") },
+                                                            { key: "monday", label: t("snoozeMonday") },
+                                                        ].map(opt => (
+                                                            <button
+                                                                key={opt.key}
+                                                                onClick={() => { handleSnooze(opt.key); setShowMoreMenu(false); }}
+                                                                className="flex items-center gap-2 w-full py-1.5 px-3 border-none rounded-lg bg-transparent text-foreground text-[12px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                                            >
+                                                                {opt.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {/* Macros submenu */}
+                                            <div ref={macrosRef} className="relative">
+                                                <button
+                                                    onClick={() => setShowMacrosMenu(!showMacrosMenu)}
+                                                    className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                                >
+                                                    <Zap size={14} className="text-muted-foreground" /> Macros
+                                                </button>
+                                                {showMacrosMenu && (
+                                                    <div className="pl-6 pb-1 max-h-40 overflow-y-auto">
+                                                        {macros.length === 0 ? (
+                                                            <div className="py-1.5 px-3 text-[12px] text-muted-foreground">{t("noMacros")}</div>
+                                                        ) : macros.map((m: any) => (
+                                                            <button
+                                                                key={m.id}
+                                                                onClick={() => { handleExecuteMacro(m.id); setShowMoreMenu(false); }}
+                                                                className="flex items-center w-full py-1.5 px-3 border-none rounded-lg bg-transparent text-foreground text-[12px] cursor-pointer text-left hover:bg-muted transition-colors"
+                                                            >
+                                                                {m.name}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {/* Divider */}
+                                            <div className="border-t border-border my-1" />
+                                            {/* Archive */}
                                             <button
                                                 onClick={() => { setShowArchiveConfirm(true); setShowMoreMenu(false); }}
                                                 className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
                                             >
-                                                <Archive size={13} className="text-muted-foreground" />
+                                                <Archive size={14} className="text-muted-foreground" />
                                                 {t('archive')}
                                             </button>
+                                            {/* Delete */}
                                             <button
                                                 onClick={() => { setShowDeleteConfirm(true); setShowMoreMenu(false); }}
                                                 className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-red-400 text-[13px] cursor-pointer text-left hover:bg-red-500/10 transition-colors"
                                             >
-                                                <Trash2 size={13} />
+                                                <Trash2 size={14} />
                                                 {t('deleteConversation')}
                                             </button>
                                         </div>

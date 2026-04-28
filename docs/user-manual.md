@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 1.0 — Abril 2026
+  Versión 2.0 — Abril 2026
 </p>
 
 ---
@@ -35,6 +35,8 @@
 | 5.1 | [Contactos](#51-contactos) | |
 | 5.2 | [Pipeline (Kanban)](#52-pipeline-kanban) | |
 | 5.3 | [Segmentos](#53-segmentos) | |
+| 5.4 | [CRM Analytics](#54-crm-analytics) | |
+| 5.5 | [Identidad y Merge](#55-identidad-y-merge) | |
 | 6 | [Agentes IA](#6-agentes-ia) | |
 | 6.1 | [Lista de agentes](#61-lista-de-agentes) | |
 | 6.2 | [Editor del agente](#62-editor-del-agente) | |
@@ -58,7 +60,7 @@
 | 11 | [Base de Conocimiento](#11-base-de-conocimiento) | |
 | 12 | [Analytics y Reportes](#12-analytics-y-reportes) | |
 | 13 | [Inventario y Pedidos](#13-inventario-y-pedidos) | |
-| 14 | [Compliance y Privacidad](#14-compliance-y-privacidad) | |
+| 14 | [Privacidad y Cumplimiento](#14-privacidad-y-cumplimiento) | |
 | 15 | [Configuración](#15-configuración) | |
 | 16 | [Gestión de Usuarios](#16-gestión-de-usuarios) | |
 | 17 | [Facturación y Planes](#17-facturación-y-planes) | |
@@ -87,10 +89,6 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 - Enviar campañas masivas
 - Analizar métricas de rendimiento
 
-<!-- TODO: Imagen del dashboard general -->
-![Dashboard de Parallly](images/placeholder-dashboard.png)
-*Vista general del dashboard de Parallly*
-
 ---
 
 # 2. Primeros Pasos
@@ -103,10 +101,6 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 4. Verificar el email con el código de 6 dígitos que recibirás
 5. Completar el asistente de onboarding (sección 2.2)
 
-<!-- TODO: Screenshot del formulario de registro -->
-![Registro](images/placeholder-signup.png)
-*Formulario de registro*
-
 > **Tip:** También puedes registrarte con tu cuenta de Google haciendo clic en "Continuar con Google".
 
 ---
@@ -116,10 +110,6 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 Al crear tu cuenta, un asistente de 5 pasos te guía para configurar tu negocio:
 
 ### Paso 1 — Perfil de empresa
-
-<!-- TODO: Screenshot del paso 1 del onboarding -->
-![Onboarding Paso 1](images/placeholder-onboarding-step1.png)
-*Configuración del perfil de empresa*
 
 | Campo | Descripción | Obligatorio |
 |-------|-------------|:-----------:|
@@ -149,10 +139,6 @@ Selecciona tu plan (Starter gratuito, Pro o Enterprise) y agrega método de pago
 
 ## 2.3 Iniciar sesión
 
-<!-- TODO: Screenshot del login -->
-![Login](images/placeholder-login.png)
-*Pantalla de inicio de sesión*
-
 | Método | Descripción |
 |--------|-------------|
 | Email + contraseña | Ingresa tus credenciales |
@@ -177,10 +163,6 @@ Selecciona tu plan (Starter gratuito, Pro o Enterprise) y agrega método de pago
 **Ruta:** Menú → Dashboard
 
 El dashboard es tu vista general del negocio al iniciar sesión.
-
-<!-- TODO: Screenshot del dashboard -->
-![Dashboard](images/placeholder-dashboard-full.png)
-*Dashboard con KPIs y actividad reciente*
 
 ### Métricas principales
 
@@ -207,17 +189,17 @@ El inbox es tu centro de operaciones para conversaciones en tiempo real con clie
 
 ## 4.1 Vista general
 
-<!-- TODO: Screenshot del inbox completo -->
-![Inbox](images/placeholder-inbox.png)
-*Bandeja de entrada con conversación activa*
-
 La bandeja tiene 3 paneles:
 
 | Panel | Contenido |
 |-------|-----------|
 | **Izquierda** | Lista de conversaciones con filtros y búsqueda |
 | **Centro** | Chat activo con historial de mensajes |
-| **Derecha** | Información del contacto, notas, tags |
+| **Derecha** | Información del contacto (colapsable) |
+
+Cada conversación en la lista muestra el **nombre de la cuenta del canal** y la **foto de perfil** del canal por donde llegó el mensaje, para que puedas identificar rápidamente de dónde viene cada conversación.
+
+Las conversaciones nuevas llegan en **tiempo real** gracias a WebSocket: cuando un cliente nuevo escribe, la conversación aparece automáticamente en tu lista sin necesidad de recargar la página.
 
 ---
 
@@ -236,20 +218,18 @@ También puedes buscar conversaciones por nombre del contacto o contenido del me
 
 ## 4.3 Acciones de conversación
 
-<!-- TODO: Screenshot de la barra de acciones -->
-![Acciones del inbox](images/placeholder-inbox-actions.png)
-*Barra de acciones en la conversación*
+La barra de acciones es **responsiva**: en pantallas pequeñas se muestran solo los iconos, y las acciones secundarias (archivar, eliminar) se agrupan en un menú desplegable **"Más"**.
 
-| Acción | Icono | Descripción |
-|--------|-------|-------------|
-| **Responder** | 💬 | Envía un mensaje como agente humano |
-| **Asignar** | 👤 | Asigna la conversación a un agente específico |
-| **Resolver** | ✅ | Devuelve la conversación al agente IA |
-| **Posponer** | ⏰ | Pausa por 1h, 3h, mañana, o lunes |
-| **Macros** | ⚡ | Inserta respuestas predefinidas |
-| **Archivar** | 📦 | Mueve al archivo (ya no aparece en inbox) |
-| **Eliminar** | 🗑️ | Elimina permanentemente la conversación y mensajes |
-| **Notas** | 📝 | Agrega notas internas (invisibles para el cliente) |
+| Acción | Descripción |
+|--------|-------------|
+| **Responder** | Envía un mensaje como agente humano |
+| **Asignar** | Asigna la conversación a un agente específico |
+| **Resolver** | Devuelve la conversación al agente IA |
+| **Posponer** | Pausa por 1h, 3h, mañana, o lunes |
+| **Macros** | Inserta respuestas predefinidas |
+| **Archivar** | Mueve al archivo (muestra spinner de carga durante la acción) |
+| **Eliminar** | Elimina permanentemente (muestra spinner de carga durante la acción) |
+| **Notas** | Agrega notas internas (invisibles para el cliente) |
 
 > **Atención:** La acción **Eliminar** es irreversible. Se eliminan todos los mensajes y la conversación permanentemente.
 
@@ -257,7 +237,9 @@ También puedes buscar conversaciones por nombre del contacto o contenido del me
 
 ## 4.4 Panel del contacto
 
-Al seleccionar una conversación, el panel derecho muestra:
+El panel derecho es **colapsable**: puedes ocultarlo o mostrarlo con un botón de toggle para ganar espacio en pantalla cuando no lo necesitas.
+
+Al seleccionar una conversación, el panel muestra:
 
 - **Nombre** del contacto
 - **Teléfono** y **email**
@@ -275,10 +257,6 @@ Al seleccionar una conversación, el panel derecho muestra:
 
 **Ruta:** Menú → CRM
 
-<!-- TODO: Screenshot de la lista de contactos -->
-![Contactos](images/placeholder-contacts.png)
-*Lista de contactos con filtros*
-
 ### Ver contactos
 
 La lista muestra todos tus clientes y leads con:
@@ -287,16 +265,56 @@ La lista muestra todos tus clientes y leads con:
 - Tags asignados
 - Fecha de última interacción
 - Score de lead
+- **Iconos de canales**: cada contacto muestra badges circulares indicando todos los canales por los que ha interactuado (WhatsApp, Instagram, Messenger, etc.)
+- **Conteo de conversaciones**: muestra el número real de conversaciones que ha tenido el contacto
 
-### Acciones
+Los contactos que han escrito por múltiples canales (por ejemplo, WhatsApp e Instagram) se **consolidan en una sola fila** mostrando todos los iconos de sus canales.
+
+### Acciones principales
 
 | Acción | Descripción |
 |--------|-------------|
-| Buscar | Por nombre, email o teléfono |
-| Filtrar | Por segmento, etapa, tag |
-| Importar | Subir archivo CSV con contactos |
-| Exportar | Descargar todos los contactos como CSV |
-| Crear | Agregar contacto manualmente |
+| **Buscar** | Por nombre, email o teléfono |
+| **Filtrar** | Por segmento, etapa, tag, score mínimo/máximo, rango de fechas |
+| **Importar** | Subir archivo CSV con contactos |
+| **Exportar** | Descargar todos los contactos como CSV |
+| **Crear** | Botón "Crear" abre un modal para agregar un lead nuevo |
+
+### Crear un lead
+
+Al hacer clic en el botón **"Crear"** en la lista de contactos, se abre un formulario modal con los siguientes campos:
+
+| Campo | Obligatorio |
+|-------|:-----------:|
+| Nombre | No |
+| Apellido | No |
+| Teléfono | ✅ |
+| Email | No |
+| Etapa | No (se asigna "Nuevo" por defecto) |
+
+### Acciones masivas (Bulk Actions)
+
+Cada contacto en la lista tiene un **checkbox** para seleccionarlo. También hay un checkbox de **"Seleccionar todos"** en la cabecera.
+
+Al seleccionar uno o más contactos, aparece una **barra de acciones fija** en la parte inferior con las siguientes opciones:
+
+| Acción masiva | Descripción |
+|---------------|-------------|
+| **Cambiar etapa** | Mueve todos los seleccionados a una etapa del pipeline |
+| **Agregar tag** | Agrega una etiqueta a todos los seleccionados |
+| **Archivar** | Archiva los contactos seleccionados |
+
+### Filtros avanzados
+
+Además de los filtros básicos (etapa, tag, segmento), la lista soporta:
+
+| Filtro | Descripción |
+|--------|-------------|
+| Score mínimo | Solo leads con score mayor o igual al valor indicado |
+| Score máximo | Solo leads con score menor o igual al valor indicado |
+| Fecha desde | Interacción posterior a esta fecha |
+| Fecha hasta | Interacción anterior a esta fecha |
+| Tags | Filtrar por uno o varios tags |
 
 ### Detalle del contacto
 
@@ -305,17 +323,55 @@ Al hacer clic en un contacto, ves su ficha completa:
 - Historial de conversaciones
 - Pipeline y etapa actual
 - Notas internas del equipo
-- Atributos personalizados
+- Atributos personalizados (ver sección siguiente)
+
+#### Editar un lead
+
+En la vista de detalle, haz clic en el **icono de lápiz** para activar el modo de edición inline. Puedes modificar:
+- Nombre
+- Email
+- Teléfono
+- Etapa en el pipeline
+- Marca VIP
+- Tags
+
+Al terminar, usa los botones **Guardar** o **Cancelar** para confirmar o descartar los cambios.
+
+#### Archivar un lead
+
+En la vista de detalle, haz clic en el **icono de archivo**. Aparece un diálogo de confirmación. Al confirmar, el lead pasa a estado archivado (no se elimina permanentemente, puedes recuperarlo).
+
+#### Campos personalizados
+
+La ficha del contacto incluye una tarjeta de **Campos personalizados** que muestra todos los atributos que hayas configurado (ver Configuración → Atributos). Los campos se renderizan según su tipo:
+
+| Tipo de campo | Cómo se muestra |
+|---------------|-----------------|
+| Texto | Campo de texto libre |
+| Número | Campo numérico |
+| Booleano | Toggle encendido/apagado |
+| Fecha | Selector de fecha |
+| Selección | Menú desplegable con opciones |
+
+Al modificar cualquier valor, aparece un botón **Guardar** para confirmar los cambios.
+
+#### Score — Desglose transparente
+
+Al hacer clic en el **número de score** del contacto, se expande un panel de desglose que muestra cómo se calcula el puntaje. Cada factor tiene una barra de progreso visual:
+
+| Factor | Qué mide |
+|--------|-----------|
+| Engagement | Nivel de interacción (mensajes, respuestas) |
+| Intención | Señales de compra detectadas por la IA |
+| Recencia | Qué tan reciente fue la última interacción |
+| Etapa | Posición en el pipeline de ventas |
+| Perfil | Completitud de datos del contacto |
 
 ---
 
 ## 5.2 Pipeline (Kanban)
 
 **Ruta:** Menú → Pipeline
-
-<!-- TODO: Screenshot del pipeline Kanban -->
-![Pipeline](images/placeholder-pipeline.png)
-*Vista Kanban del pipeline de ventas*
 
 Vista tipo tablero con columnas por etapa:
 
@@ -326,6 +382,18 @@ Nuevo → Contactado → Respondió → Calificado → Tibio → Caliente → Li
 - **Arrastra** tarjetas entre columnas para cambiar etapas
 - Cada tarjeta muestra: nombre, valor del deal, días en la etapa
 - **Métricas superiores:** valor total, pronóstico ponderado, cantidad de deals
+- **Sin duplicados**: cada lead aparece como una sola tarjeta en el pipeline (no se crean oportunidades duplicadas)
+
+### Personalizar etapas del pipeline
+
+**Ruta:** Configuración → Pipeline
+
+Puedes personalizar completamente las etapas de tu pipeline:
+- **Reordenar**: arrastra las etapas para cambiar su posición
+- **Editar**: modifica el nombre, color y probabilidad de cada etapa
+- **Agregar**: crea nuevas etapas según tu proceso de ventas
+- **Eliminar**: borra etapas que no uses
+- **Terminal**: marca una etapa como terminal (ej: "Ganado", "Perdido") para indicar que el deal ya cerró
 
 ---
 
@@ -345,21 +413,83 @@ Crea filtros guardados para agrupar contactos automáticamente:
 
 ---
 
+## 5.4 CRM Analytics
+
+**Ruta:** Menú → CRM Analytics
+
+Panel de analytics dedicado al CRM con 4 pestañas:
+
+### Pestaña Overview (Resumen)
+
+- **5 tarjetas de KPIs**: total de leads, leads nuevos del periodo, tasa de conversión, valor total del pipeline, tiempo promedio de cierre
+- **Gráfico de barras**: distribución de leads por etapa del pipeline
+- **Gráfico de pastel**: fuentes de leads (WhatsApp, Instagram, Messenger, etc.)
+- **Resumen de resultados**: cantidad de deals ganados vs. perdidos con porcentajes
+
+### Pestaña Funnel (Embudo)
+
+Visualización del embudo de ventas con **barras horizontales** que muestran:
+- Cantidad de leads en cada etapa
+- Porcentaje de caída entre etapas (drop-off)
+- Identificación de cuellos de botella en tu proceso
+
+### Pestaña Velocity (Velocidad)
+
+**Gráfico de barras** mostrando los días promedio que un lead permanece en cada etapa. Te ayuda a identificar dónde se estancan los deals y optimizar tu proceso de ventas.
+
+### Pestaña Agents (Agentes)
+
+Tabla de rendimiento tipo **leaderboard** con:
+- Ranking de agentes (medallas para los 3 primeros)
+- Deals cerrados por agente
+- Valor total generado
+- Tasa de conversión individual
+- Tiempo promedio de cierre
+
+---
+
+## 5.5 Identidad y Merge
+
+**Ruta:** Menú → Identidad
+
+Parallly consolida automáticamente los contactos que interactúan por múltiples canales en un solo perfil unificado.
+
+### Merge automático
+
+Cuando un contacto escribe por dos canales diferentes usando el **mismo número de teléfono**, Parallly los unifica automáticamente en un solo perfil.
+
+### Sugerencias de merge
+
+Cuando la coincidencia es por **email** (pero no por teléfono), Parallly genera una sugerencia de merge que requiere tu aprobación.
+
+En la página de Identidad verás una lista de sugerencias pendientes:
+- **Perfil A** (ej: contacto de WhatsApp) y **Perfil B** (ej: contacto de Instagram)
+- Motivo de la sugerencia (email compartido)
+- Botones: **Aprobar** (fusiona los perfiles) o **Rechazar** (ignora la sugerencia)
+
+### Contactos cross-canal
+
+Los contactos que llegan por canales diferentes (ej: Instagram vs WhatsApp) y no comparten teléfono ni email requieren **merge manual** si determinas que son la misma persona.
+
+> **Tip:** Cuando se fusionan dos perfiles, se conserva el historial de conversaciones de ambos canales en un solo contacto.
+
+---
+
 # 6. Agentes IA
 
 ## 6.1 Lista de agentes
 
 **Ruta:** Menú → Agente IA
 
-<!-- TODO: Screenshot de la lista de agentes -->
-![Agentes](images/placeholder-agents.png)
-*Lista de agentes IA configurados*
-
 Cada tarjeta de agente muestra:
 - Nombre y estado (activo/inactivo)
-- Canales asignados (iconos)
+- Canales **conectados** asignados (solo se muestran los canales que están efectivamente conectados, no todos los asignados)
 - Cantidad de reglas y herramientas
 - Badge de "Agente por defecto"
+
+### Banner de alerta
+
+Si tienes canales conectados que **no tienen un agente IA asignado**, aparece un **banner rojo** en la parte superior de la página con el mensaje de advertencia y un botón **"Asignar agente ahora"** que te lleva directamente a la configuración de asignación.
 
 ### Acciones
 
@@ -385,11 +515,7 @@ Cada tarjeta de agente muestra:
 
 **Ruta:** Agente IA → clic en un agente
 
-<!-- TODO: Screenshot del editor de agente -->
-![Editor de agente](images/placeholder-agent-editor.png)
-*Editor de configuración del agente*
-
-El editor tiene secciones tipo tarjeta:
+El editor tiene secciones tipo tarjeta. Al realizar cambios, una **barra fija en la parte inferior** ("sticky save bar") permanece visible en todo momento para que puedas guardar sin necesidad de buscar el botón.
 
 ### Identidad
 - Nombre del agente (ej: "Andrea", "Carlos")
@@ -413,17 +539,22 @@ El editor tiene secciones tipo tarjeta:
 - Triggers de handoff (cuándo escalar a humano)
 
 ### Asignación de canales
-Cada canal se asigna a UN solo agente:
+
+La sección de asignación **solo muestra los canales que tienes conectados** (no los que no has configurado aún). Cada canal se asigna a UN solo agente:
 - WhatsApp → Agente A
 - Instagram → Agente B
 - etc.
 
 ### Herramientas
 Activa funciones del agente:
-- ✅ Citas (agendar, cancelar, consultar disponibilidad)
-- ✅ Catálogo (buscar productos, precios)
-- ✅ FAQs (buscar respuestas en la base de conocimiento)
-- ✅ Políticas (consultar políticas del negocio)
+- Citas (agendar, cancelar, consultar disponibilidad)
+- Catálogo (buscar productos, precios)
+- FAQs (buscar respuestas en la base de conocimiento)
+- Políticas (consultar políticas del negocio)
+
+### Checklist de configuración
+
+El editor incluye un checklist que guía los pasos pendientes. El paso de conectar canal indica **"Conectar un canal de mensajería"** (genérico, no específico a WhatsApp) para reflejar que puedes empezar con cualquier canal.
 
 ---
 
@@ -433,22 +564,18 @@ Activa funciones del agente:
 
 | Plantilla | Ideal para |
 |-----------|-----------|
-| 🛒 Asesor de Ventas | Negocios que venden productos/servicios |
-| 🎧 Agente de Soporte | Atención al cliente y resolución de problemas |
-| ❓ Bot FAQ | Respuestas rápidas a preguntas frecuentes |
-| 📅 Agendador de Citas | Consultorios, salones, asesorías |
-| 🎯 Calificador de Leads | Clasificar leads por nivel de interés |
-| ⬜ En Blanco | Configuración desde cero |
+| Asesor de Ventas | Negocios que venden productos/servicios |
+| Agente de Soporte | Atención al cliente y resolución de problemas |
+| Bot FAQ | Respuestas rápidas a preguntas frecuentes |
+| Agendador de Citas | Consultorios, salones, asesorías |
+| Calificador de Leads | Clasificar leads por nivel de interés |
+| En Blanco | Configuración desde cero |
 
 ---
 
 ## 6.4 Test del agente
 
 **Ruta:** Agente → botón Test
-
-<!-- TODO: Screenshot del playground de test -->
-![Test del agente](images/placeholder-agent-test.png)
-*Playground para probar el agente en vivo*
 
 Prueba tu agente sin afectar conversaciones reales:
 - Envía mensajes y ve la respuesta del agente
@@ -465,10 +592,6 @@ Prueba tu agente sin afectar conversaciones reales:
 
 **Ruta:** Menú → Canales
 
-<!-- TODO: Screenshot de la vista general de canales -->
-![Canales](images/placeholder-channels.png)
-*Vista general de canales con estado de conexión*
-
 ---
 
 ## 7.1 WhatsApp
@@ -480,11 +603,7 @@ Prueba tu agente sin afectar conversaciones reales:
 3. Se abre el Embedded Signup de Meta
 4. Autoriza tu cuenta de WhatsApp Business
 5. Selecciona tu número de teléfono
-6. ✅ Canal conectado automáticamente
-
-<!-- TODO: Screenshot del proceso de conexión WhatsApp -->
-![WhatsApp Setup](images/placeholder-whatsapp-setup.png)
-*Proceso de conexión de WhatsApp*
+6. Canal conectado automáticamente
 
 ### Funciones disponibles
 - Envío y recepción de mensajes de texto, imágenes, documentos
@@ -512,13 +631,12 @@ Crea y gestiona plantillas aprobadas por Meta para mensajes proactivos:
 
 1. Ir a **Canales → Instagram**
 2. Clic en **Conectar con Instagram**
-3. Se abre un popup para autorizar tu cuenta Business
-4. Concede los permisos solicitados
-5. ✅ Cuenta conectada automáticamente
+3. Se abre una **ventana popup** de autorización OAuth de Instagram
+4. Inicia sesión con tu cuenta de Instagram Business
+5. Concede los permisos solicitados
+6. La ventana se cierra y tu cuenta queda conectada
 
-<!-- TODO: Screenshot del proceso de conexión Instagram -->
-![Instagram Setup](images/placeholder-instagram-setup.png)
-*Proceso de conexión de Instagram*
+Una vez conectado, verás el nombre de tu cuenta en formato **"Nombre (@username)"** junto con la **foto de perfil** obtenida automáticamente.
 
 > **Requisitos:**
 > - Cuenta Instagram Business (no personal)
@@ -537,13 +655,14 @@ Crea y gestiona plantillas aprobadas por Meta para mensajes proactivos:
 
 1. Ir a **Canales → Messenger**
 2. Clic en **Conectar con Facebook**
-3. Inicia sesión con tu cuenta de Facebook
-4. Autoriza los permisos de páginas
-5. ✅ Parallly conecta automáticamente tus páginas con permiso de mensajería
+3. Se carga el **SDK de Facebook** y se abre el diálogo de login
+4. Inicia sesión con tu cuenta de Facebook
+5. Autoriza los permisos de páginas y mensajería
+6. Parallly conecta automáticamente tus páginas con permiso de mensajería
 
-<!-- TODO: Screenshot del proceso de conexión Messenger -->
-![Messenger Setup](images/placeholder-messenger-setup.png)
-*Proceso de conexión de Messenger*
+Una vez conectado, se muestra la **foto de perfil** de la página obtenida a través del Graph API de Facebook.
+
+> **Nota:** El token de página de Messenger **no expira**, por lo que no necesitas reconectar periódicamente como con Instagram.
 
 ---
 
@@ -557,10 +676,6 @@ Crea y gestiona plantillas aprobadas por Meta para mensajes proactivos:
 4. En Parallly: **Canales → Telegram**
 5. Pega el token y nombre del bot
 6. Clic en **Conectar**
-
-<!-- TODO: Screenshot del formulario de Telegram -->
-![Telegram Setup](images/placeholder-telegram-setup.png)
-*Formulario de conexión de Telegram*
 
 ---
 
@@ -584,7 +699,7 @@ En cada página de canal conectado:
 1. Scroll hasta la sección **Desconectar**
 2. Clic en el botón rojo **Desconectar**
 3. Confirma la acción en el diálogo
-4. ✅ El canal se desactiva inmediatamente
+4. El canal se desactiva inmediatamente
 
 > **Nota:** Al desconectar, las conversaciones existentes permanecen en el inbox. Solo se dejan de recibir mensajes nuevos por ese canal.
 
@@ -593,10 +708,6 @@ En cada página de canal conectado:
 # 8. Citas y Agenda
 
 **Ruta:** Menú → Citas
-
-<!-- TODO: Screenshot del calendario de citas -->
-![Calendario](images/placeholder-appointments.png)
-*Vista del calendario con citas agendadas*
 
 ## 8.1 Calendario
 
@@ -610,10 +721,6 @@ Vista semanal con todas las citas agendadas:
 ## 8.2 Servicios
 
 **Ruta:** Citas → pestaña Servicios
-
-<!-- TODO: Screenshot de la lista de servicios -->
-![Servicios](images/placeholder-services.png)
-*Gestión de servicios*
 
 Configura los servicios que ofreces:
 
@@ -635,10 +742,6 @@ Configura los servicios que ofreces:
 ## 8.3 Disponibilidad
 
 **Ruta:** Citas → pestaña Configuración
-
-<!-- TODO: Screenshot de la configuración de disponibilidad -->
-![Disponibilidad](images/placeholder-availability.png)
-*Configuración de horarios de disponibilidad*
 
 ### Horario semanal
 - Activa/desactiva cada día de la semana con un toggle
@@ -679,10 +782,6 @@ Sincroniza con Google Calendar o Microsoft Outlook:
 
 ## 8.5 Cómo funciona la reserva por IA
 
-<!-- TODO: Screenshot de una conversación de booking por WhatsApp -->
-![Booking por IA](images/placeholder-booking-flow.png)
-*Ejemplo de reserva de cita por WhatsApp*
-
 Cuando un cliente escribe por WhatsApp pidiendo una cita, el agente IA maneja todo el flujo:
 
 ```
@@ -695,7 +794,7 @@ Cuando un cliente escribe por WhatsApp pidiendo una cita, el agente IA maneja to
 7. Cliente: Elige un horario
 8. Agente: Pide nombre y email
 9. Cliente: Confirma
-10. ✅ Cita creada en Google Calendar + confirmación por WhatsApp
+10. Cita creada en Google Calendar + confirmación por WhatsApp
 ```
 
 ### Qué pasa al confirmar:
@@ -710,10 +809,6 @@ Cuando un cliente escribe por WhatsApp pidiendo una cita, el agente IA maneja to
 # 9. Automatización
 
 **Ruta:** Menú → Automatización
-
-<!-- TODO: Screenshot del wizard de automatización -->
-![Automatización](images/placeholder-automation.png)
-*Wizard de 4 pasos para crear reglas*
 
 ### Crear una regla (4 pasos)
 
@@ -761,10 +856,6 @@ Revisa el resumen y activa la regla con el toggle.
 
 **Ruta:** Menú → Campañas
 
-<!-- TODO: Screenshot de campañas -->
-![Campañas](images/placeholder-broadcast.png)
-*Lista de campañas con métricas*
-
 ### Crear una campaña
 
 1. Clic en **Nueva campaña**
@@ -790,10 +881,6 @@ Revisa el resumen y activa la regla con el toggle.
 # 11. Base de Conocimiento
 
 **Ruta:** Menú → Base de Conocimiento
-
-<!-- TODO: Screenshot de la base de conocimiento -->
-![Knowledge Base](images/placeholder-knowledge.png)
-*Biblioteca de artículos y documentos*
 
 ### Tipos de contenido
 
@@ -825,10 +912,6 @@ Los clientes pueden buscar artículos sin contactar al agente.
 
 **Ruta:** Menú → Analytics
 
-<!-- TODO: Screenshot de analytics -->
-![Analytics](images/placeholder-analytics.png)
-*Panel de analytics con métricas del negocio*
-
 - Leads en el funnel de ventas
 - Tasa de conversión
 - Performance de campañas
@@ -855,10 +938,6 @@ Los clientes pueden buscar artículos sin contactar al agente.
 
 **Ruta:** Menú → Inventario
 
-<!-- TODO: Screenshot del inventario -->
-![Inventario](images/placeholder-inventory.png)
-*Gestión de inventario con categorías*
-
 - Crear productos con nombre, SKU, precio, stock
 - Categorías con colores
 - Alertas de stock bajo
@@ -876,33 +955,25 @@ Los clientes pueden buscar artículos sin contactar al agente.
 
 ---
 
-# 14. Compliance y Privacidad
+# 14. Privacidad y Cumplimiento
 
 **Ruta:** Menú → Compliance
-
-<!-- TODO: Screenshot de compliance -->
-![Compliance](images/placeholder-compliance.png)
-*Gestión de compliance y privacidad*
 
 | Sección | Descripción |
 |---------|-------------|
 | **Textos legales** | Gestiona términos, política de privacidad, consentimiento |
 | **Consentimientos** | Registro de consentimientos otorgados por clientes |
-| **Opt-out** | Lista de clientes que pidieron no recibir más mensajes |
-| **Eliminación** | Solicitudes de eliminación de datos (GDPR/Habeas Data) |
+| **Solicitudes de baja** | Lista de clientes que pidieron no recibir más mensajes |
+| **Solicitudes de eliminación** | Solicitudes de eliminación de datos (GDPR/Habeas Data) |
 
-### Opt-out automático
-Parallly detecta automáticamente cuando un cliente escribe keywords como "no quiero", "cancelar", "basta" y lo agrega a la lista de opt-out. Los mensajes proactivos (broadcasts, automaciones) se bloquean, pero las respuestas a mensajes del cliente siguen funcionando.
+### Baja automática
+Parallly detecta automáticamente cuando un cliente escribe keywords como "no quiero", "cancelar", "basta" y lo agrega a la lista de solicitudes de baja. Los mensajes proactivos (broadcasts, automaciones) se bloquean, pero las respuestas a mensajes del cliente siguen funcionando.
 
 ---
 
 # 15. Configuración
 
 **Ruta:** Menú → Configuración
-
-<!-- TODO: Screenshot del hub de configuración -->
-![Configuración](images/placeholder-settings.png)
-*Hub de configuración con todas las opciones*
 
 | Sección | Qué configura |
 |---------|---------------|
@@ -917,17 +988,28 @@ Parallly detecta automáticamente cuando un cliente escribe keywords como "no qu
 | **Medios** | Biblioteca de imágenes y archivos |
 | **Email Templates** | Plantillas de correo electrónico |
 | **Alertas** | Reglas de alerta y webhooks |
+| **Pipeline** | Etapas del pipeline de ventas (ver abajo) |
 | **Facturación** | Plan, pagos, método de pago |
+
+### Etapas del Pipeline
+
+**Ruta:** Configuración → Pipeline
+
+Personaliza las etapas de tu funnel de ventas:
+
+1. **Reordenar**: arrastra y suelta las etapas para cambiar su orden
+2. **Editar**: haz clic en una etapa para modificar su nombre, color representativo y probabilidad de cierre (%)
+3. **Agregar**: clic en "Agregar etapa" para crear una nueva
+4. **Eliminar**: borra etapas que ya no uses
+5. **Marcar como terminal**: indica que una etapa es final (ej: "Ganado" o "Perdido"), lo que significa que el deal ya no avanza
+
+Los cambios se reflejan inmediatamente en la vista de Pipeline (Kanban) y en todos los filtros del CRM.
 
 ---
 
 # 16. Gestión de Usuarios
 
 **Ruta:** Menú → Usuarios
-
-<!-- TODO: Screenshot de gestión de usuarios -->
-![Usuarios](images/placeholder-users.png)
-*Gestión del equipo*
 
 ### Roles disponibles
 
@@ -955,10 +1037,6 @@ Parallly detecta automáticamente cuando un cliente escribe keywords como "no qu
 
 **Ruta:** Configuración → Facturación
 
-<!-- TODO: Screenshot de la página de facturación -->
-![Facturación](images/placeholder-billing.png)
-*Plan actual y opciones de facturación*
-
 ### Comparación de planes
 
 | Feature | Starter | Pro | Enterprise |
@@ -967,7 +1045,7 @@ Parallly detecta automáticamente cuando un cliente escribe keywords como "no qu
 | Agentes IA | 1 | 3 | 10 |
 | Calendarios | 1 | 3 | 10 |
 | Plantillas | Básicas | Personalizadas | Todo |
-| Prompt personalizado | ❌ | ✅ | ✅ |
+| Prompt personalizado | No | Si | Si |
 | Soporte | Email | Prioritario | Dedicado |
 
 ### Cambiar plan
@@ -1080,7 +1158,7 @@ Tienes **90 días** para reactivar tu cuenta. Después de 90 días, los datos se
 Sí. Parallly cumple con:
 - **Ley 1581 de 2012** (Colombia — Habeas Data)
 - **LFPDPPP** (México)
-- Controles de opt-out, consentimiento, y solicitudes de eliminación integrados
+- Controles de solicitudes de baja, consentimiento, y solicitudes de eliminación integrados
 </details>
 
 ---
@@ -1091,6 +1169,5 @@ Sí. Parallly cumple con:
 </p>
 
 <p align="center">
-  <img src="images/placeholder-parallly-footer.png" alt="Parallly" width="120" /><br/>
   <em>Parallly — IA que conecta, vende y atiende</em>
 </p>

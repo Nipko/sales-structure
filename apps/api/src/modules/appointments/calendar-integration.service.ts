@@ -511,9 +511,9 @@ export class CalendarIntegrationService {
     // ── List integrations ────────────────────────────────────────
 
     async listIntegrations(schemaName: string, userId?: string): Promise<CalendarIntegration[]> {
-        let sql = `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at FROM calendar_integrations`;
+        let sql = `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at FROM calendar_integrations WHERE is_active = true`;
         const params: any[] = [];
-        if (userId) { sql += ` WHERE user_id = $1::uuid`; params.push(userId); }
+        if (userId) { sql += ` AND user_id = $1::uuid`; params.push(userId); }
         sql += ` ORDER BY connected_at DESC`;
 
         return this.queryIntegrations(schemaName, sql, params);

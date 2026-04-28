@@ -544,7 +544,8 @@ export default function InboxPage() {
         });
 
         socket.on('disconnect', () => {
-            setIsLive(false);
+            // Don't set isLive=false — data is still real, just temporarily disconnected.
+            // The socket will auto-reconnect. Showing "DEMO" is misleading.
         });
 
         socket.on('newMessage', (payload: any) => {

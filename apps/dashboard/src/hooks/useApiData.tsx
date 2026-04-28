@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 
 /**
  * Hook for fetching API data with loading/error states and mock fallback.
- * 
- * Usage:
- *   const { data, loading, error, refetch } = useApiData(
- *     () => api.getKanban("tenant-id"),
- *     mockData  // optional fallback
- *   );
+ *
+ * isLive stays true once data is successfully loaded — it only goes
+ * back to false if a fallback is used (mock data). This prevents the
+ * badge from flipping to "DEMO" when the user sits on a page and the
+ * session token refreshes or a background refetch temporarily fails.
  */
 export function useApiData<T>(
     fetcher: () => Promise<{ success: boolean; data?: T; error?: string }>,
@@ -19,6 +18,7 @@ export function useApiData<T>(
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isLive, setIsLive] = useState(false);
+    const hasLoadedLive = useRef(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -28,20 +28,22 @@ export function useApiData<T>(
             if (result.success && result.data !== undefined) {
                 setData(result.data as T);
                 setIsLive(true);
+                hasLoadedLive.current = true;
             } else {
-                // API failed → use fallback
-                if (fallback) {
+                // API failed → use fallback if available, but keep isLive if we had real data before
+                if (fallback && !hasLoadedLive.current) {
                     setData(fallback);
                     setIsLive(false);
-                } else {
+                } else if (!hasLoadedLive.current) {
                     setError(result.error || "Error loading data");
                 }
+                // If we previously loaded live data, keep showing it (stale is better than mock)
             }
         } catch {
-            if (fallback) {
+            if (fallback && !hasLoadedLive.current) {
                 setData(fallback);
                 setIsLive(false);
-            } else {
+            } else if (!hasLoadedLive.current) {
                 setError("Connection error");
             }
         }

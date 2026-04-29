@@ -291,14 +291,43 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
     handleHandoffEscalated(event: HandoffEscalatedEvent) {
         this.logger.log(`Handoff event received for conversation ${event.conversationId} in tenant ${event.tenantId}`);
 
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:handoff', {
+        const payload = {
             conversationId: event.conversationId,
             reason: event.reason,
             summary: event.summary,
             assignedTo: event.assignedTo,
-        });
+            assignedAgentName: event.assignedAgentName,
+            contactName: event.contactName,
+            contactPhone: event.contactPhone,
+            lastMessage: event.lastMessage,
+            triggeredAt: event.handoffTriggeredAt,
+            urgent: true,
+        };
 
-        // Also refresh inbox for all agents
+        // Broadcast to all agents in tenant
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:handoff', payload);
+
+        // Direct notification to the assigned agent (if any)
+        if (event.assignedTo) {
+            // Find the socket for this specific agent and send a direct alert
+            const rooms = this.server?.sockets?.adapter?.rooms;
+            if (rooms) {
+                for (const [socketId, tenantId] of this.connectedAgents) {
+                    if (tenantId === event.tenantId) {
+                        const socket = this.server?.sockets?.sockets?.get(socketId);
+                        const meta = socket?.data?.meta;
+                        if (meta?.userId === event.assignedTo) {
+                            socket?.emit('inbox:assigned_to_you', {
+                                ...payload,
+                                message: `${event.contactName || 'Un cliente'} ha sido asignado a ti: ${event.reason}`,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Refresh inbox for all agents
         this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
     }
 

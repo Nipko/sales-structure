@@ -149,6 +149,8 @@ export class AgentConsoleService {
             priority: this.calculatePriority(c),
             tags: c.contact_tags || [],
             isAiHandled: c.status !== 'handoff' && !c.assigned_agent_id,
+            handoffReason: c.metadata?.handoff?.reason || null,
+            handoffTriggeredAt: c.metadata?.handoff?.startedAt || null,
         }));
     }
 

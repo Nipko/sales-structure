@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { EmailService } from '../email/email.service';
 import { NormalizedMessage, TenantConfig } from '@parallext/shared';
 
 export interface HandoffResult {
@@ -17,6 +18,11 @@ export interface HandoffEscalatedEvent {
     reason: string;
     summary: string;
     assignedTo: string | null;
+    assignedAgentName?: string;
+    contactName?: string;
+    contactPhone?: string;
+    lastMessage?: string;
+    handoffTriggeredAt: string;
 }
 
 @Injectable()
@@ -27,6 +33,7 @@ export class HandoffService {
         private prisma: PrismaService,
         private redis: RedisService,
         private eventEmitter: EventEmitter2,
+        private emailService: EmailService,
     ) {}
 
     /**
@@ -119,31 +126,93 @@ export class HandoffService {
             [conversationId, `🔄 **Handoff automático** — Razón: ${reason}\n\n${summary}`],
         );
 
-        // 4. Try to auto-assign to an available agent
+        // 4. Get contact info for notifications
+        const contactInfo = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT ct.name as contact_name, ct.phone as contact_phone, ct.channel_type,
+                    (SELECT content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 1) as last_message
+             FROM conversations cv
+             LEFT JOIN contacts ct ON ct.id = cv.contact_id
+             WHERE cv.id = $1::uuid`,
+            [conversationId],
+        );
+        const contact = contactInfo?.[0] || {};
+
+        // 5. Try to auto-assign to an available agent
         const assignedTo = await this.tryAutoAssign(tenantId, schemaName, conversationId);
 
-        // 5. Store handoff state in Redis for fast lookup
+        // 6. Get assigned agent name for notifications
+        let assignedAgentName: string | undefined;
+        let assignedAgentEmail: string | undefined;
+        if (assignedTo) {
+            const agentRows = await this.prisma.$queryRaw<any[]>`
+                SELECT TRIM(first_name || ' ' || last_name) as name, email
+                FROM users WHERE id = ${assignedTo}::uuid LIMIT 1
+            `;
+            assignedAgentName = agentRows?.[0]?.name;
+            assignedAgentEmail = agentRows?.[0]?.email;
+
+            // Create conversation assignment with SLA deadline (5 min default)
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at, sla_deadline)
+                 VALUES ($1::uuid, $2::uuid, NOW(), NOW() + interval '5 minutes')
+                 ON CONFLICT (conversation_id, agent_id) WHERE resolved_at IS NULL DO NOTHING`,
+                [conversationId, assignedTo],
+            ).catch(() => {}); // Table might not have unique constraint yet
+        }
+
+        // 7. Store handoff state in Redis for fast lookup
         const handoffId = `hoff_${Date.now()}`;
+        const handoffTriggeredAt = new Date().toISOString();
         await this.redis.set(
             `handoff:${tenantId}:${conversationId}`,
             JSON.stringify({
                 handoffId,
                 reason,
-                startedAt: new Date().toISOString(),
+                startedAt: handoffTriggeredAt,
                 contactId: message.contactId,
                 assignedTo,
             }),
             86400,
         );
 
-        // 6. Emit event — AgentConsoleGateway listens for this
+        // 8. Emit event with full context for notifications
         this.eventEmitter.emit('handoff.escalated', {
             tenantId,
             conversationId,
             reason,
             summary,
             assignedTo,
+            assignedAgentName,
+            contactName: contact.contact_name || message.contactId,
+            contactPhone: contact.contact_phone || '',
+            lastMessage: (contact.last_message || '').substring(0, 100),
+            handoffTriggeredAt,
         } as HandoffEscalatedEvent);
+
+        // 9. Send email to assigned agent (fire-and-forget)
+        if (assignedAgentEmail) {
+            this.emailService.send({
+                to: assignedAgentEmail,
+                subject: `🔴 Handoff: ${contact.contact_name || 'Cliente'} necesita atención`,
+                html: `
+                    <div style="font-family: sans-serif; max-width: 500px;">
+                        <h2 style="color: #e74c3c;">Conversación escalada</h2>
+                        <p><strong>Cliente:</strong> ${contact.contact_name || 'Desconocido'}</p>
+                        <p><strong>Teléfono:</strong> ${contact.contact_phone || 'N/A'}</p>
+                        <p><strong>Razón:</strong> ${reason}</p>
+                        <p><strong>Último mensaje:</strong></p>
+                        <blockquote style="border-left: 3px solid #e74c3c; padding-left: 12px; color: #555;">
+                            ${(contact.last_message || '').substring(0, 200)}
+                        </blockquote>
+                        <p style="margin-top: 20px;">
+                            <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px;">
+                                Abrir Inbox
+                            </a>
+                        </p>
+                    </div>
+                `,
+            }).catch(e => this.logger.warn(`Handoff email failed: ${e.message}`));
+        }
 
         this.logger.log(
             `Handoff executed: conversation=${conversationId}, reason=${reason}, assignedTo=${assignedTo || 'unassigned'}`,

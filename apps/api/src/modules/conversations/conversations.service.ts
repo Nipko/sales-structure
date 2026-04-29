@@ -217,8 +217,11 @@ export class ConversationsService {
                 conversationId: conversation.id, contactId: contact.id,
                 data: { reason: handoffReason },
             }).catch(() => {});
-            await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
-            const handoffMsg = `Entiendo. Te comunicaré ahora mismo con nuestro equipo de asistencia humana. En un momento te responderán.`;
+            const handoffResult = await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
+            const agentName = handoffResult.assignedTo ? (handoffResult as any).assignedAgentName : null;
+            const handoffMsg = agentName
+                ? `Entiendo tu solicitud. Te estoy transfiriendo con ${agentName} de nuestro equipo. Te responderá en un momento. 🙋`
+                : `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá lo antes posible. 🙋`;
             await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, handoffMsg);
             return;

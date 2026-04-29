@@ -153,7 +153,23 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
     // ── Handoff ──
     socket.on("handoff.escalated", (payload: any) => {
-      addNotif("handoff", "Transfer to agent", payload.reason || "A customer requests to speak with a human agent");
+      const contactName = payload.contactName || "Cliente";
+      const lastMsg = payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : "";
+      addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || "Transferencia a agente humano"}${lastMsg}`);
+      // Play notification sound
+      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
+    });
+    socket.on("inbox:handoff", (payload: any) => {
+      if (payload.urgent) {
+        const contactName = payload.contactName || "Cliente";
+        addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || "Transferencia"}${payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : ""}`);
+        try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
+      }
+    });
+    // Direct assignment notification
+    socket.on("inbox:assigned_to_you", (payload: any) => {
+      addNotif("handoff", `⚡ Asignado a ti`, payload.message || "Una conversación ha sido asignada a ti");
+      try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
     });
 
     // ── Compliance / Opt-out ──

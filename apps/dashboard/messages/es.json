@@ -481,14 +481,7 @@
     "businessHoursDesc": "Horarios por dia, festivos y mensaje fuera de horario",
     "billing": "Facturación",
     "billingDesc": "Plan, método de pago e historial de facturas",
-    "tools": {
-      "customAttributes": "Atributos Personalizados",
-      "macros": "Macros",
-      "prechat": "Formulario Pre-Chat",
-      "emailTemplates": "Plantillas de Correo",
-      "mediaBank": "Banco de Imágenes",
-      "changePassword": "Cambiar Contraseña"
-    },
+    "tools": "Herramientas",
     "toolsDesc": "Atributos, macros, formularios y plantillas",
     "customAttributes": "Atributos personalizados",
     "customAttributesDesc": "Campos dinamicos para contactos y leads",

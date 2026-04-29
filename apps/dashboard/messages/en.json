@@ -481,14 +481,7 @@
     "businessHoursDesc": "Daily schedules, holidays and after-hours message",
     "billing": "Billing",
     "billingDesc": "Plan, payment method and invoice history",
-    "tools": {
-      "customAttributes": "Custom Attributes",
-      "macros": "Macros",
-      "prechat": "Pre-Chat Form",
-      "emailTemplates": "Email Templates",
-      "mediaBank": "Media Bank",
-      "changePassword": "Change Password"
-    },
+    "tools": "Tools",
     "toolsDesc": "Attributes, macros, forms and templates",
     "customAttributes": "Custom attributes",
     "customAttributesDesc": "Dynamic fields for contacts and leads",

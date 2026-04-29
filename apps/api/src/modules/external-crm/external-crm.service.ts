@@ -245,7 +245,7 @@ export class ExternalCrmService {
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 
-    private async buildContext(tenantId: string, connectionId: string): Promise<CrmAdapterContext> {
+    async buildContext(tenantId: string, connectionId: string): Promise<CrmAdapterContext> {
         const conn = await this.prisma.crmConnection.findFirst({ where: { id: connectionId, tenantId } });
         if (!conn) throw new NotFoundException('Connection not found');
         if (conn.status !== 'active') throw new ForbiddenException(`Connection ${conn.status}`);

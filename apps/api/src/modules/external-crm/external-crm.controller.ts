@@ -15,6 +15,7 @@ import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { ExternalCrmService } from './external-crm.service';
+import { CrmImportService } from './crm-import.service';
 import { CrmAdapterFactory } from './crm-adapter.factory';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -22,6 +23,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 export class ExternalCrmController {
     constructor(
         private readonly service: ExternalCrmService,
+        private readonly importService: CrmImportService,
         private readonly factory: CrmAdapterFactory,
         private readonly config: ConfigService,
     ) {}
@@ -79,6 +81,36 @@ export class ExternalCrmController {
     @UseGuards(AuthGuard('jwt'), TenantGuard)
     disconnect(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
         return this.service.disconnect(tenantId, connectionId);
+    }
+
+    // ─── Initial import ──────────────────────────────────────────────────────
+
+    @Get(':tenantId/connections/:connectionId/import/preview')
+    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    previewImport(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
+        return this.importService.preview(tenantId, connectionId);
+    }
+
+    @Post(':tenantId/connections/:connectionId/import/start')
+    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    startImport(
+        @Param('tenantId') tenantId: string,
+        @Param('connectionId') connectionId: string,
+        @Req() req: any,
+    ) {
+        return this.importService.start(tenantId, connectionId, req.user.sub);
+    }
+
+    @Get(':tenantId/imports/:importId')
+    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    getImport(@Param('tenantId') tenantId: string, @Param('importId') importId: string) {
+        return this.importService.getStatus(tenantId, importId);
+    }
+
+    @Get(':tenantId/connections/:connectionId/imports')
+    @UseGuards(AuthGuard('jwt'), TenantGuard)
+    listImports(@Param('tenantId') tenantId: string, @Param('connectionId') connectionId: string) {
+        return this.importService.listImports(tenantId, connectionId);
     }
 
     private redirectUri(provider: string): string {

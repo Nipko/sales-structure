@@ -1535,3 +1535,26 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_sync_log" (
 );
 CREATE INDEX IF NOT EXISTS "idx_crm_sync_log_recent" ON "{{SCHEMA_NAME}}"."crm_sync_log" ("provider", "created_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_crm_sync_log_failed" ON "{{SCHEMA_NAME}}"."crm_sync_log" ("status") WHERE "status" = 'failed';
+
+-- crm_imports tracks bulk import jobs (initial backfill of existing CRM data).
+-- One row per import attempt. Status drives the progress bar in the dashboard.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_imports" (
+    "id"             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"       VARCHAR(50) NOT NULL,
+    "connection_id"  UUID NOT NULL,
+    "entity"         VARCHAR(20) NOT NULL DEFAULT 'contact',
+    "status"         VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending|running|completed|failed|cancelled
+    "cursor"         VARCHAR(500),                              -- opaque pagination token from provider
+    "total_pulled"   INTEGER DEFAULT 0,
+    "matched"        INTEGER DEFAULT 0,                         -- linked to existing contact
+    "created"        INTEGER DEFAULT 0,                         -- new contact inserted
+    "skipped"        INTEGER DEFAULT 0,                         -- missing phone+email or invalid
+    "errors"         INTEGER DEFAULT 0,
+    "last_error"     TEXT,
+    "started_by"     UUID,
+    "started_at"     TIMESTAMP DEFAULT NOW(),
+    "completed_at"   TIMESTAMP,
+    "updated_at"     TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_crm_imports_recent" ON "{{SCHEMA_NAME}}"."crm_imports" ("started_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_crm_imports_running" ON "{{SCHEMA_NAME}}"."crm_imports" ("status") WHERE "status" = 'running';

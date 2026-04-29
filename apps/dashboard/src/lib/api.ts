@@ -676,6 +676,14 @@ export const api = {
         apiPost<{ ok: boolean; details?: string }>(`/external-crm/${tenantId}/connections/${connectionId}/test`, {}),
     disconnectCrm: (tenantId: string, connectionId: string) =>
         authFetch(`/external-crm/${tenantId}/connections/${connectionId}`, { method: "DELETE" }).then((r) => r.json()),
+    previewCrmImport: (tenantId: string, connectionId: string) =>
+        apiGet<any>(`/external-crm/${tenantId}/connections/${connectionId}/import/preview`),
+    startCrmImport: (tenantId: string, connectionId: string) =>
+        apiPost<{ importId: string; status: string }>(`/external-crm/${tenantId}/connections/${connectionId}/import/start`, {}),
+    getCrmImport: (tenantId: string, importId: string) =>
+        apiGet<any>(`/external-crm/${tenantId}/imports/${importId}`),
+    listCrmImports: (tenantId: string, connectionId: string) =>
+        apiGet<any[]>(`/external-crm/${tenantId}/connections/${connectionId}/imports`),
     listFeatureRequestComments: (id: string) =>
         apiGet<any[]>(`/feature-requests/${id}/comments`),
     commentFeatureRequest: (id: string, body: string) =>

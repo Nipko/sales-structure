@@ -117,6 +117,7 @@ import llmConfig from './config/llm.config';
         BullBoardModule.forFeature({ name: 'nurturing', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'conversation-snooze', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'crm-sync', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'crm-import', adapter: BullMQAdapter }),
 
         // Core infrastructure
         PrismaModule,

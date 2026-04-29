@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Plug, CheckCircle2, AlertCircle, Trash2, RefreshCw, ExternalLink } from "lucide-react";
+import { Plug, CheckCircle2, AlertCircle, Trash2, RefreshCw, ExternalLink, Download, X, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,6 +38,7 @@ export default function CrmIntegrationsPage() {
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<string | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
+    const [importConn, setImportConn] = useState<any | null>(null);
 
     function showToast(msg: string) {
         setToast(msg);
@@ -157,6 +158,13 @@ export default function CrmIntegrationsPage() {
                                     )}
                                 </div>
                                 <button
+                                    onClick={() => setImportConn(c)}
+                                    disabled={busyId === c.id || c.status !== "active"}
+                                    className="px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                                >
+                                    <Download size={12} /> {t("import")}
+                                </button>
+                                <button
                                     onClick={() => test(c.id)}
                                     disabled={busyId === c.id}
                                     className="px-3 py-1.5 text-xs text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg flex items-center gap-1 disabled:opacity-50"
@@ -226,6 +234,220 @@ export default function CrmIntegrationsPage() {
                     </div>
                 )}
             </div>
+
+            {importConn && (
+                <ImportModal
+                    tenantId={tenantId!}
+                    connection={importConn}
+                    onClose={() => setImportConn(null)}
+                    onDone={() => {
+                        setImportConn(null);
+                        load();
+                    }}
+                    notify={showToast}
+                    t={t}
+                />
+            )}
+        </div>
+    );
+}
+
+function ImportModal({ tenantId, connection, onClose, onDone, notify, t }: any) {
+    const [phase, setPhase] = useState<"preview" | "running" | "done" | "error">("preview");
+    const [preview, setPreview] = useState<any | null>(null);
+    const [importId, setImportId] = useState<string | null>(null);
+    const [status, setStatus] = useState<any | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        loadPreview();
+    }, [connection?.id]);
+
+    async function loadPreview() {
+        setLoading(true);
+        const r = await api.previewCrmImport(tenantId, connection.id);
+        setLoading(false);
+        if (r.success) setPreview(r.data);
+        else {
+            notify(t("previewFail", { msg: r.error ?? "" }));
+            setPhase("error");
+        }
+    }
+
+    async function startImport() {
+        const r = await api.startCrmImport(tenantId, connection.id);
+        if (!r.success || !r.data?.importId) {
+            notify(t("importFail", { msg: r.error ?? "" }));
+            setPhase("error");
+            return;
+        }
+        setImportId(r.data.importId);
+        setPhase("running");
+        // Poll status every 3s.
+        const handle = setInterval(async () => {
+            const s = await api.getCrmImport(tenantId, r.data!.importId);
+            if (s.success && s.data) {
+                setStatus(s.data);
+                if (s.data.status === "completed" || s.data.status === "failed") {
+                    clearInterval(handle);
+                    setPhase(s.data.status === "completed" ? "done" : "error");
+                }
+            }
+        }, 3000);
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            >
+                <div className="flex items-center justify-between p-5 border-b border-neutral-200 dark:border-neutral-800">
+                    <div>
+                        <h2 className="text-lg font-semibold">{t("importTitle")}</h2>
+                        <p className="text-xs text-neutral-500 mt-1">
+                            {connection.externalAccountName ?? connection.provider}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="p-5">
+                    {phase === "preview" && (
+                        <>
+                            {loading ? (
+                                <div className="flex items-center gap-2 text-sm text-neutral-500 py-12 justify-center">
+                                    <Loader2 size={16} className="animate-spin" /> {t("loadingPreview")}
+                                </div>
+                            ) : !preview ? (
+                                <div className="text-sm text-neutral-500 py-8 text-center">{t("previewEmpty")}</div>
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-3 gap-3 mb-4">
+                                        <Stat label={t("statNew")} value={preview.newCount} color="emerald" />
+                                        <Stat label={t("statMatched")} value={preview.matchCount} color="blue" />
+                                        <Stat label={t("statInvalid")} value={preview.invalidCount} color="amber" />
+                                    </div>
+                                    <p className="text-xs text-neutral-500 mb-3">{t("previewExplain")}</p>
+                                    <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-neutral-50 dark:bg-neutral-800/50">
+                                                <tr>
+                                                    <th className="text-left p-2">{t("colName")}</th>
+                                                    <th className="text-left p-2">{t("colEmail")}</th>
+                                                    <th className="text-left p-2">{t("colPhone")}</th>
+                                                    <th className="text-left p-2">{t("colMatch")}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {preview.sample.slice(0, 20).map((c: any, i: number) => (
+                                                    <tr key={i} className="border-t border-neutral-200 dark:border-neutral-800">
+                                                        <td className="p-2">{[c.firstName, c.lastName].filter(Boolean).join(" ") || "—"}</td>
+                                                        <td className="p-2 truncate max-w-[150px]">{c.email ?? "—"}</td>
+                                                        <td className="p-2">{c.phoneE164 ?? "—"}</td>
+                                                        <td className="p-2">
+                                                            {c.matchInternalId ? (
+                                                                <span className="text-blue-500">{t("matchYes")}</span>
+                                                            ) : c.email || c.phoneE164 ? (
+                                                                <span className="text-emerald-500">{t("matchNew")}</span>
+                                                            ) : (
+                                                                <span className="text-amber-500">{t("matchInvalid")}</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
+                        </>
+                    )}
+
+                    {(phase === "running" || phase === "done") && status && (
+                        <div className="py-6">
+                            <div className="flex items-center justify-center gap-2 mb-6">
+                                {phase === "running" ? (
+                                    <Loader2 size={20} className="animate-spin text-indigo-500" />
+                                ) : (
+                                    <CheckCircle2 size={20} className="text-emerald-500" />
+                                )}
+                                <p className="text-sm font-medium">
+                                    {phase === "running" ? t("importing") : t("importDone")}
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Stat label={t("totalPulled")} value={status.total_pulled ?? 0} color="neutral" />
+                                <Stat label={t("statNew")} value={status.created ?? 0} color="emerald" />
+                                <Stat label={t("statMatched")} value={status.matched ?? 0} color="blue" />
+                                <Stat label={t("statSkipped")} value={(status.skipped ?? 0) + (status.errors ?? 0)} color="amber" />
+                            </div>
+                        </div>
+                    )}
+
+                    {phase === "error" && (
+                        <div className="py-12 text-center">
+                            <AlertCircle size={32} className="mx-auto text-red-500 mb-2" />
+                            <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                                {status?.last_error ?? t("genericError")}
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 p-5 border-t border-neutral-200 dark:border-neutral-800">
+                    {phase === "preview" && (
+                        <>
+                            <button
+                                onClick={onClose}
+                                className="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"
+                            >
+                                {t("cancel")}
+                            </button>
+                            <button
+                                onClick={startImport}
+                                disabled={loading || !preview}
+                                className="px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-medium hover:bg-indigo-600 disabled:opacity-50"
+                            >
+                                {t("startImport")}
+                            </button>
+                        </>
+                    )}
+                    {phase === "running" && (
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl"
+                        >
+                            {t("closeRunning")}
+                        </button>
+                    )}
+                    {(phase === "done" || phase === "error") && (
+                        <button
+                            onClick={onDone}
+                            className="px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-medium hover:bg-indigo-600"
+                        >
+                            {t("close")}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+    const colorMap: Record<string, string> = {
+        emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+        amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        neutral: "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300",
+    };
+    return (
+        <div className={`p-3 rounded-xl ${colorMap[color]}`}>
+            <p className="text-2xl font-semibold">{value.toLocaleString()}</p>
+            <p className="text-xs mt-0.5 opacity-80">{label}</p>
         </div>
     );
 }

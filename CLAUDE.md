@@ -76,7 +76,7 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 
 The system prompt is ASSEMBLED per turn by `PromptAssemblerService`:
 
-- **Layer 1 (Contract)** — hardcoded universal rules (10 rules). Golden rule: "One message, one purpose. Never ask more than one question per message." Sales awareness: guide LLM to connect customer needs to available services. Strict directive handling: "Say EXACTLY this information in a natural way." Also: backend controls flow, LLM is the voice, must cite retrieved knowledge, must use `<turn><language>`, must never leak context tags, anti-repetition (uses message_count in turn context). Identical for every agent.
+- **Layer 1 (Contract)** — hardcoded universal rules (10 rules) + safety guardrails. Golden rule: "One message, one purpose. Never ask more than one question per message." Sales awareness: guide LLM to connect customer needs to available services. Strict directive handling: "Say EXACTLY this information in a natural way." Also: backend controls flow, LLM is the voice, must cite retrieved knowledge, must use `<turn><language>`, must never leak context tags, anti-repetition (uses message_count in turn context). **Safety guardrails** (always active, cannot be overridden): blocks violence, weapons, illegal activities, self-harm, explicit content, discrimination, drugs, hacking, third-party PII, unqualified legal/financial advice. Identical for every agent.
 - **Layer 2 (Persona)** — `<persona>…</persona>` from `PersonaService.buildSystemPrompt(config)`. 100% user configuration (name, role, personality, rules, forbidden topics, handoff triggers, business hours). In `editorMode: 'prompt'`, the user's free-form prompt replaces the guided body but STILL wrapped in `<persona>` so L1/L3 apply.
 - **Layer 3 (Turn Context)** — `<turn>…</turn>` structured XML for this specific turn: language (auto-detected), timezone, now, upcoming_days, business_hours_status, business identity, contact profile, booking_state, available_services, retrieved_knowledge (from RAG + tools), message_count.
 
@@ -106,13 +106,13 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 | **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + password reset + session management + impersonation), tenants, settings |
 | **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram/SMS adapters + IG OAuth + Messenger FB SDK + IG token refresh cron), conversations, whatsapp, handoff, agent-console |
 | **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
-| **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring), pipeline, catalog |
+| **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring, analytics, insights, deal-approval, bulk-update, pipeline-stages), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
 | **Billing & Finance** | billing (MercadoPago adapter, webhook, reconciliation cron, email listeners, plan quotas), financials (SaaS metrics, snapshots, infra costs, exchange rates), offboarding (tenant lifecycle, grace enforcer cron, archive cleaner) |
 | **Operations** | broadcast, inventory, orders, compliance, email, email-templates, offers, business-info |
 | **Media & Files** | media (upload, resize, logo, tags, serve) |
 | **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection, multi-calendar, Google/Microsoft sync) |
-| **Identity** | identity (unified profiles, merge suggestions) |
+| **Identity** | identity (unified profiles, merge suggestions, manual merge, phone normalization) |
 | **Analytics** | analytics (Redis counters + DB), dashboard-analytics (KPIs, volume, response times, AI metrics, heatmap, anomalies, cohorts), agent-analytics, alerts, scheduled-reports, csat-trigger, compliance, audit, metrics-aggregation, bi-api |
 | **Other** | carla (legacy, being replaced), intake (landing pages) |
 
@@ -201,6 +201,16 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | Booking i18n | `appointments/booking-messages.ts` (21 directives x 4 languages) |
 | Calendar integrations | `appointments/calendar-integration.service.ts` (Google/Microsoft sync) |
 | Intent interpreter | `appointments/intent-interpreter.service.ts` (NLP for booking intents) |
+| **CRM Analytics** | `crm/services/crm-analytics/crm-analytics.service.ts` (overview, funnel, velocity, win-loss, leaderboard, sources) |
+| **CRM AI Insights** | `crm/services/crm-insights/crm-insights.service.ts` (per-lead AI insight) |
+| **Phone normalization** | `common/utils/phone.util.ts` (E.164 normalization for LatAm) |
+| **Handoff notifications** | `handoff/handoff.service.ts` (email + skill routing + SLA) |
+| **SLA escalation** | `agent-console/agent-availability.service.ts` (escalateStaleHandoffs @2min) |
+| **Appointment completion** | `appointments/appointment-reminders.service.ts` (auto-complete + attendance confirmation) |
+| **Calendar reassign** | `appointments/appointments.controller.ts` (reassign-disconnect endpoint) |
+| **Prompt assembler** | `conversations/prompt-assembler.service.ts` (3-layer + safety guardrails) |
+| **Identity manual merge** | `identity/identity.controller.ts` (POST manual-merge) |
+| **Pipeline stages** | `crm/crm.controller.ts` (CRUD pipeline-stages endpoints) |
 
 ## Dashboard pages (60+)
 
@@ -209,12 +219,12 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Auth** | Login (Remember Me, session expired banner), Forgot Password (OTP), Setup Password (Google OAuth), Verify Email (6-digit OTP) |
 | **Onboarding** | 5-step company wizard (step 5: plan picker — Starter self-serve, Pro/Enterprise tagged for contact) |
 | **Core** | Dashboard, Inbox (WhatsApp-style chat + channel identification + notifications), Trial Countdown Banner (persistent, all admin pages) |
-| **CRM** | Contacts, Lead Detail, Pipeline (Kanban), Segments |
+| **CRM** | Contacts (bulk actions, advanced filters, create modal), Lead Detail (inline edit, archive, custom fields, score breakdown, AI insight), Pipeline/Embudo (Kanban, configurable stages), Segments, CRM Analytics (4 tabs) |
 | **AI** | Agent List (multi-agent management, templates), Agent Editor (/agent/[agentId] — hub card grid + channel assignment + custom prompt mode), AI Settings |
 | **Automation** | Rules (4-step wizard), Settings |
 | **Analytics** | Analytics V2 (8 tabs: Overview/AI & Bot/Automation/Campaigns/Channels/CSAT/Anomalies/Cohorts), Agent Performance (legacy 4 tabs) |
 | **Channels** | Overview, WhatsApp Setup, Instagram Setup (OAuth popup + callback), Messenger Setup (FB SDK Login), Telegram Setup, SMS/Twilio Setup |
-| **Identity** | Merge Suggestions (approve/reject) |
+| **Identity** | Merge Suggestions (approve/reject), Manual Merge (cross-channel contacts) |
 | **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports**, **Billing** (plan, countdown, actions, payment history) |
 | **Scheduling** | Appointments (week/day calendar, agenda, services + staff + modality, config + multi-calendar, analytics), Public Booking (/book/:tenantSlug) |
 | **Operations** | Broadcast, Inventory, Orders, Compliance, Knowledge Base |
@@ -274,6 +284,8 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | `*/15 * * * *` | AppointmentRemindersService | Send 24h appointment reminders |
 | `3,18,33,48 * * * *` | AppointmentRemindersService | Send 1h appointment reminders |
 | `5,35 * * * *` | AppointmentRemindersService | Auto-mark no-shows + send follow-up |
+| `20 * * * *` | AppointmentRemindersService | Auto-complete confirmed appointments (ended 2+ hours ago) |
+| `*/2 * * * *` | AgentAvailabilityService | Escalate stale handoffs (>5 min no response → supervisor) |
 | daily | BillingService | Trial ending soon (3 days before trial end) |
 | hourly | ReconciliationProcessor | Past_due sweep + daily drift detection |
 
@@ -290,6 +302,7 @@ booking:{conversationId}                                  — Booking engine sta
 lock:conv:{conversationId}                                — Conversation processing mutex (30s TTL)
 offboard:past_due:{tenantId}                              — Past-due timer start (30d TTL, 7d grace)
 tenant_plan:{tenantId}                                    — Cached plan info (invalidated on offboard/reactivate)
+handoff:{tenantId}:{conversationId}                       — Handoff state (reason, startedAt, assignedTo) 24h TTL
 ```
 
 ### Tenant Schema Tables (Analytics)
@@ -307,6 +320,8 @@ agent_personas         — Multi-agent config (name, model, system prompt, chann
 agent_templates        — Reusable agent templates (builtin + tenant-created)
 calendar_integrations  — External calendar connections (Google/Microsoft), label, assignment_type, assignment_id
 services               — Bookable services (+ location_type: in_person/online/hybrid, location_address, meeting_link)
+pipeline_stages        — Configurable pipeline stages (name, slug, color, position, probability, sla_hours, is_terminal)
+scoring_config         — Lead scoring configuration (weights JSONB, purchase_keywords, decay settings)
 ```
 
 ### Global Prisma Tables (Billing & Finance)
@@ -436,6 +451,90 @@ audit_logs                 — Offboarding and billing audit trail
 - **Intent interpreter improvements**: Confirmation no longer returns early (extracts service/date/time too). Numbered selection ("el 1", "la 2", ordinals). Stem matching for fuzzy service names. Single-word names accepted
 - **Double booking protection**: Early return when step=booked. Duplicate check before INSERT (same contact+service+time)
 - **Greeting skip engine**: Greeting/farewell at idle properly skips booking engine
+
+## CRM Overhaul (Apr 26-28, 2026)
+
+5-phase CRM enhancement:
+
+- **Lead management**: Create lead modal (phone required), inline edit (name/email/phone/stage/VIP/tags), archive with confirmation dialog, restore from archive
+- **Phone normalization**: `normalizePhoneE164()` utility in `common/utils/phone.util.ts`. Supports LatAm (CO/AR/MX/BR/CL/PE/EC) + US/CA. Auto-applied on lead creation and identity resolution
+- **Auto-merge on phone match**: Identity service normalizes phone before lookup → automatic merge when same E.164 number detected across channels
+- **Custom field values**: Per-contact custom attribute values rendered by type (text/number/boolean/date/select) in lead detail view
+- **Bulk actions**: Checkbox selection + "select all" + fixed bottom action bar (change stage, add tag, archive)
+- **Advanced filters**: Score min/max, date range, tags, combined with existing stage/search filters
+- **Pipeline stages config**: Full CRUD (`pipeline_stages` table) with name, slug, color, position, probability, SLA hours, is_terminal flag. Drag-to-reorder
+- **CRM Analytics dashboard**: Dedicated analytics with 4 tabs (Overview KPIs, Funnel visualization, Pipeline Velocity, Agent Leaderboard). 6 endpoints under `/crm/analytics/:tenantId/`
+- **Score transparency**: Expandable breakdown panel showing 5 factors (engagement, intent, recency, stage, profile) with visual progress bars
+- **Configurable scoring**: `scoring_config` table (weights JSON, purchase_keywords array, decay_enabled, decay_days, decay_factor). Endpoints: GET/POST `/crm/scoring-config/:tenantId`
+- **Dynamic segments**: Rule-based filters (stage, tag, score, channel, date) auto-evaluated on query. CRUD + contact count endpoint
+- **AI Insights**: `CrmInsightsService` provides per-lead AI analysis. Endpoint: GET `/crm/leads/:tenantId/:leadId/insight`
+- **Deal approval workflow**: 3 endpoints — `PUT request-approval` (sets pending status), `PUT approve` (moves to target stage), `PUT reject` (with reason). Fields: `approval_status`, `approval_stage`, `approved_by` on opportunities table
+
+## Handoff System Enhancement (Apr 26-28, 2026)
+
+3-phase improvement to human handoff:
+
+- **Email notifications**: When handoff triggers and an agent is assigned, an HTML email is sent with client name, phone, reason, last message, and "Open Inbox" CTA button
+- **Skill-based routing**: `tryAutoAssign()` maps handoff reasons to skill tags (frustration→complaints, explicit_request→general, max_failed→technical). Queries `users.skill_tags` array and `max_capacity` column. Prefers matching skills, falls back to least-loaded
+- **SLA tracking**: Conversation assignments include `sla_deadline` (default 5 min). Creates record in `conversation_assignments` table
+- **Supervisor escalation cron**: `AgentAvailabilityService.escalateStaleHandoffs()` runs every 2 minutes. Finds conversations waiting >5 min without agent response → emits `handoff.escalated_supervisor` event → WebSocket `inbox:escalation` to dashboard. Marks as escalated to avoid re-processing
+- **WebSocket notifications**: `inbox:handoff` broadcast to all tenant agents + direct `inbox:handoff_direct` to assigned agent. `inbox:escalation` for supervisor alerts
+- **Dashboard sound/visual**: Client-side sound notification + visual badge on handoff events (driven by WebSocket)
+
+## Appointment Completion System (Apr 26-28, 2026)
+
+- **Attendance confirmation**: After appointment end time, sends message to customer via their messaging channel asking if they attended. Source metadata: `appointment_attendance_check`
+- **Auto-complete cron**: `@Cron('20 * * * *')` — every hour at :20, marks confirmed appointments as completed if they ended 2+ hours ago (runs after no-show detection at :35)
+- **CSAT trigger**: After completion, triggers customer satisfaction survey via messaging channel
+- **No-show follow-up**: Sends follow-up message to no-shows offering to reschedule
+
+## Calendar Disconnect with Reassignment (Apr 26-28, 2026)
+
+- **Reassign-or-cancel flow**: When disconnecting a calendar with future appointments, API returns count + other available calendars
+- **Endpoint**: `POST /appointments/:tenantId/calendar/:integrationId/reassign-disconnect` — reassigns all future appointments to target calendar, then disconnects source
+- **Dashboard UI**: Modal shows appointment count and dropdown to select target calendar before confirming disconnect
+
+## Safety Guardrails — Layer 1 (Apr 26-28, 2026)
+
+Universal forbidden topics in the prompt contract layer (cannot be overridden by persona config):
+- Violence, weapons, illegal activities, self-harm
+- Explicit sexual content, child exploitation
+- Discrimination, hate speech
+- Drug manufacturing or procurement
+- Hacking, malware, social engineering
+- Personal information of third parties
+- Legal advice (refer to professional)
+- Financial investment advice (refer to licensed advisor)
+
+Response when triggered: "I'm not able to help with that. Is there anything else I can assist you with regarding our products or services?"
+
+## Identity — Manual Merge (Apr 26-28, 2026)
+
+- **Endpoint**: `POST /identity/:tenantId/manual-merge` with `{ contactIdA, contactIdB }`
+- **Dashboard UI**: In contact detail or identity page, select two contacts to merge manually
+- **Use case**: Cross-channel contacts without matching phone/email that a human identifies as the same person
+- **Preserves**: All conversation history from both contacts consolidated into one unified profile
+
+## Inbox Improvements (Apr 26-28, 2026)
+
+- **Responsive toolbar**: Actions collapse to icon-only on small screens, secondary actions in "More" dropdown menu
+- **Collapsible contact panel**: Right panel toggles visibility for more chat space
+- **Safe dates**: All date rendering uses safe parsing to prevent hydration mismatches
+- **Channel account info**: Each conversation shows the channel account name + profile photo for identification
+- **BroadcastChannel OAuth**: Instagram/Messenger OAuth popup results propagated to parent window via BroadcastChannel API
+
+## Pipeline Rename & Configuration (Apr 26-28, 2026)
+
+- **Renamed**: Pipeline section now called "Embudo de ventas" in Spanish i18n
+- **Configurable stages**: Settings page with drag-to-reorder, edit (name/color/probability/SLA), add, delete, terminal toggle
+- **`pipeline_stages` table**: id, tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal
+- **Full i18n**: All pipeline stage management UI in 4 languages
+
+## Channel Improvements (Apr 26-28, 2026)
+
+- **Instagram profile photos**: Fetched via IG Basic Display API on connect, displayed in channel overview and inbox
+- **Messenger profile photos**: Fetched via FB Graph API (`/me/picture`), displayed alongside page name
+- **BroadcastChannel OAuth sync**: OAuth popup results for IG and Messenger propagated to parent dashboard tab via BroadcastChannel API (no polling needed)
 
 ## Verification before pushing
 

@@ -40,13 +40,16 @@ NestJS 10 backend with 40 modules. Port 3000. Global prefix: `/api/v1`.
 - `copilot/` — AI assistant for agents
 
 **Human handoff**:
-- `handoff/` — Trigger detection + escalation. Emits `handoff.escalated` event
-- `agent-console/` — WebSocket gateway (/inbox namespace). Agent availability, macros, snooze, canned responses
+- `handoff/` — Trigger detection + escalation. Emits `handoff.escalated` event. Email notification to assigned agent. Skill-based routing (`tryAutoAssign` with skill_tags and max_capacity). SLA deadline on conversation_assignments (5 min default)
+- `agent-console/` — WebSocket gateway (/inbox namespace). Agent availability, macros, snooze, canned responses. `inbox:handoff` + `inbox:handoff_direct` + `inbox:escalation` events
+- `agent-console/agent-availability.service.ts` — SLA escalation cron (`*/2 * * * *`): escalates conversations waiting >5 min without response → emits `handoff.escalated_supervisor` → WebSocket `inbox:escalation`
 
 **CRM & Sales**:
-- `crm/` — Contacts, leads, opportunities, notes, tasks, activities, custom attributes, segments, import/export CSV
-- `pipeline/` — Kanban stages, deals, auto-progress from conversation signals
-- `identity/` — Unified customer profiles, cross-channel contact linking, merge suggestions
+- `crm/` — Contacts, leads, opportunities, notes, tasks, activities, custom attributes, segments, import/export CSV. Enhanced: bulk-update, pipeline-stages CRUD, scoring-config, CRM analytics (overview/funnel/velocity/win-loss/leaderboard/sources), AI insights, deal approval workflow (request/approve/reject)
+- `crm/services/crm-analytics/` — Dedicated analytics service: overview KPIs, conversion funnel, pipeline velocity, win/loss rate, agent leaderboard, source breakdown
+- `crm/services/crm-insights/` — AI-powered lead insights (per-lead analysis)
+- `pipeline/` — Kanban stages, deals, auto-progress from conversation signals. Configurable stages via `pipeline_stages` table
+- `identity/` — Unified customer profiles, cross-channel contact linking, merge suggestions, **manual merge** (POST `/identity/:tenantId/manual-merge`)
 - `automation/` — Event-driven rules (trigger→conditions→actions), nurturing sequences, BullMQ processors
 - `analytics/` — Redis counters + DB persistence. CSAT surveys + trigger. Agent performance reports
 
@@ -115,7 +118,8 @@ await this.prisma.executeInTenantSchema(schemaName,
 
 ### Appointments Module
 - `appointments/appointments.service.ts` — CRUD, availability slots, blocked dates, conflict detection
-- `appointments/appointments.controller.ts` — Static routes (availability, blocked-dates, check-slots) BEFORE dynamic :appointmentId routes
+- `appointments/appointments.controller.ts` — Static routes (availability, blocked-dates, check-slots) BEFORE dynamic :appointmentId routes. Includes `POST :tenantId/calendar/:integrationId/reassign-disconnect` for calendar disconnect with appointment reassignment
+- `appointments/appointment-reminders.service.ts` — Attendance confirmation via messaging channel (post-appointment). Auto-complete cron (`@Cron('20 * * * *')`): marks confirmed appointments as completed after 2h. No-show follow-up messaging
 - AI-ready: checkAvailableSlots for agent tool calls
 - Services have `location_type` (in_person/online/hybrid), `meeting_link`, `location_address` columns
 
@@ -182,10 +186,58 @@ await this.prisma.executeInTenantSchema(schemaName,
 - `ExchangeRate` — Currency rates. Unique on rateDate+fromCurrency+toCurrency
 - `AuditLog` — Offboarding and billing audit trail (tenantId, action, resource, details JSONB)
 
+## New Features (Apr 26-28, 2026)
+
+### Phone Normalization
+- `src/common/utils/phone.util.ts` — `normalizePhoneE164(raw, defaultCountryCode='57')`
+- Supports: CO, AR, MX, BR, CL, PE, EC, US/CA
+- Strips formatting, handles leading zeros, validates length
+- Used in: lead creation, identity resolution, contact merge
+
+### Prompt Assembler — Safety Guardrails
+- `conversations/prompt-assembler.service.ts` — Layer 1 contract now includes universal safety guardrails
+- Cannot be overridden by persona config (hardcoded in contract layer)
+- Blocks: violence, weapons, illegal activities, self-harm, explicit content, discrimination, drugs, hacking, third-party PII, unqualified legal/financial advice
+
+### CRM Endpoints (new)
+| Endpoint | Purpose |
+|----------|---------|
+| `POST crm/leads/:tenantId/bulk-update` | Bulk update leads (change stage, add tag, archive) |
+| `GET/POST crm/scoring-config/:tenantId` | Read/write scoring weights and decay config |
+| `GET crm/analytics/:tenantId/overview` | CRM KPIs (total leads, new, conversion rate, pipeline value) |
+| `GET crm/analytics/:tenantId/funnel` | Conversion funnel by stage |
+| `GET crm/analytics/:tenantId/velocity` | Days per stage (pipeline velocity) |
+| `GET crm/analytics/:tenantId/win-loss` | Win/loss rate with breakdown |
+| `GET crm/analytics/:tenantId/leaderboard` | Agent performance ranking |
+| `GET crm/analytics/:tenantId/sources` | Lead source breakdown |
+| `GET crm/leads/:tenantId/:leadId/insight` | AI-generated lead insight |
+| `PUT crm/opportunities/:tenantId/:id/request-approval` | Request deal stage approval |
+| `PUT crm/opportunities/:tenantId/:id/approve` | Approve deal (moves to target stage) |
+| `PUT crm/opportunities/:tenantId/:id/reject` | Reject deal (with reason) |
+| `GET/POST/PUT/DELETE crm/pipeline-stages/:tenantId` | Pipeline stages CRUD |
+| `PUT crm/pipeline-stages/:tenantId/reorder` | Reorder stages by position |
+
+### Identity Endpoint (new)
+| Endpoint | Purpose |
+|----------|---------|
+| `POST identity/:tenantId/manual-merge` | Manually merge two contacts (body: contactIdA, contactIdB) |
+
+### Appointments Endpoints (new)
+| Endpoint | Purpose |
+|----------|---------|
+| `POST appointments/:tenantId/calendar/:integrationId/reassign-disconnect` | Reassign future appointments to target calendar, then disconnect |
+
+### Cron Jobs (new/updated)
+| Cron | Service | Purpose |
+|------|---------|---------|
+| `20 * * * *` | AppointmentRemindersService | Auto-complete appointments ended 2+ hours ago |
+| `*/2 * * * *` | AgentAvailabilityService | Escalate stale handoffs (>5 min no response → supervisor alert) |
+
 ## Redis Keys (API-specific)
 ```
 booking:{conversationId}        — Booking engine state (1h TTL)
 lock:conv:{conversationId}      — Conversation processing mutex via SETNX (30s TTL)
 offboard:past_due:{tenantId}    — Past-due grace period timer (30d TTL, offboard after 7d)
 tenant_plan:{tenantId}          — Cached plan info (invalidated on subscription change)
+handoff:{tenantId}:{conversationId} — Handoff state (reason, startedAt, assignedTo) 24h TTL
 ```

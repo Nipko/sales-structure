@@ -214,6 +214,15 @@ Las conversaciones nuevas llegan en **tiempo real** gracias a WebSocket: cuando 
 
 También puedes buscar conversaciones por nombre del contacto o contenido del mensaje.
 
+### Notificaciones de handoff
+
+Cuando una conversación se escala a un agente humano:
+
+- **Sonido**: se reproduce una alerta auditiva en el dashboard
+- **Badge visual**: aparece un indicador en la pestaña del navegador
+- **Email**: el agente asignado recibe un correo con los detalles del cliente y un enlace directo al inbox
+- **Escalamiento**: si nadie responde en 5 minutos, se alerta al supervisor
+
 ---
 
 ## 4.3 Acciones de conversación
@@ -394,6 +403,18 @@ Puedes personalizar completamente las etapas de tu pipeline:
 - **Agregar**: crea nuevas etapas según tu proceso de ventas
 - **Eliminar**: borra etapas que no uses
 - **Terminal**: marca una etapa como terminal (ej: "Ganado", "Perdido") para indicar que el deal ya cerró
+- **SLA**: configura horas máximas que un deal puede permanecer en cada etapa
+
+### Aprobación de deals
+
+Para deals de alto valor, puedes requerir aprobación antes de moverlos a una etapa superior:
+
+1. En la tarjeta del deal, clic en **"Solicitar aprobación"**
+2. Selecciona la etapa destino
+3. Un supervisor o admin recibe la notificación
+4. El supervisor puede **Aprobar** (mueve el deal) o **Rechazar** (con motivo)
+
+Los deals pendientes de aprobación muestran un badge amarillo en el pipeline.
 
 ---
 
@@ -470,6 +491,20 @@ En la página de Identidad verás una lista de sugerencias pendientes:
 ### Contactos cross-canal
 
 Los contactos que llegan por canales diferentes (ej: Instagram vs WhatsApp) y no comparten teléfono ni email requieren **merge manual** si determinas que son la misma persona.
+
+### Merge manual
+
+Para fusionar dos contactos manualmente:
+
+1. Identifica los dos contactos que son la misma persona
+2. En la página de Identidad, haz clic en **"Fusionar manualmente"**
+3. Selecciona el **Contacto A** y el **Contacto B**
+4. Confirma la fusión
+
+Al fusionar:
+- Se consolida el historial de conversaciones de ambos canales en un solo perfil
+- Se preservan todos los mensajes, notas y actividades
+- Los datos del perfil se combinan (el más completo prevalece)
 
 > **Tip:** Cuando se fusionan dos perfiles, se conserva el historial de conversaciones de ambos canales en un solo contacto.
 
@@ -804,6 +839,26 @@ Cuando un cliente escribe por WhatsApp pidiendo una cita, el agente IA maneja to
 - Si el servicio es **Online**, se incluye el enlace de Meet/Teams
 - El dashboard se actualiza en tiempo real
 
+### Después de la cita — Confirmación de asistencia
+
+Una vez que la cita finaliza, Parallly envía automáticamente un mensaje al cliente por su canal de mensajería preguntando si asistió:
+
+1. **Confirmación de asistencia**: "¿Pudiste asistir a tu cita de [servicio]?"
+2. **Si confirma asistencia**: La cita se marca como completada y se dispara una encuesta de satisfacción (CSAT)
+3. **Si no asistió (no-show)**: Se envía un mensaje de seguimiento ofreciendo reagendar
+4. **Auto-completar**: Si después de 2 horas no hay respuesta pero la cita estaba confirmada, se marca automáticamente como completada
+
+### Desconectar un calendario con citas futuras
+
+Si intentas desconectar un calendario que tiene citas futuras:
+
+1. Aparece un diálogo mostrando **cuántas citas** quedan pendientes
+2. Se te da la opción de **reasignar** las citas a otro calendario conectado
+3. Selecciona el calendario destino en el dropdown
+4. Al confirmar, todas las citas futuras se mueven al nuevo calendario y luego se desconecta el original
+
+> **Nota:** Si solo tienes un calendario, deberás cancelar las citas futuras manualmente antes de desconectar.
+
 ---
 
 # 9. Automatización
@@ -989,6 +1044,7 @@ Parallly detecta automáticamente cuando un cliente escribe keywords como "no qu
 | **Email Templates** | Plantillas de correo electrónico |
 | **Alertas** | Reglas de alerta y webhooks |
 | **Pipeline** | Etapas del pipeline de ventas (ver abajo) |
+| **Scoring** | Pesos de factores y configuración de decaimiento |
 | **Facturación** | Plan, pagos, método de pago |
 
 ### Etapas del Pipeline

@@ -31,7 +31,7 @@ export default function TermsEs() {
         Términos y Condiciones
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Última actualización: Abril 2026
+        Última actualización: 29 de abril de 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -569,6 +569,143 @@ export default function TermsEs() {
               .
             </li>
           </ul>
+        </section>
+
+        {/* 16 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-text-primary mb-4">
+            16. Cumplimiento de las políticas de Meta y obligaciones del
+            cliente
+          </h2>
+          <p className="mb-4">
+            Cuando el cliente conecta WhatsApp, Instagram o Messenger a
+            Parallly, el cliente se convierte en el responsable de cumplir con
+            las políticas de Meta Platforms, Inc. que rigen dichos productos.
+            Parallly proporciona la infraestructura técnica, pero no controla
+            el contenido del mensaje, la audiencia ni la intención comercial
+            decidida por el cliente.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Políticas de Meta aplicables al cliente
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">
+                Meta Platform Terms (DFC):
+              </strong>{" "}
+              términos generales que regulan el uso de las plataformas de Meta
+              por parte de desarrolladores y empresas.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Meta Developer Policies:
+              </strong>{" "}
+              normas de desarrollo, seguridad de datos y uso de las APIs de
+              Meta.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Solution Provider Terms:
+              </strong>{" "}
+              condiciones específicas que rigen el uso de la WhatsApp Business
+              Platform a través de un proveedor de soluciones.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Messaging Policy:
+              </strong>{" "}
+              ventana de servicio de 24 horas, requisitos de opt-in y
+              categorías de mensaje (utility / authentication / marketing /
+              service).
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Commerce Policy:
+              </strong>{" "}
+              lista de bienes y servicios prohibidos en WhatsApp.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Instagram Platform Policy:
+              </strong>{" "}
+              normas aplicables a la mensajería e integraciones de Instagram.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Messenger Platform Policy:
+              </strong>{" "}
+              normas aplicables a la mensajería e integraciones de Messenger.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Obligaciones específicas del cliente
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              Obtener un opt-in explícito de cada usuario final antes de
+              iniciar conversaciones salientes en WhatsApp, Instagram o
+              Messenger, y conservar la prueba de dicho opt-in.
+            </li>
+            <li>
+              Respetar las palabras clave de baja (STOP, BAJA, CANCELAR, etc.).
+              El pipeline de cumplimiento de Parallly las detecta, pero la
+              decisión final de honrarlas continúa siendo un deber legal del
+              cliente.
+            </li>
+            <li>
+              Utilizar únicamente plantillas de mensaje (Message Templates)
+              aprobadas por Meta para los mensajes salientes de WhatsApp fuera
+              de la ventana de servicio de 24 horas.
+            </li>
+            <li>
+              No enviar contenido prohibido (bienes ilegales, drogas, armas,
+              contenido sexual, discurso de odio, fraudes financieros, etc.).
+            </li>
+            <li>
+              Mantener un nombre comercial, perfil de empresa e información de
+              contacto exactos en los canales conectados.
+            </li>
+            <li>
+              Desconectar o actualizar de inmediato los canales si Meta degrada
+              la calificación de calidad, suspende o notifica la cuenta.
+            </li>
+            <li>
+              Mantener su propia política de privacidad y términos de servicio
+              públicos y consistentes con los requisitos de Meta para empresas
+              en sus plataformas.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Indemnización
+          </h3>
+          <p>
+            El cliente indemniza y mantiene indemne a Parallly frente a
+            cualquier multa, suspensión, sanción de calidad de cuenta, demanda
+            o daño impuesto por Meta Platforms o por terceros como consecuencia
+            directa o indirecta de: (a) el uso indebido de los canales
+            conectados por parte del cliente, (b) la violación por parte del
+            cliente de cualquier política de Meta enumerada anteriormente, (c)
+            la falta de obtención de opt-in de los usuarios finales por parte
+            del cliente, o (d) el contenido que el cliente o sus agentes
+            publiquen a través de Parallly.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Suspensión por incumplimiento
+          </h3>
+          <p>
+            Parallly se reserva el derecho de suspender o terminar el acceso a
+            los canales afectados (o a la cuenta completa) si recibe una
+            notificación creíble de Meta sobre violaciones reiteradas o graves
+            de sus políticas, o si detecta abusos a través de su monitoreo
+            interno. Notificaremos al cliente y ofreceremos un plazo razonable
+            para subsanar la situación cuando ello sea factible; sin embargo,
+            si Meta exige una acción inmediata, la suspensión podrá ser
+            inmediata.
+          </p>
         </section>
 
         {/* Contact */}

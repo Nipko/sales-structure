@@ -793,7 +793,231 @@ export default function PrivacyEs() {
         {/* 13 */}
         <section>
           <h2 className="text-2xl font-semibold text-text-primary mb-4">
-            13. Contacto
+            13. Plataformas de Meta (WhatsApp / Instagram / Messenger)
+          </h2>
+          <p className="mb-4">
+            Parallly se integra con las plataformas de mensajería de Meta
+            (WhatsApp Business Cloud API, Instagram Messaging y Messenger)
+            mediante OAuth a través de Embedded Signup y Facebook Login. Esta
+            sección describe específicamente cómo tratamos los datos obtenidos
+            a través de las APIs de Meta y los compromisos que asumimos
+            equivalentes al uso limitado.
+          </p>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.1 Permisos / scopes que solicitamos por canal
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">WhatsApp:</strong>{" "}
+              <code>whatsapp_business_management</code>,{" "}
+              <code>whatsapp_business_messaging</code>,{" "}
+              <code>business_management</code>.
+            </li>
+            <li>
+              <strong className="text-text-primary">Instagram:</strong>{" "}
+              <code>instagram_basic</code>,{" "}
+              <code>instagram_manage_messages</code>,{" "}
+              <code>pages_show_list</code>,{" "}
+              <code>pages_manage_metadata</code>,{" "}
+              <code>pages_read_engagement</code>.
+            </li>
+            <li>
+              <strong className="text-text-primary">Messenger:</strong>{" "}
+              <code>pages_messaging</code>, <code>pages_show_list</code>,{" "}
+              <code>pages_read_engagement</code>,{" "}
+              <code>pages_manage_metadata</code>.
+            </li>
+          </ul>
+          <p className="mt-3">
+            Cada uno de estos permisos se utiliza únicamente para: (a)
+            autenticar al titular del negocio mediante Embedded Signup o
+            Facebook Login, (b) recibir los mensajes entrantes a través de
+            webhook, y (c) enviar respuestas en nombre de la cuenta
+            comercial conectada. No solicitamos ni accedemos a permisos
+            distintos a los listados.
+          </p>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.2 Embedded Signup (WhatsApp)
+          </h3>
+          <p>
+            Al completar el flujo de Embedded Signup recibimos un token de
+            acceso de larga duración asociado a un System User. Ciframos ese
+            token en reposo con AES-256-GCM, almacenamos el WABA ID y el
+            phone number ID asociados a tu cuenta y nunca compartimos el
+            token en bruto con ningún tercero, incluidos los proveedores de
+            modelos LLM.
+          </p>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.3 Datos de los usuarios finales
+          </h3>
+          <p className="mb-4">
+            Los datos de los contactos que conversan con tu negocio a través
+            de WhatsApp, Instagram o Messenger se tratan en el siguiente
+            marco:
+          </p>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              El cliente (negocio que utiliza Parallly) es el{" "}
+              <strong className="text-text-primary">
+                responsable del tratamiento
+              </strong>{" "}
+              conforme al GDPR, la LGPD, la Ley 1581 de 2012 y normas
+              equivalentes.
+            </li>
+            <li>
+              Parallly actúa como{" "}
+              <strong className="text-text-primary">
+                encargado del tratamiento
+              </strong>{" "}
+              y procesa los datos siguiendo las instrucciones del cliente,
+              en virtud del Acuerdo de Procesamiento de Datos (DPA) implícito
+              en los Términos del Servicio.
+            </li>
+            <li>
+              Procesamos: número de teléfono / ID de perfil de Instagram o
+              Facebook, nombre de perfil, contenido de los mensajes (texto,
+              referencias a URLs de imágenes, ubicación) y marcas de tiempo.
+              No solicitamos ni recibimos correo electrónico ni ninguna
+              otra PII de tipo Workspace desde Meta.
+            </li>
+            <li>
+              El contenido del mensaje se reenvía al proveedor de modelos
+              LLM configurado por el cliente (OpenAI, Anthropic, Google
+              Gemini, DeepSeek o xAI) con el único propósito de generar la
+              respuesta conversacional, bajo los términos estándar de
+              procesamiento de datos de cada proveedor.
+            </li>
+            <li>
+              Conservamos el contenido de las conversaciones durante el
+              período configurado por el cliente, con un máximo de 24 meses.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.4 Compromisos de uso
+          </h3>
+          <p className="mb-4">
+            Respecto de los datos obtenidos a través de las plataformas de
+            Meta, nos comprometemos a que esos datos:
+          </p>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">
+                No se usan para mostrar publicidad
+              </strong>{" "}
+              — ni en Parallly ni en ningún sistema externo.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                No se venden, ceden ni transfieren
+              </strong>{" "}
+              a terceros con fines publicitarios, de marketing, de
+              generación de leads, ni para crear bases de datos.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                No se usan para entrenar modelos de inteligencia artificial
+              </strong>{" "}
+              — ni propios ni de terceros. El contenido de las
+              conversaciones se envía al LLM únicamente para generar la
+              respuesta inmediata del turno actual, nunca como datos de
+              entrenamiento.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                No son leídos por personas
+              </strong>{" "}
+              salvo en los casos expresamente permitidos por Meta: (a) con
+              tu consentimiento explícito, (b) para fines de seguridad
+              (investigación de abuso o brecha), (c) para cumplir con la ley
+              aplicable, o (d) cuando los datos hayan sido agregados y
+              anonimizados de forma irreversible.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.5 Mecanismo de eliminación
+          </h3>
+          <p>
+            Cualquier usuario final puede solicitar la eliminación de sus
+            datos a través de nuestra página de{" "}
+            <Link
+              href="/data-deletion"
+              className="text-accent hover:underline"
+            >
+              solicitud de eliminación de datos
+            </Link>
+            . Adicionalmente, exponemos un Data Deletion Callback URL para
+            la plataforma de Meta en{" "}
+            <code>
+              https://api.parallly-chat.cloud/api/v1/meta/data-deletion-callback
+            </code>
+            . Esta es la URL que el super administrador debe pegar en App
+            Dashboard &gt; Settings &gt; Advanced &gt; Data Deletion
+            Callback URL. Cuando Meta notifica un evento de eliminación a
+            esa URL, ejecutamos la eliminación correspondiente de los datos
+            asociados al usuario notificado.
+          </p>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.6 Ventana de 24 horas y plantillas pre-aprobadas
+          </h3>
+          <p>
+            Conforme a la política de WhatsApp Business, fuera de la ventana
+            de servicio de 24 horas posteriores al último mensaje del
+            cliente sólo se permite enviar plantillas (Message Templates)
+            previamente aprobadas por Meta. El cliente final inicia la
+            conversación, y nuestro pipeline bloquea los envíos de texto
+            libre fuera de esa ventana. Cada cliente que utiliza Parallly
+            es responsable de obtener el opt-in de sus contactos antes de
+            iniciar campañas salientes.
+          </p>
+
+          <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+            13.7 Subprocesadores
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">
+                Meta Platforms Inc.
+              </strong>{" "}
+              — operador de WhatsApp Cloud API, Instagram Messaging y
+              Messenger.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Proveedores de modelos LLM
+              </strong>{" "}
+              — OpenAI, Anthropic, Google AI, DeepSeek y xAI, utilizados
+              según la configuración de cada cliente.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Proveedores de hosting / infraestructura
+              </strong>{" "}
+              — Hostinger (VPS) y Cloudflare (Tunnel y red de borde).
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Proveedor de correo electrónico
+              </strong>{" "}
+              — servicio SMTP utilizado para correos transaccionales.
+            </li>
+          </ul>
+          <p className="mt-3">
+            Todos los subprocesadores están vinculados por acuerdos de
+            procesamiento de datos (DPA) que garantizan niveles adecuados
+            de protección.
+          </p>
+        </section>
+
+        {/* 14 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-text-primary mb-4">
+            14. Contacto
           </h2>
           <p className="mb-4">
             Para ejercer cualquiera de tus derechos o para consultas

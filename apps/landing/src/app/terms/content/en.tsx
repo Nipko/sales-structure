@@ -31,7 +31,7 @@ export default function TermsEn() {
         Terms and Conditions
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Last updated: April 2026
+        Last updated: 29 April 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -562,6 +562,136 @@ export default function TermsEn() {
               .
             </li>
           </ul>
+        </section>
+
+        {/* 16 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-text-primary mb-4">
+            16. Compliance with Meta policies and customer obligations
+          </h2>
+          <p className="mb-4">
+            When the customer connects WhatsApp, Instagram or Messenger to
+            Parallly, the customer becomes responsible for complying with the
+            policies of Meta Platforms, Inc. that govern those products.
+            Parallly provides the technical infrastructure but does not
+            control the message content, audience or commercial intent decided
+            by the customer.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Meta policies applicable to the customer
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">
+                Meta Platform Terms (DFC):
+              </strong>{" "}
+              the general terms governing the use of Meta&apos;s platforms by
+              developers and businesses.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Meta Developer Policies:
+              </strong>{" "}
+              development, data-security and API-usage rules for Meta
+              products.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Solution Provider Terms:
+              </strong>{" "}
+              specific terms that govern use of the WhatsApp Business Platform
+              through a solution provider.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Messaging Policy:
+              </strong>{" "}
+              24-hour service window, opt-in requirements and message
+              categories (utility / authentication / marketing / service).
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Commerce Policy:
+              </strong>{" "}
+              list of goods and services prohibited on WhatsApp.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Instagram Platform Policy:
+              </strong>{" "}
+              rules applicable to Instagram messaging and integrations.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Messenger Platform Policy:
+              </strong>{" "}
+              rules applicable to Messenger messaging and integrations.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Specific customer obligations
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              Obtain explicit opt-in from each end user before initiating
+              outbound conversations on WhatsApp, Instagram or Messenger, and
+              keep proof of that opt-in.
+            </li>
+            <li>
+              Respect opt-out keywords (STOP, BAJA, CANCELAR, etc.).
+              Parallly&apos;s compliance pipeline detects these, but the final
+              decision to honor them remains the customer&apos;s legal duty.
+            </li>
+            <li>
+              Use only Meta-approved Message Templates for outbound WhatsApp
+              messages sent outside the 24-hour service window.
+            </li>
+            <li>
+              Do not send prohibited content (illegal goods, drugs, weapons,
+              sexual content, hate speech, financial scams, etc.).
+            </li>
+            <li>
+              Maintain an accurate display name, business profile and contact
+              information on the connected channels.
+            </li>
+            <li>
+              Promptly disconnect or update channels if Meta downgrades the
+              quality rating, suspends or notifies the account.
+            </li>
+            <li>
+              Keep their own privacy policy and terms of service public and
+              consistent with Meta&apos;s requirements for businesses on its
+              platforms.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Indemnification
+          </h3>
+          <p>
+            The customer indemnifies and holds Parallly harmless from any
+            fines, suspensions, account-quality penalties, lawsuits or damages
+            imposed by Meta Platforms or third parties as a direct or indirect
+            result of: (a) the customer&apos;s misuse of the connected
+            channels, (b) the customer&apos;s violation of any Meta policy
+            listed above, (c) the customer&apos;s failure to obtain opt-in
+            from end users, or (d) the content the customer or its agents
+            publish through Parallly.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Suspension for non-compliance
+          </h3>
+          <p>
+            Parallly reserves the right to suspend or terminate access to the
+            affected channels (or the entire account) if it receives credible
+            notice from Meta of repeated or serious policy violations, or
+            detects abuse through internal monitoring. We will notify the
+            customer and offer a reasonable cure period when feasible, but if
+            Meta requires immediate action, suspension may be immediate.
+          </p>
         </section>
 
         {/* Contact */}

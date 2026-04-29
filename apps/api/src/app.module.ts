@@ -54,6 +54,7 @@ import { OffboardingModule } from './modules/offboarding/offboarding.module';
 import { FinancialsModule } from './modules/financials/financials.module';
 import { FeatureRequestsModule } from './modules/feature-requests/feature-requests.module';
 import { ExternalCrmModule } from './modules/external-crm/external-crm.module';
+import { MetaComplianceModule } from './modules/meta-compliance/meta-compliance.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -165,6 +166,7 @@ import llmConfig from './config/llm.config';
         FinancialsModule,
         FeatureRequestsModule,
         ExternalCrmModule,
+        MetaComplianceModule,
     ],
 })
 export class AppModule { }

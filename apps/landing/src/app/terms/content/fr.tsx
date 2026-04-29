@@ -31,7 +31,7 @@ export default function TermsFr() {
         Conditions générales d&apos;utilisation
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Dernière mise à jour : avril 2026
+        Dernière mise à jour : 29 avril 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -585,6 +585,147 @@ export default function TermsFr() {
               .
             </li>
           </ul>
+        </section>
+
+        {/* 16 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-text-primary mb-4">
+            16. Conformité aux politiques de Meta et obligations du client
+          </h2>
+          <p className="mb-4">
+            Lorsque le client connecte WhatsApp, Instagram ou Messenger à
+            Parallly, le client devient responsable du respect des politiques
+            de Meta Platforms, Inc. qui régissent ces produits. Parallly
+            fournit l&apos;infrastructure technique mais ne contrôle pas le
+            contenu du message, l&apos;audience ni l&apos;intention
+            commerciale décidée par le client.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Politiques de Meta applicables au client
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">
+                Meta Platform Terms (DFC) :
+              </strong>{" "}
+              conditions générales régissant l&apos;utilisation des
+              plateformes de Meta par les développeurs et les entreprises.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Meta Developer Policies :
+              </strong>{" "}
+              règles de développement, de sécurité des données et
+              d&apos;utilisation des API de Meta.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Solution Provider Terms :
+              </strong>{" "}
+              conditions spécifiques régissant l&apos;utilisation de la
+              WhatsApp Business Platform via un fournisseur de solutions.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Messaging Policy :
+              </strong>{" "}
+              fenêtre de service de 24 heures, exigences d&apos;opt-in et
+              catégories de message (utility / authentication / marketing /
+              service).
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Commerce Policy :
+              </strong>{" "}
+              liste des biens et services interdits sur WhatsApp.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Instagram Platform Policy :
+              </strong>{" "}
+              règles applicables à la messagerie et aux intégrations
+              d&apos;Instagram.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Messenger Platform Policy :
+              </strong>{" "}
+              règles applicables à la messagerie et aux intégrations de
+              Messenger.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Obligations spécifiques du client
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              Obtenir un opt-in explicite de chaque utilisateur final avant
+              d&apos;initier des conversations sortantes sur WhatsApp,
+              Instagram ou Messenger, et conserver la preuve de cet opt-in.
+            </li>
+            <li>
+              Respecter les mots-clés de désinscription (STOP, BAJA, CANCELAR,
+              etc.). Le pipeline de conformité de Parallly les détecte, mais
+              la décision finale de les honorer demeure une obligation légale
+              du client.
+            </li>
+            <li>
+              Utiliser uniquement les modèles de message (Message Templates)
+              approuvés par Meta pour les messages WhatsApp sortants envoyés
+              en dehors de la fenêtre de service de 24 heures.
+            </li>
+            <li>
+              Ne pas envoyer de contenu interdit (biens illicites, drogues,
+              armes, contenu sexuel, discours haineux, escroqueries
+              financières, etc.).
+            </li>
+            <li>
+              Maintenir un nom commercial, un profil d&apos;entreprise et des
+              informations de contact exacts sur les canaux connectés.
+            </li>
+            <li>
+              Déconnecter ou mettre à jour immédiatement les canaux si Meta
+              dégrade la note de qualité, suspend ou notifie le compte.
+            </li>
+            <li>
+              Maintenir publiquement sa propre politique de confidentialité et
+              ses propres conditions de service, et les rendre conformes aux
+              exigences de Meta pour les entreprises présentes sur ses
+              plateformes.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Indemnisation
+          </h3>
+          <p>
+            Le client indemnise et garantit Parallly contre toute amende,
+            suspension, pénalité de qualité de compte, action en justice ou
+            dommage imposé par Meta Platforms ou par des tiers résultant
+            directement ou indirectement de : (a) l&apos;usage abusif des
+            canaux connectés par le client, (b) la violation par le client de
+            l&apos;une des politiques de Meta énumérées ci-dessus, (c)
+            l&apos;absence d&apos;obtention par le client de l&apos;opt-in des
+            utilisateurs finaux, ou (d) le contenu publié par le client ou ses
+            agents via Parallly.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Suspension pour non-conformité
+          </h3>
+          <p>
+            Parallly se réserve le droit de suspendre ou de résilier
+            l&apos;accès aux canaux concernés (ou au compte dans son
+            intégralité) s&apos;il reçoit une notification crédible de Meta
+            faisant état de violations répétées ou graves de ses politiques,
+            ou s&apos;il détecte des abus via sa surveillance interne. Nous
+            notifierons le client et offrirons un délai raisonnable pour
+            remédier à la situation lorsque cela sera possible ; toutefois, si
+            Meta exige une action immédiate, la suspension pourra être
+            immédiate.
+          </p>
         </section>
 
         {/* Contact */}

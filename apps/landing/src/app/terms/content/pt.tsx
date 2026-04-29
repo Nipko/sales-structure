@@ -31,7 +31,7 @@ export default function TermsPt() {
         Termos e Condições
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Última atualização: Abril de 2026
+        Última atualização: 29 de abril de 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -565,6 +565,141 @@ export default function TermsPt() {
               .
             </li>
           </ul>
+        </section>
+
+        {/* 16 */}
+        <section>
+          <h2 className="text-2xl font-semibold text-text-primary mb-4">
+            16. Conformidade com as políticas da Meta e obrigações do cliente
+          </h2>
+          <p className="mb-4">
+            Quando o cliente conecta o WhatsApp, o Instagram ou o Messenger ao
+            Parallly, o cliente passa a ser responsável pelo cumprimento das
+            políticas da Meta Platforms, Inc. que regem esses produtos. O
+            Parallly fornece a infraestrutura técnica, mas não controla o
+            conteúdo da mensagem, o público nem a intenção comercial decidida
+            pelo cliente.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Políticas da Meta aplicáveis ao cliente
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              <strong className="text-text-primary">
+                Meta Platform Terms (DFC):
+              </strong>{" "}
+              termos gerais que regem o uso das plataformas da Meta por
+              desenvolvedores e empresas.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Meta Developer Policies:
+              </strong>{" "}
+              regras de desenvolvimento, segurança de dados e uso das APIs da
+              Meta.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Solution Provider Terms:
+              </strong>{" "}
+              termos específicos que regem o uso da WhatsApp Business Platform
+              por meio de um provedor de soluções.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Business Messaging Policy:
+              </strong>{" "}
+              janela de atendimento de 24 horas, requisitos de opt-in e
+              categorias de mensagem (utility / authentication / marketing /
+              service).
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                WhatsApp Commerce Policy:
+              </strong>{" "}
+              lista de bens e serviços proibidos no WhatsApp.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Instagram Platform Policy:
+              </strong>{" "}
+              regras aplicáveis às mensagens e integrações do Instagram.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Messenger Platform Policy:
+              </strong>{" "}
+              regras aplicáveis às mensagens e integrações do Messenger.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Obrigações específicas do cliente
+          </h3>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>
+              Obter opt-in explícito de cada usuário final antes de iniciar
+              conversas de saída no WhatsApp, Instagram ou Messenger, e
+              conservar a comprovação desse opt-in.
+            </li>
+            <li>
+              Respeitar as palavras-chave de descadastramento (STOP, BAJA,
+              CANCELAR, etc.). O pipeline de conformidade do Parallly as
+              detecta, mas a decisão final de honrá-las continua sendo um
+              dever legal do cliente.
+            </li>
+            <li>
+              Utilizar apenas Modelos de Mensagem (Message Templates) aprovados
+              pela Meta para mensagens de saída do WhatsApp enviadas fora da
+              janela de atendimento de 24 horas.
+            </li>
+            <li>
+              Não enviar conteúdo proibido (bens ilegais, drogas, armas,
+              conteúdo sexual, discurso de ódio, fraudes financeiras, etc.).
+            </li>
+            <li>
+              Manter nome de exibição, perfil empresarial e informações de
+              contato precisos nos canais conectados.
+            </li>
+            <li>
+              Desconectar ou atualizar imediatamente os canais se a Meta
+              rebaixar a classificação de qualidade, suspender ou notificar a
+              conta.
+            </li>
+            <li>
+              Manter sua própria política de privacidade e termos de serviço
+              públicos e consistentes com os requisitos da Meta para empresas
+              em suas plataformas.
+            </li>
+          </ul>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Indenização
+          </h3>
+          <p>
+            O cliente indeniza e isenta o Parallly de quaisquer multas,
+            suspensões, sanções de qualidade de conta, ações judiciais ou
+            danos impostos pela Meta Platforms ou por terceiros como
+            consequência direta ou indireta de: (a) uso indevido pelo cliente
+            dos canais conectados, (b) violação pelo cliente de qualquer
+            política da Meta listada acima, (c) falha do cliente em obter
+            opt-in dos usuários finais, ou (d) o conteúdo que o cliente ou seus
+            agentes publiquem por meio do Parallly.
+          </p>
+
+          <h3 className="text-lg font-semibold text-text-primary mt-6 mb-3">
+            Suspensão por descumprimento
+          </h3>
+          <p>
+            O Parallly reserva-se o direito de suspender ou encerrar o acesso
+            aos canais afetados (ou à conta inteira) caso receba notificação
+            confiável da Meta sobre violações repetidas ou graves de
+            políticas, ou detecte abusos por meio de seu monitoramento
+            interno. Notificaremos o cliente e ofereceremos um prazo razoável
+            para sanar a situação quando for viável; entretanto, se a Meta
+            exigir ação imediata, a suspensão poderá ser imediata.
+          </p>
         </section>
 
         {/* Contact */}

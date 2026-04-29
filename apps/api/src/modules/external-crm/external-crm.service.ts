@@ -303,7 +303,7 @@ export class ExternalCrmService {
             select: { id: true, provider: true },
         });
         // Reconnecting the same provider is always allowed (replace the row).
-        if (existing.some((c) => c.provider === provider)) return;
+        if (existing.some((c: any) => c.provider === provider)) return;
         if (existing.length >= limit) {
             throw new ForbiddenException(`Plan "${plan}" allows at most ${limit} active CRM connection(s)`);
         }

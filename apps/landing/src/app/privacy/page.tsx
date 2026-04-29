@@ -37,7 +37,7 @@ export default function PrivacyPage() {
           Política de Privacidad
         </h1>
         <p className="text-text-muted text-sm mb-12">
-          Última actualización: Abril 2026
+          Última actualización: 29 de abril de 2026
         </p>
 
         <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -157,6 +157,12 @@ export default function PrivacyPage() {
                 Entrenar y mejorar modelos de IA internos (los datos son
                 anonimizados y agregados; nunca se utilizan datos personales
                 identificables para entrenamiento sin consentimiento explícito).
+                <strong className="text-text-primary">
+                  {" "}Esta finalidad NO aplica a datos obtenidos a través de
+                  APIs de Google Workspace (incluido Google Calendar).
+                </strong>{" "}
+                Esos datos se rigen exclusivamente por la sección 13 (Limited
+                Use) de esta política.
               </li>
               <li>
                 Cumplir con obligaciones legales, resolver disputas y hacer
@@ -653,7 +659,149 @@ export default function PrivacyPage() {
           {/* 12 */}
           <section>
             <h2 className="text-2xl font-semibold text-text-primary mb-4">
-              12. Contacto
+              12. Servicios de Google y cumplimiento de la Google API Services
+              User Data Policy
+            </h2>
+            <p className="mb-4">
+              Parallly se integra con servicios de Google (Google Sign-In y
+              Google Calendar) mediante OAuth 2.0. Esta sección describe
+              específicamente cómo tratamos los datos obtenidos a través de las
+              APIs de Google y nuestro compromiso con las restricciones de uso
+              limitado (&quot;Limited Use&quot;).
+            </p>
+
+            <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+              12.1 Alcances (scopes) de Google que solicitamos
+            </h3>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>
+                <strong className="text-text-primary">
+                  openid, email, profile
+                </strong>{" "}
+                — utilizados únicamente cuando inicias sesión con Google. Nos
+                permiten autenticarte, mostrar tu nombre y foto de perfil dentro
+                de la aplicación, y vincular tu cuenta de Google a tu usuario de
+                Parallly.
+              </li>
+              <li>
+                <strong className="text-text-primary">
+                  https://www.googleapis.com/auth/calendar
+                </strong>{" "}
+                — solicitado solo si conectas Google Calendar como proveedor de
+                citas. Lo usamos exclusivamente para crear, actualizar, mover y
+                cancelar eventos de calendario asociados a las citas que
+                gestionas dentro de Parallly, y para verificar disponibilidad al
+                agendar.
+              </li>
+            </ul>
+            <p className="mt-3">
+              No solicitamos ni accedemos a Gmail, Drive, Contacts, ni a ningún
+              otro servicio de Google fuera de los listados arriba.
+            </p>
+
+            <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+              12.2 Cómo usamos los datos de Google
+            </h3>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>
+                Los datos del perfil (nombre, correo, foto) se usan únicamente
+                para autenticación, identificación dentro de la aplicación y
+                vinculación de cuenta.
+              </li>
+              <li>
+                Los datos de Google Calendar se usan únicamente para crear,
+                modificar, leer disponibilidad y eliminar eventos directamente
+                relacionados con las citas que el usuario gestiona en Parallly.
+              </li>
+              <li>
+                Almacenamos el refresh token de Google cifrado con AES-256-GCM y
+                el correo de la cuenta conectada. No almacenamos copias de los
+                eventos del calendario fuera del contexto operativo necesario
+                para mostrar el estado de la cita.
+              </li>
+            </ul>
+
+            <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+              12.3 Declaración de Limited Use
+            </h3>
+            <p className="mb-4">
+              <em>
+                The use of raw or derived user data received from Workspace APIs
+                will adhere to the Google User Data Policy, including the
+                Limited Use requirements.
+              </em>
+            </p>
+            <p className="mb-4">
+              En consecuencia, nos comprometemos a que los datos obtenidos de
+              las APIs de Google Workspace:
+            </p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>
+                <strong className="text-text-primary">
+                  No se usan para mostrar publicidad
+                </strong>{" "}
+                — ni en Parallly ni en ningún sistema externo.
+              </li>
+              <li>
+                <strong className="text-text-primary">
+                  No se venden, ceden ni transfieren
+                </strong>{" "}
+                a terceros con fines publicitarios, de marketing, de generación
+                de leads, ni para crear bases de datos.
+              </li>
+              <li>
+                <strong className="text-text-primary">
+                  No se usan para entrenar modelos de inteligencia artificial
+                </strong>{" "}
+                — ni propios ni de terceros (OpenAI, Anthropic, Google AI,
+                DeepSeek, xAI, ni ningún otro). Los datos de calendario y perfil
+                de Google nunca se envían a proveedores de modelos LLM.
+              </li>
+              <li>
+                <strong className="text-text-primary">
+                  No son leídos por personas
+                </strong>{" "}
+                salvo en los casos expresamente permitidos por Google: (a) con
+                tu consentimiento explícito, (b) para fines de seguridad
+                (investigación de abuso o brecha), (c) para cumplir con la ley
+                aplicable, o (d) cuando los datos hayan sido agregados y
+                anonimizados de forma irreversible y se usen únicamente para
+                fines internos de operación.
+              </li>
+            </ul>
+
+            <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
+              12.4 Revocación de acceso
+            </h3>
+            <p>
+              Puedes revocar el acceso de Parallly a tu cuenta de Google en
+              cualquier momento desde tu{" "}
+              <a
+                href="https://myaccount.google.com/permissions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                panel de permisos de Google
+              </a>
+              , o desde la sección de configuración &gt; integraciones dentro de
+              Parallly. Al revocar el acceso eliminamos el refresh token cifrado
+              y desactivamos la integración. Para solicitar la eliminación
+              completa de los datos asociados, escríbenos a{" "}
+              <a
+                href="mailto:cloud.manager@parallext.com"
+                className="text-accent hover:underline"
+              >
+                cloud.manager@parallext.com
+              </a>
+              .
+            </p>
+          </section>
+
+          {/* 13 */}
+          <section>
+            <h2 className="text-2xl font-semibold text-text-primary mb-4">
+              13. Contacto
             </h2>
             <p className="mb-4">
               Para ejercer cualquiera de tus derechos o para consultas

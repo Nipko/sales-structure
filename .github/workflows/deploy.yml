@@ -390,6 +390,7 @@ jobs:
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_expires TIMESTAMPTZ;" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false;" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;" \
+              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS skill_tags TEXT[] DEFAULT '{}';" \
               -c "ALTER TABLE public.users ALTER COLUMN password DROP NOT NULL;" \
               || true
 

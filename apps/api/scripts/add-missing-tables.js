@@ -625,6 +625,167 @@ function buildSQL(s) {
       "feedback" TEXT,
       "created_at" TIMESTAMP DEFAULT NOW()
     )`,
+
+    // ============================================
+    // Apr 26-28, 2026: CRM Overhaul + Features
+    // ============================================
+
+    // -- Contacts: phone normalization + avatar
+    `ALTER TABLE "${s}"."contacts" ADD COLUMN IF NOT EXISTS "phone_normalized" VARCHAR(20)`,
+    `ALTER TABLE "${s}"."contacts" ADD COLUMN IF NOT EXISTS "avatar_url" VARCHAR(500)`,
+
+    // -- Leads: archive + phone normalization
+    `ALTER TABLE "${s}"."leads" ADD COLUMN IF NOT EXISTS "archived_at" TIMESTAMP DEFAULT NULL`,
+    `ALTER TABLE "${s}"."leads" ADD COLUMN IF NOT EXISTS "phone_normalized" VARCHAR(20)`,
+
+    // -- Opportunities: deal approval
+    `ALTER TABLE "${s}"."opportunities" ADD COLUMN IF NOT EXISTS "approval_status" VARCHAR(20)`,
+    `ALTER TABLE "${s}"."opportunities" ADD COLUMN IF NOT EXISTS "approval_stage" VARCHAR(50)`,
+    `ALTER TABLE "${s}"."opportunities" ADD COLUMN IF NOT EXISTS "approved_by" VARCHAR(255)`,
+
+    // -- Contact segments: dynamic
+    `ALTER TABLE "${s}"."contact_segments" ADD COLUMN IF NOT EXISTS "is_dynamic" BOOLEAN DEFAULT false`,
+
+    // -- Conversation assignments: SLA
+    `ALTER TABLE "${s}"."conversation_assignments" ADD COLUMN IF NOT EXISTS "sla_deadline" TIMESTAMP`,
+
+    // -- Appointments: completion tracking
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "completed_at" TIMESTAMP`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "completed_by" VARCHAR(50)`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "rating" INTEGER`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "rating_feedback" TEXT`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "source" VARCHAR(50) DEFAULT 'manual'`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "cancellation_reason" TEXT`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_24h_sent" BOOLEAN DEFAULT false`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_1h_sent" BOOLEAN DEFAULT false`,
+
+    // -- CSAT surveys: appointment link
+    `ALTER TABLE "${s}"."csat_surveys" ADD COLUMN IF NOT EXISTS "appointment_id" UUID`,
+    `ALTER TABLE "${s}"."csat_surveys" ADD COLUMN IF NOT EXISTS "sent_at" TIMESTAMP`,
+    `ALTER TABLE "${s}"."csat_surveys" ADD COLUMN IF NOT EXISTS "responded_at" TIMESTAMP`,
+
+    // -- Services table
+    `CREATE TABLE IF NOT EXISTS "${s}"."services" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "name" VARCHAR(255) NOT NULL,
+      "description" TEXT,
+      "duration_minutes" INTEGER NOT NULL DEFAULT 30,
+      "buffer_minutes" INTEGER NOT NULL DEFAULT 0,
+      "price" DECIMAL(15, 2) DEFAULT 0,
+      "currency" VARCHAR(10) DEFAULT 'COP',
+      "color" VARCHAR(20) DEFAULT '#6c5ce7',
+      "is_active" BOOLEAN DEFAULT true,
+      "sort_order" INTEGER DEFAULT 0,
+      "metadata" JSONB DEFAULT '{}',
+      "created_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW()
+    )`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "category" VARCHAR(100)`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "location_type" VARCHAR(50) DEFAULT 'in_person'`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "max_concurrent" INTEGER DEFAULT 1`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "required_fields" JSONB DEFAULT '["name","phone"]'`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT true`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "meeting_link" TEXT`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT`,
+
+    // -- Custom attribute values
+    `CREATE TABLE IF NOT EXISTS "${s}"."custom_attribute_values" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "definition_id" UUID NOT NULL,
+      "entity_id" UUID NOT NULL,
+      "entity_type" VARCHAR(50) NOT NULL DEFAULT 'lead',
+      "value_text" TEXT,
+      "value_number" DECIMAL(15, 4),
+      "value_boolean" BOOLEAN,
+      "value_date" TIMESTAMP,
+      "value_json" JSONB,
+      "created_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW(),
+      UNIQUE ("definition_id", "entity_id")
+    )`,
+
+    // -- Scoring config
+    `CREATE TABLE IF NOT EXISTS "${s}"."scoring_config" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "tenant_id" UUID NOT NULL,
+      "weights" JSONB NOT NULL DEFAULT '{"engagement":0.25,"intent":0.30,"recency":0.20,"stageProgress":0.15,"profileCompleteness":0.10}',
+      "purchase_keywords" TEXT[] DEFAULT '{}',
+      "decay_enabled" BOOLEAN DEFAULT false,
+      "decay_days" INTEGER DEFAULT 30,
+      "decay_factor" DECIMAL(3,2) DEFAULT 0.50,
+      "is_active" BOOLEAN DEFAULT true,
+      "created_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW()
+    )`,
+
+    // -- Pipeline stages
+    `CREATE TABLE IF NOT EXISTS "${s}"."pipeline_stages" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "tenant_id" UUID NOT NULL,
+      "name" VARCHAR(100) NOT NULL,
+      "slug" VARCHAR(100),
+      "color" VARCHAR(20) DEFAULT '#3498db',
+      "position" INTEGER NOT NULL DEFAULT 0,
+      "default_probability" INTEGER DEFAULT 0,
+      "sla_hours" INTEGER,
+      "is_terminal" BOOLEAN DEFAULT false,
+      "created_at" TIMESTAMP DEFAULT NOW()
+    )`,
+
+    // -- Calendar integrations
+    `CREATE TABLE IF NOT EXISTS "${s}"."calendar_integrations" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "user_id" UUID NOT NULL,
+      "provider" VARCHAR(50) NOT NULL,
+      "calendar_id" VARCHAR(500),
+      "account_email" VARCHAR(255),
+      "access_token" TEXT,
+      "refresh_token" TEXT,
+      "token_expires_at" TIMESTAMP,
+      "label" VARCHAR(255),
+      "assignment_type" VARCHAR(50) DEFAULT 'general',
+      "assignment_id" UUID,
+      "is_active" BOOLEAN DEFAULT true,
+      "connected_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW()
+    )`,
+
+    // -- Appointments table
+    `CREATE TABLE IF NOT EXISTS "${s}"."appointments" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "contact_id" UUID,
+      "conversation_id" UUID,
+      "assigned_to" UUID,
+      "service_id" UUID,
+      "service_name" VARCHAR(255),
+      "start_at" TIMESTAMP NOT NULL,
+      "end_at" TIMESTAMP NOT NULL,
+      "status" VARCHAR(50) DEFAULT 'pending',
+      "location" TEXT,
+      "notes" TEXT,
+      "metadata" JSONB DEFAULT '{}',
+      "created_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW()
+    )`,
+
+    // -- Availability slots
+    `CREATE TABLE IF NOT EXISTS "${s}"."availability_slots" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "day_of_week" INTEGER NOT NULL,
+      "start_time" VARCHAR(5) NOT NULL,
+      "end_time" VARCHAR(5) NOT NULL,
+      "is_active" BOOLEAN DEFAULT true,
+      "created_at" TIMESTAMP DEFAULT NOW()
+    )`,
+
+    // -- Blocked dates
+    `CREATE TABLE IF NOT EXISTS "${s}"."blocked_dates" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "date" DATE NOT NULL,
+      "reason" VARCHAR(255),
+      "created_at" TIMESTAMP DEFAULT NOW()
+    )`,
   ];
 }
 

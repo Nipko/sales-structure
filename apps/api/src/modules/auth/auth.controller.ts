@@ -244,6 +244,44 @@ export class AuthController {
         return { success: true };
     }
 
+    @Get('users')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'List users for the current tenant (or all for super_admin)' })
+    async listUsers(@Request() req: any) {
+        const user = req.user;
+        const where: any = { isActive: true };
+
+        if (user.role === 'super_admin') {
+            // Super admin sees all users
+        } else if (user.tenantId) {
+            // Tenant admin/agent sees only their tenant's users
+            where.tenantId = user.tenantId;
+        } else {
+            return { success: true, data: [] };
+        }
+
+        const users = await this.authService['prisma'].user.findMany({
+            where,
+            select: {
+                id: true, email: true, firstName: true, lastName: true,
+                role: true, isActive: true, availabilityStatus: true,
+                createdAt: true, tenantId: true, picture: true, skillTags: true,
+                tenant: { select: { name: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        return {
+            success: true,
+            data: users.map((u: any) => ({
+                ...u,
+                tenantName: u.tenant?.name || '—',
+                tenant: undefined,
+            })),
+        };
+    }
+
     @Post('setup-password')
     @UseGuards(AuthGuard('jwt'))
     @ApiBearerAuth()

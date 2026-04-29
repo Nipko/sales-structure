@@ -307,28 +307,66 @@ export class AppointmentRemindersService {
 
     private async processNoShows(tenantId: string, schemaName: string) {
         const tz = await this.getTenantTimezone(tenantId);
-        // Find appointments that ended 30+ minutes ago and are still pending/confirmed
-        const noShows = await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE appointments
-             SET status = 'no_show', updated_at = NOW()
-             WHERE status IN ('pending', 'confirmed')
-               AND end_at < (NOW() AT TIME ZONE '${tz}') - interval '30 minutes'
-             RETURNING id, service_name, contact_id, start_at`,
+        // Find appointments that ended 30+ minutes ago, still confirmed, and NOT yet asked
+        const pendingConfirmation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT a.id, a.service_name, a.contact_id, a.start_at,
+                    c.name as contact_name, c.phone as contact_phone,
+                    c.channel_type as contact_channel
+             FROM appointments a
+             LEFT JOIN contacts c ON c.id = a.contact_id
+             WHERE a.status IN ('pending', 'confirmed')
+               AND a.no_show_followed_up = false
+               AND a.end_at < (NOW() AT TIME ZONE '${tz}') - interval '30 minutes'
+               AND c.phone IS NOT NULL`,
             [],
         );
 
-        if (!(noShows as any[])?.length) return;
+        if (!(pendingConfirmation as any[])?.length) return;
 
-        this.logger.log(`Marked ${(noShows as any[]).length} no-show appointments for tenant ${tenantId}`);
+        this.logger.log(`Sending ${pendingConfirmation.length} attendance confirmation(s) for tenant ${tenantId}`);
 
-        // Send follow-up message for no-shows
-        for (const appt of (noShows as any[])) {
+        for (const appt of pendingConfirmation) {
             try {
-                await this.sendNoShowFollowUp(tenantId, schemaName, appt);
+                await this.sendAttendanceConfirmation(tenantId, schemaName, appt);
+                // Mark as followed up (don't change status yet — wait for response)
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE appointments SET no_show_followed_up = true, updated_at = NOW() WHERE id = $1::uuid`,
+                    [appt.id],
+                );
             } catch (err) {
-                this.logger.error(`Failed to send no-show follow-up for appointment ${appt.id}`, err);
+                this.logger.error(`Failed to send attendance confirmation for appointment ${appt.id}`, err);
             }
         }
+    }
+
+    private async sendAttendanceConfirmation(tenantId: string, schemaName: string, appt: any) {
+        const channelType = (appt.contact_channel || 'whatsapp') as 'whatsapp' | 'instagram' | 'messenger' | 'telegram';
+        let credentials: { accessToken: string; accountId: string };
+        try {
+            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
+            credentials = { accessToken: creds.accessToken, accountId: creds.accountId };
+        } catch { return; }
+
+        const tz = await this.getTenantTimezone(tenantId);
+        const startDate = new Date(appt.start_at);
+        const timeStr = startDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz });
+
+        const confirmationText = `✅ *Confirmación de asistencia*\n\nHola ${appt.contact_name || ''}! Tu cita de *${appt.service_name}* estaba programada hoy a las ${timeStr}.\n\n¿Pudiste asistir?\n\nResponde *Sí* o *No*`;
+
+        const outbound: OutboundMessage = {
+            tenantId,
+            to: appt.contact_phone,
+            channelType,
+            channelAccountId: credentials.accountId || '',
+            content: { type: 'text', text: confirmationText },
+            metadata: {
+                source: 'appointment_attendance_check',
+                appointmentId: appt.id,
+            },
+        };
+
+        await this.outboundQueue.enqueue(outbound, credentials.accessToken);
+        this.logger.log(`Sent attendance confirmation to ${appt.contact_phone} for appointment ${appt.id}`);
     }
 
     private async sendNoShowFollowUp(tenantId: string, schemaName: string, appt: any) {

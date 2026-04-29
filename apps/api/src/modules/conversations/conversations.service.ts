@@ -148,6 +148,52 @@ export class ConversationsService {
         await this.saveMessage(tenantId, conversation.id, normalizedMsg);
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
+        // 4.3 Check if this is a response to an attendance confirmation
+        if (content?.text) {
+            const textLower = content.text.toLowerCase().trim();
+            const isYes = /^(s[ií]|yes|sim|oui|claro|por supuesto|asist[ií]|fui)\b/i.test(textLower);
+            const isNo = /^(no|n[aã]o|non|no pude|no asist[ií]|no fui)\b/i.test(textLower);
+
+            if (isYes || isNo) {
+                try {
+                    const pendingAppt = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                        `SELECT id, service_name FROM appointments
+                         WHERE contact_id = $1::uuid
+                           AND status IN ('pending', 'confirmed')
+                           AND no_show_followed_up = true
+                           AND end_at < NOW()
+                         ORDER BY end_at DESC LIMIT 1`,
+                        [contact.id],
+                    );
+                    if (pendingAppt?.length > 0) {
+                        const apptId = pendingAppt[0].id;
+                        if (isYes) {
+                            await this.prisma.executeInTenantSchema(schemaName,
+                                `UPDATE appointments SET status = 'completed', completed_at = NOW(), completed_by = 'client', updated_at = NOW() WHERE id = $1::uuid`,
+                                [apptId],
+                            );
+                            this.logger.log(`[Attendance] Client confirmed attendance for appointment ${apptId}`);
+                            const thankYou = `¡Excelente! Gracias por confirmar tu asistencia a *${pendingAppt[0].service_name}*. ¿Hay algo más en lo que pueda ayudarte?`;
+                            await this.sendResponse(tenantId, thankYou, normalizedMsg);
+                            await this.saveAiMessage(tenantId, conversation.id, thankYou);
+                        } else {
+                            await this.prisma.executeInTenantSchema(schemaName,
+                                `UPDATE appointments SET status = 'no_show', updated_at = NOW() WHERE id = $1::uuid`,
+                                [apptId],
+                            );
+                            this.logger.log(`[Attendance] Client confirmed no-show for appointment ${apptId}`);
+                            const noShowMsg = `Entendido. Lamentamos que no hayas podido asistir a *${pendingAppt[0].service_name}*. ¿Te gustaría agendar una nueva cita?`;
+                            await this.sendResponse(tenantId, noShowMsg, normalizedMsg);
+                            await this.saveAiMessage(tenantId, conversation.id, noShowMsg);
+                        }
+                        return; // Don't process through AI — attendance handled
+                    }
+                } catch (e: any) {
+                    this.logger.warn(`Attendance check failed (non-fatal): ${e.message}`);
+                }
+            }
+        }
+
         // 4.5 Opt-out detection (all channels)
         if (content?.text && this.complianceService.detectOptOut(content.text)) {
             this.logger.warn(`Opt-out detected from ${contactId} on ${channelType}`);

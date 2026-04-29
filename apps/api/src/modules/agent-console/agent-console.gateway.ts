@@ -331,6 +331,18 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
     }
 
+    @OnEvent('handoff.escalated_supervisor')
+    handleSupervisorEscalation(event: { tenantId: string; conversationId: string; contactName: string; reason: string; waitMinutes: number }) {
+        this.logger.warn(`[Escalation] Supervisor notified: ${event.contactName} waiting ${event.waitMinutes}min`);
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:escalation', {
+            conversationId: event.conversationId,
+            contactName: event.contactName,
+            reason: event.reason,
+            waitMinutes: event.waitMinutes,
+            urgent: true,
+        });
+    }
+
     /**
      * Listen for handoff completed events.
      */

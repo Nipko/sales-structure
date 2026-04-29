@@ -137,8 +137,8 @@ export class HandoffService {
         );
         const contact = contactInfo?.[0] || {};
 
-        // 5. Try to auto-assign to an available agent
-        const assignedTo = await this.tryAutoAssign(tenantId, schemaName, conversationId);
+        // 5. Try to auto-assign to an available agent (skill-based routing)
+        const assignedTo = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason);
 
         // 6. Get assigned agent name for notifications
         let assignedAgentName: string | undefined;
@@ -258,12 +258,23 @@ export class HandoffService {
     /**
      * Try to auto-assign to an available agent (least-loaded)
      */
-    private async tryAutoAssign(tenantId: string, schemaName: string, conversationId: string): Promise<string | null> {
+    private async tryAutoAssign(tenantId: string, schemaName: string, conversationId: string, reason?: string): Promise<string | null> {
         try {
+            // Map handoff reasons to skill tags for routing
+            const skillMap: Record<string, string> = {
+                frustration_detected: 'complaints',
+                explicit_human_request: 'general',
+                max_failed_attempts: 'technical',
+            };
+            const preferredSkill = reason ? skillMap[reason] || null : null;
+
+            // Prefer agents with matching skills, then fallback to least-loaded
             const agents = await this.prisma.$queryRawUnsafe(`
                 SELECT u.id, TRIM(u.first_name || ' ' || u.last_name) as name,
+                    u.skill_tags,
                     (SELECT COUNT(*) FROM "${schemaName}".conversations c
-                     WHERE c.assigned_to = u.id::text AND c.status = 'with_human') as active_count
+                     WHERE c.assigned_to = u.id::text AND c.status = 'with_human') as active_count,
+                    CASE WHEN $2::text IS NOT NULL AND $2::text = ANY(u.skill_tags) THEN 0 ELSE 1 END as skill_priority
                 FROM public.users u
                 WHERE u.tenant_id = $1::uuid
                   AND u.is_active = true
@@ -271,9 +282,9 @@ export class HandoffService {
                   AND u.availability_status = 'online'
                   AND (SELECT COUNT(*) FROM "${schemaName}".conversations c
                        WHERE c.assigned_to = u.id::text AND c.status = 'with_human') < u.max_capacity
-                ORDER BY active_count ASC
+                ORDER BY skill_priority ASC, active_count ASC
                 LIMIT 1
-            `, tenantId) as any[];
+            `, tenantId, preferredSkill) as any[];
 
             if (agents?.length) {
                 const agent = agents[0];

@@ -76,6 +76,7 @@ model User {
   jobTitle            String?  @map("job_title")
   availabilityStatus  String   @default("offline") @map("availability_status")
   maxCapacity         Int      @default(5) @map("max_capacity")
+  skillTags           String[] @default([]) @map("skill_tags")
   lastActiveAt        DateTime? @map("last_active_at")
   lastLoginAt         DateTime? @map("last_login_at")
   createdAt   DateTime @default(now()) @map("created_at")

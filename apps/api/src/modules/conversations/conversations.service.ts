@@ -219,9 +219,20 @@ export class ConversationsService {
             }).catch(() => {});
             const handoffResult = await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
             const agentName = handoffResult.assignedTo ? (handoffResult as any).assignedAgentName : null;
-            const handoffMsg = agentName
-                ? `Entiendo tu solicitud. Te estoy transfiriendo con ${agentName} de nuestro equipo. Te responderá en un momento. 🙋`
-                : `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá lo antes posible. 🙋`;
+            let handoffMsg: string;
+            if (agentName) {
+                handoffMsg = `Entiendo tu solicitud. Te estoy transfiriendo con *${agentName}* de nuestro equipo. Te responderá en un momento. 🙋`;
+            } else {
+                // Count how many conversations are in queue to give a position
+                const queueCount = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT COUNT(*) as cnt FROM conversations WHERE status = 'waiting_human' AND assigned_to IS NULL`,
+                    [],
+                ).catch(() => [{ cnt: 0 }]);
+                const position = Number(queueCount?.[0]?.cnt || 1);
+                handoffMsg = position <= 1
+                    ? `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋`
+                    : `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${position} en cola. Un agente te atenderá lo antes posible. 🙋`;
+            }
             await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, handoffMsg);
             return;

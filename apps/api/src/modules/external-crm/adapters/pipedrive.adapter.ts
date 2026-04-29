@@ -13,9 +13,10 @@ import type {
 const PIPEDRIVE_AUTHORIZE = 'https://oauth.pipedrive.com/oauth/authorize';
 const PIPEDRIVE_TOKEN = 'https://oauth.pipedrive.com/oauth/token';
 
-// Pipedrive uses scope bundles. "contacts:full" + "deals:full" cover what we
-// need for persons/deals/notes. The "base" scope is implicit.
-const PIPEDRIVE_SCOPES = ['contacts:full', 'deals:full'];
+// Pipedrive scopes are configured in the Developer Hub app settings (checkboxes
+// for Contacts/Deals/Notes read+write). We do NOT pass `scope` in the authorize
+// URL — that field is informational only and the actual authorization is driven
+// by the app's saved permissions.
 
 @Injectable()
 export class PipedriveAdapter implements ICrmAdapter {
@@ -32,7 +33,6 @@ export class PipedriveAdapter implements ICrmAdapter {
             client_id: this.clientId,
             redirect_uri: redirectUri,
             state,
-            scope: PIPEDRIVE_SCOPES.join(' '),
         });
         return `${PIPEDRIVE_AUTHORIZE}?${params.toString()}`;
     }

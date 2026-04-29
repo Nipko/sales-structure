@@ -300,15 +300,38 @@ export class ChannelManagementController {
 
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
-        // No code exchange needed — FB.login() with response_type:'token' provides
-        // the user access token directly. We use it to list pages and get page tokens.
+        // Step 1: Exchange short-lived user token for long-lived user token
+        // This ensures page tokens derived from it are also long-lived (non-expiring)
+        let longLivedUserToken = userAccessToken;
+        try {
+            const appId = this.configService.get<string>('META_APP_ID') || '';
+            const appSecret = this.configService.get<string>('META_APP_SECRET') || '';
+            if (appId && appSecret) {
+                const llRes = await fetch(
+                    `https://graph.facebook.com/${graphVersion}/oauth/access_token?` +
+                    new URLSearchParams({
+                        grant_type: 'fb_exchange_token',
+                        client_id: appId,
+                        client_secret: appSecret,
+                        fb_exchange_token: userAccessToken,
+                    }),
+                );
+                const llData = await llRes.json() as any;
+                if (llData.access_token) {
+                    longLivedUserToken = llData.access_token;
+                    this.logger.log('Messenger OAuth: exchanged for long-lived user token');
+                }
+            }
+        } catch (e: any) {
+            this.logger.warn(`Long-lived token exchange failed (using short-lived): ${e.message}`);
+        }
 
-        // Step 2: List pages the user manages
+        // Step 2: List pages the user manages (using long-lived token → page tokens won't expire)
         const pagesRes = await fetch(
             `https://graph.facebook.com/${graphVersion}/me/accounts?` +
             new URLSearchParams({
                 fields: 'id,name,category,picture,access_token,tasks',
-                access_token: userAccessToken,
+                access_token: longLivedUserToken,
             }),
         );
         const pagesData = await pagesRes.json() as any;

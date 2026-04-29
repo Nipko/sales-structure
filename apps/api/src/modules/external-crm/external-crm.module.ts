@@ -9,6 +9,7 @@ import { CrmImportProcessor } from './crm-import.processor';
 import { CrmAdapterFactory } from './crm-adapter.factory';
 import { CrmCryptoService } from './crm-crypto.service';
 import { HubSpotAdapter } from './adapters/hubspot.adapter';
+import { PipedriveAdapter } from './adapters/pipedrive.adapter';
 
 @Module({
     imports: [
@@ -25,6 +26,7 @@ import { HubSpotAdapter } from './adapters/hubspot.adapter';
         CrmAdapterFactory,
         CrmCryptoService,
         HubSpotAdapter,
+        PipedriveAdapter,
     ],
     exports: [ExternalCrmService, CrmImportService],
 })

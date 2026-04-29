@@ -1035,6 +1035,7 @@ CREATE INDEX IF NOT EXISTS "conv_snoozed_idx" ON "{{SCHEMA_NAME}}"."conversation
 -- ---- CSAT Survey extensions (B1) ----
 ALTER TABLE "{{SCHEMA_NAME}}"."csat_surveys" ADD COLUMN IF NOT EXISTS "sent_at" TIMESTAMP;
 ALTER TABLE "{{SCHEMA_NAME}}"."csat_surveys" ADD COLUMN IF NOT EXISTS "responded_at" TIMESTAMP;
+ALTER TABLE "{{SCHEMA_NAME}}"."csat_surveys" ADD COLUMN IF NOT EXISTS "appointment_id" UUID;
 
 -- ---- Macros (A3) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."macros" (
@@ -1277,6 +1278,8 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "source" VARCHAR(50) DEFAULT 'manual';
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "cancellation_reason" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_at" TIMESTAMP;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_by" VARCHAR(50) DEFAULT NULL;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating" INTEGER;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "rating_feedback" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "recurring_group_id" UUID;

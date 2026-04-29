@@ -151,7 +151,13 @@ export class AppointmentsService {
         if (data.serviceName !== undefined) { sets.push(`service_name = $${idx++}`); params.push(data.serviceName); }
         if (data.startAt !== undefined) { sets.push(`start_at = $${idx++}::timestamp`); params.push(data.startAt); }
         if (data.endAt !== undefined) { sets.push(`end_at = $${idx++}::timestamp`); params.push(data.endAt); }
-        if (data.status !== undefined) { sets.push(`status = $${idx++}`); params.push(data.status); }
+        if (data.status !== undefined) {
+            sets.push(`status = $${idx++}`); params.push(data.status);
+            if (data.status === 'completed') {
+                sets.push(`completed_at = NOW()`);
+                sets.push(`completed_by = 'staff'`);
+            }
+        }
         if (data.location !== undefined) { sets.push(`location = $${idx++}`); params.push(data.location); }
         if (data.notes !== undefined) { sets.push(`notes = $${idx++}`); params.push(data.notes); }
         sets.push(`updated_at = NOW()`);

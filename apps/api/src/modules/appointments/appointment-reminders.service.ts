@@ -82,6 +82,46 @@ export class AppointmentRemindersService {
     }
 
     /**
+     * Every hour: auto-complete confirmed appointments that ended 2+ hours ago.
+     * Runs AFTER no-show detection (which checks at 30min), giving a safe window.
+     * If the appointment wasn't marked as no-show by then, it's assumed completed.
+     */
+    @Cron('20 * * * *')
+    async autoCompleteAppointments() {
+        this.logger.debug('Checking for auto-complete appointments...');
+        try {
+            const tenants = await this.prisma.$queryRaw<any[]>`
+                SELECT id, schema_name FROM tenants WHERE is_active = true
+            `;
+            if (!tenants?.length) return;
+
+            for (const tenant of tenants) {
+                await this.processAutoComplete(tenant.id, tenant.schema_name);
+            }
+        } catch (err) {
+            this.logger.error('Error in auto-complete cron', err);
+        }
+    }
+
+    private async processAutoComplete(tenantId: string, schemaName: string) {
+        const tz = await this.getTenantTimezone(tenantId);
+        // Auto-complete confirmed appointments that ended 2+ hours ago
+        const completed = await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE appointments
+             SET status = 'completed', completed_at = NOW(), completed_by = 'auto', updated_at = NOW()
+             WHERE status = 'confirmed'
+               AND end_at < (NOW() AT TIME ZONE '${tz}') - interval '2 hours'
+             RETURNING id, service_name`,
+            [],
+        );
+
+        const count = (completed as any[])?.length || 0;
+        if (count > 0) {
+            this.logger.log(`[AutoComplete] Marked ${count} appointment(s) as completed for tenant ${tenantId}`);
+        }
+    }
+
+    /**
      * Every hour: send CSAT survey for appointments completed 1-2 hours ago.
      */
     @Cron('10 * * * *')

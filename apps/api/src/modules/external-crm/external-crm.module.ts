@@ -1,0 +1,26 @@
+import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { PrismaModule } from '../prisma/prisma.module';
+import { ExternalCrmService, CRM_SYNC_QUEUE } from './external-crm.service';
+import { ExternalCrmController } from './external-crm.controller';
+import { ExternalCrmProcessor } from './external-crm.processor';
+import { CrmAdapterFactory } from './crm-adapter.factory';
+import { CrmCryptoService } from './crm-crypto.service';
+import { HubSpotAdapter } from './adapters/hubspot.adapter';
+
+@Module({
+    imports: [
+        PrismaModule,
+        BullModule.registerQueue({ name: CRM_SYNC_QUEUE }),
+    ],
+    controllers: [ExternalCrmController],
+    providers: [
+        ExternalCrmService,
+        ExternalCrmProcessor,
+        CrmAdapterFactory,
+        CrmCryptoService,
+        HubSpotAdapter,
+    ],
+    exports: [ExternalCrmService],
+})
+export class ExternalCrmModule {}

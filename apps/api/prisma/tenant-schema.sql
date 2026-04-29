@@ -1487,3 +1487,51 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."campaign_recipients" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_campaign_recipients_campaign" ON "{{SCHEMA_NAME}}"."campaign_recipients" ("campaign_id", "status");
+
+-- ============================================
+-- EXTERNAL CRM SYNC — Field mapping + correlation + log
+-- ============================================
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_field_mappings" (
+    "id"             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"       VARCHAR(50) NOT NULL,
+    "entity"         VARCHAR(20) NOT NULL,
+    "parallly_field" VARCHAR(100) NOT NULL,
+    "external_field" VARCHAR(200) NOT NULL,
+    "direction"      VARCHAR(20) NOT NULL DEFAULT 'outbound',
+    "transform"      VARCHAR(50),
+    "is_active"      BOOLEAN DEFAULT true,
+    "created_at"     TIMESTAMP DEFAULT NOW(),
+    "updated_at"     TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_crm_field_map_unique" ON "{{SCHEMA_NAME}}"."crm_field_mappings" ("provider", "entity", "parallly_field");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_external_links" (
+    "id"             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"       VARCHAR(50) NOT NULL,
+    "entity"         VARCHAR(20) NOT NULL,
+    "internal_id"    UUID NOT NULL,
+    "external_id"    VARCHAR(200) NOT NULL,
+    "external_url"   TEXT,
+    "last_synced_at" TIMESTAMP,
+    "checksum"       VARCHAR(64),
+    "created_at"     TIMESTAMP DEFAULT NOW(),
+    "updated_at"     TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_crm_links_internal" ON "{{SCHEMA_NAME}}"."crm_external_links" ("provider", "entity", "internal_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_crm_links_external" ON "{{SCHEMA_NAME}}"."crm_external_links" ("provider", "entity", "external_id");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_sync_log" (
+    "id"             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "provider"       VARCHAR(50) NOT NULL,
+    "entity"         VARCHAR(20) NOT NULL,
+    "internal_id"    UUID,
+    "external_id"    VARCHAR(200),
+    "operation"      VARCHAR(20) NOT NULL,
+    "direction"      VARCHAR(20) NOT NULL DEFAULT 'outbound',
+    "status"         VARCHAR(20) NOT NULL,
+    "error_message"  TEXT,
+    "duration_ms"    INTEGER,
+    "created_at"     TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_crm_sync_log_recent" ON "{{SCHEMA_NAME}}"."crm_sync_log" ("provider", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_crm_sync_log_failed" ON "{{SCHEMA_NAME}}"."crm_sync_log" ("status") WHERE "status" = 'failed';

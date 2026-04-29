@@ -475,3 +475,37 @@ model FeatureRequestSubscriber {
   @@schema("public")
 }
 
+// ============================================
+// EXTERNAL CRM CONNECTIONS — Per-tenant OAuth links
+// ============================================
+// One row per (tenant, provider) connection. Tokens encrypted with AES-256-GCM
+// using the same key+pattern as channel_accounts.access_token. We store the
+// canonical refresh_token (where the provider supports it) so the adapter can
+// silently refresh ahead of expiry. Field mappings + per-record correlation
+// IDs live in tenant-schema tables (crm_field_mappings, crm_external_links).
+model CrmConnection {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  provider          String                                    // hubspot|pipedrive|kommo|zoho|salesforce
+  status            String   @default("active")               // active|expired|revoked|error
+  externalAccountId String?  @map("external_account_id")      // hub_id / company_id / account domain
+  externalAccountName String? @map("external_account_name")
+  accessToken       String   @map("access_token")             // encrypted
+  refreshToken      String?  @map("refresh_token")            // encrypted
+  tokenExpiresAt    DateTime? @map("token_expires_at")
+  scopes            String[] @default([])
+  syncMode          String   @default("outbound") @map("sync_mode")  // outbound|bidirectional
+  lastSyncAt        DateTime? @map("last_sync_at")
+  lastErrorAt       DateTime? @map("last_error_at")
+  lastErrorMessage  String?  @map("last_error_message")
+  metadata          Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+  @@index([status])
+  @@map("crm_connections")
+  @@schema("public")
+}
+

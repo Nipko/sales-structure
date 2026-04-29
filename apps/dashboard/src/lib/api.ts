@@ -665,6 +665,17 @@ export const api = {
     unvoteFeatureRequest: (id: string) =>
         authFetch(`/feature-requests/${id}/vote`, { method: "DELETE" }).then((r) => r.json()),
     getFeatureRequestChangelog: () => apiGet<any[]>(`/feature-requests/changelog`),
+
+    // --- External CRM integrations (Apr 28) ---
+    listCrmProviders: () => apiGet<{ providers: string[] }>(`/external-crm/providers`),
+    listCrmConnections: (tenantId: string) =>
+        apiGet<any[]>(`/external-crm/${tenantId}/connections`),
+    startCrmConnect: (tenantId: string, provider: string) =>
+        apiPost<{ authorizeUrl: string }>(`/external-crm/${tenantId}/connect/${provider}`, {}),
+    testCrmConnection: (tenantId: string, connectionId: string) =>
+        apiPost<{ ok: boolean; details?: string }>(`/external-crm/${tenantId}/connections/${connectionId}/test`, {}),
+    disconnectCrm: (tenantId: string, connectionId: string) =>
+        authFetch(`/external-crm/${tenantId}/connections/${connectionId}`, { method: "DELETE" }).then((r) => r.json()),
     listFeatureRequestComments: (id: string) =>
         apiGet<any[]>(`/feature-requests/${id}/comments`),
     commentFeatureRequest: (id: string, body: string) =>

@@ -504,6 +504,8 @@
     "channelsSectionDesc": "WhatsApp, Instagram, Messenger, Telegram and SMS settings",
     "channelConfig": "Channel configuration",
     "channelConfigDesc": "API keys and credentials for each channel",
+    "integrationsSection": "Integrations",
+    "crmIntegrations": "External CRM",
     "aiModels": "AI & Models",
     "aiModelsDesc": "Language providers and AI router settings",
     "llmProviders": "LLM Providers",
@@ -2800,6 +2802,31 @@
       "billing": "Billing",
       "ux": "Experience",
       "other": "Other"
+    }
+  },
+  "crmIntegrations": {
+    "title": "CRM Integrations",
+    "subtitle": "Connect the CRM you already use to avoid duplicating contacts and conversations",
+    "loading": "Loading…",
+    "connectedTitle": "Connected CRMs",
+    "availableTitle": "Available CRMs",
+    "connect": "Connect",
+    "connectedShort": "Connected",
+    "test": "Test",
+    "disconnect": "Disconnect",
+    "lastSync": "Last sync",
+    "noProviders": "No CRMs available for your plan.",
+    "connectedAs": "Connected to {provider} ({account})",
+    "connectError": "Connect failed: {msg}",
+    "testOk": "Connection OK · {details}",
+    "testFail": "Failed: {details}",
+    "disconnected": "Disconnected",
+    "confirmDisconnect": "Disconnect this CRM? Future syncs will stop.",
+    "status": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked",
+      "error": "Error"
     }
   }
 }

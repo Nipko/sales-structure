@@ -231,6 +231,9 @@ jobs:
           PROD_MP_FX_PE: ${{ secrets.MP_FX_PE }}
           PROD_MP_FX_UY: ${{ secrets.MP_FX_UY }}
           PROD_MP_FX_BR: ${{ secrets.MP_FX_BR }}
+          # External CRM integrations (HubSpot first; pipedrive/kommo later)
+          PROD_HUBSPOT_CLIENT_ID: ${{ secrets.HUBSPOT_CLIENT_ID }}
+          PROD_HUBSPOT_CLIENT_SECRET: ${{ secrets.HUBSPOT_CLIENT_SECRET }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -252,7 +255,8 @@ jobs:
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
             PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,
             PROD_MP_SYNC_COUNTRIES,
-            PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR
+            PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
+            PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -362,6 +366,11 @@ jobs:
             echo "MP_WEBHOOK_SECRET=${PROD_MP_WEBHOOK_SECRET}" >> .env
             echo "MP_PUBLIC_KEY=${PROD_MP_PUBLIC_KEY}" >> .env
             echo "MP_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago" >> .env
+            echo "# External CRM integrations" >> .env
+            echo "HUBSPOT_CLIENT_ID=${PROD_HUBSPOT_CLIENT_ID}" >> .env
+            echo "HUBSPOT_CLIENT_SECRET=${PROD_HUBSPOT_CLIENT_SECRET}" >> .env
+            echo "API_PUBLIC_URL=https://api.parallly-chat.cloud/api/v1" >> .env
+            echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 

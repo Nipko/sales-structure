@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import {
     User, Shield, Bell, Palette, Building2, Globe, Clock,
     Database, Zap, MessageSquare, Mail, Image, Brain,
-    SlidersHorizontal, Phone, Settings, CreditCard, type LucideIcon,
+    SlidersHorizontal, Phone, Settings, CreditCard, Plug, type LucideIcon,
 } from "lucide-react";
 
 interface NavItem { i18nKey: string; href: string; icon: LucideIcon; }
@@ -47,6 +47,12 @@ const NAV_SECTIONS: NavSection[] = [
         i18nKey: "channelsSection", adminOnly: true,
         items: [
             { i18nKey: "channelConfig", href: "/admin/settings/channels", icon: Phone },
+        ],
+    },
+    {
+        i18nKey: "integrationsSection", adminOnly: true,
+        items: [
+            { i18nKey: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug },
         ],
     },
     {

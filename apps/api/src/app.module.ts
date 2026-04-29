@@ -53,6 +53,7 @@ import { OffersModule } from './modules/offers/offers.module';
 import { OffboardingModule } from './modules/offboarding/offboarding.module';
 import { FinancialsModule } from './modules/financials/financials.module';
 import { FeatureRequestsModule } from './modules/feature-requests/feature-requests.module';
+import { ExternalCrmModule } from './modules/external-crm/external-crm.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -115,6 +116,7 @@ import llmConfig from './config/llm.config';
         BullBoardModule.forFeature({ name: 'automation-jobs', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'nurturing', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'conversation-snooze', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'crm-sync', adapter: BullMQAdapter }),
 
         // Core infrastructure
         PrismaModule,
@@ -161,6 +163,7 @@ import llmConfig from './config/llm.config';
         OffboardingModule,
         FinancialsModule,
         FeatureRequestsModule,
+        ExternalCrmModule,
     ],
 })
 export class AppModule { }

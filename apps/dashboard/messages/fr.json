@@ -504,6 +504,8 @@
     "channelsSectionDesc": "Configuration de WhatsApp, Instagram, Messenger, Telegram et SMS",
     "channelConfig": "Configuration des canaux",
     "channelConfigDesc": "Cles API et identifiants de chaque canal",
+    "integrationsSection": "Intégrations",
+    "crmIntegrations": "CRM externe",
     "aiModels": "IA et Modeles",
     "aiModelsDesc": "Fournisseurs de langage et configuration du routeur IA",
     "llmProviders": "Fournisseurs LLM",
@@ -2800,6 +2802,31 @@
       "billing": "Facturation",
       "ux": "Expérience",
       "other": "Autre"
+    }
+  },
+  "crmIntegrations": {
+    "title": "Intégrations CRM",
+    "subtitle": "Connectez le CRM que vous utilisez déjà pour éviter de dupliquer les contacts et les conversations",
+    "loading": "Chargement…",
+    "connectedTitle": "CRM connectés",
+    "availableTitle": "CRM disponibles",
+    "connect": "Connecter",
+    "connectedShort": "Connecté",
+    "test": "Tester",
+    "disconnect": "Déconnecter",
+    "lastSync": "Dernière sync",
+    "noProviders": "Aucun CRM disponible pour votre plan.",
+    "connectedAs": "Connecté à {provider} ({account})",
+    "connectError": "Échec de la connexion : {msg}",
+    "testOk": "Connexion OK · {details}",
+    "testFail": "Échec : {details}",
+    "disconnected": "Déconnecté",
+    "confirmDisconnect": "Déconnecter ce CRM ? Les synchronisations futures s'arrêteront.",
+    "status": {
+      "active": "Actif",
+      "expired": "Expiré",
+      "revoked": "Révoqué",
+      "error": "Erreur"
     }
   }
 }

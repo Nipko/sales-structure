@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(PrismaService.name);
+
     constructor() {
         super({
             log: process.env.NODE_ENV === 'development'
@@ -12,7 +14,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     async onModuleInit() {
-        await this.$connect();
+        const maxRetries = 5;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                await this.$connect();
+                this.logger.log('Database connection established');
+                return;
+            } catch (err: any) {
+                this.logger.warn(`Database connection attempt ${attempt}/${maxRetries} failed: ${err.message}`);
+                if (attempt === maxRetries) throw err;
+                await new Promise(r => setTimeout(r, attempt * 2000));
+            }
+        }
     }
 
     async onModuleDestroy() {
@@ -22,7 +35,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     /**
      * Execute a query in a specific tenant schema
      */
-    async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = []): Promise<T> {
+    async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = [], options?: { timeout?: number }): Promise<T> {
         if (!/^[a-zA-Z0-9_]+$/.test(schemaName)) {
             throw new Error(`Invalid schema name: ${schemaName}`);
         }
@@ -32,7 +45,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         return this.$transaction(async (tx: any) => {
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}"`);
             return tx.$queryRawUnsafe(query, ...params) as Promise<T>;
-        }, { timeout: 15000 });
+        }, { timeout: options?.timeout ?? 15000 });
     }
 
     /**

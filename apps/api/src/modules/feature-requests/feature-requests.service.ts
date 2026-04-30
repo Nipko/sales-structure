@@ -464,12 +464,12 @@ export class FeatureRequestsService {
             try {
                 const messages = (await this.prisma.executeInTenantSchema<any[]>(
                     tenant.schema_name,
-                    `SELECT id, content
+                    `SELECT id, content_text AS content
                      FROM messages
                      WHERE direction = 'inbound'
                        AND created_at > NOW() - INTERVAL '24 hours'
-                       AND content IS NOT NULL
-                       AND length(content) BETWEEN 20 AND 600
+                       AND content_text IS NOT NULL
+                       AND length(content_text) BETWEEN 20 AND 600
                      ORDER BY created_at DESC
                      LIMIT 200`,
                 )) as any[];

@@ -43,7 +43,10 @@ export class WhatsappWebhookService {
    * Validate HMAC-SHA256 signature from Meta webhook
    */
   validateSignature(rawBody: Buffer | undefined, signature: string | undefined): boolean {
-    if (!rawBody || !signature) return false;
+    if (!rawBody || !signature) {
+      this.logger.warn(`WhatsApp webhook signature validation failed: rawBody=${!!rawBody}, signature=${!!signature}`);
+      return false;
+    }
 
     const appSecret = this.configService.get<string>('META_APP_SECRET');
     if (!appSecret) {
@@ -56,10 +59,19 @@ export class WhatsappWebhookService {
       .update(rawBody)
       .digest('hex');
 
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature),
-    );
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSignature);
+
+    if (sigBuf.length !== expectedBuf.length) {
+      this.logger.warn(`WhatsApp webhook signature length mismatch: got ${sigBuf.length}, expected ${expectedBuf.length}`);
+      return false;
+    }
+
+    const valid = crypto.timingSafeEqual(sigBuf, expectedBuf);
+    if (!valid) {
+      this.logger.warn(`WhatsApp webhook signature mismatch — check META_APP_SECRET`);
+    }
+    return valid;
   }
 
   verifyWebhook(mode: string, token: string, challenge: string) {

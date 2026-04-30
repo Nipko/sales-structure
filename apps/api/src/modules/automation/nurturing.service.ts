@@ -200,12 +200,14 @@ export class NurturingService {
                         `UPDATE conversations
                          SET status = 'resolved', resolved_at = NOW()
                          WHERE status = 'active'
+                           AND updated_at < NOW() - INTERVAL '72 hours'
                            AND id NOT IN (
                                SELECT DISTINCT conversation_id FROM messages
                                WHERE created_at > NOW() - INTERVAL '72 hours'
                            )
                          RETURNING id`,
                         [],
+                        { timeout: 30000 },
                     );
                     const count = result?.length || 0;
                     if (count > 0) {
@@ -267,6 +269,7 @@ export class NurturingService {
              JOIN contacts ct ON ct.id = c.contact_id
              JOIN leads l ON l.contact_id = ct.id
              WHERE c.status = 'active'
+               AND c.updated_at < NOW() - INTERVAL '1 second' * $1
                AND NOT EXISTS (
                    SELECT 1 FROM messages m
                    WHERE m.conversation_id = c.id
@@ -280,6 +283,7 @@ export class NurturingService {
                )
              LIMIT 50`,
             [staleThresholdSeconds],
+            { timeout: 30000 },
         );
 
         if (!staleConversations || staleConversations.length === 0) return;

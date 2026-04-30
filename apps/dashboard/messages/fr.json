@@ -36,6 +36,11 @@
     "cancelAccount": "Annuler le compte",
     "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation.",
     "copied": "Copie",
+    "disconnectChannel": {
+      "title": "Deconnecter {channel}",
+      "confirm": "Deconnecter",
+      "disconnecting": "Deconnexion..."
+    },
     "clickToCopy": "Cliquez pour copier",
     "stages": {
       "nuevo": "Nouveau",
@@ -1379,7 +1384,8 @@
       "connectionFailed": "Erreur de connexion",
       "smsDisconnected": "SMS deconnecte",
       "webhookCopied": "URL du webhook copiee !",
-      "testFailed": "Echec du test"
+      "testFailed": "Echec du test",
+      "disconnectDesc": "Les messages SMS ne seront plus envoyés ni reçus via ce numéro"
     },
     "messenger": {
       "connectTitle": "Connecter Messenger",

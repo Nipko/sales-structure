@@ -16,6 +16,7 @@ import {
     LogOut,
     Loader2,
 } from "lucide-react";
+import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 
 declare global {
     interface Window {
@@ -42,6 +43,7 @@ export default function MessengerSetupPage() {
     const [sdkLoaded, setSdkLoaded] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
+    const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
     // Load Facebook SDK
     useEffect(() => {
@@ -138,11 +140,11 @@ export default function MessengerSetupPage() {
     };
 
     const handleDisconnect = async () => {
-        if (!confirm(t("messenger.disconnectConfirm"))) return;
         setDisconnecting(true);
         setMessage({ type: "", text: "" });
         try {
             await api.fetch("/channels/messenger/disconnect", { method: "DELETE" });
+            setShowDisconnectModal(false);
             setMessage({ type: "success", text: t("messenger.disconnectSuccess") });
             await loadData();
         } catch (err: any) {
@@ -319,7 +321,7 @@ export default function MessengerSetupPage() {
                                 </p>
                             </div>
                             <button
-                                onClick={handleDisconnect}
+                                onClick={() => setShowDisconnectModal(true)}
                                 disabled={disconnecting}
                                 className={cn(
                                     "flex items-center gap-2 px-4 py-2 rounded-[10px] border border-[rgba(255,71,87,0.3)] text-[var(--danger)] bg-transparent text-[13px] font-semibold cursor-pointer transition-opacity",
@@ -337,6 +339,15 @@ export default function MessengerSetupPage() {
                     </div>
                 </>
             )}
+
+            <DisconnectChannelModal
+                open={showDisconnectModal}
+                onClose={() => setShowDisconnectModal(false)}
+                onConfirm={handleDisconnect}
+                channelName="Messenger"
+                description={t("messenger.disconnectDesc")}
+                loading={disconnecting}
+            />
         </div>
     );
 }

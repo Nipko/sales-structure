@@ -36,6 +36,11 @@
     "cancelAccount": "Cancel account",
     "cancelAccountConfirm": "Are you sure? This action will deactivate your account at the end of the billing period.",
     "copied": "Copied",
+    "disconnectChannel": {
+      "title": "Disconnect {channel}",
+      "confirm": "Disconnect",
+      "disconnecting": "Disconnecting..."
+    },
     "clickToCopy": "Click to copy",
     "stages": {
       "nuevo": "New",
@@ -1379,7 +1384,8 @@
       "connectionFailed": "Connection failed",
       "smsDisconnected": "SMS disconnected",
       "webhookCopied": "Webhook URL copied!",
-      "testFailed": "Test failed"
+      "testFailed": "Test failed",
+      "disconnectDesc": "SMS messages will no longer be sent or received through this number"
     },
     "messenger": {
       "connectTitle": "Connect Messenger",

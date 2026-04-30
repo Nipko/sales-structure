@@ -12,6 +12,7 @@ import {
     AlertCircle, Settings, ArrowRight, Sprout, Clock, XCircle, LogOut,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
+import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
@@ -32,6 +33,7 @@ export default function WhatsAppSetupPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
+    const [showDisconnectModal, setShowDisconnectModal] = useState(false);
     const [showManual, setShowManual] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
@@ -98,10 +100,10 @@ export default function WhatsAppSetupPage() {
     };
 
     const handleDisconnect = async () => {
-        if (!confirm(t("whatsapp.disconnectConfirm"))) return;
         setDisconnecting(true);
         try {
             await api.fetch("/channels/whatsapp/disconnect", { method: "POST" });
+            setShowDisconnectModal(false);
             setMessage({ type: "success", text: t("whatsapp.disconnectSuccess") });
             await loadData();
         } catch (err: any) {
@@ -156,12 +158,11 @@ export default function WhatsAppSetupPage() {
                     </div>
                     {isConnected && (
                         <button
-                            onClick={handleDisconnect}
-                            disabled={disconnecting}
+                            onClick={() => setShowDisconnectModal(true)}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[rgba(231,76,60,0.3)] text-[#e74c3c] text-[13px] font-medium cursor-pointer bg-transparent hover:bg-[rgba(231,76,60,0.1)] transition-colors"
                         >
                             <LogOut size={14} />
-                            {disconnecting ? tc("saving") : t("whatsapp.disconnect")}
+                            {t("whatsapp.disconnect")}
                         </button>
                     )}
                 </div>
@@ -410,6 +411,15 @@ export default function WhatsAppSetupPage() {
                     </div>
                 );
             })()}
+
+            <DisconnectChannelModal
+                open={showDisconnectModal}
+                onClose={() => setShowDisconnectModal(false)}
+                onConfirm={handleDisconnect}
+                channelName="WhatsApp"
+                description={t("whatsapp.disconnectConfirm")}
+                loading={disconnecting}
+            />
         </div>
     );
 }

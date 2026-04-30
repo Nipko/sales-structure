@@ -7,6 +7,7 @@ import {
   MessageSquare, CheckCircle2, AlertCircle, Loader2,
   Phone, Key, Hash, Send, Unlink, Copy, ExternalLink,
 } from "lucide-react";
+import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -25,6 +26,8 @@ export default function SmsChannelPage() {
   const [displayName, setDisplayName] = useState("");
   const [testTo, setTestTo] = useState("");
   const [testing, setTesting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
   const loadStatus = async () => {
     try {
@@ -56,12 +59,15 @@ export default function SmsChannelPage() {
   };
 
   const handleDisconnect = async () => {
+    setDisconnecting(true);
     try {
       await fetch(`${API_URL}/channels/sms/disconnect`, {
         method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
+      setShowDisconnectModal(false);
       setStatus(null); setSuccess(t("smsDisconnected"));
     } catch {}
+    setDisconnecting(false);
   };
 
   const handleTestSms = async () => {
@@ -121,7 +127,7 @@ export default function SmsChannelPage() {
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{status.phoneNumber}</p>
               </div>
             </div>
-            <button onClick={handleDisconnect}
+            <button onClick={() => setShowDisconnectModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-500 text-xs font-medium cursor-pointer bg-transparent hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
               <Unlink size={13} /> {t("disconnect")}
             </button>
@@ -155,6 +161,15 @@ export default function SmsChannelPage() {
           </div>
         </div>
       )}
+
+      <DisconnectChannelModal
+        open={showDisconnectModal}
+        onClose={() => setShowDisconnectModal(false)}
+        onConfirm={handleDisconnect}
+        channelName="SMS"
+        description={t("disconnectDesc")}
+        loading={disconnecting}
+      />
 
       {/* Setup form */}
       {!isConnected && (

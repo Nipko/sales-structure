@@ -19,6 +19,7 @@ import {
     CircleDot,
     Zap,
 } from "lucide-react";
+import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 
 const BRAND = "#0088cc";
 
@@ -36,6 +37,7 @@ export default function TelegramSetupPage() {
     const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
     const [error, setError] = useState("");
     const [step, setStep] = useState(1);
+    const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
     const loadStatus = async () => {
         setLoading(true);
@@ -93,6 +95,7 @@ export default function TelegramSetupPage() {
         setDisconnecting(true);
         try {
             await api.fetch("/channels/telegram/disconnect", { method: "DELETE" });
+            setShowDisconnectModal(false);
             setStatus(null);
             setStep(1);
             setTestResult(null);
@@ -205,7 +208,7 @@ export default function TelegramSetupPage() {
                             </p>
                         </div>
                         <button
-                            onClick={handleDisconnect}
+                            onClick={() => setShowDisconnectModal(true)}
                             disabled={disconnecting}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[rgba(255,71,87,0.3)] bg-transparent text-[var(--danger)] text-[13px] font-semibold cursor-pointer hover:bg-[rgba(255,71,87,0.1)] transition-colors"
                         >
@@ -214,6 +217,15 @@ export default function TelegramSetupPage() {
                         </button>
                     </div>
                 </div>
+
+                <DisconnectChannelModal
+                    open={showDisconnectModal}
+                    onClose={() => setShowDisconnectModal(false)}
+                    onConfirm={handleDisconnect}
+                    channelName="Telegram"
+                    description={t("telegram.disconnectDesc")}
+                    loading={disconnecting}
+                />
             </div>
         );
     }

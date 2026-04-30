@@ -18,6 +18,7 @@ import {
     RefreshCw,
     Clock,
 } from "lucide-react";
+import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 
 const BRAND_COLOR = "#E4405F";
 const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884595741";
@@ -36,6 +37,7 @@ export default function InstagramSetupPage() {
     const [disconnecting, setDisconnecting] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
+    const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -110,11 +112,11 @@ export default function InstagramSetupPage() {
     };
 
     const handleDisconnect = async () => {
-        if (!confirm(t("instagram.disconnectConfirm"))) return;
         setDisconnecting(true);
         setMessage({ type: "", text: "" });
         try {
             await api.fetch("/channels/instagram/disconnect", { method: "DELETE" });
+            setShowDisconnectModal(false);
             setMessage({ type: "success", text: t("instagram.disconnectSuccess") });
             await loadData();
         } catch (err: any) {
@@ -324,7 +326,7 @@ export default function InstagramSetupPage() {
                                 </p>
                             </div>
                             <button
-                                onClick={handleDisconnect}
+                                onClick={() => setShowDisconnectModal(true)}
                                 disabled={disconnecting}
                                 className={cn(
                                     "flex items-center gap-2 px-4 py-2 rounded-[10px] border border-[rgba(255,71,87,0.3)] text-[var(--danger)] bg-transparent text-[13px] font-semibold cursor-pointer transition-opacity",
@@ -342,6 +344,15 @@ export default function InstagramSetupPage() {
                     </div>
                 </>
             )}
+
+            <DisconnectChannelModal
+                open={showDisconnectModal}
+                onClose={() => setShowDisconnectModal(false)}
+                onConfirm={handleDisconnect}
+                channelName="Instagram"
+                description={t("instagram.disconnectDesc")}
+                loading={disconnecting}
+            />
         </div>
     );
 }

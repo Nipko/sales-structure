@@ -48,11 +48,13 @@ services:
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       AUTH_TYPE: md5
       POOL_MODE: transaction
-      DEFAULT_POOL_SIZE: "25"
-      MIN_POOL_SIZE: "5"
-      MAX_CLIENT_CONN: "500"
-      SERVER_IDLE_TIMEOUT: "300"
+      DEFAULT_POOL_SIZE: "50"
+      MIN_POOL_SIZE: "10"
+      MAX_CLIENT_CONN: "1000"
+      SERVER_IDLE_TIMEOUT: "600"
       IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    volumes:
+      - ../pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
     expose:
       - "5432"
     depends_on:
@@ -63,6 +65,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     logging: *default-logging
 
   # ---- API Server ----
@@ -72,7 +75,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
       DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -89,6 +92,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/api/v1/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
@@ -116,7 +125,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
       DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -141,7 +150,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3002"
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=4
       DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: "6379"
@@ -158,6 +167,7 @@ services:
       test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3002/api/v1/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 10s
+      start_period: 20s
       retries: 3
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
@@ -170,8 +180,11 @@ services:
     restart: unless-stopped
     command: >
       postgres
+      -c max_connections=200
       -c max_locks_per_transaction=256
       -c shared_buffers=256MB
+      -c work_mem=8MB
+      -c effective_cache_size=512MB
     environment:
       POSTGRES_USER: parallext
       POSTGRES_PASSWORD: ${DB_PASSWORD:-parallext_secret}

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, OnModuleDestroy } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,7 +7,7 @@ import * as IORedis from 'ioredis';
 
 @ApiTags('health')
 @Controller('health')
-export class HealthController {
+export class HealthController implements OnModuleDestroy {
   private redis: IORedis.Redis;
 
   constructor(
@@ -19,9 +19,13 @@ export class HealthController {
       host: config.get<string>('redis.host'),
       port: config.get<number>('redis.port'),
       password: config.get<string>('redis.password') || undefined,
-      maxRetriesPerRequest: 1,
+      maxRetriesPerRequest: 3,
       lazyConnect: true,
     });
+  }
+
+  async onModuleDestroy() {
+    await this.redis.quit();
   }
 
   @Get('live')

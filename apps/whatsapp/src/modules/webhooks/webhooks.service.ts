@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,7 +6,7 @@ import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class WebhooksService {
+export class WebhooksService implements OnModuleDestroy {
   private readonly logger = new Logger(WebhooksService.name);
   private readonly redis: Redis;
   private readonly tenantCache = new Map<string, { tenantId: string; schemaName: string; expiresAt: number }>();
@@ -22,6 +22,10 @@ export class WebhooksService {
       port: config.get<number>('redis.port'),
       password: config.get<string>('redis.password') || undefined,
     });
+  }
+
+  async onModuleDestroy() {
+    await this.redis.quit();
   }
 
   /**

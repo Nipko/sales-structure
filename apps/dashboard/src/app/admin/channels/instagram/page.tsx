@@ -312,32 +312,6 @@ export default function InstagramSetupPage() {
                         </div>
                     </div>
 
-                    {/* Webhook Config Card */}
-                    {config?.webhookUrl && (
-                        <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
-                            <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
-                                <Shield size={18} className="text-[#e67e22]" />
-                                <h2 className="text-base font-semibold m-0 text-foreground">
-                                    {t("webhook")}
-                                </h2>
-                            </div>
-                            <div className="p-6">
-                                <label className="text-[13px] font-semibold mb-2 block text-foreground">
-                                    {t("callbackUrl")}
-                                </label>
-                                <div
-                                    className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
-                                    onClick={() => config?.webhookUrl && copyToClipboard(config.webhookUrl, "url")}
-                                    title={tc("clickToCopy")}
-                                >
-                                    {config.webhookUrl}
-                                    <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />
-                                </div>
-                                {copied === "url" && <span className="text-[11px] text-[var(--success)]">{tc("copied")}</span>}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Disconnect */}
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                         <div className="p-6 flex items-center justify-between">

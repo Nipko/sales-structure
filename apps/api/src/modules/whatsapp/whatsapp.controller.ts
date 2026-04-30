@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Query,
   UseGuards,
@@ -11,6 +12,7 @@ import {
   Req,
   UnauthorizedException,
   RawBodyRequest,
+  Logger,
 } from '@nestjs/common';
 import { WhatsappConnectionService } from './services/whatsapp-connection.service';
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
@@ -26,6 +28,8 @@ import { Request as ExpressRequest } from 'express';
 @ApiTags('whatsapp')
 @Controller('channels/whatsapp')
 export class WhatsappController {
+  private readonly logger = new Logger(WhatsappController.name);
+
   constructor(
     private readonly connectionService: WhatsappConnectionService,
     private readonly webhookService: WhatsappWebhookService,
@@ -118,6 +122,26 @@ export class WhatsappController {
     });
 
     return result;
+  }
+
+  // ======================== DISCONNECT ========================
+
+  @Post('disconnect')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Disconnect WhatsApp channel' })
+  async disconnect(@Request() req: any) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+    await this.prisma.channelAccount.updateMany({
+      where: { tenantId, channelType: 'whatsapp' },
+      data: { isActive: false },
+    });
+
+    this.logger.log(`WhatsApp disconnected for tenant ${tenantId}`);
+    return { success: true, message: 'WhatsApp disconnected' };
   }
 
   // ======================== TEMPLATES ========================

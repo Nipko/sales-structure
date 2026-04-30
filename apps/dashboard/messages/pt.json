@@ -1447,6 +1447,11 @@
       "disconnectDesc": "O webhook sera removido e parara de receber mensagens",
       "disconnect": "Desconectar"
     },
+    "whatsapp": {
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "Tem certeza que deseja desconectar o WhatsApp? As mensagens não serão mais recebidas.",
+      "disconnectSuccess": "WhatsApp desconectado com sucesso."
+    },
     "webhook": "Webhook",
     "callbackUrl": "URL de Callback",
     "messengerTitle": "Facebook Messenger",

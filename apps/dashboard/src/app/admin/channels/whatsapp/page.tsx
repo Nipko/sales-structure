@@ -9,12 +9,13 @@ import { cn } from "@/lib/utils";
 import {
     MessageSquare, Shield, CheckCircle,
     Link as LinkIcon, Zap, Phone, Copy, ExternalLink,
-    AlertCircle, Settings, ArrowRight, Sprout, Clock, XCircle,
+    AlertCircle, Settings, ArrowRight, Sprout, Clock, XCircle, LogOut,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
+    const t = useTranslations("channels");
     const twt = useTranslations("whatsappTemplates");
     const router = useRouter();
     const { user } = useAuth();
@@ -30,6 +31,7 @@ export default function WhatsAppSetupPage() {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [disconnecting, setDisconnecting] = useState(false);
     const [showManual, setShowManual] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
@@ -95,6 +97,20 @@ export default function WhatsAppSetupPage() {
         setTimeout(() => setCopied(""), 2000);
     };
 
+    const handleDisconnect = async () => {
+        if (!confirm(t("whatsapp.disconnectConfirm"))) return;
+        setDisconnecting(true);
+        try {
+            await api.fetch("/channels/whatsapp/disconnect", { method: "POST" });
+            setMessage({ type: "success", text: t("whatsapp.disconnectSuccess") });
+            await loadData();
+        } catch (err: any) {
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
+        } finally {
+            setDisconnecting(false);
+        }
+    };
+
     const getTenantId = () => {
         try {
             const token = localStorage.getItem("accessToken");
@@ -126,16 +142,28 @@ export default function WhatsAppSetupPage() {
                         Conecta y gestiona tu cuenta de WhatsApp Business con Meta Cloud API.
                     </p>
                 </div>
-                <div
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
-                        isConnected
-                            ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
-                            : "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
+                <div className="flex items-center gap-3">
+                    <div
+                        className={cn(
+                            "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
+                            isConnected
+                                ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
+                                : "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
+                        )}
+                    >
+                        {isConnected ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                        {isConnected ? t("connected") : t("disconnected")}
+                    </div>
+                    {isConnected && (
+                        <button
+                            onClick={handleDisconnect}
+                            disabled={disconnecting}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[rgba(231,76,60,0.3)] text-[#e74c3c] text-[13px] font-medium cursor-pointer bg-transparent hover:bg-[rgba(231,76,60,0.1)] transition-colors"
+                        >
+                            <LogOut size={14} />
+                            {disconnecting ? tc("saving") : t("whatsapp.disconnect")}
+                        </button>
                     )}
-                >
-                    {isConnected ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                    {isConnected ? "Conectado" : "Desconectado"}
                 </div>
             </div>
 
@@ -153,48 +181,7 @@ export default function WhatsAppSetupPage() {
                 </div>
             )}
 
-            {/* ======== SECTION 1: WEBHOOK CONFIG (always visible) ======== */}
-            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
-                <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
-                    <Shield size={18} className="text-[#e67e22]" />
-                    <h2 className="text-base font-semibold m-0">Configuracion del Webhook</h2>
-                    <span className="text-xs text-[var(--text-secondary)] ml-auto">
-                        Configura estos valores en tu App de Meta Developers
-                    </span>
-                </div>
-                <div className="p-6 flex gap-6">
-                    <div className="flex-1">
-                        <label className="text-[13px] font-semibold mb-2 block">Callback URL</label>
-                        <div
-                            className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
-                            onClick={() => config?.webhookUrl && copyToClipboard(config.webhookUrl, "url")}
-                            title="Click para copiar"
-                        >
-                            {config?.webhookUrl || "No disponible — verifica la configuracion del servidor"}
-                            {config?.webhookUrl && (
-                                <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />
-                            )}
-                        </div>
-                        {copied === "url" && <span className="text-[11px] text-[#2ecc71]">Copiado</span>}
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-[13px] font-semibold mb-2 block">Verify Token</label>
-                        <div
-                            className="relative bg-[var(--bg-tertiary)] p-3 px-4 rounded-lg border border-border font-mono text-xs text-primary break-all cursor-pointer"
-                            onClick={() => config?.verifyToken && copyToClipboard(config.verifyToken, "token")}
-                            title="Click para copiar"
-                        >
-                            {config?.verifyToken || "No configurado — agrega WHATSAPP_VERIFY_TOKEN en el servidor"}
-                            {config?.verifyToken && (
-                                <Copy size={14} className="absolute right-3 top-3.5 opacity-50" />
-                            )}
-                        </div>
-                        {copied === "token" && <span className="text-[11px] text-[#2ecc71]">Copiado</span>}
-                    </div>
-                </div>
-            </div>
-
-            {/* ======== SECTION 2: CONNECTION ======== */}
+            {/* ======== CONNECTION ======== */}
             {!isConnected ? (
                 <>
                     {/* Embedded Signup (primary) */}

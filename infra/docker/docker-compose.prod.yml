@@ -50,11 +50,12 @@ services:
       POOL_MODE: transaction
       DEFAULT_POOL_SIZE: "50"
       MIN_POOL_SIZE: "10"
+      RESERVE_POOL_SIZE: "10"
       MAX_CLIENT_CONN: "1000"
       SERVER_IDLE_TIMEOUT: "600"
+      QUERY_TIMEOUT: "120"
+      QUERY_WAIT_TIMEOUT: "60"
       IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
-    volumes:
-      - ../pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
     expose:
       - "5432"
     depends_on:

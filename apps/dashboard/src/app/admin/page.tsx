@@ -87,6 +87,8 @@ export default function AdminDashboard() {
         totalUsers: 0,
         activeTenants: 0,
         trialingTenants: 0,
+        messagesToday: 0,
+        pendingHandoffs: 0,
         verticalDistribution: [] as { industry: string; count: number }[],
     });
 
@@ -107,24 +109,51 @@ export default function AdminDashboard() {
     useEffect(() => {
         async function loadPlatformStats() {
             if (user?.role !== "super_admin") return;
-            const result = await api.getTenants();
-            if (result.success && Array.isArray(result.data)) {
-                const tenants = result.data;
-                const totalUsers = tenants.reduce((s: number, t: any) => s + (t._count?.users || 0), 0);
-                const activeTenants = tenants.filter((t: any) => t.isActive).length;
-                const trialingTenants = tenants.filter((t: any) => t.subscriptionStatus === 'trialing').length;
 
-                // Compute vertical/industry distribution
+            // Load tenant list for vertical distribution
+            const tenantsResult = await api.getTenants();
+            let verticalDistribution: { industry: string; count: number }[] = [];
+            if (tenantsResult.success && Array.isArray(tenantsResult.data)) {
                 const industryMap: Record<string, number> = {};
-                tenants.forEach((t: any) => {
+                tenantsResult.data.forEach((t: any) => {
                     const ind = t.industry || 'other';
                     industryMap[ind] = (industryMap[ind] || 0) + 1;
                 });
-                const verticalDistribution = Object.entries(industryMap)
+                verticalDistribution = Object.entries(industryMap)
                     .map(([industry, count]) => ({ industry, count }))
                     .sort((a, b) => b.count - a.count);
+            }
 
-                setPlatformStats({ totalTenants: tenants.length, totalUsers, activeTenants, trialingTenants, verticalDistribution });
+            // Load platform stats (includes messagesToday, pendingHandoffs)
+            try {
+                const statsResult = await api.fetch("/tenants/stats");
+                if (statsResult.success && statsResult.data) {
+                    const d = statsResult.data;
+                    setPlatformStats({
+                        totalTenants: d.totalTenants || 0,
+                        totalUsers: d.totalUsers || 0,
+                        activeTenants: d.activeTenants || 0,
+                        trialingTenants: d.trialingTenants || 0,
+                        messagesToday: d.messagesToday || 0,
+                        pendingHandoffs: d.pendingHandoffs || 0,
+                        verticalDistribution,
+                    });
+                    return;
+                }
+            } catch { /* fallback to tenant list data */ }
+
+            // Fallback if stats endpoint fails
+            if (tenantsResult.success && Array.isArray(tenantsResult.data)) {
+                const tenants = tenantsResult.data;
+                setPlatformStats({
+                    totalTenants: tenants.length,
+                    totalUsers: tenants.reduce((s: number, t: any) => s + (t._count?.users || 0), 0),
+                    activeTenants: tenants.filter((t: any) => t.isActive).length,
+                    trialingTenants: tenants.filter((t: any) => t.subscriptionStatus === 'trialing').length,
+                    messagesToday: 0,
+                    pendingHandoffs: 0,
+                    verticalDistribution,
+                });
             }
         }
         loadPlatformStats();
@@ -247,14 +276,13 @@ export default function AdminDashboard() {
                             </CardContent>
                         </Card>
 
-                        {/* Messages Today — TODO: requires backend endpoint (GET /tenants/stats or similar) */}
+                        {/* Messages Today */}
                         <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('messagesToday')}</p>
-                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">--</p>
-                                        <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{t('comingSoon')}</p>
+                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.messagesToday.toLocaleString()}</p>
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/10">
                                         <MessageSquare size={22} className="text-violet-500" />
@@ -263,14 +291,13 @@ export default function AdminDashboard() {
                             </CardContent>
                         </Card>
 
-                        {/* Pending Handoffs — TODO: requires backend endpoint */}
+                        {/* Pending Handoffs */}
                         <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('pendingHandoffs')}</p>
-                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">--</p>
-                                        <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{t('comingSoon')}</p>
+                                        <p className={cn("text-3xl font-semibold", platformStats.pendingHandoffs > 0 ? "text-amber-500" : "text-neutral-900 dark:text-neutral-100")}>{platformStats.pendingHandoffs}</p>
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/10">
                                         <Activity size={22} className="text-amber-500" />

@@ -313,6 +313,33 @@ export class TenantsService {
             this.prisma.tenant.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
         ]);
 
+        // Cross-tenant metrics (iterate active schemas)
+        let messagesToday = 0;
+        let pendingHandoffs = 0;
+        try {
+            const activeSchemas = await this.prisma.$queryRaw<any[]>`
+                SELECT schema_name FROM tenants WHERE is_active = true
+            `;
+            for (const t of activeSchemas || []) {
+                try {
+                    const msgResult = await this.prisma.executeInTenantSchema<any[]>(
+                        t.schema_name,
+                        `SELECT COUNT(*)::int as cnt FROM messages WHERE created_at::date = CURRENT_DATE`,
+                    );
+                    messagesToday += msgResult?.[0]?.cnt || 0;
+                } catch { /* table may not exist */ }
+                try {
+                    const hResult = await this.prisma.executeInTenantSchema<any[]>(
+                        t.schema_name,
+                        `SELECT COUNT(*)::int as cnt FROM conversations WHERE status = 'waiting_human'`,
+                    );
+                    pendingHandoffs += hResult?.[0]?.cnt || 0;
+                } catch { /* table may not exist */ }
+            }
+        } catch (e: any) {
+            this.logger.warn(`Cross-tenant metrics failed: ${e.message}`);
+        }
+
         return {
             totalTenants,
             activeTenants,
@@ -324,6 +351,8 @@ export class TenantsService {
             totalChannels,
             recentSignups7d,
             recentSignups30d,
+            messagesToday,
+            pendingHandoffs,
         };
     }
 

@@ -269,8 +269,10 @@ export class OrdersService {
                     notes TEXT DEFAULT '',
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
-                );
+                )
+            `);
 
+            await this.prisma.$queryRawUnsafe(`
                 CREATE TABLE IF NOT EXISTS "${schema}".order_items (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     order_id UUID REFERENCES "${schema}".orders(id) ON DELETE CASCADE,
@@ -279,10 +281,15 @@ export class OrdersService {
                     quantity INTEGER NOT NULL DEFAULT 1,
                     unit_price DECIMAL(12,2) NOT NULL DEFAULT 0,
                     total_price DECIMAL(12,2) NOT NULL DEFAULT 0
-                );
+                )
+            `);
 
-                CREATE INDEX IF NOT EXISTS idx_orders_contact ON "${schema}".orders(contact_id);
-                CREATE INDEX IF NOT EXISTS idx_orders_status ON "${schema}".orders(status);
+            await this.prisma.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_orders_contact ON "${schema}".orders(contact_id)
+            `);
+
+            await this.prisma.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_orders_status ON "${schema}".orders(status)
             `);
 
             await this.redis.set(cacheKey, 'true', 86400); // 24h

@@ -211,6 +211,9 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Prompt assembler** | `conversations/prompt-assembler.service.ts` (3-layer + safety guardrails) |
 | **Identity manual merge** | `identity/identity.controller.ts` (POST manual-merge) |
 | **Pipeline stages** | `crm/crm.controller.ts` (CRUD pipeline-stages endpoints) |
+| **Vertical definitions** | `verticals/vertical-definitions.ts` (12 industry configs with 4 languages) |
+| **Vertical service** | `verticals/verticals.service.ts` (bootstrapVertical, getVerticalConfig) |
+| **Vertical terms hook** | `dashboard/src/hooks/useVerticalTerms.ts` |
 
 ## Dashboard pages (60+)
 
@@ -535,6 +538,28 @@ Response when triggered: "I'm not able to help with that. Is there anything else
 - **Instagram profile photos**: Fetched via IG Basic Display API on connect, displayed in channel overview and inbox
 - **Messenger profile photos**: Fetched via FB Graph API (`/me/picture`), displayed alongside page name
 - **BroadcastChannel OAuth sync**: OAuth popup results for IG and Messenger propagated to parent dashboard tab via BroadcastChannel API (no polling needed)
+
+## Vertical Adaptation System (Apr 30, 2026)
+
+- **Purpose**: When a tenant selects their industry during onboarding, the entire platform adapts automatically
+- **Module**: `apps/api/src/modules/verticals/` — VerticalsService, VerticalsController, vertical-definitions.ts
+- **12 industries**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, otro
+- **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia, farmacia)
+- **Bootstrap on onboarding**: `completeOnboarding()` calls `bootstrapVertical(tenantId, industry, subType, lang)` which:
+  1. Seeds pipeline stages (5-7 per industry)
+  2. Patches default AI agent (name, persona, forbidden topics, handoff triggers)
+  3. Creates 5 FAQs per industry
+  4. Creates 3 services for booking-enabled industries
+- **Prompt assembler**: Injects `<vertical_context>` XML with customer_noun, transaction_noun, service_noun into Layer 3 turn
+- **Contract rule #11**: LLM uses vertical terminology naturally (paciente vs cliente)
+- **Dashboard adaptation**: 
+  - AuthContext stores verticalConfig from GET /verticals/:tenantId
+  - AppSidebar: dynamic label overrides + hidden items per industry
+  - useVerticalTerms() hook for locale-aware terminology propagation
+  - Contacts/Pipeline/Dashboard pages use vertical terminology
+- **Config storage**: tenant.settings.verticalConfig JSONB (snapshot at creation time)
+- **Cache**: Redis key `vertical:{tenantId}` with 10min TTL
+- **Strategy doc**: docs/vertical-strategy.md (complete research + roadmap)
 
 ## Verification before pushing
 

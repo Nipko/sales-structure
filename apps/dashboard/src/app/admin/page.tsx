@@ -10,15 +10,31 @@ import {
     Activity,
     Users,
     CheckCircle2,
+    Calendar,
+    UserPlus,
+    UserX,
+    Flame,
+    MapPin,
+    Car,
+    UtensilsCrossed,
+    Plane,
+    GraduationCap,
+    DollarSign,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+const ICON_MAP: Record<string, any> = {
+    Calendar, UserPlus, UserX, MessageSquare, Flame, MapPin, Car,
+    UtensilsCrossed, Plane, GraduationCap, DollarSign,
+    Building2, Brain, TrendingUp, Activity,
+};
 
 const activityDotColors: Record<string, string> = {
     conversation: "bg-emerald-500",
@@ -35,18 +51,31 @@ const modelBarColors = [
 ];
 
 export default function AdminDashboard() {
-    const { user } = useAuth();
+    const { user, verticalConfig } = useAuth();
     const t = useTranslations("dashboard");
     const vt = useVerticalTerms();
+    const locale = useLocale() as "es" | "en" | "pt" | "fr";
 
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-    const statConfig = [
+    const defaultStatConfig = [
         { key: "leadsToday",        label: `${capitalize(vt.customerNounPlural)} Hoy`, icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
         { key: "leadsHot",          label: t("leadsHot"),          icon: TrendingUp,    color: "text-emerald-500", bgIcon: "bg-emerald-500/10", suffix: "" },
         { key: "messagesProcessed", label: t("messagesProcessed"), icon: Activity,      color: "text-sky-500",     bgIcon: "bg-sky-500/10", suffix: "" },
         { key: "llmCostToday",      label: t("llmCostToday"),      icon: Brain,         color: "text-amber-500",   bgIcon: "bg-amber-500/10", suffix: "$" },
     ];
+
+    const verticalKpis = verticalConfig?.dashboard?.kpis;
+    const statConfig = verticalKpis?.length
+        ? verticalKpis.map((kpi: { key: string; label: Record<string, string>; icon: string; color: string }) => ({
+            key: kpi.key,
+            label: kpi.label[locale] || kpi.label.en || kpi.key,
+            icon: ICON_MAP[kpi.icon] || Activity,
+            color: `text-[${kpi.color}]`,
+            bgIcon: `bg-[${kpi.color}]/10`,
+            suffix: kpi.key.toLowerCase().includes("cost") || kpi.key.toLowerCase().includes("revenue") ? "$" : "",
+        }))
+        : defaultStatConfig;
     const [overview, setOverview] = useState<Record<string, number>>({
         leadsToday: 0, leadsHot: 0, messagesProcessed: 0, llmCostToday: 0,
     });
@@ -88,10 +117,11 @@ export default function AdminDashboard() {
             const result = await api.getCommercialOverview(user.tenantId);
             if (result.success && result.data) {
                 setOverview({
-                    leadsToday:        result.data.leadsToday,
-                    leadsHot:          result.data.leadsHot,
-                    messagesProcessed: result.data.messagesProcessed,
-                    llmCostToday:      result.data.llmCostToday,
+                    ...result.data,
+                    leadsToday:        result.data.leadsToday ?? 0,
+                    leadsHot:          result.data.leadsHot ?? 0,
+                    messagesProcessed: result.data.messagesProcessed ?? 0,
+                    llmCostToday:      result.data.llmCostToday ?? 0,
                 });
                 setIsLive(true);
             }
@@ -195,12 +225,14 @@ export default function AdminDashboard() {
 
             {/* Stats Grid */}
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-stagger">
-                {statConfig.map((stat) => {
+                {statConfig.map((stat: any) => {
                     const Icon = stat.icon;
-                    const rawValue = overview[stat.key] ?? 0;
-                    const displayValue = stat.suffix === "$"
-                        ? `$${rawValue.toFixed(2)}`
-                        : rawValue.toLocaleString();
+                    const rawValue = overview[stat.key];
+                    const displayValue = rawValue == null
+                        ? "—"
+                        : stat.suffix === "$"
+                            ? `$${Number(rawValue).toFixed(2)}`
+                            : Number(rawValue).toLocaleString();
                     return (
                         <Card key={stat.key} className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">

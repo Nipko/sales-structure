@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag, Hash,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
@@ -44,6 +45,8 @@ export default function Lead360Page() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("contacts");
     const tc = useTranslations("common");
+    const vt = useVerticalTerms();
+    const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const leadId = params?.leadId as string;
 
     const [lead360, setLead360] = useState<any>(null);
@@ -242,8 +245,8 @@ export default function Lead360Page() {
                 title="Lead 360°"
                 breadcrumbs={
                     <Breadcrumbs items={[
-                        { label: "CRM", href: "/admin/contacts" },
-                        { label: lead?.name || t("leadDetail.contact") },
+                        { label: capitalize(vt.customerNounPlural), href: "/admin/contacts" },
+                        { label: lead?.name || capitalize(vt.customerNoun) },
                     ]} />
                 }
             />

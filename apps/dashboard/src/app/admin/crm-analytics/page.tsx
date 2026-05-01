@@ -15,6 +15,7 @@ import {
     TrendingUp, Target, Users, DollarSign, Activity, Clock,
     Award, BarChart3,
 } from "lucide-react";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6'];
 const STAGE_COLORS: Record<string, string> = {
@@ -26,6 +27,8 @@ const STAGE_COLORS: Record<string, string> = {
 export default function CrmAnalyticsPage() {
     const t = useTranslations("crmAnalytics");
     const { activeTenantId } = useTenant();
+    const vt = useVerticalTerms();
+    const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const [activeTab, setActiveTab] = useState("overview");
     const [loading, setLoading] = useState(true);
 
@@ -77,7 +80,7 @@ export default function CrmAnalyticsPage() {
                     {/* KPI Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         {[
-                            { label: t("kpi.totalLeads"), value: overview?.totalLeads || 0, icon: Users, color: "#6366f1" },
+                            { label: `Total ${vt.customerNounPlural}`, value: overview?.totalLeads || 0, icon: Users, color: "#6366f1" },
                             { label: t("kpi.activeOpps"), value: overview?.activeOpportunities || 0, icon: Target, color: "#8b5cf6" },
                             { label: t("kpi.pipelineValue"), value: `$${(overview?.pipelineValue || 0).toLocaleString()}`, icon: DollarSign, color: "#22c55e" },
                             { label: t("kpi.avgScore"), value: `${overview?.avgScore || 0}/10`, icon: Activity, color: "#f97316" },
@@ -98,7 +101,7 @@ export default function CrmAnalyticsPage() {
                     {/* Funnel + Sources side by side */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <div className="bg-card border border-border rounded-xl p-5">
-                            <h3 className="text-sm font-semibold mb-4">{t("charts.leadsByStage")}</h3>
+                            <h3 className="text-sm font-semibold mb-4">{`${capitalize(vt.customerNounPlural)} por etapa`}</h3>
                             <ResponsiveContainer width="100%" height={280}>
                                 <BarChart data={funnel} layout="vertical">
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -115,7 +118,7 @@ export default function CrmAnalyticsPage() {
                         </div>
 
                         <div className="bg-card border border-border rounded-xl p-5">
-                            <h3 className="text-sm font-semibold mb-4">{t("charts.leadSources")}</h3>
+                            <h3 className="text-sm font-semibold mb-4">{`Fuentes de ${vt.customerNounPlural}`}</h3>
                             {sources.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={280}>
                                     <PieChart>

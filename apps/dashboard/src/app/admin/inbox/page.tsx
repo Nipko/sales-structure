@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { io } from "socket.io-client";
 import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
@@ -205,6 +206,8 @@ export default function InboxPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const t = useTranslations("inbox");
+    const vt = useVerticalTerms();
+    const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const [filter, setFilter] = useState<InboxFilter>("all");
     const [conversations, setConversations] = useState<any[]>([]);
     const [selectedConv, setSelectedConv] = useState<any>(null);
@@ -1950,7 +1953,7 @@ export default function InboxPage() {
                                         href={`/admin/contacts/${selectedConv.contactId}`}
                                         className="flex-1 py-2 px-3 rounded-xl border border-border bg-transparent text-foreground text-xs font-medium cursor-pointer flex gap-1.5 items-center justify-center hover:bg-muted transition-colors no-underline"
                                     >
-                                        <ExternalLink size={12} /> {t("contact.viewInCrm")}
+                                        <ExternalLink size={12} /> {`Ver ${vt.customerNoun}`}
                                     </a>
                                 )}
                                 {selectedConv.contactPhone && (

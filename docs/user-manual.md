@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 2.0 — Abril 2026
+  Versión 3.0 — Mayo 2026
 </p>
 
 ---
@@ -37,6 +37,10 @@
 | 5.3 | [Segmentos](#53-segmentos) | |
 | 5.4 | [CRM Analytics](#54-crm-analytics) | |
 | 5.5 | [Identidad y Merge](#55-identidad-y-merge) | |
+| 5.6 | [Lead Scoring Configurable](#56-lead-scoring-configurable) | |
+| 5.7 | [AI Insights](#57-ai-insights) | |
+| 5.8 | [Aprobación de Deals](#58-aprobación-de-deals) | |
+| 5.9 | [Filtros Avanzados](#59-filtros-avanzados) | |
 | 6 | [Agentes IA](#6-agentes-ia) | |
 | 6.1 | [Lista de agentes](#61-lista-de-agentes) | |
 | 6.2 | [Editor del agente](#62-editor-del-agente) | |
@@ -63,8 +67,12 @@
 | 14 | [Privacidad y Cumplimiento](#14-privacidad-y-cumplimiento) | |
 | 15 | [Configuración](#15-configuración) | |
 | 16 | [Gestión de Usuarios](#16-gestión-de-usuarios) | |
+| 16.1 | [Habilidades del equipo](#161-habilidades-del-equipo) | |
 | 17 | [Facturación y Planes](#17-facturación-y-planes) | |
 | 18 | [Preguntas Frecuentes (FAQ)](#18-preguntas-frecuentes) | |
+| 19 | [Adaptación por Industria (Verticales)](#19-adaptación-por-industria) | |
+| 20 | [Propiedades y Alquiler Vacacional](#20-propiedades-y-alquiler-vacacional) | |
+| 21 | [Panel de Super Administrador](#21-panel-de-super-administrador) | |
 
 ---
 
@@ -507,6 +515,72 @@ Al fusionar:
 - Los datos del perfil se combinan (el más completo prevalece)
 
 > **Tip:** Cuando se fusionan dos perfiles, se conserva el historial de conversaciones de ambos canales en un solo contacto.
+
+---
+
+## 5.6 Lead Scoring Configurable
+
+Configura cómo Parallly califica a tus leads automáticamente.
+
+### Acceder
+Configuración → Lead Scoring
+
+### Pesos de calificación
+Ajusta la importancia de cada factor arrastrando los sliders:
+- **Engagement** (25%): Frecuencia de interacción del lead
+- **Intención** (30%): Señales de compra detectadas por IA
+- **Recencia** (20%): Qué tan reciente fue el último contacto
+- **Progreso en pipeline** (15%): Avance en las etapas
+- **Perfil completo** (10%): Datos de contacto disponibles
+
+Los pesos deben sumar 100%.
+
+### Palabras clave de compra
+Agrega palabras que indican intención de compra: "precio", "costo", "comprar", "reservar", etc. El agente IA las detecta automáticamente.
+
+### Decaimiento de score
+Habilita para que leads inactivos pierdan puntuación gradualmente:
+- **Días**: Después de cuántos días sin actividad inicia el decaimiento
+- **Factor**: Cuánto se reduce (0.5 = se reduce a la mitad)
+
+---
+
+## 5.7 AI Insights
+
+En el detalle de cada lead, hay una tarjeta colapsable "AI Insights" que genera un análisis inteligente con recomendaciones:
+
+- Haz clic en la tarjeta para expandirla
+- La primera vez que se expande, consulta a la IA para generar un análisis
+- Incluye: siguiente mejor acción, nivel de interés, recomendaciones
+- El resultado se cachea (no se recalcula al colapsar/expandir)
+
+---
+
+## 5.8 Aprobación de Deals
+
+Cuando un deal se mueve a una etapa terminal (ej: "Cerrado ganado"), se requiere aprobación:
+
+1. Al arrastrar un deal a una etapa terminal, aparece un modal de confirmación
+2. El deal queda con badge **"Pendiente aprobación"** (amarillo)
+3. Un administrador o supervisor puede:
+   - ✅ **Aprobar**: El deal se mueve a la etapa final
+   - ❌ **Rechazar**: Se solicita una razón y el deal vuelve a su etapa anterior
+
+Los badges visibles en las tarjetas del kanban:
+- 🟡 Pendiente aprobación
+- 🔴 Rechazado (con razón visible)
+
+---
+
+## 5.9 Filtros Avanzados
+
+En la página de Contactos, haz clic en **"Filtros avanzados"** para abrir el panel lateral:
+
+- **Rango de score**: Filtra por puntuación mínima/máxima (1-10)
+- **Rango de fechas**: Filtra por fecha de creación
+- **Etiquetas**: Filtra por tags asignados
+
+Los filtros activos se muestran como chips encima de la tabla. Cada chip tiene una X para eliminar ese filtro individualmente.
 
 ---
 
@@ -1089,6 +1163,20 @@ Los cambios se reflejan inmediatamente en la vista de Pipeline (Kanban) y en tod
 
 ---
 
+## 16.1 Habilidades del equipo
+
+Cada usuario puede tener **habilidades (skills)** asignadas que se usan para el enrutamiento inteligente de conversaciones:
+
+1. Ve a **Usuarios** en el menú
+2. En la columna "Skills", haz clic para editar
+3. Escribe una habilidad y presiona Enter, o selecciona de las sugeridas:
+   - ventas, soporte, técnico, facturación, quejas, general, vip, idiomas
+4. Los cambios se guardan automáticamente
+
+**¿Para qué sirven?** Cuando un cliente solicita atención humana, el sistema asigna al agente que tenga las habilidades más relevantes para el tipo de consulta.
+
+---
+
 # 17. Facturación y Planes
 
 **Ruta:** Configuración → Facturación
@@ -1216,6 +1304,193 @@ Sí. Parallly cumple con:
 - **LFPDPPP** (México)
 - Controles de solicitudes de baja, consentimiento, y solicitudes de eliminación integrados
 </details>
+
+---
+
+# 19. Adaptación por Industria
+
+Parallly se adapta automáticamente al tipo de negocio que seleccionas durante el registro. No es solo un cambio de nombre — toda la plataforma se reconfigura.
+
+## 19.1 ¿Qué se adapta?
+
+| Elemento | Ejemplo (Salud) | Ejemplo (Restaurantes) |
+|----------|-----------------|------------------------|
+| **Agente IA** | "Sofía" — profesional, empática | "Luca" — cálido, amigable |
+| **Sidebar** | Pacientes, Seguimiento, Agenda Médica | Comensales, Reservas, Reservaciones |
+| **Pipeline** | Consulta→Cita→Visita→Activo | Consulta→Reserva→Completada |
+| **KPIs** | Citas Hoy, No Shows, Pacientes Nuevos | Reservas Hoy, Consultas, No Shows |
+| **FAQs** | Horarios, pagos, emergencias | Menú, reservas, alergias |
+| **Welcome** | "Bienvenido a tu consultorio virtual" | "Tu restaurante está listo" |
+| **Empty states** | "Cuando llegue tu primer paciente..." | "Tus comensales aparecerán aquí..." |
+| **Checklist** | "Configura tu asistente médico" | "Carga tu menú y horarios" |
+| **Homepage** | Vista de agenda del día | Vista de agenda del día |
+
+## 19.2 Industrias disponibles
+
+1. **Salud** — Clínicas, consultorios, estética, psicología, farmacias
+2. **Moda y Belleza** — Salones, barberías, spas, boutiques
+3. **Inmobiliaria** — Venta, arriendo, comercial, construcción
+4. **Restaurantes** — Casual dining, comida rápida, cafeterías, dark kitchens
+5. **Automotriz** — Concesionarios, talleres, repuestos, alquiler
+6. **Turismo** — Agencias de viajes, hoteles, tours, alquiler vacacional
+7. **Educación** — Idiomas, universidades, cursos online, capacitación
+8. **Finanzas** — Seguros, asesoría financiera, fintech, créditos
+9. **Servicios Profesionales** — Abogados, contadores, arquitectos, consultores
+10. **Retail** — Moda, electrónica, hogar, marketplace
+11. **Tecnología** — SaaS, consultoría TI, desarrollo, hardware
+12. **Otro** — Configuración genérica
+
+## 19.3 Sub-tipo de negocio
+
+Después de seleccionar tu industria, puedes elegir un sub-tipo para una configuración más precisa. Por ejemplo:
+- Salud → **Odontología** vs **Psicología** vs **Estética**
+- Restaurantes → **Casual dining** vs **Dark kitchen** vs **Cafetería**
+
+## 19.4 Terminología automática
+
+El agente IA usa vocabulario de tu industria en cada conversación:
+- Salud: "paciente", "consulta", "cita médica"
+- Inmobiliaria: "interesado", "propiedad", "visita"
+- Restaurantes: "comensal", "reserva", "mesa"
+
+No necesitas configurar nada — se activa automáticamente al registrarte.
+
+## 19.5 Temas prohibidos por industria
+
+Cada vertical tiene restricciones adicionales que el agente IA respeta:
+- **Salud**: No da diagnósticos, no prescribe medicamentos
+- **Finanzas**: No garantiza rendimientos, no solicita datos bancarios completos
+- **Inmobiliaria**: No garantiza valorización, no discrimina por zona
+
+---
+
+# 20. Propiedades y Alquiler Vacacional
+
+Para negocios de alquiler vacacional (Airbnb, Booking.com, etc.), Parallly ofrece un módulo completo de gestión de propiedades con sincronización de calendarios.
+
+> **Nota**: Este módulo aparece en el sidebar como "Propiedades" cuando tu industria es Turismo (sub-tipo: alquiler vacacional).
+
+## 20.1 Crear una propiedad
+
+1. Ve a **Propiedades** en el menú
+2. Clic en **"Agregar propiedad"**
+3. Completa: nombre, dirección, ciudad, capacidad, habitaciones, baños
+4. Configura el precio por noche y tarifa de limpieza
+5. Selecciona amenidades (WiFi, piscina, parking, AC, etc.)
+6. Guarda
+
+### Límites por plan
+| Plan | Propiedades máximas |
+|------|---------------------|
+| Starter | 2 |
+| Pro | 10 |
+| Enterprise | 50 |
+| Custom | Ilimitado |
+
+## 20.2 Calendario de disponibilidad
+
+En el detalle de cada propiedad, el tab **Calendario** muestra una vista mensual:
+- 🟢 Verde = disponible
+- 🔴 Rojo = reservado (reserva directa en Parallly)
+- 🟠 Naranja = bloqueado (importado de Airbnb/Booking)
+- ⚫ Gris = fecha pasada
+
+Navega entre meses con las flechas ← →.
+
+## 20.3 Sincronización iCal (Airbnb / Booking.com)
+
+### Importar disponibilidad (de Airbnb/Booking a Parallly)
+
+1. Ve al tab **iCal Feeds** en el detalle de la propiedad
+2. Clic en **"Agregar feed"**
+3. Selecciona la plataforma (Airbnb, Booking.com, Vrbo, Otro)
+4. Pega la **URL del calendario iCal** que te da la plataforma:
+   - **Airbnb**: Ve a tu anuncio → Calendario → Disponibilidad → Sincronizar calendarios → Exportar calendario → Copia la URL
+   - **Booking.com**: Extranet → Tarifas y disponibilidad → Exportar → Copia la URL
+5. Parallly sincroniza automáticamente cada **30 minutos**
+6. También puedes hacer clic en **"Sincronizar ahora"** para forzar una actualización
+
+### Exportar disponibilidad (de Parallly a Airbnb/Booking)
+
+1. En el tab **iCal Feeds**, copia la **URL de exportación** que Parallly genera
+2. Ve a tu plataforma:
+   - **Airbnb**: Calendario → Sincronizar → Importar calendario → Pega la URL
+   - **Booking.com**: Extranet → Tarifas y disponibilidad → Importar → Pega la URL
+3. La plataforma consultará esta URL periódicamente para ver tus fechas bloqueadas
+
+### ¿Cómo se evitan las dobles reservas?
+
+- Parallly verifica disponibilidad en TIEMPO REAL antes de aceptar cualquier reserva
+- Consulta tanto las fechas importadas (Airbnb/Booking) como las reservas directas
+- Si hay conflicto, la reserva se rechaza automáticamente
+- **Importante**: iCal tiene un delay de 3-6 horas. Para protección máxima, acepta reservas con al menos 24h de anticipación.
+
+## 20.4 Reservas directas
+
+Crea reservas directamente en Parallly (sin pasar por Airbnb/Booking):
+
+1. Ve al tab **Reservas** en el detalle de la propiedad
+2. Clic en **"Nueva reserva"**
+3. Completa: fechas, nombre del huésped, teléfono, número de huéspedes
+4. El precio se calcula automáticamente
+5. La reserva aparecerá en el feed de exportación para que las plataformas la vean
+
+## 20.5 Instrucciones de Check-in
+
+En el tab **Check-in** de cada propiedad:
+- Escribe las instrucciones de llegada (código de puerta, WiFi, estacionamiento)
+- Agrega las reglas de la casa
+- Configura hora de check-in y check-out
+- El agente IA puede enviar estas instrucciones automáticamente a los huéspedes
+
+## 20.6 El agente IA y las propiedades
+
+El agente IA puede:
+- ✅ Verificar disponibilidad en tiempo real
+- ✅ Mostrar detalles y amenidades de la propiedad
+- ✅ Dar precio por noche con tarifa de limpieza
+- ✅ Crear reservas directas
+- ✅ Enviar instrucciones de check-in
+
+---
+
+# 21. Panel de Super Administrador
+
+El super administrador tiene visibilidad y control completo sobre todos los tenants de la plataforma.
+
+## 21.1 Dashboard de plataforma
+
+6 KPIs en tiempo real:
+- Tenants totales y activos
+- Usuarios totales
+- Mensajes hoy (cross-tenant)
+- Handoffs pendientes
+- Distribución por vertical
+
+## 21.2 Detalle del tenant (6 tabs)
+
+| Tab | Contenido |
+|-----|-----------|
+| **Info** | Datos de la empresa, industria, plan, fecha de creación |
+| **Usuarios** | Lista de usuarios, roles, reset de contraseña |
+| **Canales** | Canales conectados (WhatsApp, IG, Messenger, etc.) |
+| **Facturación** | Estado de suscripción, plan, periodo |
+| **Actividad** | Health score (0-100), mensajes 7d/30d, conversaciones activas, handoffs, agentes/FAQs/servicios configurados |
+| **Config IA** | Agentes del tenant con canales asignados, pipeline stages configurados, info vertical |
+
+## 21.3 Health Score
+
+Cada tenant tiene un score de salud (0-100) calculado automáticamente:
+- 🟢 ≥60: Saludable (canales conectados, agente configurado, actividad reciente)
+- 🟡 30-59: Requiere atención
+- 🔴 <30: Inactivo/dormido
+
+**Fórmula**:
+- Canales conectados: +20 puntos
+- Agente IA configurado: +20 puntos
+- FAQs cargadas (≥3): +15 puntos
+- Servicios creados: +10 puntos
+- Actividad reciente (mensajes 7d): +35 puntos
 
 ---
 

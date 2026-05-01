@@ -4,6 +4,70 @@
 
 ---
 
+## v5.0.0 — April 30, 2026
+
+### Vertical Adaptation System (12 Industries)
+- **Industry Auto-Bootstrap**: On tenant creation, the entire platform adapts based on selected industry — pipeline stages, AI agent persona, FAQs, services, business hours
+- **12 Verticals**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, otro
+- **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia)
+- **4-language support**: All vertical definitions in es/en/pt/fr
+- **LLM Vertical Context**: `<vertical_context>` XML injected into prompt assembler with customer_noun, transaction_noun — the AI naturally uses industry vocabulary
+- **Dashboard Visual Adaptation**: 
+  - Contextual welcome ("Bienvenido a tu consultorio virtual, Dr. López")
+  - Industry-specific homepage (agenda for clinics, recent leads for real estate)
+  - Vertical KPIs (Citas Hoy/No Shows for health; Leads/Test Drives for automotive)
+  - Empty states with industry vocabulary on 5 pages × 8 industries
+  - Onboarding checklist adapted ("Configura tu asistente médico", "Carga tu menú")
+- **Sidebar Adaptation**: Dynamic label overrides (CRM→Pacientes), hidden items (no Inventory for clinics), item reordering
+- **useVerticalTerms() Hook**: Locale-aware terminology propagation across contacts, pipeline, inbox, analytics, broadcast, lead detail pages
+
+### Vacation Rental Module
+- **Properties CRUD**: Create/manage rental properties with plan-gated limits (starter:2, pro:10, enterprise:50)
+- **iCal Import**: Parse Airbnb/Booking.com .ics feeds with node-ical, cron every 30 minutes
+- **iCal Export**: Generate .ics feeds with ical-generator for platforms to consume
+- **Public Feed**: `GET /public/ical/:tenantSlug/:propertyId/:token/calendar.ics` (no auth)
+- **Anti-Double-Booking**: Availability check merges ical_blocks + property_bookings with overlap detection
+- **5 AI Agent Tools**: list_properties, check_property_availability, get_property_details, get_check_in_instructions, create_property_booking
+- **Dashboard**: Properties list page + detail page with 5 tabs (Info, Calendar, Bookings, iCal Feeds, Check-in)
+- **Calendar View**: CSS grid month view with color-coded days (green=available, red=booked, amber=blocked external, gray=past)
+- **4 New Tables**: properties, ical_blocks, ical_feeds, property_bookings
+
+### Super Admin Enhancements
+- **Tenant Engagement Endpoint**: `GET /tenants/:id/engagement` — messages 7d/30d, active conversations, handoffs, agents/FAQs/services/stages counts
+- **Health Score System**: 0-100 per tenant (channels:20 + agent:20 + FAQs:15 + services:10 + activity:35)
+- **Tenant Detail**: 6 tabs (added Engagement + AI Config with health score circle, activity KPIs, agents list, pipeline stages)
+- **Tenants Overview**: Vertical badge column + health dot indicator
+- **Platform Dashboard**: 6 KPIs (tenants, users, active, messagesToday, pendingHandoffs, vertical distribution)
+- **Cross-Tenant Metrics**: getPlatformStats() aggregates messages + handoffs across all tenant schemas
+
+### Frontend Features
+- **Scoring Config Settings** (`/admin/settings/scoring-config`): Weight sliders (5 factors), purchase keyword tags, score decay toggle with days/factor controls
+- **AI Insights Card**: Collapsible card on lead detail page, lazy-loads AI analysis on first expand
+- **Deal Approval UI**: Pending/rejected badges on pipeline kanban, terminal stage drag interception, approve/reject actions (admin/supervisor)
+- **Advanced Filter Drawer**: Slide-out panel on contacts page with score range, date range, tags + removable filter chips
+- **Skill Tags Editor**: Inline tag editor on users page with 8 suggested skills + PUT /auth/users/:userId/skills endpoint
+- **DisconnectChannelModal**: Unified custom modal replacing browser confirm() across all 5 channels (WhatsApp, Instagram, Messenger, Telegram, SMS)
+- **Channel Cleanup**: Removed webhook config sections (Callback URL, Verify Token) from WhatsApp/Instagram/Messenger — setup is guided
+- **WhatsApp Disconnect**: Added POST /channels/whatsapp/disconnect endpoint + disconnect button
+
+### Production Resilience
+- **PgBouncer**: DEFAULT_POOL_SIZE 25→50, MAX_CLIENT_CONN 500→1000, query_timeout 30→120s
+- **PostgreSQL**: max_connections=200, work_mem=8MB, effective_cache_size=512MB
+- **Prisma**: connection_limit per service (API=8, Worker=8, WhatsApp=4)
+- **DB Retry**: 5-attempt exponential backoff in API + WhatsApp PrismaService
+- **Redis Leaks**: Fixed unmanaged Redis connections in WhatsApp WebhooksService + HealthController
+- **NurturingService**: Transaction timeout 15→30s + updated_at pre-filter for heavy queries
+- **FeatureRequestsService**: Fixed column name `content` → `content_text`
+- **Orders**: Split multi-statement SQL for PgBouncer compatibility
+- **Docker**: Health check added to API container, start_period on all services
+
+### Technical Debt Resolved
+- Orders multi-statement query split into individual calls ✓
+- Feature-requests TypeScript error (was already resolved) ✓
+- PgBouncer connection exhaustion (root cause: 30 connections demanded > 25 pool) ✓
+
+---
+
 ## v4.0.0 — April 13, 2026
 
 ### New Features

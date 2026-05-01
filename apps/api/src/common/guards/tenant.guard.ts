@@ -1,11 +1,18 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger } from '@nestjs/common';
 
 /**
  * Ensures that a user can only access data belonging to their tenant.
- * Super admins can optionally specify a tenant via query param.
+ * Super admins can optionally specify a tenant via route/query param.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
+    private readonly logger = new Logger(TenantGuard.name);
+
+    /** Loose UUID v4 check to prevent injection via tenantId param */
+    private isValidUuid(value: string): boolean {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    }
+
     canActivate(context: ExecutionContext): boolean {
         const request = context.switchToHttp().getRequest();
         const user = request.user;
@@ -18,8 +25,15 @@ export class TenantGuard implements CanActivate {
         if (user.role === 'super_admin') {
             const tenantIdParam = request.params.tenantId || request.query.tenantId;
             if (tenantIdParam) {
+                // Validate UUID format to prevent SQL injection
+                if (!this.isValidUuid(tenantIdParam)) {
+                    throw new ForbiddenException('Invalid tenant ID format');
+                }
                 request.tenantId = tenantIdParam;
+                this.logger.log(`[AUDIT] super_admin ${user.email || user.id} accessing tenant ${tenantIdParam}`);
             }
+            // If no tenantId provided, request.tenantId stays undefined.
+            // Controllers must handle this case (e.g., reject or show tenant picker).
             return true;
         }
 

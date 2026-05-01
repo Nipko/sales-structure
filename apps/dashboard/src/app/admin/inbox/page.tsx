@@ -562,6 +562,7 @@ export default function InboxPage() {
 
         const socket = io(`${socketUrl}/inbox`, {
             auth: { token },
+            query: { tenantId: activeTenantId },
             transports: ['websocket', 'polling'],
         });
 

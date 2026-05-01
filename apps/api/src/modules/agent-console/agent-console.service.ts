@@ -95,6 +95,11 @@ export class AgentConsoleService {
 
         let statusFilter = '';
         const params: any[] = [];
+
+        // tenantId is always param $1 for the channel_accounts join
+        params.push(tenantId);
+        const tenantIdParam = `$${params.length}::uuid`;
+
         switch (filter) {
             case 'mine':
                 params.push(agentId);
@@ -120,7 +125,7 @@ export class AgentConsoleService {
         ca.display_name as channel_account_name, ca.metadata as channel_account_metadata
       FROM conversations c
       LEFT JOIN contacts ct ON c.contact_id = ct.id
-      LEFT JOIN public.channel_accounts ca ON ca.account_id = c.channel_account_id AND ca.tenant_id = '${tenantId}'
+      LEFT JOIN public.channel_accounts ca ON ca.account_id = c.channel_account_id AND ca.tenant_id = ${tenantIdParam}
       LEFT JOIN LATERAL (
         SELECT content_text, created_at, direction FROM messages
         WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
@@ -168,9 +173,9 @@ export class AgentConsoleService {
               ca.display_name as channel_account_name, ca.metadata as channel_account_metadata
        FROM conversations c
        LEFT JOIN contacts ct ON c.contact_id = ct.id
-       LEFT JOIN public.channel_accounts ca ON ca.account_id = c.channel_account_id AND ca.tenant_id = '${tenantId}'
+       LEFT JOIN public.channel_accounts ca ON ca.account_id = c.channel_account_id AND ca.tenant_id = $2::uuid
        WHERE c.id = $1::uuid`,
-            [conversationId],
+            [conversationId, tenantId],
         );
 
         if (!convRows || convRows.length === 0) return null;

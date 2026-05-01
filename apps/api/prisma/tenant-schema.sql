@@ -1558,3 +1558,89 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."crm_imports" (
 );
 CREATE INDEX IF NOT EXISTS "idx_crm_imports_recent" ON "{{SCHEMA_NAME}}"."crm_imports" ("started_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_crm_imports_running" ON "{{SCHEMA_NAME}}"."crm_imports" ("status") WHERE "status" = 'running';
+
+-- ============================================
+-- VACATION RENTAL — Properties & iCal Sync
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."properties" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "address" TEXT,
+    "city" VARCHAR(255),
+    "max_guests" INTEGER DEFAULT 4,
+    "bedrooms" INTEGER DEFAULT 1,
+    "bathrooms" INTEGER DEFAULT 1,
+    "night_price" DECIMAL(15,2) DEFAULT 0,
+    "cleaning_fee" DECIMAL(15,2) DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "min_nights" INTEGER DEFAULT 1,
+    "check_in_time" TIME DEFAULT '15:00',
+    "check_out_time" TIME DEFAULT '11:00',
+    "amenities" JSONB DEFAULT '[]',
+    "house_rules" TEXT,
+    "check_in_instructions" TEXT,
+    "images" JSONB DEFAULT '[]',
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" INTEGER DEFAULT 0,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ical_blocks" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "property_id" UUID NOT NULL,
+    "external_uid" TEXT NOT NULL,
+    "source" VARCHAR(50) NOT NULL,
+    "check_in" DATE NOT NULL,
+    "check_out" DATE NOT NULL,
+    "summary" TEXT,
+    "last_seen_at" TIMESTAMP DEFAULT NOW(),
+    "is_deleted" BOOLEAN DEFAULT false,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_ical_blocks_uid" ON "{{SCHEMA_NAME}}"."ical_blocks" ("property_id", "external_uid");
+CREATE INDEX IF NOT EXISTS "idx_ical_blocks_dates" ON "{{SCHEMA_NAME}}"."ical_blocks" ("property_id", "check_in", "check_out") WHERE "is_deleted" = false;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ical_feeds" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "property_id" UUID NOT NULL,
+    "feed_name" VARCHAR(100),
+    "source" VARCHAR(50) NOT NULL,
+    "import_url" TEXT,
+    "export_token" VARCHAR(255) NOT NULL DEFAULT uuid_generate_v4()::text,
+    "is_active" BOOLEAN DEFAULT true,
+    "last_sync_at" TIMESTAMP,
+    "last_sync_status" VARCHAR(20) DEFAULT 'pending',
+    "last_sync_error" TEXT,
+    "events_imported" INTEGER DEFAULT 0,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_ical_feeds_property" ON "{{SCHEMA_NAME}}"."ical_feeds" ("property_id") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."property_bookings" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "property_id" UUID NOT NULL,
+    "contact_id" UUID,
+    "conversation_id" UUID,
+    "guest_name" VARCHAR(255),
+    "guest_email" VARCHAR(255),
+    "guest_phone" VARCHAR(50),
+    "guests_count" INTEGER DEFAULT 1,
+    "check_in" DATE NOT NULL,
+    "check_out" DATE NOT NULL,
+    "nights" INTEGER NOT NULL,
+    "night_price" DECIMAL(15,2),
+    "cleaning_fee" DECIMAL(15,2) DEFAULT 0,
+    "total_price" DECIMAL(15,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "status" VARCHAR(50) DEFAULT 'pending',
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_bookings_property" ON "{{SCHEMA_NAME}}"."property_bookings" ("property_id", "check_in", "check_out") WHERE "status" != 'cancelled';

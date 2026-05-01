@@ -77,11 +77,17 @@ export default function AdminDashboard() {
             suffix: kpi.key.toLowerCase().includes("cost") || kpi.key.toLowerCase().includes("revenue") ? "$" : "",
         }))
         : defaultStatConfig;
+    const APPOINTMENT_INDUSTRIES = ['salud', 'moda_belleza', 'restaurantes'];
+    const PIPELINE_INDUSTRIES = ['inmobiliaria', 'automotriz', 'technology', 'finanzas', 'servicios_profesionales'];
+
     const [overview, setOverview] = useState<Record<string, number>>({
         leadsToday: 0, leadsHot: 0, messagesProcessed: 0, llmCostToday: 0,
     });
     const [activity, setActivity] = useState<any[]>([]);
     const [modelUsage, setModelUsage] = useState<any[]>([]);
+    const [verticalAppointments, setVerticalAppointments] = useState<any[]>([]);
+    const [verticalLeads, setVerticalLeads] = useState<any[]>([]);
+    const [verticalLoading, setVerticalLoading] = useState(false);
     const [isLive, setIsLive] = useState(false);
     const [platformStats, setPlatformStats] = useState({
         totalTenants: 0,
@@ -204,6 +210,71 @@ export default function AdminDashboard() {
         }
         loadOverview();
     }, []);
+
+    // Load vertical-specific data
+    useEffect(() => {
+        async function loadVerticalData() {
+            if (!user?.tenantId || user?.role === 'super_admin') return;
+            const industry = vt.industry;
+
+            if (APPOINTMENT_INDUSTRIES.includes(industry)) {
+                setVerticalLoading(true);
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const res = await api.fetch(`/appointments/${user.tenantId}?date=${today}&status=pending,confirmed`);
+                    if (res.success && Array.isArray(res.data)) {
+                        setVerticalAppointments(res.data);
+                    }
+                } catch { /* ignore */ }
+                setVerticalLoading(false);
+            } else if (PIPELINE_INDUSTRIES.includes(industry)) {
+                setVerticalLoading(true);
+                try {
+                    const res = await api.fetch(`/crm/leads/${user.tenantId}?limit=5&sort=created_at:desc`);
+                    if (res.success && Array.isArray(res.data)) {
+                        setVerticalLeads(res.data);
+                    }
+                } catch { /* ignore */ }
+                setVerticalLoading(false);
+            }
+        }
+        loadVerticalData();
+    }, [user?.tenantId, user?.role, vt.industry]);
+
+    const formatTime = (dateStr: string) => {
+        try {
+            return new Date(dateStr).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        } catch { return ''; }
+    };
+
+    const formatTimeAgo = (dateStr: string) => {
+        try {
+            const diff = Date.now() - new Date(dateStr).getTime();
+            const mins = Math.floor(diff / 60000);
+            if (mins < 60) return `${mins}m`;
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return `${hours}h`;
+            return `${Math.floor(hours / 24)}d`;
+        } catch { return ''; }
+    };
+
+    const appointmentStatusColors: Record<string, string> = {
+        pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        confirmed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+        completed: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+        cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        no_show: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400',
+    };
+
+    const stageColors: Record<string, string> = {
+        new: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+        contacted: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+        qualified: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+        proposal: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        negotiation: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+        won: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+        lost: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    };
 
     return (
         <div className="animate-in">
@@ -371,6 +442,94 @@ export default function AdminDashboard() {
                     );
                 })}
             </div>
+
+            {/* Vertical Home View */}
+            {user?.role !== 'super_admin' && APPOINTMENT_INDUSTRIES.includes(vt.industry) && (
+                <div className="mb-8 rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Calendar size={18} className="text-indigo-500" />
+                            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t('verticalHome.todayAgenda')}</h3>
+                        </div>
+                        <Link href="/admin/appointments" className="text-xs text-indigo-500 hover:underline">
+                            {t('verticalHome.viewAll')} →
+                        </Link>
+                    </div>
+                    <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        {verticalLoading ? (
+                            <div className="px-6 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                                {t('loading')}
+                            </div>
+                        ) : verticalAppointments.length > 0 ? verticalAppointments.map((apt: any) => (
+                            <div key={apt.id} className="px-6 py-3 flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                        {apt.customer_name || apt.contact_name || apt.service_name}
+                                    </p>
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        {apt.service_name} · {formatTime(apt.start_at || apt.start_time)}
+                                    </p>
+                                </div>
+                                <span className={cn("text-xs px-2 py-0.5 rounded-full", appointmentStatusColors[apt.status] || 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400')}>
+                                    {apt.status}
+                                </span>
+                            </div>
+                        )) : (
+                            <div className="px-6 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                                {t('verticalHome.noAppointmentsToday')}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {user?.role !== 'super_admin' && PIPELINE_INDUSTRIES.includes(vt.industry) && (
+                <div className="mb-8 rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <TrendingUp size={18} className="text-emerald-500" />
+                            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t('verticalHome.recentLeads', { noun: vt.customerNounPlural })}</h3>
+                        </div>
+                        <Link href="/admin/contacts" className="text-xs text-indigo-500 hover:underline">
+                            {t('verticalHome.viewAll')} →
+                        </Link>
+                    </div>
+                    <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        {verticalLoading ? (
+                            <div className="px-6 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                                {t('loading')}
+                            </div>
+                        ) : verticalLeads.length > 0 ? verticalLeads.map((lead: any) => (
+                            <div key={lead.id} className="px-6 py-3 flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                        {lead.name || lead.phone || t('verticalHome.unnamed')}
+                                    </p>
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        {lead.phone}{lead.email ? ` · ${lead.email}` : ''}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {lead.stage && (
+                                        <span className={cn("text-xs px-2 py-0.5 rounded-full", stageColors[lead.stage] || 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400')}>
+                                            {lead.stage}
+                                        </span>
+                                    )}
+                                    {lead.created_at && (
+                                        <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                                            {formatTimeAgo(lead.created_at)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="px-6 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                                {t('verticalHome.noLeadsYet')}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Two Column Layout */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

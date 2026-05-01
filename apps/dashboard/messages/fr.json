@@ -227,7 +227,15 @@
     "routerSavings": "Le router économise ~42% sur les coûts en utilisant Tier 3-4 pour messages simples",
     "system": "Système",
     "unknown": "Inconnu",
-    "tierN": "Tier {n}"
+    "tierN": "Tier {n}",
+    "verticalHome": {
+      "todayAgenda": "Agenda du jour",
+      "recentLeads": "Derniers {noun}",
+      "viewAll": "Voir tout",
+      "noAppointmentsToday": "Aucun rendez-vous prévu pour aujourd'hui",
+      "noLeadsYet": "Aucun lead récent pour le moment",
+      "unnamed": "Sans nom"
+    }
   },
   "contacts": {
     "title": "Contacts",

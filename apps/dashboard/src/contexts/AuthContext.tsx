@@ -48,6 +48,7 @@ interface AuthContextType {
     user: User | null;
     isLoading: boolean;
     isAuthenticated: boolean;
+    verticalConfig: any | null;
     login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
     googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
     logout: () => void;
@@ -69,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [showWarning, setShowWarning] = useState(false);
+    const [verticalConfig, setVerticalConfig] = useState<any | null>(null);
     const router = useRouter();
     const pathname = usePathname();
     const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,9 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             bc.onmessage = (evt) => {
                 if (evt.data?.type === "logout") {
                     setUser(null);
+                    setVerticalConfig(null);
                     localStorage.removeItem("accessToken");
                     localStorage.removeItem("refreshToken");
                     localStorage.removeItem("user");
+                    localStorage.removeItem("verticalConfig");
                     router.push("/login?expired=1");
                 }
             };
@@ -104,7 +108,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (token && savedUser) {
             try {
-                setUser(JSON.parse(savedUser));
+                const parsed = JSON.parse(savedUser);
+                setUser(parsed);
+
+                // Restore cached vertical config
+                const cachedVertical = localStorage.getItem("verticalConfig");
+                if (cachedVertical) {
+                    try { setVerticalConfig(JSON.parse(cachedVertical)); } catch { /* noop */ }
+                }
+
+                // Refresh vertical config from API
+                if (parsed.tenantId) {
+                    fetchVerticalConfig(parsed.tenantId);
+                }
             } catch {
                 localStorage.clear();
             }
@@ -196,6 +212,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch { /* noop */ }
     }, [resetActivity]);
 
+    // ── Fetch vertical config ──
+    const fetchVerticalConfig = useCallback(async (tenantId: string) => {
+        try {
+            const token = localStorage.getItem("accessToken");
+            if (!token) return;
+            const res = await fetch(`${API_URL}/verticals/${tenantId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    setVerticalConfig(data.data);
+                    localStorage.setItem("verticalConfig", JSON.stringify(data.data));
+                }
+            }
+        } catch {
+            // Silently fail — vertical config is non-critical
+        }
+    }, []);
+
     // ── Auth methods ──
 
     const getRedirectPath = useCallback((userData: User): string => {
@@ -224,11 +260,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
             setUser(data.data.user);
+
+            // Fetch vertical config for tenant
+            if (data.data.user.tenantId) {
+                fetchVerticalConfig(data.data.user.tenantId);
+            }
+
             return { success: true, redirect: getRedirectPath(data.data.user) };
         } catch {
             return { success: false, error: "Connection error con el servidor" };
         }
-    }, [getRedirectPath]);
+    }, [getRedirectPath, fetchVerticalConfig]);
 
     const googleLogin = useCallback(async (idToken: string, rememberMe = false): Promise<GoogleLoginResult> => {
         try {
@@ -249,11 +291,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
             setUser(data.data.user);
+
+            // Fetch vertical config for tenant
+            if (data.data.user.tenantId) {
+                fetchVerticalConfig(data.data.user.tenantId);
+            }
+
             return { success: true, redirect: getRedirectPath(data.data.user) };
         } catch {
             return { success: false, error: "Connection error con el servidor" };
         }
-    }, [getRedirectPath]);
+    }, [getRedirectPath, fetchVerticalConfig]);
 
     const performLogout = useCallback((expired = false) => {
         // Call logout API to revoke refresh token
@@ -274,7 +322,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
+        localStorage.removeItem("verticalConfig");
         setUser(null);
+        setVerticalConfig(null);
         router.push(expired ? "/login?expired=1" : "/login");
     }, [router]);
 
@@ -291,6 +341,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 user,
                 isLoading,
                 isAuthenticated,
+                verticalConfig,
                 login,
                 googleLogin,
                 logout,

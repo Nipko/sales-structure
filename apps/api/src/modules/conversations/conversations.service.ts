@@ -679,6 +679,34 @@ export class ConversationsService {
             this.logger.warn(`Business identity lookup failed (non-fatal): ${e.message}`);
         }
 
+        // 3.5 Vertical context — inject industry-specific terminology for the LLM
+        try {
+            const cacheKey = `vertical:${tenantId}`;
+            let verticalConfig = await this.redis.getJson<any>(cacheKey);
+            if (!verticalConfig) {
+                const tenant = await this.prisma.tenant.findUnique({
+                    where: { id: tenantId },
+                    select: { settings: true },
+                });
+                verticalConfig = (tenant?.settings as any)?.verticalConfig;
+                if (verticalConfig) {
+                    await this.redis.setJson(cacheKey, verticalConfig, 600);
+                }
+            }
+            if (verticalConfig?.terminology) {
+                const lang = userLanguage || 'es';
+                const t = verticalConfig.terminology;
+                turnContext.verticalContext = {
+                    customerNoun: t.customerNoun?.[lang] || t.customerNoun?.es,
+                    customerNounPlural: t.customerNounPlural?.[lang] || t.customerNounPlural?.es,
+                    transactionNoun: t.transactionNoun?.[lang] || t.transactionNoun?.es,
+                    serviceNoun: t.serviceNoun?.[lang] || t.serviceNoun?.es,
+                };
+            }
+        } catch (e: any) {
+            this.logger.debug(`Vertical context lookup skipped: ${e.message}`);
+        }
+
         // 4. Deterministic Booking Engine (runs BEFORE the LLM — emits interactive
         // messages directly for WhatsApp, or produces text for the LLM to voice).
         const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;

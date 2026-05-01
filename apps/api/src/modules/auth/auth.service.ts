@@ -10,6 +10,7 @@ import { GoogleAuthService } from './google-auth.service';
 import { PersonaService } from '../persona/persona.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { BillingService } from '../billing/billing.service';
+import { VerticalsService } from '../verticals/verticals.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
@@ -32,6 +33,7 @@ export class AuthService {
         private personaService: PersonaService,
         private businessInfoService: BusinessInfoService,
         private billingService: BillingService,
+        private verticalsService: VerticalsService,
     ) { }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -930,6 +932,19 @@ export class AuthService {
             });
         } catch (error) {
             console.error(`[Onboarding] Failed to persist business identity for "${result.tenant.schemaName}":`, error);
+        }
+
+        // 6.5. Bootstrap vertical-specific defaults (pipeline stages, agent persona, FAQs, services)
+        try {
+            const tenantLang = (timezone?.includes('America') ? 'es' : 'en');
+            await this.verticalsService.bootstrapVertical(
+                result.tenant.id,
+                industry || 'otro',
+                data.subType || null,
+                tenantLang,
+            );
+        } catch (error) {
+            console.error(`[Onboarding] Failed vertical bootstrap for "${result.tenant.schemaName}":`, error);
         }
 
         // 7. Create the trial subscription. The onboarding wizard may pass

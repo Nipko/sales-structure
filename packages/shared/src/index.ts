@@ -475,6 +475,17 @@ export interface TurnContext {
     directive?: string;
     /** Number of messages in the current conversation (used for anti-repetition) */
     messageCount?: number;
+    /** Vertical-specific context injected based on tenant industry */
+    verticalContext?: VerticalContext;
+}
+
+// ---- Vertical Context (injected into LLM turn) ----
+export interface VerticalContext {
+    customerNoun?: string;
+    customerNounPlural?: string;
+    transactionNoun?: string;
+    serviceNoun?: string;
+    industryGuidance?: string;
 }
 
 // ---- Test Agent Types ----
@@ -524,3 +535,90 @@ export const UNIVERSAL_FORBIDDEN_TOPICS = [
     { key: 'medical_advice', label: { es: 'Diagnóstico médico o prescripción de tratamiento', en: 'Medical diagnosis or treatment prescription', pt: 'Diagnóstico médico ou prescrição de tratamento', fr: 'Diagnostic médical ou prescription de traitement' } },
     { key: 'legal_advice', label: { es: 'Asesoría legal como si fuera abogado', en: 'Legal advice as if an attorney', pt: 'Assessoria jurídica como se fosse advogado', fr: 'Conseils juridiques comme un avocat' } },
 ];
+
+// ---- Vertical Adaptation System ----
+
+export type LocalizedString = Record<string, string>; // {es: '...', en: '...', pt: '...', fr: '...'}
+
+export interface VerticalStageDefinition {
+    name: LocalizedString;
+    slug: string;
+    color: string;
+    probability: number;
+    slaHours?: number;
+    isTerminal: boolean;
+}
+
+export interface VerticalFaqDefinition {
+    question: LocalizedString;
+    answer: LocalizedString;
+    category: string;
+}
+
+export interface VerticalServiceDefinition {
+    name: LocalizedString;
+    description: LocalizedString;
+    durationMinutes: number;
+    price: number;
+    currency: string;
+    category: string;
+}
+
+export interface VerticalAgentDefinition {
+    name: LocalizedString;
+    role: LocalizedString;
+    tone: string;
+    formality: string;
+    greeting: LocalizedString;
+    rules: LocalizedString;
+    forbiddenTopics: LocalizedString;
+    handoffTriggers: LocalizedString;
+}
+
+export interface VerticalSidebarConfig {
+    labelOverrides: Record<string, LocalizedString>;
+    hiddenItems: string[];
+    itemOrder?: string[];
+}
+
+export interface VerticalKpiDefinition {
+    key: string;
+    label: LocalizedString;
+    icon: string;
+    color: string;
+}
+
+export interface VerticalTerminology {
+    customerNoun: LocalizedString;
+    customerNounPlural: LocalizedString;
+    transactionNoun: LocalizedString;
+    serviceNoun: LocalizedString;
+    pipelineNoun: LocalizedString;
+}
+
+export interface VerticalDefinition {
+    industry: string;
+    subTypes: Array<{ key: string; label: LocalizedString }>;
+    terminology: VerticalTerminology;
+    agent: VerticalAgentDefinition;
+    pipeline: { stages: VerticalStageDefinition[] };
+    faqs: VerticalFaqDefinition[];
+    services: VerticalServiceDefinition[];
+    businessHours: {
+        schedule: Record<string, string>;
+        afterHoursMessage: LocalizedString;
+    };
+    sidebar: VerticalSidebarConfig;
+    dashboard: { kpis: VerticalKpiDefinition[] };
+    bookingEnabled: boolean;
+    deferred?: boolean;
+}
+
+export interface TenantVerticalConfig {
+    industry: string;
+    subType: string | null;
+    terminology: VerticalTerminology;
+    sidebar: VerticalSidebarConfig;
+    dashboard: { kpis: VerticalKpiDefinition[] };
+    bookingEnabled: boolean;
+}

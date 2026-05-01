@@ -10,12 +10,14 @@ import { MicrosoftAuthService } from './microsoft-auth.service';
 import { PersonaModule } from '../persona/persona.module';
 import { BusinessInfoModule } from '../business-info/business-info.module';
 import { BillingModule } from '../billing/billing.module';
+import { VerticalsModule } from '../verticals/verticals.module';
 
 @Module({
     imports: [
         PersonaModule,
         BusinessInfoModule,
         BillingModule,
+        VerticalsModule,
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.registerAsync({
             imports: [ConfigModule],

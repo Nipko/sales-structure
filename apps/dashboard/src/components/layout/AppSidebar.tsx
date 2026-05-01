@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -109,9 +109,10 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const [collapsed, setCollapsed] = useState(false);
   const [hovered, setHovered] = useState(false);
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, verticalConfig } = useAuth();
   const tNav = useTranslations('nav');
   const tRoles = useTranslations('roles');
+  const locale = useLocale();
 
   // Show the tenant/company name + friendly role (hide internal tenant_ prefix).
   const roleLabel = (() => {
@@ -124,10 +125,19 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     }
   })();
 
-  // Resolve translated sections
+  // Resolve translated sections with vertical overrides and hidden items
+  const hiddenItems = verticalConfig?.sidebar?.hiddenItems as string[] | undefined;
+  const labelOverrides = verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined;
+
   const sections: NavSection[] = sectionDefs.map(s => ({
     title: tNav(`sections.${s.titleKey}`),
-    items: s.items.map(i => ({ label: tNav(`items.${i.labelKey}`), href: i.href, icon: i.icon })),
+    items: s.items
+      .filter(i => !hiddenItems?.includes(i.labelKey))
+      .map(i => ({
+        label: labelOverrides?.[i.labelKey]?.[locale] ?? tNav(`items.${i.labelKey}`),
+        href: i.href,
+        icon: i.icon,
+      })),
   }));
 
   // Whether sidebar visually shows full width (labels visible)

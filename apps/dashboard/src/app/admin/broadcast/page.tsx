@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ export default function BroadcastPage() {
     const t = useTranslations('broadcast');
     const tc = useTranslations("common");
     const { user } = useAuth();
+    const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -90,7 +92,7 @@ export default function BroadcastPage() {
                 {/* Header */}
                 <PageHeader
                     title={t('title')}
-                    subtitle={t('subtitleStats', { campaigns: stats.total, recipients: stats.totalRecipients })}
+                    subtitle={t('subtitleStats', { campaigns: stats.total, recipients: stats.totalRecipients }).replace(/destinatarios|destinatários|destinataires|recipients/i, vt.customerNounPlural)}
                     icon={Megaphone}
                     badge={<DataSourceBadge isLive={false} />}
                     action={
@@ -158,7 +160,7 @@ export default function BroadcastPage() {
                                             <div className="flex gap-5 text-xs">
                                                 <span className="flex items-center gap-1">
                                                     <Target size={12} className="text-muted-foreground" />
-                                                    <strong>{campaign.recipientCount}</strong> {t('recipients')}
+                                                    <strong>{campaign.recipientCount}</strong> {vt.customerNounPlural}
                                                 </span>
                                                 <span className="text-emerald-500">📬 {deliveryRate}% {t('delivered')}</span>
                                                 <span className="text-blue-500">👁️ {readRate}% {t('read')}</span>

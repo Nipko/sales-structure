@@ -205,6 +205,9 @@ export class AnalyticsService {
         handoffs: number;
         llmCostToday: number;
         messagesProcessed: number;
+        appointmentsToday: number;
+        noShowsWeek: number;
+        conversionRate: number;
     }> {
         const today = new Date().toISOString().split('T')[0];
         const schemaName = await this.getSchemaName(tenantId);
@@ -217,6 +220,9 @@ export class AnalyticsService {
                 handoffs: 0,
                 llmCostToday: 0,
                 messagesProcessed: 0,
+                appointmentsToday: 0,
+                noShowsWeek: 0,
+                conversionRate: 0,
             };
         }
 
@@ -292,6 +298,47 @@ export class AnalyticsService {
         const redisMessageCount = parseInt((redisMessages as string) ?? '0');
         const redisHandoffCount = parseInt((redisHandoffs as string) ?? '0');
 
+        // Vertical-specific KPIs (each wrapped in try/catch — tables may not exist)
+        let appointmentsToday = 0;
+        let noShowsWeek = 0;
+        let conversionRate = 0;
+
+        try {
+            const apptRows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                schemaName,
+                `SELECT COUNT(*) as cnt FROM appointments WHERE date::date = CURRENT_DATE AND status != 'cancelled'`
+            );
+            appointmentsToday = parseInt(apptRows[0]?.cnt ?? '0');
+        } catch {
+            // appointments table may not exist
+        }
+
+        try {
+            const noShowRows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+                schemaName,
+                `SELECT COUNT(*) as cnt FROM appointments WHERE status = 'no_show' AND date >= NOW() - INTERVAL '7 days'`
+            );
+            noShowsWeek = parseInt(noShowRows[0]?.cnt ?? '0');
+        } catch {
+            // appointments table may not exist
+        }
+
+        try {
+            const convRows = await this.prisma.executeInTenantSchema<Array<{ won: string; total: string }>>(
+                schemaName,
+                `SELECT
+                    COUNT(*) FILTER (WHERE stage IN ('ganado', 'cerrado', 'cerrado_ganado', 'entregado', 'completado')) as won,
+                    COUNT(*) as total
+                 FROM opportunities
+                 WHERE created_at >= NOW() - INTERVAL '30 days'`
+            );
+            const won = parseInt(convRows[0]?.won ?? '0');
+            const total = parseInt(convRows[0]?.total ?? '0');
+            conversionRate = total > 0 ? Math.round((won / total) * 10000) / 100 : 0;
+        } catch {
+            // opportunities table may not exist
+        }
+
         return {
             leadsToday,
             leadsHot,
@@ -300,6 +347,9 @@ export class AnalyticsService {
             handoffs: Math.max(redisHandoffCount, dbHandoffs),
             llmCostToday: parseFloat((costStr as string) ?? '0'),
             messagesProcessed: Math.max(redisMessageCount, dbMessages),
+            appointmentsToday,
+            noShowsWeek,
+            conversionRate,
         };
     }
 

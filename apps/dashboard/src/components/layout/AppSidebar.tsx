@@ -129,16 +129,32 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const hiddenItems = verticalConfig?.sidebar?.hiddenItems as string[] | undefined;
   const labelOverrides = verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined;
 
-  const sections: NavSection[] = sectionDefs.map(s => ({
-    title: tNav(`sections.${s.titleKey}`),
-    items: s.items
-      .filter(i => !hiddenItems?.includes(i.labelKey))
-      .map(i => ({
+  const itemOrder = verticalConfig?.sidebar?.itemOrder as string[] | undefined;
+
+  const sections: NavSection[] = sectionDefs.map(s => {
+    const filteredItems = s.items
+      .filter(i => !hiddenItems?.includes(i.labelKey));
+
+    if (itemOrder && itemOrder.length > 0) {
+      filteredItems.sort((a, b) => {
+        const idxA = itemOrder.indexOf(a.labelKey);
+        const idxB = itemOrder.indexOf(b.labelKey);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+    }
+
+    return {
+      title: tNav(`sections.${s.titleKey}`),
+      items: filteredItems.map(i => ({
         label: labelOverrides?.[i.labelKey]?.[locale] ?? tNav(`items.${i.labelKey}`),
         href: i.href,
         icon: i.icon,
       })),
-  }));
+    };
+  });
 
   // Whether sidebar visually shows full width (labels visible)
   const showExpanded = !collapsed || hovered;

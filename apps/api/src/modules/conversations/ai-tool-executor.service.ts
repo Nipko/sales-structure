@@ -5,6 +5,7 @@ import { CalendarIntegrationService } from '../appointments/calendar-integration
 import { FaqsService } from '../faqs/faqs.service';
 import { PoliciesService } from '../policies/policies.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { PropertiesService } from '../vacation-rental/properties.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -22,6 +23,7 @@ export class AIToolExecutorService {
         private faqsService: FaqsService,
         private policiesService: PoliciesService,
         private knowledgeService: KnowledgeService,
+        private propertiesService: PropertiesService,
     ) { }
 
     /**
@@ -80,6 +82,22 @@ export class AIToolExecutorService {
 
                 case 'get_customer_context':
                     return this.getCustomerContext(schemaName, contactId);
+
+                // ── Vacation Rental tools ───────────────────────────
+                case 'list_properties':
+                    return this.listProperties(schemaName, args.guests, args.checkIn, args.checkOut);
+
+                case 'check_property_availability':
+                    return this.checkPropertyAvailability(schemaName, args.propertyId, args.checkIn, args.checkOut, args.guests);
+
+                case 'get_property_details':
+                    return this.getPropertyDetails(schemaName, args.propertyId);
+
+                case 'get_check_in_instructions':
+                    return this.getCheckInInstructions(schemaName, args.propertyId);
+
+                case 'create_property_booking':
+                    return this.createPropertyBooking(schemaName, contactId, args as any, conversationId);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -798,5 +816,189 @@ export class AIToolExecutorService {
                 customerName: r.customer_name,
             })),
         };
+    }
+
+    // ── Vacation Rental tools ────────────────────────────────
+
+    /**
+     * List active properties, optionally filtering by guest capacity.
+     */
+    private async listProperties(schema: string, guests?: number, checkIn?: string, checkOut?: string): Promise<any> {
+        try {
+            const conds: string[] = ['is_active = true'];
+            const params: any[] = [];
+            if (guests) {
+                params.push(guests);
+                conds.push(`max_guests >= $${params.length}`);
+            }
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, name, description, address, city, max_guests, bedrooms, bathrooms,
+                        night_price, cleaning_fee, currency, min_nights, images
+                 FROM "${schema}".properties
+                 WHERE ${conds.join(' AND ')}
+                 ORDER BY sort_order, name`,
+                ...params,
+            );
+
+            // If dates provided, filter out unavailable properties
+            let properties = rows.map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                address: p.address,
+                city: p.city,
+                maxGuests: p.max_guests,
+                bedrooms: p.bedrooms,
+                bathrooms: p.bathrooms,
+                nightPrice: Number(p.night_price || 0),
+                cleaningFee: Number(p.cleaning_fee || 0),
+                currency: p.currency || 'COP',
+                minNights: p.min_nights,
+                images: Array.isArray(p.images) ? p.images : [],
+            }));
+
+            if (checkIn && checkOut && properties.length > 0) {
+                const available: any[] = [];
+                for (const prop of properties) {
+                    try {
+                        const avail = await this.propertiesService.checkAvailability(schema, prop.id, checkIn, checkOut);
+                        if (avail.available) {
+                            available.push({ ...prop, totalPrice: avail.totalPrice, nights: avail.nights });
+                        }
+                    } catch { /* skip unavailable */ }
+                }
+                properties = available;
+            }
+
+            return { properties };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] list_properties failed: ${e.message}`);
+            return { properties: [] };
+        }
+    }
+
+    /**
+     * Check availability and pricing for a specific property + date range.
+     */
+    private async checkPropertyAvailability(
+        schema: string, propertyId: string, checkIn: string, checkOut: string, guests?: number,
+    ): Promise<any> {
+        try {
+            const avail = await this.propertiesService.checkAvailability(schema, propertyId, checkIn, checkOut);
+
+            // If guest count provided, verify capacity
+            if (guests && avail.available) {
+                const property = await this.propertiesService.getById(schema, propertyId);
+                if (property && guests > property.max_guests) {
+                    return {
+                        available: false,
+                        reason: `Property accommodates max ${property.max_guests} guests, but ${guests} requested.`,
+                    };
+                }
+            }
+
+            return avail;
+        } catch (e: any) {
+            this.logger.warn(`[Tool] check_property_availability failed: ${e.message}`);
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Full property details including amenities, rules, and pricing.
+     */
+    private async getPropertyDetails(schema: string, propertyId: string): Promise<any> {
+        try {
+            const p = await this.propertiesService.getById(schema, propertyId);
+            if (!p) return { error: 'Property not found' };
+
+            return {
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                address: p.address,
+                city: p.city,
+                maxGuests: p.max_guests,
+                bedrooms: p.bedrooms,
+                bathrooms: p.bathrooms,
+                nightPrice: Number(p.night_price || 0),
+                cleaningFee: Number(p.cleaning_fee || 0),
+                currency: p.currency || 'COP',
+                minNights: p.min_nights,
+                checkInTime: p.check_in_time,
+                checkOutTime: p.check_out_time,
+                amenities: p.amenities || [],
+                houseRules: p.house_rules,
+                images: Array.isArray(p.images) ? p.images : [],
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_property_details failed: ${e.message}`);
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Check-in instructions: door code, WiFi, parking, house rules.
+     */
+    private async getCheckInInstructions(schema: string, propertyId: string): Promise<any> {
+        try {
+            const p = await this.propertiesService.getById(schema, propertyId);
+            if (!p) return { error: 'Property not found' };
+
+            return {
+                propertyName: p.name,
+                checkInTime: p.check_in_time,
+                checkOutTime: p.check_out_time,
+                checkInInstructions: p.check_in_instructions,
+                houseRules: p.house_rules,
+                address: p.address,
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_check_in_instructions failed: ${e.message}`);
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Create a direct property booking. Checks availability first via PropertiesService.
+     */
+    private async createPropertyBooking(
+        schema: string, contactId: string,
+        args: { propertyId: string; checkIn: string; checkOut: string; guestName: string; guestPhone?: string; guests?: number },
+        conversationId?: string,
+    ): Promise<any> {
+        try {
+            const booking = await this.propertiesService.createBooking(schema, args.propertyId, {
+                contactId: contactId || null,
+                conversationId: conversationId || null,
+                guestName: args.guestName,
+                guestPhone: args.guestPhone || null,
+                guestsCount: args.guests || 1,
+                checkIn: args.checkIn,
+                checkOut: args.checkOut,
+            });
+
+            this.logger.log(`[Tool] Property booking created: ${booking.id} for ${args.guestName}`);
+
+            return {
+                success: true,
+                booking: {
+                    id: booking.id,
+                    propertyId: args.propertyId,
+                    checkIn: args.checkIn,
+                    checkOut: args.checkOut,
+                    nights: booking.nights,
+                    nightPrice: Number(booking.night_price || 0),
+                    cleaningFee: Number(booking.cleaning_fee || 0),
+                    totalPrice: Number(booking.total_price || 0),
+                    currency: booking.currency,
+                    status: booking.status,
+                    guestName: args.guestName,
+                },
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] create_property_booking failed: ${e.message}`);
+            return { error: e.message };
+        }
     }
 }

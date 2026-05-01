@@ -37,6 +37,7 @@ import {
   Boxes,
   ShoppingCart,
   Lightbulb,
+  Home,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,6 +74,7 @@ const sectionDefs: NavSectionDef[] = [
       { labelKey: "automation", href: "/admin/automation", icon: Workflow },
       { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
+      { labelKey: "properties", href: "/admin/properties", icon: Home },
       { labelKey: "catalog", href: "/admin/catalog", icon: Package },
       { labelKey: "inventory", href: "/admin/inventory", icon: Boxes },
       { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart },
@@ -131,9 +133,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
 
   const itemOrder = verticalConfig?.sidebar?.itemOrder as string[] | undefined;
 
+  const showProperties = verticalConfig?.industry === 'turismo';
+
   const sections: NavSection[] = sectionDefs.map(s => {
     const filteredItems = s.items
-      .filter(i => !hiddenItems?.includes(i.labelKey));
+      .filter(i => !hiddenItems?.includes(i.labelKey))
+      .filter(i => i.labelKey !== 'properties' || showProperties);
 
     if (itemOrder && itemOrder.length > 0) {
       filteredItems.sort((a, b) => {

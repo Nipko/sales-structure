@@ -85,7 +85,8 @@
       "featureRequests": "Sugestões",
       "settings": "Configurações",
       "tenants": "Tenants",
-      "financials": "Financeiro"
+      "financials": "Financeiro",
+      "properties": "Propriedades"
     }
   },
   "topbar": {
@@ -2939,5 +2940,39 @@
       "revoked": "Revogado",
       "error": "Erro"
     }
+  },
+  "properties": {
+    "title": "Propriedades",
+    "subtitle": "Gerencie seus anuncios e disponibilidade",
+    "addProperty": "Adicionar propriedade",
+    "noProperties": "Voce nao tem propriedades. Adicione seu primeiro anuncio.",
+    "name": "Nome",
+    "address": "Endereco",
+    "city": "Cidade",
+    "maxGuests": "Hospedes max.",
+    "bedrooms": "Quartos",
+    "bathrooms": "Banheiros",
+    "nightPrice": "Preco/noite",
+    "cleaningFee": "Taxa de limpeza",
+    "minNights": "Noites minimas",
+    "amenities": "Comodidades",
+    "calendar": "Calendario",
+    "bookings": "Reservas",
+    "feeds": "Sincronizacao iCal",
+    "checkIn": "Check-in",
+    "available": "Disponivel",
+    "booked": "Reservado",
+    "blocked": "Bloqueado (externo)",
+    "addFeed": "Adicionar feed",
+    "feedName": "Nome do feed",
+    "feedSource": "Plataforma",
+    "importUrl": "URL do calendario iCal",
+    "syncNow": "Sincronizar agora",
+    "lastSync": "Ultima sincronizacao",
+    "exportUrl": "URL de exportacao",
+    "exportUrlDesc": "Copie esta URL e cole no Airbnb/Booking para sincronizar",
+    "checkInInstructions": "Instrucoes de check-in",
+    "houseRules": "Regras da casa",
+    "saved": "Salvo"
   }
 }

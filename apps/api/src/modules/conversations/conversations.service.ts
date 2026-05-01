@@ -20,6 +20,7 @@ import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
 import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
+import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -802,6 +803,9 @@ export class ConversationsService {
         }
         if (cfgTools?.crm?.enabled === true) {
             tools = [...tools, CUSTOMER_CONTEXT_TOOL];
+        }
+        if (cfgTools?.properties?.enabled === true) {
+            tools = [...tools, ...VACATION_RENTAL_TOOLS];
         }
 
         if (bookingState.step && bookingState.step !== 'idle') {

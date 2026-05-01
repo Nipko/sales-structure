@@ -85,7 +85,8 @@
       "featureRequests": "Feature Requests",
       "settings": "Settings",
       "tenants": "Tenants",
-      "financials": "Financials"
+      "financials": "Financials",
+      "properties": "Properties"
     }
   },
   "topbar": {
@@ -2939,5 +2940,39 @@
       "revoked": "Revoked",
       "error": "Error"
     }
+  },
+  "properties": {
+    "title": "Properties",
+    "subtitle": "Manage your listings and availability",
+    "addProperty": "Add property",
+    "noProperties": "You have no properties. Add your first listing.",
+    "name": "Name",
+    "address": "Address",
+    "city": "City",
+    "maxGuests": "Max guests",
+    "bedrooms": "Bedrooms",
+    "bathrooms": "Bathrooms",
+    "nightPrice": "Price/night",
+    "cleaningFee": "Cleaning fee",
+    "minNights": "Min nights",
+    "amenities": "Amenities",
+    "calendar": "Calendar",
+    "bookings": "Bookings",
+    "feeds": "iCal Sync",
+    "checkIn": "Check-in",
+    "available": "Available",
+    "booked": "Booked",
+    "blocked": "Blocked (external)",
+    "addFeed": "Add feed",
+    "feedName": "Feed name",
+    "feedSource": "Platform",
+    "importUrl": "iCal calendar URL",
+    "syncNow": "Sync now",
+    "lastSync": "Last sync",
+    "exportUrl": "Export URL",
+    "exportUrlDesc": "Copy this URL and paste it in Airbnb/Booking to sync",
+    "checkInInstructions": "Check-in instructions",
+    "houseRules": "House rules",
+    "saved": "Saved"
   }
 }

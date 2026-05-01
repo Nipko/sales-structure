@@ -771,6 +771,20 @@ export const api = {
     getOffboardingStatus: (tenantId: string) =>
         apiGet<{ subscriptionStatus: string; currentPeriodEnd: string | null }>(`/offboarding/${tenantId}/status`),
 
+    // ─── Vacation Rental ───
+    listProperties: (tenantId: string) => apiGet(`/vacation-rental/${tenantId}/properties`),
+    createProperty: (tenantId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties`, data),
+    getProperty: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}`),
+    updateProperty: (tenantId: string, propertyId: string, data: any) => apiPut(`/vacation-rental/${tenantId}/properties/${propertyId}`, data),
+    deleteProperty: (tenantId: string, propertyId: string) => apiDelete(`/vacation-rental/${tenantId}/properties/${propertyId}`),
+    getPropertyAvailability: (tenantId: string, propertyId: string, checkIn: string, checkOut: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/availability?checkIn=${checkIn}&checkOut=${checkOut}`),
+    getPropertyCalendar: (tenantId: string, propertyId: string, month: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/calendar?month=${month}`),
+    listPropertyBookings: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`),
+    createPropertyBooking: (tenantId: string, propertyId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`, data),
+    listPropertyFeeds: (tenantId: string, propertyId: string) => apiGet(`/vacation-rental/${tenantId}/properties/${propertyId}/feeds`),
+    addPropertyFeed: (tenantId: string, propertyId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/feeds`, data),
+    syncPropertyFeed: (tenantId: string, feedId: string) => apiPost(`/vacation-rental/${tenantId}/feeds/${feedId}/sync`, {}),
+
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),
     getMrrTrend: (months = 12) => apiGet(`/financials/mrr-trend?months=${months}`),

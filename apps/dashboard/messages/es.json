@@ -85,7 +85,8 @@
       "featureRequests": "Sugerencias",
       "settings": "Configuración",
       "tenants": "Empresas",
-      "financials": "Finanzas"
+      "financials": "Finanzas",
+      "properties": "Propiedades"
     }
   },
   "topbar": {
@@ -2966,5 +2967,39 @@
       "revoked": "Revocado",
       "error": "Error"
     }
+  },
+  "properties": {
+    "title": "Propiedades",
+    "subtitle": "Gestiona tus anuncios y disponibilidad",
+    "addProperty": "Agregar propiedad",
+    "noProperties": "No tienes propiedades. Agrega tu primer anuncio.",
+    "name": "Nombre",
+    "address": "Direccion",
+    "city": "Ciudad",
+    "maxGuests": "Huespedes max.",
+    "bedrooms": "Habitaciones",
+    "bathrooms": "Banos",
+    "nightPrice": "Precio/noche",
+    "cleaningFee": "Tarifa limpieza",
+    "minNights": "Noches minimas",
+    "amenities": "Amenidades",
+    "calendar": "Calendario",
+    "bookings": "Reservas",
+    "feeds": "Sincronizacion iCal",
+    "checkIn": "Check-in",
+    "available": "Disponible",
+    "booked": "Reservado",
+    "blocked": "Bloqueado (externo)",
+    "addFeed": "Agregar feed",
+    "feedName": "Nombre del feed",
+    "feedSource": "Plataforma",
+    "importUrl": "URL del calendario iCal",
+    "syncNow": "Sincronizar ahora",
+    "lastSync": "Ultima sincronizacion",
+    "exportUrl": "URL de exportacion",
+    "exportUrlDesc": "Copia esta URL y pegala en Airbnb/Booking para sincronizar",
+    "checkInInstructions": "Instrucciones de check-in",
+    "houseRules": "Reglas de la casa",
+    "saved": "Guardado"
   }
 }

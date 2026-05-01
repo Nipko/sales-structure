@@ -284,3 +284,32 @@ Huésped (WhatsApp/Instagram)
 - Guesty adapter
 - Lodgify adapter
 - Integraciones por vertical (portales inmobiliarios, POS restaurantes, etc.)
+
+---
+
+## Implementation Status (Apr 30, 2026)
+
+### Completed
+- [x] 12 vertical definitions with 4 languages (vertical-definitions.ts)
+- [x] VerticalsModule (service + controller + module)
+- [x] bootstrapVertical() in completeOnboarding (pipeline, agent, FAQs, services)
+- [x] Prompt assembler `<vertical_context>` with LLM rule #11
+- [x] Sidebar dynamic labels + hidden items + reordering
+- [x] Dashboard KPIs dynamic per vertical
+- [x] Dashboard welcome contextual per industry
+- [x] Dashboard homepage view (agenda for clinics, leads for real estate)
+- [x] Empty states per industry on 5 pages
+- [x] Onboarding checklist adapted per industry
+- [x] useVerticalTerms() hook + propagation to 8+ pages
+- [x] Onboarding sub-type dropdown (11 industries × 3-5 sub-types)
+- [x] Vacation Rental module (properties, iCal sync, AI tools, dashboard)
+- [x] 5 AI tools for vacation rental (list, check, details, check-in, book)
+- [x] iCal import from Airbnb/Booking.com (cron every 30 min)
+- [x] iCal export public endpoint for platforms
+- [x] Properties dashboard pages (list + detail with 5 tabs)
+
+### Deferred
+- [ ] Channel manager API integrations (Hostaway, Guesty, Lodgify)
+- [ ] Real-time webhooks from Airbnb/Booking (requires partner approval)
+- [ ] More AI tools per vertical (search_properties for inmobiliaria, get_menu for restaurants)
+- [ ] Vertical-specific automation templates

@@ -114,6 +114,8 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 | **Scheduling** | appointments (CRUD, availability slots, blocked dates, conflict detection, multi-calendar, Google/Microsoft sync) |
 | **Identity** | identity (unified profiles, merge suggestions, manual merge, phone normalization) |
 | **Analytics** | analytics (Redis counters + DB), dashboard-analytics (KPIs, volume, response times, AI metrics, heatmap, anomalies, cohorts), agent-analytics, alerts, scheduled-reports, csat-trigger, compliance, audit, metrics-aggregation, bi-api |
+| **Vertical** | verticals (industry bootstrap, UI config, terminology, vertical-definitions) |
+| **Vacation Rental** | vacation-rental (properties CRUD, iCal import/export, availability, 5 AI tools) |
 | **Other** | carla (legacy, being replaced), intake (landing pages) |
 
 ## Module dependency flow
@@ -211,9 +213,14 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Prompt assembler** | `conversations/prompt-assembler.service.ts` (3-layer + safety guardrails) |
 | **Identity manual merge** | `identity/identity.controller.ts` (POST manual-merge) |
 | **Pipeline stages** | `crm/crm.controller.ts` (CRUD pipeline-stages endpoints) |
-| **Vertical definitions** | `verticals/vertical-definitions.ts` (12 industry configs with 4 languages) |
+| **Vertical definitions** | `verticals/vertical-definitions.ts` (12 industries × 4 languages with sub-types) |
 | **Vertical service** | `verticals/verticals.service.ts` (bootstrapVertical, getVerticalConfig) |
 | **Vertical terms hook** | `dashboard/src/hooks/useVerticalTerms.ts` |
+| **Properties service** | `vacation-rental/properties.service.ts` (CRUD + availability anti-double-booking) |
+| **iCal sync** | `vacation-rental/ical-sync.service.ts` (import/export .ics + 30-min cron) |
+| **Scoring config page** | `dashboard/src/app/admin/settings/scoring-config/page.tsx` |
+| **Properties pages** | `dashboard/src/app/admin/properties/` (list + detail with 5 tabs) |
+| **Disconnect modal** | `dashboard/src/components/ui/disconnect-channel-modal.tsx` |
 
 ## Dashboard pages (60+)
 
@@ -228,9 +235,10 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Analytics** | Analytics V2 (8 tabs: Overview/AI & Bot/Automation/Campaigns/Channels/CSAT/Anomalies/Cohorts), Agent Performance (legacy 4 tabs) |
 | **Channels** | Overview, WhatsApp Setup, Instagram Setup (OAuth popup + callback), Messenger Setup (FB SDK Login), Telegram Setup, SMS/Twilio Setup |
 | **Identity** | Merge Suggestions (approve/reject), Manual Merge (cross-channel contacts) |
-| **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports**, **Billing** (plan, countdown, actions, payment history) |
+| **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports**, **Billing** (plan, countdown, actions, payment history), **Scoring Config** (weight sliders, keyword tags, decay toggle) |
 | **Scheduling** | Appointments (week/day calendar, agenda, services + staff + modality, config + multi-calendar, analytics), Public Booking (/book/:tenantSlug) |
 | **Operations** | Broadcast, Inventory, Orders, Compliance, Knowledge Base |
+| **Properties** | Properties List (/admin/properties), Property Detail (/admin/properties/[id] — 5 tabs: Info/Calendar/Bookings/iCal Feeds/Check-in). Sidebar visible only when vertical = turismo |
 | **Super Admin** | Tenants Hub (6 tabs: Overview/Onboarding/Offboarding/Billing/Usage/Platform + detail page + impersonation), Financials (5 tabs: Overview/Revenue/Customers/Costs/Settings) |
 | **Suspended** | SuspendedScreen (full-page block for suspended tenants) |
 | **Public** | `/kb/[tenantSlug]` (public help center, light theme, no auth) |
@@ -289,6 +297,7 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | `5,35 * * * *` | AppointmentRemindersService | Auto-mark no-shows + send follow-up |
 | `20 * * * *` | AppointmentRemindersService | Auto-complete confirmed appointments (ended 2+ hours ago) |
 | `*/2 * * * *` | AgentAvailabilityService | Escalate stale handoffs (>5 min no response → supervisor) |
+| `*/30 * * * *` | IcalSyncService | Sync all active iCal feeds across tenants (import Airbnb/Booking.com blocks) |
 | daily | BillingService | Trial ending soon (3 days before trial end) |
 | hourly | ReconciliationProcessor | Past_due sweep + daily drift detection |
 
@@ -306,6 +315,7 @@ lock:conv:{conversationId}                                — Conversation proce
 offboard:past_due:{tenantId}                              — Past-due timer start (30d TTL, 7d grace)
 tenant_plan:{tenantId}                                    — Cached plan info (invalidated on offboard/reactivate)
 handoff:{tenantId}:{conversationId}                       — Handoff state (reason, startedAt, assignedTo) 24h TTL
+vertical:{tenantId}                                       — Vertical config cache (10min TTL)
 ```
 
 ### Tenant Schema Tables (Analytics)
@@ -325,6 +335,10 @@ calendar_integrations  — External calendar connections (Google/Microsoft), lab
 services               — Bookable services (+ location_type: in_person/online/hybrid, location_address, meeting_link)
 pipeline_stages        — Configurable pipeline stages (name, slug, color, position, probability, sla_hours, is_terminal)
 scoring_config         — Lead scoring configuration (weights JSONB, purchase_keywords, decay settings)
+properties             — Vacation rental properties (name, description, max_guests, amenities JSONB, ical_token)
+ical_blocks            — Blocked periods imported from external iCal feeds (property_id, start_date, end_date, source_uid, summary)
+ical_feeds             — iCal feed URLs to import (property_id, url, platform, last_synced_at)
+property_bookings      — AI-created bookings for vacation rentals (property_id, contact_id, check_in, check_out, status)
 ```
 
 ### Global Prisma Tables (Billing & Finance)
@@ -373,8 +387,8 @@ audit_logs                 — Offboarding and billing audit trail
 
 ## Super Admin Dashboard (Apr 2026)
 
-- **Tenants Hub** (`/admin/tenants`): 6 tabs — Overview (all tenants + KPIs), Onboarding (new tenants), Offboarding (cancelled/suspended), Billing (subscription status), Usage (platform metrics), Platform (health)
-- **Tenant Detail** (`/admin/tenants/[tenantId]`): 4 tabs — Info, Users, Channels, Billing. Edit tenant, suspend, impersonate
+- **Tenants Hub** (`/admin/tenants`): 6 tabs — Overview (all tenants + KPIs + vertical badge + health dot columns), Onboarding (new tenants), Offboarding (cancelled/suspended), Billing (subscription status), Usage (platform metrics), Platform (health). Overview shows 6 platform KPIs: tenants, users, active, messagesToday, pendingHandoffs, vertical distribution
+- **Tenant Detail** (`/admin/tenants/[tenantId]`): 6 tabs — Info, Users, Channels, Billing, Engagement, AI Config. Edit tenant, suspend, impersonate
 - **Impersonation**: `POST /auth/impersonate/:tenantId` generates 1h tokens with `isImpersonation: true` + `impersonatedBy` in JWT. Dashboard shows amber `ImpersonationBanner` with "Exit" button. LocalStorage-based state preservation
 - **Suspended Screen**: Full-page block (`SuspendedScreen` component) shown when tenant `isActive: false`. Only action: logout
 - **Financials** (`/admin/financials`): 5 tabs — Overview (KPIs: MRR, ARR, ARPU, churn, LTV), Revenue (trend + payments), Customers (churn trend + profitability), Costs (LLM + infra), Settings (infra cost entry, exchange rates, manual snapshot)
@@ -539,27 +553,85 @@ Response when triggered: "I'm not able to help with that. Is there anything else
 - **Messenger profile photos**: Fetched via FB Graph API (`/me/picture`), displayed alongside page name
 - **BroadcastChannel OAuth sync**: OAuth popup results for IG and Messenger propagated to parent dashboard tab via BroadcastChannel API (no polling needed)
 
-## Vertical Adaptation System (Apr 30, 2026)
+## Vertical Adaptation System (Apr 29-30, 2026)
 
-- **Purpose**: When a tenant selects their industry during onboarding, the entire platform adapts automatically
+- **Purpose**: When a tenant selects their industry during onboarding, the entire platform adapts automatically — UI labels, AI persona, pipeline stages, FAQs, services, and sidebar navigation
 - **Module**: `apps/api/src/modules/verticals/` — VerticalsService, VerticalsController, vertical-definitions.ts
-- **12 industries**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, otro
-- **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia, farmacia)
+- **12 industries × 4 languages**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, otro. Each definition carries es/en/pt/fr term sets
+- **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia, farmacia). Sub-type refines bootstrap content
 - **Bootstrap on onboarding**: `completeOnboarding()` calls `bootstrapVertical(tenantId, industry, subType, lang)` which:
-  1. Seeds pipeline stages (5-7 per industry)
-  2. Patches default AI agent (name, persona, forbidden topics, handoff triggers)
-  3. Creates 5 FAQs per industry
-  4. Creates 3 services for booking-enabled industries
-- **Prompt assembler**: Injects `<vertical_context>` XML with customer_noun, transaction_noun, service_noun into Layer 3 turn
-- **Contract rule #11**: LLM uses vertical terminology naturally (paciente vs cliente)
-- **Dashboard adaptation**: 
-  - AuthContext stores verticalConfig from GET /verticals/:tenantId
-  - AppSidebar: dynamic label overrides + hidden items per industry
-  - useVerticalTerms() hook for locale-aware terminology propagation
-  - Contacts/Pipeline/Dashboard pages use vertical terminology
-- **Config storage**: tenant.settings.verticalConfig JSONB (snapshot at creation time)
+  1. Seeds 5-7 pipeline stages per industry (e.g., salud: nuevo_paciente → consulta_agendada → en_tratamiento → seguimiento → alta)
+  2. Patches default AI agent (name, persona, language, forbidden topics, handoff triggers)
+  3. Creates 5 seed FAQs tailored to the industry
+  4. Creates 3 seed bookable services for booking-enabled industries
+- **Prompt assembler — `<vertical_context>` injection**: Layer 3 turn context receives an XML block with `customer_noun`, `transaction_noun`, `service_noun` so the LLM uses correct terminology without hallucinating
+- **Contract rule #11**: "Use the vertical terminology naturally (paciente, no cliente; propiedad, no producto)"
+- **Dashboard visual adaptation**:
+  - `AuthContext` fetches and stores `verticalConfig` from `GET /verticals/:tenantId` on login
+  - `AppSidebar`: dynamic label overrides (e.g., CRM → "Pacientes" for salud) + hidden items per industry (no Inventory for clinics; Propiedades visible only for turismo)
+  - `useVerticalTerms()` hook returns locale-aware terminology for use in page copy
+  - Homepage view changes per vertical: agenda-first for clinics, lead funnel for inmobiliaria
+  - Empty states per industry ("Cuando llegue tu primer paciente...", "Tu primer inmueble aparecerá aquí...")
+  - Onboarding checklist step labels adapt ("Configura tu asistente médico" vs "Configura tu agente de ventas")
+  - Contextual welcome message on dashboard ("Bienvenido a tu consultorio virtual")
+- **Config storage**: `tenant.settings.verticalConfig` JSONB column — snapshot stored at onboarding completion
 - **Cache**: Redis key `vertical:{tenantId}` with 10min TTL
-- **Strategy doc**: docs/vertical-strategy.md (complete research + roadmap)
+- **Strategy doc**: `docs/vertical-strategy.md` (complete research + roadmap)
+
+## Vacation Rental Module (Apr 30, 2026)
+
+- **Module**: `apps/api/src/modules/vacation-rental/` — VacationRentalModule, PropertiesService, IcalSyncService, VacationRentalController
+- **4 tenant-schema tables**: `properties`, `ical_blocks`, `ical_feeds`, `property_bookings` (see Tenant Schema Tables above)
+- **Properties CRUD**: Plan-gated limits (starter:2, pro:10, enterprise:50, custom:unlimited). Fields: name, description, max_guests, amenities JSONB, check-in instructions, ical_token (random UUID for public export URL)
+- **Availability check**: `checkAvailability(propertyId, checkIn, checkOut)` merges `ical_blocks` (external) + `property_bookings` (internal) to prevent double-booking
+- **iCal Import**: `IcalSyncService` parses Airbnb/Booking.com `.ics` feeds using `node-ical`. Upserts blocks by `source_uid`. Cron `*/30 * * * *` syncs all active feeds across tenants
+- **iCal Export**: Generates `.ics` using `ical-generator`. Includes both `ical_blocks` (external blocks) and confirmed `property_bookings`
+- **Public iCal endpoint**: `GET /public/ical/:tenantSlug/:propertyId/:token/calendar.ics` — no auth, token is `properties.ical_token`. Used by Airbnb/Booking.com to subscribe to the property calendar
+- **5 AI agent tools** (registered when `config.tools.vacationRental.enabled`):
+  - `list_properties` — list all properties with occupancy status
+  - `check_property_availability` — check dates for a specific property
+  - `get_property_details` — full property info (amenities, rules, pricing)
+  - `get_check_in_instructions` — retrieves check-in instructions for confirmed guest
+  - `create_property_booking` — creates a booking after guest confirms dates + details
+- **Dashboard pages**: `/admin/properties` (list with plan-limit badge) + `/admin/properties/[id]` (5 tabs: Info, Calendar, Bookings, iCal Feeds, Check-in Instructions)
+- **Sidebar visibility**: "Propiedades" menu item visible only when `verticalConfig.industry === 'turismo'`
+- **NPM packages**: `node-ical` (iCal parser) + `ical-generator` (iCal writer)
+
+## Super Admin Enhancements (Apr 29-30, 2026)
+
+- **Tenant engagement endpoint**: `GET /tenants/:id/engagement` returns messages 7d/30d, active conversations, handoffs triggered, agents count, FAQs count, services count, health score (0-100)
+- **Health score formula** (0-100):
+  - Channels connected (0-20): 20 if ≥1 channel active
+  - Agent configured (0-20): 20 if agent has persona + model set
+  - FAQs (0-15): 8 if ≥1 FAQ, 15 if ≥5 FAQs
+  - Services (0-10): 10 if ≥1 service configured
+  - Activity (0-35): 35 if messages in last 7d, 20 if in last 30d, 5 if only historic
+- **Tenant Detail expanded to 6 tabs**: Info, Users, Channels, Billing, Engagement (health score + activity metrics), AI Config (agent personas + model view)
+- **Tenants overview enhancements**: Vertical badge column (industry pill) + health dot column (green/yellow/red based on score)
+- **Platform KPIs** on overview: 6 cards — total tenants, total users, active tenants (msg last 30d), messagesToday (cross-schema), pendingHandoffs (cross-schema), vertical distribution (pie)
+- **Cross-tenant aggregation**: `getPlatformStats()` iterates all active tenant schemas to aggregate messages + handoffs — used for platform KPIs and super admin overview
+
+## Frontend Features Completed (Apr 30, 2026)
+
+- **Scoring Config settings page** (`/admin/settings/scoring-config`): weight sliders for 5 scoring factors (engagement, intent, recency, stage, profile completeness), purchase keyword tag input, decay toggle with decay_days + decay_factor inputs. Calls GET/POST `/crm/scoring-config/:tenantId`
+- **AI Insights card on lead detail**: Collapsible panel on lead detail page, lazy-loaded on expand. Calls `GET /crm/leads/:tenantId/:leadId/insight`. Shows: summary, recommended action, risk level, top signals. Skeleton while loading
+- **Deal approval UI on pipeline kanban**: Pending-approval badge on opportunity cards, approve/reject buttons visible to supervisors/admins. Terminal stage interception: moving a card to a terminal stage triggers approval-request flow instead of direct move
+- **Advanced filter drawer for contacts**: Slide-out drawer panel with score min/max range sliders, creation date range pickers, tags multi-select + active filter chips. Merges with existing stage/search filters
+- **Skill tags editor on users page**: Inline tag editor on user rows with 8 suggested skills (ventas, soporte, quejas, técnico, general, facturación, citas, cobranza). Calls `PUT /auth/users/:userId/skills` to persist `users.skill_tags` array
+- **DisconnectChannelModal** (`dashboard/src/components/ui/disconnect-channel-modal.tsx`): Unified custom confirmation modal replacing browser `confirm()` on all 5 channel disconnect actions. Shows channel name, warning text, confirm/cancel buttons with destructive styling
+- **Channel UX cleanup**: Removed internal webhook config sections from WhatsApp, Instagram, and Messenger setup pages (not needed by users). Added explicit "Disconnect WhatsApp" button to WhatsApp setup page (was missing)
+
+## Production Resilience Fix (Apr 29, 2026)
+
+Root cause: 3 Prisma instances (API main + API worker + WhatsApp) each defaulting to ~10 DB connections exceeded PgBouncer's pool of 25, causing `connection pool timeout` errors under load.
+
+- **PgBouncer tuned**: pool_size 25→50, max_client_conn 500→1000, query_timeout 30→120s
+- **PostgreSQL tuned**: max_connections=200 (was 100), work_mem=8MB, effective_cache_size=512MB
+- **Prisma connection limits set explicitly**: API main=8, API worker=8, WhatsApp=4 (total ≤20, leaves headroom for migrations/admin)
+- **DB retry with backoff**: Both API and WhatsApp `PrismaService` now retry failed connections up to 5 attempts with exponential backoff before throwing
+- **Redis connection leak fixes**: `WebhooksService` (WhatsApp) and `HealthController` now properly release Redis client instances after use
+- **NurturingService fixes**: Transaction timeout 15s→30s + added `updated_at > (now() - 73h)` pre-filter to avoid scanning full conversations table
+- **FeatureRequestsService column fix**: Raw SQL referenced `content` column (Prisma alias) instead of correct DB column name `content_text`
 
 ## Verification before pushing
 

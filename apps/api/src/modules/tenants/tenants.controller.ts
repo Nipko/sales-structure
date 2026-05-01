@@ -82,7 +82,29 @@ export class TenantsController {
         @Query('status') status?: string,
     ) {
         const result = await this.tenantsService.findAll(page, limit, status);
-        return { success: true, data: result.tenants, meta: { page: result.page, limit: result.limit, total: result.total } };
+
+        // Enrich each tenant with vertical + healthScore from settings JSONB
+        const enriched = result.tenants.map((t: any) => {
+            const settings = (t as any).settings || {};
+            const vertical: string | null = settings.verticalConfig?.industry || null;
+
+            // Lightweight health score from counts already in the response
+            const channelBonus = (t._count?.channelAccounts || 0) > 0 ? 20 : 0;
+            // Remaining factors default to 0 for the list view (detailed via engagement endpoint)
+            const healthScore = channelBonus;
+
+            return { ...t, vertical, healthScore };
+        });
+
+        return { success: true, data: enriched, meta: { page: result.page, limit: result.limit, total: result.total } };
+    }
+
+    @Get(':id/engagement')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Engagement metrics for a specific tenant' })
+    async getTenantEngagement(@Param('id') id: string) {
+        const data = await this.tenantsService.getTenantEngagement(id);
+        return { success: true, data };
     }
 
     @Get(':id')

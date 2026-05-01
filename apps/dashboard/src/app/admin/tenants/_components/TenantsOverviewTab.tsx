@@ -28,6 +28,16 @@ const statusColor: Record<string, string> = {
   suspended: "bg-red-500/10 text-red-600 dark:text-red-400",
 };
 
+const industryColor: Record<string, string> = {
+  turismo: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  restaurante: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+  ecommerce: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+  servicios: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  salud: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+  educacion: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  otro: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
+};
+
 const planColor: Record<string, string> = {
   starter: "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300",
   professional: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
@@ -122,6 +132,8 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
             <thead>
               <tr className="border-b border-neutral-200 dark:border-neutral-800">
                 <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.company")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("engagement.vertical")}</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("engagement.healthScore")}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.planCol")}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.statusCol")}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.periodEnd")}</th>
@@ -145,6 +157,27 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                           <div className="text-xs text-neutral-500 dark:text-neutral-400">{tenant.slug}</div>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {tenant.industry && tenant.industry !== "N/A" ? (
+                        <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", industryColor[tenant.industry] || industryColor.otro)}>
+                          {t(`industries.${tenant.industry}`, { defaultValue: tenant.industry })}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-neutral-400">--</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {(() => {
+                        const hasChannels = tenant.channels > 0;
+                        const hasUsers = tenant.users > 1;
+                        const color = hasChannels && hasUsers
+                          ? "bg-emerald-500"
+                          : hasChannels || hasUsers
+                            ? "bg-amber-500"
+                            : "bg-red-500";
+                        return <span className={cn("inline-block w-2.5 h-2.5 rounded-full", color)} />;
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", planColor[tenant.plan] || planColor.starter)}>

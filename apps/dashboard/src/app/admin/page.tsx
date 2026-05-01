@@ -82,7 +82,13 @@ export default function AdminDashboard() {
     const [activity, setActivity] = useState<any[]>([]);
     const [modelUsage, setModelUsage] = useState<any[]>([]);
     const [isLive, setIsLive] = useState(false);
-    const [platformStats, setPlatformStats] = useState({ totalTenants: 0, totalUsers: 0 });
+    const [platformStats, setPlatformStats] = useState({
+        totalTenants: 0,
+        totalUsers: 0,
+        activeTenants: 0,
+        trialingTenants: 0,
+        verticalDistribution: [] as { industry: string; count: number }[],
+    });
 
     // Check if setup wizard needs to be shown
     useEffect(() => {
@@ -103,8 +109,22 @@ export default function AdminDashboard() {
             if (user?.role !== "super_admin") return;
             const result = await api.getTenants();
             if (result.success && Array.isArray(result.data)) {
-                const totalUsers = result.data.reduce((s: number, t: any) => s + (t._count?.users || 0), 0);
-                setPlatformStats({ totalTenants: result.data.length, totalUsers });
+                const tenants = result.data;
+                const totalUsers = tenants.reduce((s: number, t: any) => s + (t._count?.users || 0), 0);
+                const activeTenants = tenants.filter((t: any) => t.isActive).length;
+                const trialingTenants = tenants.filter((t: any) => t.subscriptionStatus === 'trialing').length;
+
+                // Compute vertical/industry distribution
+                const industryMap: Record<string, number> = {};
+                tenants.forEach((t: any) => {
+                    const ind = t.industry || 'other';
+                    industryMap[ind] = (industryMap[ind] || 0) + 1;
+                });
+                const verticalDistribution = Object.entries(industryMap)
+                    .map(([industry, count]) => ({ industry, count }))
+                    .sort((a, b) => b.count - a.count);
+
+                setPlatformStats({ totalTenants: tenants.length, totalUsers, activeTenants, trialingTenants, verticalDistribution });
             }
         }
         loadPlatformStats();
@@ -174,7 +194,8 @@ export default function AdminDashboard() {
             {user?.role === "super_admin" && (
                 <div className="mb-8">
                     <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("platform")}</h2>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {/* Total Tenants */}
                         <Link href="/admin/tenants">
                             <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors cursor-pointer">
                                 <CardContent className="pt-0">
@@ -190,6 +211,8 @@ export default function AdminDashboard() {
                                 </CardContent>
                             </Card>
                         </Link>
+
+                        {/* Total Users */}
                         <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
@@ -203,20 +226,82 @@ export default function AdminDashboard() {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* Active Tenants */}
                         <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('systemStatus')}</p>
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                                            <span className="text-sm font-semibold text-emerald-500">{t('online')}</span>
-                                        </div>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('activeTenants')}</p>
+                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">{platformStats.activeTenants}</p>
+                                        {platformStats.trialingTenants > 0 && (
+                                            <p className="mt-1 text-xs text-amber-500">
+                                                {platformStats.trialingTenants} {t('trialing')}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10">
                                         <CheckCircle2 size={22} className="text-emerald-500" />
                                     </div>
                                 </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Messages Today — TODO: requires backend endpoint (GET /tenants/stats or similar) */}
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
+                            <CardContent className="pt-0">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('messagesToday')}</p>
+                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">--</p>
+                                        <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{t('comingSoon')}</p>
+                                    </div>
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/10">
+                                        <MessageSquare size={22} className="text-violet-500" />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Pending Handoffs — TODO: requires backend endpoint */}
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
+                            <CardContent className="pt-0">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('pendingHandoffs')}</p>
+                                        <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100">--</p>
+                                        <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{t('comingSoon')}</p>
+                                    </div>
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/10">
+                                        <Activity size={22} className="text-amber-500" />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Vertical Distribution */}
+                        <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
+                            <CardContent className="pt-0">
+                                <div className="flex items-start justify-between mb-3">
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('verticalDistribution')}</p>
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/10">
+                                        <TrendingUp size={22} className="text-rose-500" />
+                                    </div>
+                                </div>
+                                {platformStats.verticalDistribution.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                        {platformStats.verticalDistribution.map((v) => (
+                                            <div key={v.industry} className="flex items-center justify-between text-xs">
+                                                <span className="capitalize text-neutral-700 dark:text-neutral-300">
+                                                    {v.industry.replace(/_/g, ' ')}
+                                                </span>
+                                                <span className="font-semibold text-neutral-900 dark:text-neutral-100">{v.count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-neutral-400 dark:text-neutral-500">{t('noData')}</p>
+                                )}
                             </CardContent>
                         </Card>
                     </div>

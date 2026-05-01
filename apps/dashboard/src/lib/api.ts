@@ -404,6 +404,9 @@ export const api = {
     deactivateTenant: (id: string) =>
         apiPost(`/tenants/${id}/deactivate`, {}),
 
+    getTenantEngagement: (tenantId: string) =>
+        apiGet(`/tenants/${tenantId}/engagement`),
+
     // --- Platform Stats (super_admin) ---
     getPlatformStats: () => apiGet("/tenants/stats"),
     getPlatformBilling: () => apiGet("/tenants/platform-billing"),

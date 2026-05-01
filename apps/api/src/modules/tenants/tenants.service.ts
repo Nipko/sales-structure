@@ -123,6 +123,7 @@ export class TenantsService {
                     subscriptionStatus: true,
                     trialEndsAt: true,
                     currentPeriodEnd: true,
+                    settings: true,
                     createdAt: true,
                     updatedAt: true,
                     _count: {
@@ -430,6 +431,149 @@ export class TenantsService {
         );
 
         return usageData;
+    }
+
+    /**
+     * Engagement metrics for a specific tenant (super_admin).
+     */
+    async getTenantEngagement(tenantId: string) {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { id: true, schemaName: true, settings: true },
+        });
+        if (!tenant) {
+            throw new NotFoundException(`Tenant ${tenantId} not found`);
+        }
+
+        const schema = tenant.schemaName;
+        const now = new Date();
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
+
+        // Activity metrics — each in its own try/catch for resilience
+        let messages7d = 0;
+        let messages30d = 0;
+        let conversationsActive = 0;
+        let handoffsPending = 0;
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM messages WHERE created_at >= $1`,
+                [sevenDaysAgo],
+            );
+            messages7d = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: messages7d query failed for ${tenantId}: ${e.message}`);
+        }
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM messages WHERE created_at >= $1`,
+                [thirtyDaysAgo],
+            );
+            messages30d = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: messages30d query failed for ${tenantId}: ${e.message}`);
+        }
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM conversations WHERE status = 'active'`,
+                [],
+            );
+            conversationsActive = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: conversationsActive query failed for ${tenantId}: ${e.message}`);
+        }
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM conversations WHERE status = 'waiting_human'`,
+                [],
+            );
+            handoffsPending = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: handoffsPending query failed for ${tenantId}: ${e.message}`);
+        }
+
+        // Configuration completeness
+        let agentsCount = 0;
+        let faqsCount = 0;
+        let servicesCount = 0;
+        let pipelineStagesCount = 0;
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM agent_personas`,
+                [],
+            );
+            agentsCount = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: agentsCount query failed for ${tenantId}: ${e.message}`);
+        }
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM faqs`,
+                [],
+            );
+            faqsCount = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: faqsCount query failed for ${tenantId}: ${e.message}`);
+        }
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM services`,
+                [],
+            );
+            servicesCount = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: servicesCount query failed for ${tenantId}: ${e.message}`);
+        }
+
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS count FROM pipeline_stages`,
+                [],
+            );
+            pipelineStagesCount = rows[0]?.count || 0;
+        } catch (e) {
+            this.logger.warn(`Engagement: pipelineStagesCount query failed for ${tenantId}: ${e.message}`);
+        }
+
+        // Channel accounts from global table
+        const channelsConnected = await this.prisma.channelAccount.count({
+            where: { tenantId, isActive: true },
+        });
+
+        // Vertical info from tenant.settings JSONB
+        const settings = (tenant.settings as any) || {};
+        const vertical: string | null = settings.verticalConfig?.industry || null;
+        const subType: string | null = settings.verticalConfig?.subType || null;
+
+        // Health score calculation
+        const channelBonus = channelsConnected > 0 ? 20 : 0;
+        const agentBonus = agentsCount > 0 ? 20 : 0;
+        const faqBonus = faqsCount >= 3 ? 15 : (faqsCount > 0 ? 8 : 0);
+        const serviceBonus = servicesCount > 0 ? 10 : 0;
+        const activityBonus = messages7d > 0 ? 35 : (messages30d > 0 ? 15 : 0);
+        const healthScore = channelBonus + agentBonus + faqBonus + serviceBonus + activityBonus;
+
+        return {
+            messages7d,
+            messages30d,
+            conversationsActive,
+            handoffsPending,
+            agentsCount,
+            faqsCount,
+            servicesCount,
+            channelsConnected,
+            pipelineStagesCount,
+            vertical,
+            subType,
+            healthScore,
+        };
     }
 
     /**

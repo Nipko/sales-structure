@@ -10,7 +10,8 @@ import { TabNav } from "@/components/ui/tab-nav";
 import Link from "next/link";
 import {
   Building2, Info, Users, Radio, CreditCard, ChevronRight, KeyRound,
-  X, CheckCircle, Edit,
+  X, CheckCircle, Edit, Activity, Cpu, MessageSquare, Headphones,
+  Bot, HelpCircle, CalendarDays, Plug, Tag,
 } from "lucide-react";
 
 interface TenantDetail {
@@ -46,7 +47,33 @@ interface ChannelAccount {
   createdAt: string;
 }
 
-type TabId = "info" | "users" | "channels" | "billing";
+interface EngagementData {
+  healthScore: number;
+  messages7d: number;
+  messages30d: number;
+  activeConversations: number;
+  pendingHandoffs: number;
+  agentsCount: number;
+  faqsCount: number;
+  servicesCount: number;
+  channelsConnected: number;
+  industry: string;
+  subType: string;
+  agents: {
+    id: string;
+    name: string;
+    templateName?: string;
+    channels: string[];
+    isDefault: boolean;
+  }[];
+  pipelineStages: {
+    name: string;
+    color: string;
+    position: number;
+  }[];
+}
+
+type TabId = "info" | "users" | "channels" | "billing" | "engagement" | "aiConfig";
 
 const statusColor: Record<string, string> = {
   active: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
@@ -90,6 +117,9 @@ export default function TenantDetailPage() {
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [channels, setChannels] = useState<ChannelAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [engagement, setEngagement] = useState<EngagementData | null>(null);
+  const [engagementLoading, setEngagementLoading] = useState(false);
+  const [engagementLoaded, setEngagementLoaded] = useState(false);
 
   // Password reset
   const [resetUser, setResetUser] = useState<TenantUser | null>(null);
@@ -145,6 +175,23 @@ export default function TenantDetailPage() {
     });
   }, [tenantId]);
 
+  // Lazy-load engagement data when tab is selected
+  useEffect(() => {
+    if ((activeTab === "engagement" || activeTab === "aiConfig") && !engagementLoaded && tenantId) {
+      setEngagementLoading(true);
+      api.getTenantEngagement(tenantId).then((res: any) => {
+        if (res.success && res.data) {
+          setEngagement(res.data);
+        }
+        setEngagementLoaded(true);
+        setEngagementLoading(false);
+      }).catch(() => {
+        setEngagementLoaded(true);
+        setEngagementLoading(false);
+      });
+    }
+  }, [activeTab, engagementLoaded, tenantId]);
+
   const handleResetPassword = async () => {
     if (!resetUser || !newPassword || newPassword.length < 6) return;
     setResettingPassword(true);
@@ -168,6 +215,8 @@ export default function TenantDetailPage() {
     { id: "users" as const, label: t("detail.users"), icon: Users },
     { id: "channels" as const, label: t("detail.channels"), icon: Radio },
     { id: "billing" as const, label: t("detail.billing"), icon: CreditCard },
+    { id: "engagement" as const, label: t("tabs.engagement"), icon: Activity },
+    { id: "aiConfig" as const, label: t("tabs.aiConfig"), icon: Cpu },
   ];
 
   const status = tenant?.subscriptionStatus || "active";
@@ -353,6 +402,210 @@ export default function TenantDetailPage() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ENGAGEMENT TAB */}
+      {!loading && activeTab === "engagement" && (
+        <div className="space-y-6">
+          {engagementLoading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          {!engagementLoading && engagement && (
+            <>
+              {/* Health Score + Industry */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 flex flex-col items-center justify-center">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("engagement.healthScore")}</p>
+                  <div className={cn(
+                    "w-24 h-24 rounded-full border-4 flex items-center justify-center",
+                    engagement.healthScore >= 60
+                      ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                      : engagement.healthScore >= 30
+                        ? "border-amber-500 text-amber-600 dark:text-amber-400"
+                        : "border-red-500 text-red-600 dark:text-red-400"
+                  )}>
+                    <span className="text-3xl font-semibold tabular-nums">{engagement.healthScore}</span>
+                  </div>
+                  <p className={cn(
+                    "text-xs font-medium mt-2",
+                    engagement.healthScore >= 60
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : engagement.healthScore >= 30
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-red-600 dark:text-red-400"
+                  )}>
+                    {engagement.healthScore >= 60
+                      ? t("engagement.healthy")
+                      : engagement.healthScore >= 30
+                        ? t("engagement.needsAttention")
+                        : t("engagement.dormant")}
+                  </p>
+                </div>
+
+                <div className="lg:col-span-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{t("engagement.vertical")}</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {engagement.industry && (
+                      <span className="px-3 py-1 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                        {t(`industries.${engagement.industry}`, { defaultValue: engagement.industry })}
+                      </span>
+                    )}
+                    {engagement.subType && (
+                      <span className="px-3 py-1 rounded-md text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                        {engagement.subType}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">{t("engagement.subType")}</p>
+                </div>
+              </div>
+
+              {/* Activity KPIs */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { label: t("engagement.messages7d"), value: engagement.messages7d, icon: MessageSquare, color: "text-blue-500", bg: "bg-blue-500/10" },
+                  { label: t("engagement.messages30d"), value: engagement.messages30d, icon: MessageSquare, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+                  { label: t("engagement.activeConversations"), value: engagement.activeConversations, icon: Activity, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                  { label: t("engagement.pendingHandoffs"), value: engagement.pendingHandoffs, icon: Headphones, color: "text-amber-500", bg: "bg-amber-500/10" },
+                ].map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <div key={kpi.label} className="flex items-start justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                      <div>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">{kpi.label}</p>
+                        <p className="text-2xl font-semibold tabular-nums">{kpi.value}</p>
+                      </div>
+                      <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", kpi.bg)}>
+                        <Icon size={20} className={kpi.color} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Configuration KPIs */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { label: t("engagement.agents"), value: engagement.agentsCount, icon: Bot, color: "text-purple-500", bg: "bg-purple-500/10" },
+                  { label: t("engagement.faqs"), value: engagement.faqsCount, icon: HelpCircle, color: "text-cyan-500", bg: "bg-cyan-500/10" },
+                  { label: t("engagement.services"), value: engagement.servicesCount, icon: CalendarDays, color: "text-pink-500", bg: "bg-pink-500/10" },
+                  { label: t("engagement.channels"), value: engagement.channelsConnected, icon: Plug, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                ].map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <div key={kpi.label} className="flex items-start justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                      <div>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">{kpi.label}</p>
+                        <p className="text-2xl font-semibold tabular-nums">{kpi.value}</p>
+                      </div>
+                      <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", kpi.bg)}>
+                        <Icon size={20} className={kpi.color} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {!engagementLoading && !engagement && engagementLoaded && (
+            <div className="py-12 text-center text-neutral-500 text-sm">{tc("noResults")}</div>
+          )}
+        </div>
+      )}
+
+      {/* AI CONFIG TAB */}
+      {!loading && activeTab === "aiConfig" && (
+        <div className="space-y-6">
+          {engagementLoading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          {!engagementLoading && engagement && (
+            <>
+              {/* Vertical info */}
+              {engagement.industry && (
+                <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{t("engagement.vertical")}</h3>
+                  <span className="px-3 py-1 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                    {t(`industries.${engagement.industry}`, { defaultValue: engagement.industry })}
+                  </span>
+                </div>
+              )}
+
+              {/* Agents list */}
+              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("engagement.agents")}</h3>
+                {engagement.agents.length === 0 ? (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{tc("noResults")}</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {engagement.agents.map((agent) => (
+                      <div
+                        key={agent.id}
+                        className="flex items-start gap-3 p-3 rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50"
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
+                          <Bot size={18} className="text-purple-500" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">{agent.name}</span>
+                            {agent.isDefault && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          {agent.templateName && (
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{agent.templateName}</p>
+                          )}
+                          {agent.channels.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {agent.channels.map((ch) => (
+                                <span
+                                  key={ch}
+                                  className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", channelColors[ch] || channelColors.sms)}
+                                >
+                                  {ch}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pipeline stages */}
+              {engagement.pipelineStages.length > 0 && (
+                <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("engagement.pipelineStages")}</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {engagement.pipelineStages
+                      .sort((a, b) => a.position - b.position)
+                      .map((stage, i) => (
+                        <span
+                          key={i}
+                          className="px-3 py-1.5 rounded-full text-xs font-medium text-white"
+                          style={{ backgroundColor: stage.color || "#6c5ce7" }}
+                        >
+                          {stage.name}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          {!engagementLoading && !engagement && engagementLoaded && (
+            <div className="py-12 text-center text-neutral-500 text-sm">{tc("noResults")}</div>
+          )}
         </div>
       )}
 

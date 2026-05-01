@@ -15,6 +15,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslations } from "next-intl";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,9 +37,12 @@ const modelBarColors = [
 export default function AdminDashboard() {
     const { user } = useAuth();
     const t = useTranslations("dashboard");
+    const vt = useVerticalTerms();
+
+    const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
     const statConfig = [
-        { key: "leadsToday",        label: t("leadsToday"),        icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
+        { key: "leadsToday",        label: `${capitalize(vt.customerNounPlural)} Hoy`, icon: Building2,     color: "text-indigo-500",  bgIcon: "bg-indigo-500/10", suffix: "" },
         { key: "leadsHot",          label: t("leadsHot"),          icon: TrendingUp,    color: "text-emerald-500", bgIcon: "bg-emerald-500/10", suffix: "" },
         { key: "messagesProcessed", label: t("messagesProcessed"), icon: Activity,      color: "text-sky-500",     bgIcon: "bg-sky-500/10", suffix: "" },
         { key: "llmCostToday",      label: t("llmCostToday"),      icon: Brain,         color: "text-amber-500",   bgIcon: "bg-amber-500/10", suffix: "$" },

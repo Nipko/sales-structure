@@ -38,6 +38,75 @@ const REFERRAL_KEYS = [
     "youtube", "blog", "event", "other",
 ];
 
+const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
+    salud: [
+        { key: 'dental', label: 'Odontología' },
+        { key: 'medica_general', label: 'Medicina general' },
+        { key: 'estetica', label: 'Estética y dermatología' },
+        { key: 'psicologia', label: 'Psicología y terapia' },
+        { key: 'farmacia', label: 'Farmacia' },
+    ],
+    education: [
+        { key: 'idiomas', label: 'Escuela de idiomas' },
+        { key: 'universitaria', label: 'Universidad / Instituto' },
+        { key: 'online', label: 'Cursos online' },
+        { key: 'capacitacion', label: 'Capacitación empresarial' },
+    ],
+    turismo: [
+        { key: 'agencia_viajes', label: 'Agencia de viajes' },
+        { key: 'hotel', label: 'Hotel / Hostal' },
+        { key: 'tours', label: 'Tours y actividades' },
+    ],
+    restaurantes: [
+        { key: 'casual_dining', label: 'Restaurante casual' },
+        { key: 'comida_rapida', label: 'Comida rápida' },
+        { key: 'cafeteria', label: 'Cafetería' },
+        { key: 'dark_kitchen', label: 'Dark kitchen / Delivery' },
+    ],
+    inmobiliaria: [
+        { key: 'venta', label: 'Venta de inmuebles' },
+        { key: 'arriendo', label: 'Arriendo' },
+        { key: 'comercial', label: 'Inmuebles comerciales' },
+        { key: 'construccion', label: 'Construcción y proyectos' },
+    ],
+    automotriz: [
+        { key: 'concesionario', label: 'Concesionario' },
+        { key: 'taller', label: 'Taller mecánico' },
+        { key: 'repuestos', label: 'Repuestos y accesorios' },
+        { key: 'alquiler', label: 'Alquiler de vehículos' },
+    ],
+    moda_belleza: [
+        { key: 'salon_belleza', label: 'Salón de belleza' },
+        { key: 'barberia', label: 'Barbería' },
+        { key: 'spa', label: 'Spa y bienestar' },
+        { key: 'boutique', label: 'Boutique de moda' },
+    ],
+    finanzas: [
+        { key: 'seguros', label: 'Seguros' },
+        { key: 'asesoria', label: 'Asesoría financiera' },
+        { key: 'fintech', label: 'Fintech' },
+        { key: 'creditos', label: 'Créditos y préstamos' },
+    ],
+    servicios_profesionales: [
+        { key: 'abogados', label: 'Abogados' },
+        { key: 'contadores', label: 'Contadores' },
+        { key: 'arquitectos', label: 'Arquitectos' },
+        { key: 'consultores', label: 'Consultores' },
+    ],
+    retail: [
+        { key: 'moda', label: 'Moda y ropa' },
+        { key: 'electronica', label: 'Electrónica' },
+        { key: 'hogar', label: 'Hogar y decoración' },
+        { key: 'marketplace', label: 'Marketplace / E-commerce' },
+    ],
+    technology: [
+        { key: 'saas', label: 'SaaS' },
+        { key: 'consultoria_ti', label: 'Consultoría TI' },
+        { key: 'desarrollo', label: 'Desarrollo de software' },
+        { key: 'hardware', label: 'Hardware y redes' },
+    ],
+};
+
 // TikTok icon (lucide doesn't have one)
 function TikTokIcon({ className }: { className?: string }) {
     return (
@@ -69,6 +138,7 @@ export default function OnboardingPage() {
     const [linkedin, setLinkedin] = useState("");
     const [tiktok, setTiktok] = useState("");
     const [industry, setIndustry] = useState("");
+    const [subType, setSubType] = useState("");
     const [orgSize, setOrgSize] = useState("");
     const [timezone, setTimezone] = useState("America/Bogota");
 
@@ -153,6 +223,7 @@ export default function OnboardingPage() {
                     tiktok: tiktok || undefined,
                 },
                 industry,
+                subType: subType || undefined,
                 orgSize,
                 timezone,
             },
@@ -390,7 +461,7 @@ export default function OnboardingPage() {
                                 </label>
                                 <select
                                     value={industry}
-                                    onChange={(e) => setIndustry(e.target.value)}
+                                    onChange={(e) => { setIndustry(e.target.value); setSubType(""); }}
                                     className={cn(selectClasses, "pr-8")}
                                     style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
@@ -402,6 +473,28 @@ export default function OnboardingPage() {
                                     ))}
                                 </select>
                             </div>
+
+                            {/* Sub-type (conditional) */}
+                            {SUB_TYPES[industry] && (
+                                <div className="mb-4">
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                        Tipo de negocio
+                                    </label>
+                                    <select
+                                        value={subType}
+                                        onChange={(e) => setSubType(e.target.value)}
+                                        className={cn(selectClasses, "pr-8")}
+                                        style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
+                                    >
+                                        <option value="">Seleccionar...</option>
+                                        {SUB_TYPES[industry].map((st) => (
+                                            <option key={st.key} value={st.key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
+                                                {st.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             {/* Org Size */}
                             <div>

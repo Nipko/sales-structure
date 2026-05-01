@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { cn } from "@/lib/utils";
 import {
     DollarSign,
@@ -26,6 +27,7 @@ const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio',
 export default function PipelinePage() {
     const t = useTranslations('pipeline');
     const tc = useTranslations('common');
+    const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [kanban, setKanban] = useState<any>(null);
@@ -72,7 +74,7 @@ export default function PipelinePage() {
             <div>
                 {/* Header */}
                 <PageHeader
-                    title={t('title')}
+                    title={vt.pipelineNoun.charAt(0).toUpperCase() + vt.pipelineNoun.slice(1)}
                     subtitle={t('subtitle')}
                     badge={<DataSourceBadge isLive={isLive} />}
                     action={

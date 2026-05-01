@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ const segmentStyles: Record<string, string> = {
 export default function ContactsPage() {
     const t = useTranslations('contacts');
     const tc = useTranslations("common");
+    const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [contacts, setContacts] = useState<any[]>([]);
@@ -191,8 +193,8 @@ export default function ContactsPage() {
     return (
         <div className="space-y-6">
             <PageHeader
-                title={t('title')}
-                subtitle={`${contacts.length} contacts · $${totalValue.toLocaleString()}`}
+                title={vt.customerNounPlural.charAt(0).toUpperCase() + vt.customerNounPlural.slice(1)}
+                subtitle={`${contacts.length} ${vt.customerNounPlural} · $${totalValue.toLocaleString()}`}
                 badge={<DataSourceBadge isLive={isLive} />}
                 action={
                     <div className="flex flex-wrap items-center gap-2">

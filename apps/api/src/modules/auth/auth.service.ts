@@ -937,14 +937,18 @@ export class AuthService {
         // 6.5. Bootstrap vertical-specific defaults (pipeline stages, agent persona, FAQs, services)
         try {
             const tenantLang = (timezone?.includes('America') ? 'es' : 'en');
+            const verticalIndustry = industry || 'otro';
+            const verticalSubType = data.subType || company.subType || null;
+            console.log(`[Onboarding] Starting vertical bootstrap: industry="${verticalIndustry}", subType="${verticalSubType}", lang="${tenantLang}", tenant="${result.tenant.id}"`);
             await this.verticalsService.bootstrapVertical(
                 result.tenant.id,
-                industry || 'otro',
-                data.subType || null,
+                verticalIndustry,
+                verticalSubType,
                 tenantLang,
             );
-        } catch (error) {
-            console.error(`[Onboarding] Failed vertical bootstrap for "${result.tenant.schemaName}":`, error);
+            console.log(`[Onboarding] Vertical bootstrap completed successfully for "${result.tenant.schemaName}"`);
+        } catch (error: any) {
+            console.error(`[Onboarding] Failed vertical bootstrap for "${result.tenant.schemaName}":`, error?.message || error);
         }
 
         // 7. Create the trial subscription. The onboarding wizard may pass

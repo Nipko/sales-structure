@@ -44,7 +44,7 @@ export class PropertiesService {
             `INSERT INTO properties (name, description, address, city, max_guests, bedrooms, bathrooms,
              night_price, cleaning_fee, currency, min_nights, check_in_time, check_out_time,
              amenities, house_rules, check_in_instructions, images, metadata)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17::jsonb, $18::jsonb)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::time, $13::time, $14::jsonb, $15, $16, $17::jsonb, $18::jsonb)
              RETURNING *`,
             [
                 data.name, data.description || null, data.address || null, data.city || null,
@@ -72,9 +72,11 @@ export class PropertiesService {
             houseRules: 'house_rules', checkInInstructions: 'check_in_instructions', isActive: 'is_active',
         };
 
+        const timeCols = new Set(['check_in_time', 'check_out_time']);
         for (const [jsKey, dbKey] of Object.entries(fields)) {
             if (data[jsKey] !== undefined) {
-                sets.push(`"${dbKey}" = $${idx}`);
+                const cast = timeCols.has(dbKey) ? '::time' : '';
+                sets.push(`"${dbKey}" = $${idx}${cast}`);
                 params.push(data[jsKey]);
                 idx++;
             }

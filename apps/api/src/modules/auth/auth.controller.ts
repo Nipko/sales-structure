@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -280,6 +280,39 @@ export class AuthController {
                 tenant: undefined,
             })),
         };
+    }
+
+    @Put('users/:userId/skills')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Update user skill tags (admin only)' })
+    async updateUserSkills(
+        @Param('userId') userId: string,
+        @Request() req: any,
+        @Body() body: { skillTags: string[] },
+    ) {
+        const currentUser = req.user;
+
+        // Tenant admins can only update users in their own tenant
+        if (currentUser.role === 'tenant_admin') {
+            const targetUser = await this.authService['prisma'].user.findUnique({
+                where: { id: userId },
+                select: { tenantId: true },
+            });
+            if (!targetUser || targetUser.tenantId !== currentUser.tenantId) {
+                throw new BadRequestException('User not found in your tenant');
+            }
+        }
+
+        const updated = await this.authService['prisma'].user.update({
+            where: { id: userId },
+            data: { skillTags: body.skillTags || [] },
+            select: { id: true, skillTags: true },
+        });
+
+        return { success: true, data: updated };
     }
 
     @Post('setup-password')

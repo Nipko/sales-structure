@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
@@ -18,6 +19,8 @@ import {
     Clock,
     GripVertical,
     Loader2,
+    Check,
+    X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -29,6 +32,7 @@ export default function PipelinePage() {
     const tc = useTranslations('common');
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
+    const { hasRole } = useAuth();
     const router = useRouter();
     const [kanban, setKanban] = useState<any>(null);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
@@ -36,6 +40,94 @@ export default function PipelinePage() {
     const [isLive, setIsLive] = useState(false);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<string | null>(null);
+    const [approvalModal, setApprovalModal] = useState<{ dealId: string; targetStage: any } | null>(null);
+    const [rejectModal, setRejectModal] = useState<{ dealId: string } | null>(null);
+    const [rejectReason, setRejectReason] = useState("");
+    const [approvalLoading, setApprovalLoading] = useState(false);
+
+    const canApprove = hasRole('super_admin', 'tenant_admin', 'tenant_supervisor');
+
+    const handleRequestApproval = async () => {
+        if (!approvalModal || !activeTenantId) return;
+        setApprovalLoading(true);
+        try {
+            await api.fetch(`/crm/opportunities/${activeTenantId}/${approvalModal.dealId}/request-approval`, {
+                method: "PUT",
+                body: JSON.stringify({ approval_stage: approvalModal.targetStage.id }),
+            });
+            // Update local state: set approval_status to pending on the deal
+            setKanban((prev: any) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    stages: prev.stages.map((s: any) => ({
+                        ...s,
+                        deals: s.deals.map((d: any) =>
+                            d.id === approvalModal.dealId
+                                ? { ...d, approval_status: 'pending', approval_stage: approvalModal.targetStage.id }
+                                : d
+                        ),
+                    })),
+                };
+            });
+            setToast(t('approvalPending'));
+            setTimeout(() => setToast(null), 2000);
+        } catch (err) {
+            console.error("Failed to request approval:", err);
+        } finally {
+            setApprovalLoading(false);
+            setApprovalModal(null);
+        }
+    };
+
+    const handleApprove = async (dealId: string) => {
+        if (!activeTenantId) return;
+        try {
+            await api.fetch(`/crm/opportunities/${activeTenantId}/${dealId}/approve`, {
+                method: "PUT",
+            });
+            // Reload kanban to reflect the move
+            const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
+            if (json.success && json.data) setKanban(json.data);
+            setToast(t('approved'));
+            setTimeout(() => setToast(null), 2000);
+        } catch (err) {
+            console.error("Failed to approve:", err);
+        }
+    };
+
+    const handleReject = async () => {
+        if (!rejectModal || !activeTenantId) return;
+        setApprovalLoading(true);
+        try {
+            await api.fetch(`/crm/opportunities/${activeTenantId}/${rejectModal.dealId}/reject`, {
+                method: "PUT",
+                body: JSON.stringify({ reason: rejectReason }),
+            });
+            setKanban((prev: any) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    stages: prev.stages.map((s: any) => ({
+                        ...s,
+                        deals: s.deals.map((d: any) =>
+                            d.id === rejectModal.dealId
+                                ? { ...d, approval_status: 'rejected', approval_stage: null }
+                                : d
+                        ),
+                    })),
+                };
+            });
+            setToast(t('rejected'));
+            setTimeout(() => setToast(null), 2000);
+        } catch (err) {
+            console.error("Failed to reject:", err);
+        } finally {
+            setApprovalLoading(false);
+            setRejectModal(null);
+            setRejectReason("");
+        }
+    };
 
     // Load kanban from CRM API (opportunities grouped by stage)
     useEffect(() => {
@@ -124,6 +216,13 @@ export default function PipelinePage() {
                                 onDragLeave={() => setDragOverStage(null)}
                                 onDrop={async () => {
                                     if (draggedDeal && activeTenantId) {
+                                        // If dropping on a terminal stage, request approval instead
+                                        if (stage.is_terminal) {
+                                            setApprovalModal({ dealId: draggedDeal, targetStage: stage });
+                                            setDragOverStage(null);
+                                            setDraggedDeal(null);
+                                            return;
+                                        }
                                         // Optimistic update
                                         setKanban((prev: any) => {
                                             if (!prev) return prev;
@@ -204,8 +303,38 @@ export default function PipelinePage() {
                                         >
                                             <div className="flex justify-between items-start">
                                                 <div className="font-semibold text-[13px] leading-tight">{deal.title}</div>
-                                                <GripVertical size={14} className="text-muted-foreground flex-shrink-0 mt-0.5" />
+                                                <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                                                    {canApprove && deal.approval_status === 'pending' && (
+                                                        <>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleApprove(deal.id); }}
+                                                                className="w-5 h-5 rounded flex items-center justify-center bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/30 transition-colors cursor-pointer"
+                                                                title={t('approve')}
+                                                            >
+                                                                <Check size={12} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setRejectModal({ dealId: deal.id }); }}
+                                                                className="w-5 h-5 rounded flex items-center justify-center bg-red-500/15 text-red-500 hover:bg-red-500/30 transition-colors cursor-pointer"
+                                                                title={t('reject')}
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    <GripVertical size={14} className="text-muted-foreground" />
+                                                </div>
                                             </div>
+                                            {deal.approval_status === 'pending' && (
+                                                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 font-semibold">
+                                                    {t('approvalPending')}
+                                                </span>
+                                            )}
+                                            {deal.approval_status === 'rejected' && (
+                                                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 font-semibold">
+                                                    {t('approvalRejected')}
+                                                </span>
+                                            )}
 
                                             <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
                                                 <div
@@ -259,6 +388,72 @@ export default function PipelinePage() {
                     })}
                 </div>
             </div>
+
+            {/* Approval Request Modal */}
+            {approvalModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setApprovalModal(null)}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-[400px] shadow-xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-base mb-2">{t('requestApproval')}</h3>
+                        <p className="text-sm text-muted-foreground mb-5">
+                            {t('approvalRequired')}
+                        </p>
+                        <div className="flex items-center gap-2 mb-5">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ background: approvalModal.targetStage.color }} />
+                            <span className="text-sm font-semibold">
+                                {KNOWN_STAGE_KEYS.includes(approvalModal.targetStage.id) ? tc(`stages.${approvalModal.targetStage.id}`) : approvalModal.targetStage.name}
+                            </span>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setApprovalModal(null)}
+                                className="px-4 py-2 rounded-lg border border-border text-sm cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            >
+                                {tc('cancel')}
+                            </button>
+                            <button
+                                onClick={handleRequestApproval}
+                                disabled={approvalLoading}
+                                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm cursor-pointer hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {approvalLoading && <Loader2 size={14} className="animate-spin" />}
+                                {tc('confirm')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reject Reason Modal */}
+            {rejectModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setRejectModal(null); setRejectReason(""); }}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-[400px] shadow-xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-base mb-4">{t('reject')}</h3>
+                        <label className="text-sm text-muted-foreground mb-1.5 block">{t('rejectReason')}</label>
+                        <textarea
+                            value={rejectReason}
+                            onChange={e => setRejectReason(e.target.value)}
+                            className="w-full h-20 rounded-lg border border-border bg-background p-2.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2 mt-4">
+                            <button
+                                onClick={() => { setRejectModal(null); setRejectReason(""); }}
+                                className="px-4 py-2 rounded-lg border border-border text-sm cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            >
+                                {tc('cancel')}
+                            </button>
+                            <button
+                                onClick={handleReject}
+                                disabled={approvalLoading || !rejectReason.trim()}
+                                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm cursor-pointer hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {approvalLoading && <Loader2 size={14} className="animate-spin" />}
+                                {t('reject')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Toast */}
             {toast && (

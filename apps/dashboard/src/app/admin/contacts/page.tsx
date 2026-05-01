@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
@@ -36,6 +36,7 @@ import {
     Archive,
     Instagram,
     Send as SendIcon,
+    SlidersHorizontal,
 } from "lucide-react";
 
 const segmentStyles: Record<string, string> = {
@@ -72,6 +73,38 @@ export default function ContactsPage() {
     const [bulkPayload, setBulkPayload] = useState("");
     const [bulking, setBulking] = useState(false);
 
+    // Advanced filters
+    const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+    const [filterScoreMin, setFilterScoreMin] = useState("");
+    const [filterScoreMax, setFilterScoreMax] = useState("");
+    const [filterDateFrom, setFilterDateFrom] = useState("");
+    const [filterDateTo, setFilterDateTo] = useState("");
+    const [filterTags, setFilterTags] = useState("");
+    // Applied filters (only set when user clicks Apply)
+    const [appliedFilters, setAppliedFilters] = useState<{
+        scoreMin?: string; scoreMax?: string; dateFrom?: string; dateTo?: string; tags?: string;
+    }>({});
+
+    // Build query string from applied filters
+    const buildFilterQuery = useCallback(() => {
+        const params = new URLSearchParams();
+        if (appliedFilters.scoreMin) params.set("scoreMin", appliedFilters.scoreMin);
+        if (appliedFilters.scoreMax) params.set("scoreMax", appliedFilters.scoreMax);
+        if (appliedFilters.dateFrom) params.set("dateFrom", appliedFilters.dateFrom);
+        if (appliedFilters.dateTo) params.set("dateTo", appliedFilters.dateTo);
+        if (appliedFilters.tags) {
+            appliedFilters.tags.split(",").map(t => t.trim()).filter(Boolean).forEach(tag => params.append("tags[]", tag));
+        }
+        const qs = params.toString();
+        return qs ? `?${qs}` : "";
+    }, [appliedFilters]);
+
+    const activeFilterCount = [
+        appliedFilters.scoreMin || appliedFilters.scoreMax,
+        appliedFilters.dateFrom || appliedFilters.dateTo,
+        appliedFilters.tags,
+    ].filter(Boolean).length;
+
     // Load contacts from API
     useEffect(() => {
         async function load() {
@@ -79,7 +112,8 @@ export default function ContactsPage() {
             setLoading(true);
             try {
                 // Fetch leads matching the API model
-                const data = await api.fetch(`/crm/leads/${activeTenantId}`);
+                const qs = buildFilterQuery();
+                const data = await api.fetch(`/crm/leads/${activeTenantId}${qs}`);
 
                 if (data.success && Array.isArray(data.data)) {
                     // Map Real Lead data to UI variables we use
@@ -119,7 +153,7 @@ export default function ContactsPage() {
             }
         }
         load();
-    }, [activeTenantId]);
+    }, [activeTenantId, buildFilterQuery]);
 
     const segments = [
         { key: "all", label: t('segments.all'), count: contacts.length },
@@ -239,16 +273,91 @@ export default function ContactsPage() {
                 ))}
             </div>
 
-            {/* Search */}
-            <div className="relative">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <Input
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder={t('search')}
-                    className="h-10 rounded-lg border-neutral-200 bg-white pl-10 text-sm dark:border-neutral-800 dark:bg-neutral-900"
-                />
+            {/* Search + Filter Button */}
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                    <Input
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder={t('search')}
+                        className="h-10 rounded-lg border-neutral-200 bg-white pl-10 text-sm dark:border-neutral-800 dark:bg-neutral-900"
+                    />
+                </div>
+                <button
+                    onClick={() => setShowFilterDrawer(true)}
+                    className={cn(
+                        "relative flex items-center gap-2 h-10 px-4 rounded-lg border text-sm font-medium cursor-pointer transition-colors",
+                        activeFilterCount > 0
+                            ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300"
+                            : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800/50"
+                    )}
+                >
+                    <SlidersHorizontal size={16} />
+                    {t('advancedFilters')}
+                    {activeFilterCount > 0 && (
+                        <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[11px] font-semibold">
+                            {activeFilterCount}
+                        </span>
+                    )}
+                </button>
             </div>
+
+            {/* Active Filter Chips */}
+            {activeFilterCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {activeFilterCount} {t('activeFilters')}:
+                    </span>
+                    {(appliedFilters.scoreMin || appliedFilters.scoreMax) && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-xs border border-indigo-500/20">
+                            Score: {appliedFilters.scoreMin || '1'}-{appliedFilters.scoreMax || '10'}
+                            <button onClick={() => {
+                                setAppliedFilters(f => ({ ...f, scoreMin: undefined, scoreMax: undefined }));
+                                setFilterScoreMin(""); setFilterScoreMax("");
+                            }} className="bg-transparent border-none cursor-pointer p-0 text-indigo-400 hover:text-indigo-300">
+                                <X size={12} />
+                            </button>
+                        </span>
+                    )}
+                    {(appliedFilters.dateFrom || appliedFilters.dateTo) && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-xs border border-indigo-500/20">
+                            {appliedFilters.dateFrom && `${t('dateFrom')}: ${appliedFilters.dateFrom}`}
+                            {appliedFilters.dateFrom && appliedFilters.dateTo && ' — '}
+                            {appliedFilters.dateTo && `${t('dateTo')}: ${appliedFilters.dateTo}`}
+                            <button onClick={() => {
+                                setAppliedFilters(f => ({ ...f, dateFrom: undefined, dateTo: undefined }));
+                                setFilterDateFrom(""); setFilterDateTo("");
+                            }} className="bg-transparent border-none cursor-pointer p-0 text-indigo-400 hover:text-indigo-300">
+                                <X size={12} />
+                            </button>
+                        </span>
+                    )}
+                    {appliedFilters.tags && appliedFilters.tags.split(",").map(t2 => t2.trim()).filter(Boolean).map(tag => (
+                        <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-xs border border-indigo-500/20">
+                            Tag: {tag}
+                            <button onClick={() => {
+                                const remaining = appliedFilters.tags!.split(",").map(t3 => t3.trim()).filter(t3 => t3 !== tag).join(", ");
+                                setAppliedFilters(f => ({ ...f, tags: remaining || undefined }));
+                                setFilterTags(remaining);
+                            }} className="bg-transparent border-none cursor-pointer p-0 text-indigo-400 hover:text-indigo-300">
+                                <X size={12} />
+                            </button>
+                        </span>
+                    ))}
+                    <button
+                        onClick={() => {
+                            setAppliedFilters({});
+                            setFilterScoreMin(""); setFilterScoreMax("");
+                            setFilterDateFrom(""); setFilterDateTo("");
+                            setFilterTags("");
+                        }}
+                        className="bg-transparent border-none cursor-pointer p-0 text-xs text-neutral-500 underline hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+                    >
+                        {t('clearFilters')}
+                    </button>
+                </div>
+            )}
 
             {/* Bulk Actions Bar */}
             {selectedIds.size > 0 && (
@@ -480,6 +589,115 @@ export default function ContactsPage() {
                         })}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Advanced Filter Drawer */}
+            {showFilterDrawer && <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setShowFilterDrawer(false)} />}
+            <div className={cn(
+                "fixed inset-y-0 right-0 z-50 w-80 bg-white dark:bg-[var(--bg-secondary)] border-l border-neutral-200 dark:border-neutral-800 shadow-xl transform transition-transform duration-300",
+                showFilterDrawer ? "translate-x-0" : "translate-x-full"
+            )}>
+                <div className="p-6 h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t('advancedFilters')}</h3>
+                        <button onClick={() => setShowFilterDrawer(false)} className="bg-transparent border-none cursor-pointer p-1 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 space-y-5 overflow-y-auto">
+                        {/* Score Range */}
+                        <div>
+                            <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('scoreRange')}</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('scoreMin')}</label>
+                                    <input
+                                        type="number" min="1" max="10" value={filterScoreMin}
+                                        onChange={e => setFilterScoreMin(e.target.value)}
+                                        placeholder="1"
+                                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('scoreMax')}</label>
+                                    <input
+                                        type="number" min="1" max="10" value={filterScoreMax}
+                                        onChange={e => setFilterScoreMax(e.target.value)}
+                                        placeholder="10"
+                                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Date Range */}
+                        <div>
+                            <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('dateRange')}</label>
+                            <div className="space-y-2">
+                                <div>
+                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('dateFrom')}</label>
+                                    <input
+                                        type="date" value={filterDateFrom}
+                                        onChange={e => setFilterDateFrom(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('dateTo')}</label>
+                                    <input
+                                        type="date" value={filterDateTo}
+                                        onChange={e => setFilterDateTo(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tags */}
+                        <div>
+                            <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('filterByTags')}</label>
+                            <input
+                                type="text" value={filterTags}
+                                onChange={e => setFilterTags(e.target.value)}
+                                placeholder="VIP, premium, nuevo"
+                                className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                            />
+                            <p className="text-[10px] text-neutral-400 mt-1">{t('bulkActions.tagName')}: tag1, tag2, tag3</p>
+                        </div>
+                    </div>
+
+                    {/* Drawer Actions */}
+                    <div className="pt-4 mt-auto border-t border-neutral-200 dark:border-neutral-800 space-y-2">
+                        <button
+                            onClick={() => {
+                                setAppliedFilters({
+                                    scoreMin: filterScoreMin || undefined,
+                                    scoreMax: filterScoreMax || undefined,
+                                    dateFrom: filterDateFrom || undefined,
+                                    dateTo: filterDateTo || undefined,
+                                    tags: filterTags.trim() || undefined,
+                                });
+                                setShowFilterDrawer(false);
+                            }}
+                            className="w-full px-4 py-2.5 rounded-lg border-none bg-indigo-600 text-white text-sm font-semibold cursor-pointer hover:bg-indigo-700"
+                        >
+                            {t('applyFilters')}
+                        </button>
+                        <button
+                            onClick={() => {
+                                setFilterScoreMin(""); setFilterScoreMax("");
+                                setFilterDateFrom(""); setFilterDateTo("");
+                                setFilterTags("");
+                                setAppliedFilters({});
+                                setShowFilterDrawer(false);
+                            }}
+                            className="w-full px-4 py-2 rounded-lg border border-neutral-200 bg-transparent text-sm text-neutral-600 cursor-pointer hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                        >
+                            {t('clearFilters')}
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* Create Lead Modal */}

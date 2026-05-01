@@ -274,6 +274,17 @@
       "import": "Importer",
       "importing": "Importation..."
     },
+    "advancedFilters": "Filtres avancés",
+    "scoreRange": "Plage de score",
+    "scoreMin": "Score minimum",
+    "scoreMax": "Score maximum",
+    "dateRange": "Plage de dates",
+    "dateFrom": "Du",
+    "dateTo": "Au",
+    "filterByTags": "Filtrer par tags",
+    "applyFilters": "Appliquer les filtres",
+    "clearFilters": "Effacer les filtres",
+    "activeFilters": "filtres actifs",
     "segmentsPage": {
       "title": "Segments",
       "subtitle": "Regroupez les contacts avec des filtres dynamiques",
@@ -354,7 +365,10 @@
       "factorIntent": "Intention",
       "factorRecency": "Récence",
       "factorStage": "Étape",
-      "factorProfile": "Profil"
+      "factorProfile": "Profil",
+      "aiInsights": "AI Insights",
+      "insightError": "Impossible de generer l'insight",
+      "insightUnavailable": "Aucun insight disponible"
     }
   },
   "inbox": {
@@ -498,6 +512,8 @@
     "emailTemplatesDesc": "Emails de confirmation, rappels et plus",
     "mediaBank": "Banque de medias",
     "mediaBankDesc": "Images, logo de l'entreprise et galerie",
+    "pipelineStages": "Etapes du pipeline",
+    "scoringConfig": "Lead Scoring",
     "channelsSection": "Canaux",
     "channelsSectionDesc": "Configuration de WhatsApp, Instagram, Messenger, Telegram et SMS",
     "channelConfig": "Configuration des canaux",
@@ -1168,6 +1184,32 @@
     "unsavedChanges": "Vous avez des modifications non enregistrées",
     "reset": "Réinitialiser par défaut"
   },
+  "scoringConfig": {
+    "title": "Lead Scoring",
+    "subtitle": "Configurez les poids de notation, mots-cles d'achat et decroissance du score",
+    "weightsTitle": "Poids du score",
+    "weightsDesc": "Ajustez l'importance relative de chaque facteur. Le total doit etre egal a 100%.",
+    "engagement": "Engagement",
+    "intent": "Intention d'achat",
+    "recency": "Recence",
+    "stageProgress": "Progression d'etape",
+    "profileCompleteness": "Completude du profil",
+    "totalWeight": "Total",
+    "weightWarning": "Les poids doivent totaliser exactement 100%",
+    "keywordsTitle": "Mots-cles d'achat",
+    "keywordsDesc": "Mots indiquant l'intention d'achat d'un lead",
+    "addKeyword": "Ajouter",
+    "keywordPlaceholder": "Nouveau mot-cle...",
+    "decayTitle": "Decroissance du score",
+    "decayDesc": "Reduit automatiquement le score des leads inactifs",
+    "decayEnabled": "Activer la decroissance du score",
+    "decayDays": "Jours d'inactivite avant application",
+    "decayFactor": "Facteur de decroissance",
+    "decayFactorHelp": "Multiplie le score par ce facteur apres l'inactivite",
+    "unsavedChanges": "Vous avez des modifications non enregistrees",
+    "cancel": "Annuler",
+    "loadError": "Erreur lors du chargement de la configuration"
+  },
   "crmAnalytics": {
     "title": "Analyse CRM",
     "subtitle": "Métriques de ventes, pipeline et performance de l'équipe",
@@ -1196,7 +1238,16 @@
     "value": "Valeur",
     "stage": "Étape",
     "dragToMove": "Glissez pour déplacer",
-    "subtitle": "Glissez les affaires entre les etapes"
+    "subtitle": "Glissez les affaires entre les etapes",
+    "approvalPending": "Approbation en attente",
+    "approvalRejected": "Rejeté",
+    "requestApproval": "Demander l'approbation",
+    "approve": "Approuver",
+    "reject": "Rejeter",
+    "rejectReason": "Motif du rejet",
+    "approvalRequired": "L'approbation est requise pour passer à cette étape",
+    "approved": "Approuvé avec succès",
+    "rejected": "Rejeté avec succès"
   },
   "automation": {
     "title": "Automatisation",
@@ -1893,8 +1944,14 @@
       "tenantIdPlaceholder": "UUID de l'entreprise"
     },
     "toast": {
-      "created": "Utilisateur créé avec succès"
-    }
+      "created": "Utilisateur créé avec succès",
+      "skillsSaved": "Compétences mises à jour"
+    },
+    "skills": "Compétences",
+    "addSkill": "Ajouter une compétence",
+    "skillPlaceholder": "Tapez une compétence...",
+    "noSkills": "Aucune compétence attribuée",
+    "suggestedSkills": "Suggestions"
   },
   "orders": {
     "title": "Commandes",

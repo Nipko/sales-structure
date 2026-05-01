@@ -14,7 +14,7 @@ import {
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
     ChevronDown, CheckCircle, Circle, AlertCircle, Briefcase,
     TrendingUp, Calendar, Zap, Send, Edit2, Save, X,
-    Archive, Loader2,
+    Archive, Loader2, Sparkles,
 } from "lucide-react";
 
 const STAGE_COLORS: Record<string, string> = {
@@ -87,6 +87,11 @@ export default function Lead360Page() {
     // Archive state
     const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
     const [archiving, setArchiving] = useState(false);
+
+    // AI Insight state
+    const [insightExpanded, setInsightExpanded] = useState(false);
+    const [insight, setInsight] = useState<string | null>(null);
+    const [insightLoading, setInsightLoading] = useState(false);
 
     const tenantId = activeTenantId;
 
@@ -621,6 +626,45 @@ export default function Lead360Page() {
                             )}
                         </div>
                     )}
+
+                    {/* AI Insights */}
+                    <div className="rounded-xl border border-border bg-card overflow-hidden">
+                        <button
+                            onClick={() => {
+                                const next = !insightExpanded;
+                                setInsightExpanded(next);
+                                if (next && insight === null && !insightLoading) {
+                                    setInsightLoading(true);
+                                    api.fetch(`/crm/leads/${tenantId}/${leadId}/insight`)
+                                        .then((res: any) => {
+                                            setInsight(res?.data?.insight || t("leadDetail.insightUnavailable"));
+                                        })
+                                        .catch(() => {
+                                            setInsight(t("leadDetail.insightError"));
+                                        })
+                                        .finally(() => setInsightLoading(false));
+                                }
+                            }}
+                            className="w-full px-5 py-3.5 flex items-center justify-between bg-transparent border-none cursor-pointer"
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <Sparkles size={18} className="text-[#f39c12]" />
+                                <h3 className="text-sm font-semibold m-0">{t("leadDetail.aiInsights")}</h3>
+                            </div>
+                            <ChevronDown size={16} className={cn("text-muted-foreground transition-transform", insightExpanded && "rotate-180")} />
+                        </button>
+                        {insightExpanded && (
+                            <div className="px-5 pb-4 border-t border-border pt-3">
+                                {insightLoading ? (
+                                    <div className="flex items-center justify-center py-4">
+                                        <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground leading-relaxed m-0">{insight}</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* === RIGHT PANEL: Timeline / Notes / Tasks === */}

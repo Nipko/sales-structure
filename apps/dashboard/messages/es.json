@@ -274,6 +274,17 @@
       "import": "Importar",
       "importing": "Importando..."
     },
+    "advancedFilters": "Filtros avanzados",
+    "scoreRange": "Rango de score",
+    "scoreMin": "Score mínimo",
+    "scoreMax": "Score máximo",
+    "dateRange": "Rango de fechas",
+    "dateFrom": "Desde",
+    "dateTo": "Hasta",
+    "filterByTags": "Filtrar por etiquetas",
+    "applyFilters": "Aplicar filtros",
+    "clearFilters": "Limpiar filtros",
+    "activeFilters": "filtros activos",
     "segmentsPage": {
       "title": "Segmentos",
       "subtitle": "Agrupa contactos con filtros dinámicos",
@@ -354,7 +365,10 @@
       "factorIntent": "Intención",
       "factorRecency": "Recencia",
       "factorStage": "Etapa",
-      "factorProfile": "Perfil"
+      "factorProfile": "Perfil",
+      "aiInsights": "AI Insights",
+      "insightError": "No se pudo generar el insight",
+      "insightUnavailable": "No hay insight disponible"
     }
   },
   "inbox": {
@@ -498,6 +512,8 @@
     "emailTemplatesDesc": "Emails de confirmacion, recordatorios y mas",
     "mediaBank": "Banco de medios",
     "mediaBankDesc": "Imagenes, logo de empresa y galeria",
+    "pipelineStages": "Etapas del pipeline",
+    "scoringConfig": "Lead Scoring",
     "channelsSection": "Canales",
     "channelsSectionDesc": "Configuracion de WhatsApp, Instagram, Messenger, Telegram y SMS",
     "channelConfig": "Configuracion de canales",
@@ -1168,6 +1184,32 @@
     "unsavedChanges": "Tienes cambios sin guardar",
     "reset": "Restaurar predeterminados"
   },
+  "scoringConfig": {
+    "title": "Lead Scoring",
+    "subtitle": "Configura los pesos de puntuacion, palabras clave de compra y decaimiento de score",
+    "weightsTitle": "Pesos del score",
+    "weightsDesc": "Ajusta la importancia relativa de cada factor. El total debe sumar 100%.",
+    "engagement": "Engagement",
+    "intent": "Intencion de compra",
+    "recency": "Recencia",
+    "stageProgress": "Progreso de etapa",
+    "profileCompleteness": "Completitud del perfil",
+    "totalWeight": "Total",
+    "weightWarning": "Los pesos deben sumar exactamente 100%",
+    "keywordsTitle": "Palabras clave de compra",
+    "keywordsDesc": "Palabras que indican intencion de compra del lead",
+    "addKeyword": "Agregar",
+    "keywordPlaceholder": "Nueva palabra clave...",
+    "decayTitle": "Decaimiento del score",
+    "decayDesc": "Reduce automaticamente el score de leads inactivos",
+    "decayEnabled": "Habilitar decaimiento del score",
+    "decayDays": "Dias de inactividad antes de aplicar",
+    "decayFactor": "Factor de decaimiento",
+    "decayFactorHelp": "Multiplica el score por este factor tras la inactividad",
+    "unsavedChanges": "Tienes cambios sin guardar",
+    "cancel": "Cancelar",
+    "loadError": "Error al cargar la configuracion"
+  },
   "crmAnalytics": {
     "title": "Análisis CRM",
     "subtitle": "Métricas de ventas, pipeline y rendimiento del equipo",
@@ -1223,7 +1265,16 @@
       "opportunities": "Oportunidades",
       "average": "Promedio"
     },
-    "subtitle": "Arrastra oportunidades entre etapas"
+    "subtitle": "Arrastra oportunidades entre etapas",
+    "approvalPending": "Pendiente aprobación",
+    "approvalRejected": "Rechazado",
+    "requestApproval": "Solicitar aprobación",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "rejectReason": "Razón del rechazo",
+    "approvalRequired": "Se requiere aprobación para mover a esta etapa",
+    "approved": "Aprobado correctamente",
+    "rejected": "Rechazado correctamente"
   },
   "automation": {
     "title": "Automatización",
@@ -1920,8 +1971,14 @@
       "tenantIdPlaceholder": "UUID de la empresa"
     },
     "toast": {
-      "created": "Usuario creado correctamente"
-    }
+      "created": "Usuario creado correctamente",
+      "skillsSaved": "Habilidades actualizadas"
+    },
+    "skills": "Habilidades",
+    "addSkill": "Agregar habilidad",
+    "skillPlaceholder": "Escribe una habilidad...",
+    "noSkills": "Sin habilidades asignadas",
+    "suggestedSkills": "Sugerencias"
   },
   "orders": {
     "title": "Pedidos",

@@ -274,6 +274,17 @@
       "import": "Importar",
       "importing": "Importando..."
     },
+    "advancedFilters": "Filtros avançados",
+    "scoreRange": "Faixa de pontuação",
+    "scoreMin": "Pontuação mínima",
+    "scoreMax": "Pontuação máxima",
+    "dateRange": "Faixa de datas",
+    "dateFrom": "De",
+    "dateTo": "Até",
+    "filterByTags": "Filtrar por tags",
+    "applyFilters": "Aplicar filtros",
+    "clearFilters": "Limpar filtros",
+    "activeFilters": "filtros ativos",
     "segmentsPage": {
       "title": "Segmentos",
       "subtitle": "Agrupe contatos com filtros dinâmicos",
@@ -354,7 +365,10 @@
       "factorIntent": "Intenção",
       "factorRecency": "Recência",
       "factorStage": "Etapa",
-      "factorProfile": "Perfil"
+      "factorProfile": "Perfil",
+      "aiInsights": "AI Insights",
+      "insightError": "Nao foi possivel gerar o insight",
+      "insightUnavailable": "Nenhum insight disponivel"
     }
   },
   "inbox": {
@@ -498,6 +512,8 @@
     "emailTemplatesDesc": "Emails de confirmacao, lembretes e mais",
     "mediaBank": "Banco de midias",
     "mediaBankDesc": "Imagens, logo da empresa e galeria",
+    "pipelineStages": "Etapas do pipeline",
+    "scoringConfig": "Lead Scoring",
     "channelsSection": "Canais",
     "channelsSectionDesc": "Configuração de WhatsApp, Instagram, Messenger, Telegram e SMS",
     "channelConfig": "Configuração de canais",
@@ -1168,6 +1184,32 @@
     "unsavedChanges": "Você tem alterações não salvas",
     "reset": "Restaurar padrões"
   },
+  "scoringConfig": {
+    "title": "Lead Scoring",
+    "subtitle": "Configure os pesos de pontuacao, palavras-chave de compra e decaimento de score",
+    "weightsTitle": "Pesos do score",
+    "weightsDesc": "Ajuste a importancia relativa de cada fator. O total deve somar 100%.",
+    "engagement": "Engajamento",
+    "intent": "Intencao de compra",
+    "recency": "Recencia",
+    "stageProgress": "Progresso de etapa",
+    "profileCompleteness": "Completude do perfil",
+    "totalWeight": "Total",
+    "weightWarning": "Os pesos devem somar exatamente 100%",
+    "keywordsTitle": "Palavras-chave de compra",
+    "keywordsDesc": "Palavras que indicam intencao de compra do lead",
+    "addKeyword": "Adicionar",
+    "keywordPlaceholder": "Nova palavra-chave...",
+    "decayTitle": "Decaimento do score",
+    "decayDesc": "Reduz automaticamente o score de leads inativos",
+    "decayEnabled": "Habilitar decaimento do score",
+    "decayDays": "Dias de inatividade antes de aplicar",
+    "decayFactor": "Fator de decaimento",
+    "decayFactorHelp": "Multiplica o score por este fator apos a inatividade",
+    "unsavedChanges": "Voce tem alteracoes nao salvas",
+    "cancel": "Cancelar",
+    "loadError": "Erro ao carregar a configuracao"
+  },
   "crmAnalytics": {
     "title": "Análise CRM",
     "subtitle": "Métricas de vendas, pipeline e desempenho da equipe",
@@ -1196,7 +1238,16 @@
     "value": "Valor",
     "stage": "Etapa",
     "dragToMove": "Arraste para mover",
-    "subtitle": "Arraste negocios entre etapas"
+    "subtitle": "Arraste negocios entre etapas",
+    "approvalPending": "Aprovação pendente",
+    "approvalRejected": "Rejeitado",
+    "requestApproval": "Solicitar aprovação",
+    "approve": "Aprovar",
+    "reject": "Rejeitar",
+    "rejectReason": "Motivo da rejeição",
+    "approvalRequired": "Aprovação necessária para mover para esta etapa",
+    "approved": "Aprovado com sucesso",
+    "rejected": "Rejeitado com sucesso"
   },
   "automation": {
     "title": "Automação",
@@ -1893,8 +1944,14 @@
       "tenantIdPlaceholder": "UUID da empresa"
     },
     "toast": {
-      "created": "Usuário criado com sucesso"
-    }
+      "created": "Usuário criado com sucesso",
+      "skillsSaved": "Habilidades atualizadas"
+    },
+    "skills": "Habilidades",
+    "addSkill": "Adicionar habilidade",
+    "skillPlaceholder": "Digite uma habilidade...",
+    "noSkills": "Sem habilidades atribuídas",
+    "suggestedSkills": "Sugestões"
   },
   "orders": {
     "title": "Pedidos",

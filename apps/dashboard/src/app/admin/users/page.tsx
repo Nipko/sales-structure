@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,7 +9,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import {
-    Users, UserPlus, Shield, Mail, Phone, Building2, Search, MoreVertical, ChevronDown, Eye, EyeOff, Plus, X,
+    Users, UserPlus, Shield, Mail, Phone, Building2, Search, MoreVertical, ChevronDown, Eye, EyeOff, Plus, X, Tag,
 } from "lucide-react";
 
 const roleStyle: Record<string, { color: string; icon: string }> = {
@@ -17,6 +17,127 @@ const roleStyle: Record<string, { color: string; icon: string }> = {
     tenant_admin: { color: "#9b59b6", icon: "👑" },
     tenant_agent: { color: "#3498db", icon: "🎧" },
 };
+
+const SUGGESTED_SKILLS = ['ventas', 'soporte', 'técnico', 'facturación', 'quejas', 'general', 'vip', 'idiomas'];
+
+function SkillTagsEditor({ userId, skills, onSave, t }: { userId: string; skills: string[]; onSave: (userId: string, tags: string[]) => void; t: any }) {
+    const [editing, setEditing] = useState(false);
+    const [tags, setTags] = useState<string[]>(skills);
+    const [input, setInput] = useState("");
+    const [saving, setSaving] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (editing && inputRef.current) inputRef.current.focus();
+    }, [editing]);
+
+    useEffect(() => {
+        if (!editing) return;
+        function handleClickOutside(e: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                handleSave();
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [editing, tags]);
+
+    function addTag(tag: string) {
+        const trimmed = tag.trim().toLowerCase();
+        if (trimmed && !tags.includes(trimmed)) {
+            setTags(prev => [...prev, trimmed]);
+        }
+        setInput("");
+    }
+
+    function removeTag(tag: string) {
+        setTags(prev => prev.filter(t => t !== tag));
+    }
+
+    async function handleSave() {
+        setEditing(false);
+        // Only save if tags actually changed
+        const changed = tags.length !== skills.length || tags.some((t, i) => t !== skills[i]);
+        if (changed) {
+            setSaving(true);
+            await onSave(userId, tags);
+            setSaving(false);
+        }
+    }
+
+    function handleKeyDown(e: React.KeyboardEvent) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (input.trim()) addTag(input);
+        } else if (e.key === "Backspace" && !input && tags.length > 0) {
+            setTags(prev => prev.slice(0, -1));
+        } else if (e.key === "Escape") {
+            setTags(skills);
+            setEditing(false);
+        }
+    }
+
+    if (!editing) {
+        return (
+            <div
+                className="flex flex-wrap gap-1 cursor-pointer min-h-[28px] items-center group"
+                onClick={(e) => { e.stopPropagation(); setEditing(true); setTags(skills); }}
+            >
+                {skills.length === 0 ? (
+                    <span className="text-[11px] text-muted-foreground italic opacity-60 group-hover:opacity-100 transition-opacity">
+                        {t("noSkills")}
+                    </span>
+                ) : (
+                    skills.map(tag => (
+                        <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--bg-tertiary,hsl(var(--muted)))] border border-border text-xs text-foreground">
+                            {tag}
+                        </span>
+                    ))
+                )}
+            </div>
+        );
+    }
+
+    const unusedSuggestions = SUGGESTED_SKILLS.filter(s => !tags.includes(s));
+
+    return (
+        <div ref={containerRef} className="min-w-[220px]" onClick={e => e.stopPropagation()}>
+            <div className="flex flex-wrap gap-1 p-1.5 rounded-lg border border-primary/50 bg-background min-h-[32px] items-center">
+                {tags.map(tag => (
+                    <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-tertiary,hsl(var(--muted)))] border border-border text-xs">
+                        {tag}
+                        <button onClick={() => removeTag(tag)} className="bg-transparent border-none p-0 cursor-pointer text-muted-foreground hover:text-foreground leading-none">
+                            <X size={10} />
+                        </button>
+                    </span>
+                ))}
+                <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={tags.length === 0 ? t("skillPlaceholder") : ""}
+                    className="flex-1 min-w-[80px] border-none outline-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground"
+                />
+            </div>
+            {unusedSuggestions.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                    <span className="text-[10px] text-muted-foreground mr-1 self-center">{t("suggestedSkills")}:</span>
+                    {unusedSuggestions.map(s => (
+                        <button
+                            key={s}
+                            onClick={() => addTag(s)}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border border-dashed border-border text-[10px] text-muted-foreground bg-transparent cursor-pointer hover:border-primary hover:text-foreground transition-colors"
+                        >
+                            <Plus size={8} /> {s}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function UsersPage() {
     const t = useTranslations('users');
@@ -49,7 +170,7 @@ export default function UsersPage() {
             try {
                 const result = await api.getUsers();
                 if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                    setUsers(result.data.map((u: any) => ({ id: u.id, email: u.email || '', firstName: u.firstName || u.first_name || '', lastName: u.lastName || u.last_name || '', role: u.role || 'tenant_agent', tenantName: u.tenantName || u.tenant_name || '—', isActive: u.isActive ?? u.is_active ?? true, createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—' })));
+                    setUsers(result.data.map((u: any) => ({ id: u.id, email: u.email || '', firstName: u.firstName || u.first_name || '', lastName: u.lastName || u.last_name || '', role: u.role || 'tenant_agent', tenantName: u.tenantName || u.tenant_name || '—', isActive: u.isActive ?? u.is_active ?? true, createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—', skillTags: u.skillTags || u.skill_tags || [] })));
                     setIsLive(true);
                 }
             } catch (err) { console.error('Failed to load users:', err); }
@@ -70,13 +191,29 @@ export default function UsersPage() {
         setSaving(true);
         try {
             await api.registerUser({ email: newUser.email, password: newUser.password, firstName: newUser.firstName, lastName: newUser.lastName, role: newUser.role, tenantId: newUser.tenantId || undefined });
-            setUsers(prev => [...prev, { id: `u${Date.now()}`, email: newUser.email, firstName: newUser.firstName, lastName: newUser.lastName, role: newUser.role as any, tenantName: "—", isActive: true, createdAt: new Date().toISOString().split("T")[0] }]);
+            setUsers(prev => [...prev, { id: `u${Date.now()}`, email: newUser.email, firstName: newUser.firstName, lastName: newUser.lastName, role: newUser.role as any, tenantName: "—", isActive: true, createdAt: new Date().toISOString().split("T")[0], skillTags: [] }]);
             setShowNewUser(false);
             setNewUser({ email: "", password: "", firstName: "", lastName: "", role: "tenant_agent", tenantId: "" });
             setToast(t("toast.created")); setTimeout(() => setToast(null), 2000);
         } catch { setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000); }
         finally { setSaving(false); }
     }
+
+    async function handleSaveSkills(userId: string, skillTags: string[]) {
+        try {
+            const result = await api.updateUserSkills(userId, skillTags);
+            if (result.success) {
+                setUsers(prev => prev.map(u => u.id === userId ? { ...u, skillTags } : u));
+                setToast(t("toast.skillsSaved")); setTimeout(() => setToast(null), 2000);
+            } else {
+                setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000);
+            }
+        } catch {
+            setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000);
+        }
+    }
+
+    const isAdmin = user?.role === 'super_admin' || user?.role === 'tenant_admin';
 
     return (
         <>
@@ -131,8 +268,10 @@ export default function UsersPage() {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-card">
-                                {(["user", "email", "role", "tenant", "status", "registered"] as const).map(k => (
-                                    <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{t(`headers.${k}`)}</th>
+                                {(["user", "email", "role", "skills", "tenant", "status", "registered"] as const).map(k => (
+                                    <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
+                                        {k === "skills" ? t("skills") : t(`headers.${k}`)}
+                                    </th>
                                 ))}
                             </tr>
                         </thead>
@@ -152,6 +291,23 @@ export default function UsersPage() {
                                         <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.email}</td>
                                         <td className="px-4 py-3">
                                             <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>{rc.icon} {roleLabel(u.role)}</span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {isAdmin ? (
+                                                <SkillTagsEditor userId={u.id} skills={u.skillTags || []} onSave={handleSaveSkills} t={t} />
+                                            ) : (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {(u.skillTags || []).length === 0 ? (
+                                                        <span className="text-[11px] text-muted-foreground italic">{t("noSkills")}</span>
+                                                    ) : (
+                                                        (u.skillTags || []).map((tag: string) => (
+                                                            <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--bg-tertiary,hsl(var(--muted)))] border border-border text-xs text-foreground">
+                                                                {tag}
+                                                            </span>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.tenantName}</td>
                                         <td className="px-4 py-3">

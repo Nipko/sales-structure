@@ -274,6 +274,17 @@
       "import": "Import",
       "importing": "Importing..."
     },
+    "advancedFilters": "Advanced filters",
+    "scoreRange": "Score range",
+    "scoreMin": "Minimum score",
+    "scoreMax": "Maximum score",
+    "dateRange": "Date range",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "filterByTags": "Filter by tags",
+    "applyFilters": "Apply filters",
+    "clearFilters": "Clear filters",
+    "activeFilters": "active filters",
     "segmentsPage": {
       "title": "Segments",
       "subtitle": "Group contacts with dynamic filters",
@@ -354,7 +365,10 @@
       "factorIntent": "Intent",
       "factorRecency": "Recency",
       "factorStage": "Stage",
-      "factorProfile": "Profile"
+      "factorProfile": "Profile",
+      "aiInsights": "AI Insights",
+      "insightError": "Could not generate insight",
+      "insightUnavailable": "No insight available"
     }
   },
   "inbox": {
@@ -498,6 +512,8 @@
     "emailTemplatesDesc": "Confirmation emails, reminders and more",
     "mediaBank": "Media bank",
     "mediaBankDesc": "Images, company logo and gallery",
+    "pipelineStages": "Pipeline Stages",
+    "scoringConfig": "Lead Scoring",
     "channelsSection": "Channels",
     "channelsSectionDesc": "WhatsApp, Instagram, Messenger, Telegram and SMS settings",
     "channelConfig": "Channel configuration",
@@ -1168,6 +1184,32 @@
     "unsavedChanges": "You have unsaved changes",
     "reset": "Reset to defaults"
   },
+  "scoringConfig": {
+    "title": "Lead Scoring",
+    "subtitle": "Configure score weights, purchase keywords, and score decay",
+    "weightsTitle": "Score Weights",
+    "weightsDesc": "Adjust the relative importance of each factor. Total must equal 100%.",
+    "engagement": "Engagement",
+    "intent": "Purchase Intent",
+    "recency": "Recency",
+    "stageProgress": "Stage Progress",
+    "profileCompleteness": "Profile Completeness",
+    "totalWeight": "Total",
+    "weightWarning": "Weights must add up to exactly 100%",
+    "keywordsTitle": "Purchase Keywords",
+    "keywordsDesc": "Words that indicate a lead's purchase intent",
+    "addKeyword": "Add",
+    "keywordPlaceholder": "New keyword...",
+    "decayTitle": "Score Decay",
+    "decayDesc": "Automatically reduce scores of inactive leads",
+    "decayEnabled": "Enable score decay",
+    "decayDays": "Days of inactivity before decay",
+    "decayFactor": "Decay factor",
+    "decayFactorHelp": "Multiplies the score by this factor after inactivity",
+    "unsavedChanges": "You have unsaved changes",
+    "cancel": "Cancel",
+    "loadError": "Failed to load configuration"
+  },
   "crmAnalytics": {
     "title": "CRM Analytics",
     "subtitle": "Sales metrics, pipeline performance and team insights",
@@ -1196,7 +1238,16 @@
     "value": "Value",
     "stage": "Stage",
     "dragToMove": "Drag to move",
-    "subtitle": "Drag deals between stages"
+    "subtitle": "Drag deals between stages",
+    "approvalPending": "Pending approval",
+    "approvalRejected": "Rejected",
+    "requestApproval": "Request approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "rejectReason": "Rejection reason",
+    "approvalRequired": "Approval is required to move to this stage",
+    "approved": "Approved successfully",
+    "rejected": "Rejected successfully"
   },
   "automation": {
     "title": "Automation",
@@ -1893,8 +1944,14 @@
       "tenantIdPlaceholder": "Tenant UUID"
     },
     "toast": {
-      "created": "User created successfully"
-    }
+      "created": "User created successfully",
+      "skillsSaved": "Skills updated"
+    },
+    "skills": "Skills",
+    "addSkill": "Add skill",
+    "skillPlaceholder": "Type a skill...",
+    "noSkills": "No skills assigned",
+    "suggestedSkills": "Suggestions"
   },
   "orders": {
     "title": "Orders",

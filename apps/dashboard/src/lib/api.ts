@@ -264,6 +264,10 @@ export const api = {
     getSegmentContacts: (tenantId: string, segmentId: string, page?: number) =>
         apiGet(`/crm/segments/${tenantId}/${segmentId}/contacts?page=${page || 1}`),
 
+    // --- Scoring Config ---
+    getScoringConfig: (tenantId: string) => apiGet(`/crm/scoring-config/${tenantId}`),
+    saveScoringConfig: (tenantId: string, data: any) => apiPost(`/crm/scoring-config/${tenantId}`, data),
+
     // --- Identity ---
     getMergeSuggestions: (tenantId: string) =>
         apiGet(`/identity/${tenantId}/suggestions`),
@@ -386,6 +390,9 @@ export const api = {
 
     registerUser: (data: { email: string; password: string; firstName: string; lastName: string; role?: string; tenantId?: string }) =>
         apiPost("/auth/register", data),
+
+    updateUserSkills: (userId: string, skillTags: string[]) =>
+        apiPut(`/auth/users/${userId}/skills`, { skillTags }),
 
     // --- Tenant CRUD ---
     createTenant: (data: { name: string; slug: string; industry: string; language?: string; plan?: string }) =>

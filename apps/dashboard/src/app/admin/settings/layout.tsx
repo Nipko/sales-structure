@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import {
     User, Shield, Bell, Palette, Building2, Globe, Clock,
     Database, Zap, MessageSquare, Mail, Image, Brain,
-    SlidersHorizontal, Phone, Settings, CreditCard, Plug, type LucideIcon,
+    SlidersHorizontal, Phone, Settings, CreditCard, Plug, GitBranch, BarChart2, type LucideIcon,
 } from "lucide-react";
 
 interface NavItem { i18nKey: string; href: string; icon: LucideIcon; }
@@ -41,6 +41,8 @@ const NAV_SECTIONS: NavSection[] = [
             { i18nKey: "prechat", href: "/admin/settings/prechat", icon: MessageSquare },
             { i18nKey: "emailTemplates", href: "/admin/settings/email-templates", icon: Mail },
             { i18nKey: "mediaBank", href: "/admin/settings/media", icon: Image },
+            { i18nKey: "pipelineStages", href: "/admin/settings/pipeline", icon: GitBranch },
+            { i18nKey: "scoringConfig", href: "/admin/settings/scoring-config", icon: BarChart2 },
         ],
     },
     {

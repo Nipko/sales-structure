@@ -3001,5 +3001,131 @@
     "checkInInstructions": "Instrucciones de check-in",
     "houseRules": "Reglas de la casa",
     "saved": "Guardado"
+  },
+  "verticalEmptyStates": {
+    "salud": {
+      "contacts": "Cuando llegue tu primer paciente, aparecerá aquí",
+      "pipeline": "Tu primer paciente iniciará el seguimiento médico",
+      "inbox": "Las consultas de tus pacientes llegarán aquí",
+      "appointments": "Agenda tu primera cita médica",
+      "broadcast": "Envía recordatorios a tus pacientes"
+    },
+    "moda_belleza": {
+      "contacts": "Tus clientes aparecerán aquí cuando te contacten",
+      "pipeline": "El seguimiento de citas comenzará con tu primer cliente",
+      "inbox": "Las consultas de tus clientes llegarán aquí",
+      "appointments": "Configura tus servicios y agenda tu primera cita",
+      "broadcast": "Envía promociones a tus clientes"
+    },
+    "inmobiliaria": {
+      "contacts": "Tus interesados en propiedades aparecerán aquí",
+      "pipeline": "Las negociaciones inmobiliarias iniciarán con tu primer lead",
+      "inbox": "Las consultas sobre tus propiedades llegarán aquí",
+      "appointments": "Agenda tu primera visita a propiedad",
+      "broadcast": "Envía nuevas propiedades a tus interesados"
+    },
+    "restaurantes": {
+      "contacts": "Tus comensales aparecerán cuando hagan su primera reserva",
+      "pipeline": "Las reservas de tu restaurante aparecerán aquí",
+      "inbox": "Los mensajes de tus comensales llegarán aquí",
+      "appointments": "Tu primera reserva de mesa está por llegar",
+      "broadcast": "Envía ofertas y eventos a tus comensales"
+    },
+    "automotriz": {
+      "contacts": "Tus prospectos automotrices aparecerán aquí",
+      "pipeline": "Las negociaciones de vehículos iniciarán aquí",
+      "inbox": "Las consultas sobre vehículos llegarán aquí",
+      "appointments": "Agenda tu primera prueba de manejo",
+      "broadcast": "Envía ofertas de vehículos a tus prospectos"
+    },
+    "turismo": {
+      "contacts": "Tus viajeros aparecerán cuando hagan su primera consulta",
+      "pipeline": "Las reservas de viaje iniciarán aquí",
+      "inbox": "Las consultas de viajeros llegarán aquí",
+      "appointments": "Tu primer itinerario está por llegar",
+      "broadcast": "Envía destinos y ofertas a tus viajeros"
+    },
+    "education": {
+      "contacts": "Tus estudiantes aparecerán cuando se inscriban",
+      "pipeline": "Las inscripciones iniciarán con tu primer estudiante",
+      "inbox": "Las consultas de estudiantes llegarán aquí",
+      "appointments": "Agenda tu primera clase de prueba",
+      "broadcast": "Envía información de cursos a tus estudiantes"
+    },
+    "default": {
+      "contacts": "Tus contactos aparecerán aquí cuando te escriban",
+      "pipeline": "Tu embudo de ventas comenzará con tu primer lead",
+      "inbox": "Los mensajes de tus clientes llegarán aquí",
+      "appointments": "Agenda tu primera cita",
+      "broadcast": "Envía campañas a tus contactos"
+    }
+  },
+  "verticalChecklist": {
+    "salud": {
+      "configureAgent": "Configura tu asistente médico",
+      "connectChannel": "Conecta WhatsApp para recibir pacientes",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tus servicios médicos y FAQs",
+      "inviteTeam": "Invita a tu equipo del consultorio"
+    },
+    "moda_belleza": {
+      "configureAgent": "Configura tu asistente de belleza",
+      "connectChannel": "Conecta WhatsApp para recibir clientes",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tus servicios y precios",
+      "inviteTeam": "Invita a tu equipo del salón"
+    },
+    "inmobiliaria": {
+      "configureAgent": "Configura tu asesor inmobiliario virtual",
+      "connectChannel": "Conecta WhatsApp para recibir interesados",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tu portafolio de propiedades",
+      "inviteTeam": "Invita a tus asesores"
+    },
+    "restaurantes": {
+      "configureAgent": "Configura tu asistente de restaurante",
+      "connectChannel": "Conecta WhatsApp para reservas",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tu menú y horarios",
+      "inviteTeam": "Invita a tu equipo"
+    },
+    "automotriz": {
+      "configureAgent": "Configura tu asesor automotriz",
+      "connectChannel": "Conecta WhatsApp para recibir prospectos",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tu inventario de vehículos",
+      "inviteTeam": "Invita a tu equipo de ventas"
+    },
+    "turismo": {
+      "configureAgent": "Configura tu asesor de viajes",
+      "connectChannel": "Conecta WhatsApp para recibir viajeros",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tus destinos y paquetes",
+      "inviteTeam": "Invita a tu equipo de agentes"
+    },
+    "education": {
+      "configureAgent": "Configura tu asistente educativo",
+      "connectChannel": "Conecta WhatsApp para recibir estudiantes",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tus cursos y programas",
+      "inviteTeam": "Invita a tu equipo docente"
+    },
+    "default": {
+      "configureAgent": "Configura tu agente IA",
+      "connectChannel": "Conecta un canal de mensajería",
+      "sendTestMessage": "Envía un mensaje de prueba",
+      "addKnowledgeBase": "Carga tu base de conocimiento",
+      "inviteTeam": "Invita a tu equipo"
+    }
+  },
+  "verticalWelcome": {
+    "salud": "Bienvenido a tu consultorio virtual, {name}",
+    "moda_belleza": "Tu salón de belleza está listo, {name}",
+    "inmobiliaria": "Tu oficina inmobiliaria está lista, {name}",
+    "restaurantes": "Tu restaurante está listo para recibir comensales, {name}",
+    "automotriz": "Tu concesionario virtual está listo, {name}",
+    "turismo": "Tu agencia de viajes está lista, {name}",
+    "education": "Tu centro educativo está listo, {name}",
+    "default": "Bienvenido, {name} · Vista general de la plataforma"
   }
 }

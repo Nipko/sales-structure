@@ -30,6 +30,7 @@ const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio',
 export default function PipelinePage() {
     const t = useTranslations('pipeline');
     const tc = useTranslations('common');
+    const tEmpty = useTranslations("verticalEmptyStates");
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const { hasRole } = useAuth();
@@ -382,11 +383,20 @@ export default function PipelinePage() {
                                             {t('dragHere')}
                                         </div>
                                     )}
+
                                 </div>
                             </div>
                         );
                     })}
                 </div>
+                {!loading && forecast.dealCount === 0 && (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Target size={48} className="text-muted-foreground opacity-20 mb-4" />
+                        <p className="text-sm text-muted-foreground">
+                            {tEmpty(vt.industry !== 'otro' ? `${vt.industry}.pipeline` : 'default.pipeline')}
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Approval Request Modal */}

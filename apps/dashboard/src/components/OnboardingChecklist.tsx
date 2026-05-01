@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
+import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { api } from "@/lib/api";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 
@@ -30,6 +31,8 @@ const ITEMS: ChecklistItem[] = [
 
 export default function OnboardingChecklist() {
     const t = useTranslations("checklist");
+    const tChecklist = useTranslations("verticalChecklist");
+    const vt = useVerticalTerms();
     const { user } = useAuth();
     const router = useRouter();
     const [collapsed, setCollapsed] = useState(false);
@@ -139,7 +142,9 @@ export default function OnboardingChecklist() {
                                                 {done && <Check size={12} />}
                                             </div>
                                             <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                                                {t(`items.${item.key}`)}
+                                                {vt.industry !== 'otro'
+                                                    ? tChecklist(`${vt.industry}.${item.key}`)
+                                                    : t(`items.${item.key}`)}
                                             </span>
                                             {!done && item.href && (
                                                 <button
@@ -169,7 +174,9 @@ export default function OnboardingChecklist() {
                                                 {done && <Check size={12} />}
                                             </div>
                                             <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                                                {t(`items.${item.key}`)}
+                                                {vt.industry !== 'otro'
+                                                    ? tChecklist(`${vt.industry}.${item.key}`)
+                                                    : t(`items.${item.key}`)}
                                             </span>
                                             {!done && item.href && (
                                                 <button

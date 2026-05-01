@@ -53,6 +53,7 @@ const modelBarColors = [
 export default function AdminDashboard() {
     const { user, verticalConfig } = useAuth();
     const t = useTranslations("dashboard");
+    const tVw = useTranslations("verticalWelcome");
     const vt = useVerticalTerms();
     const locale = useLocale() as "es" | "en" | "pt" | "fr";
 
@@ -213,7 +214,7 @@ export default function AdminDashboard() {
                         {t('title')}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        {t("welcome", { name: user?.firstName || "Admin" })}
+                        {tVw(vt.industry !== 'otro' ? vt.industry : 'default', { name: user?.firstName || "Admin" })}
                     </p>
                 </div>
                 <DataSourceBadge isLive={isLive} />

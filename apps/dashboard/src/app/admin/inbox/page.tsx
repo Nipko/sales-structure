@@ -206,6 +206,7 @@ export default function InboxPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const t = useTranslations("inbox");
+    const tEmpty = useTranslations("verticalEmptyStates");
     const vt = useVerticalTerms();
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const [filter, setFilter] = useState<InboxFilter>("all");
@@ -1050,7 +1051,7 @@ export default function InboxPage() {
                     {!loadingConv && filteredConversations.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                             <MessageSquare size={32} className="opacity-20" />
-                            <span className="text-sm">{t("noConversations")}</span>
+                            <span className="text-sm">{tEmpty(vt.industry !== 'otro' ? `${vt.industry}.inbox` : 'default.inbox')}</span>
                         </div>
                     )}
                 </div>

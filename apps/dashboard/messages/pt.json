@@ -2974,5 +2974,131 @@
     "checkInInstructions": "Instrucoes de check-in",
     "houseRules": "Regras da casa",
     "saved": "Salvo"
+  },
+  "verticalEmptyStates": {
+    "salud": {
+      "contacts": "Seu primeiro paciente aparecerá aqui",
+      "pipeline": "Seu primeiro paciente iniciará o acompanhamento médico",
+      "inbox": "As consultas dos seus pacientes chegarão aqui",
+      "appointments": "Agende sua primeira consulta médica",
+      "broadcast": "Envie lembretes para seus pacientes"
+    },
+    "moda_belleza": {
+      "contacts": "Seus clientes aparecerão aqui quando entrarem em contato",
+      "pipeline": "O acompanhamento de agendamentos começará com seu primeiro cliente",
+      "inbox": "As consultas dos seus clientes chegarão aqui",
+      "appointments": "Configure seus serviços e agende seu primeiro atendimento",
+      "broadcast": "Envie promoções para seus clientes"
+    },
+    "inmobiliaria": {
+      "contacts": "Seus interessados em imóveis aparecerão aqui",
+      "pipeline": "As negociações imobiliárias começarão com seu primeiro lead",
+      "inbox": "As consultas sobre seus imóveis chegarão aqui",
+      "appointments": "Agende sua primeira visita ao imóvel",
+      "broadcast": "Envie novos imóveis para seus interessados"
+    },
+    "restaurantes": {
+      "contacts": "Seus clientes aparecerão quando fizerem a primeira reserva",
+      "pipeline": "As reservas do seu restaurante aparecerão aqui",
+      "inbox": "As mensagens dos seus clientes chegarão aqui",
+      "appointments": "Sua primeira reserva de mesa está a caminho",
+      "broadcast": "Envie ofertas e eventos para seus clientes"
+    },
+    "automotriz": {
+      "contacts": "Seus prospectos automotivos aparecerão aqui",
+      "pipeline": "As negociações de veículos começarão aqui",
+      "inbox": "As consultas sobre veículos chegarão aqui",
+      "appointments": "Agende seu primeiro test drive",
+      "broadcast": "Envie ofertas de veículos para seus prospectos"
+    },
+    "turismo": {
+      "contacts": "Seus viajantes aparecerão quando fizerem a primeira consulta",
+      "pipeline": "As reservas de viagem começarão aqui",
+      "inbox": "As consultas dos viajantes chegarão aqui",
+      "appointments": "Seu primeiro roteiro está a caminho",
+      "broadcast": "Envie destinos e ofertas para seus viajantes"
+    },
+    "education": {
+      "contacts": "Seus alunos aparecerão quando se inscreverem",
+      "pipeline": "As inscrições começarão com seu primeiro aluno",
+      "inbox": "As consultas dos alunos chegarão aqui",
+      "appointments": "Agende sua primeira aula experimental",
+      "broadcast": "Envie informações de cursos para seus alunos"
+    },
+    "default": {
+      "contacts": "Seus contatos aparecerão aqui quando enviarem mensagem",
+      "pipeline": "Seu funil de vendas começará com seu primeiro lead",
+      "inbox": "As mensagens dos seus clientes chegarão aqui",
+      "appointments": "Agende seu primeiro compromisso",
+      "broadcast": "Envie campanhas para seus contatos"
+    }
+  },
+  "verticalChecklist": {
+    "salud": {
+      "configureAgent": "Configure seu assistente médico",
+      "connectChannel": "Conecte o WhatsApp para receber pacientes",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seus serviços médicos e FAQs",
+      "inviteTeam": "Convide sua equipe do consultório"
+    },
+    "moda_belleza": {
+      "configureAgent": "Configure seu assistente de beleza",
+      "connectChannel": "Conecte o WhatsApp para receber clientes",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seus serviços e preços",
+      "inviteTeam": "Convide sua equipe do salão"
+    },
+    "inmobiliaria": {
+      "configureAgent": "Configure seu assessor imobiliário virtual",
+      "connectChannel": "Conecte o WhatsApp para receber interessados",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seu portfólio de imóveis",
+      "inviteTeam": "Convide seus assessores"
+    },
+    "restaurantes": {
+      "configureAgent": "Configure seu assistente de restaurante",
+      "connectChannel": "Conecte o WhatsApp para reservas",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seu cardápio e horários",
+      "inviteTeam": "Convide sua equipe"
+    },
+    "automotriz": {
+      "configureAgent": "Configure seu assessor automotivo",
+      "connectChannel": "Conecte o WhatsApp para receber prospectos",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seu inventário de veículos",
+      "inviteTeam": "Convide sua equipe de vendas"
+    },
+    "turismo": {
+      "configureAgent": "Configure seu assessor de viagens",
+      "connectChannel": "Conecte o WhatsApp para receber viajantes",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seus destinos e pacotes",
+      "inviteTeam": "Convide sua equipe de agentes"
+    },
+    "education": {
+      "configureAgent": "Configure seu assistente educacional",
+      "connectChannel": "Conecte o WhatsApp para receber alunos",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seus cursos e programas",
+      "inviteTeam": "Convide sua equipe docente"
+    },
+    "default": {
+      "configureAgent": "Configure seu agente IA",
+      "connectChannel": "Conecte um canal de mensagens",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue sua base de conhecimento",
+      "inviteTeam": "Convide sua equipe"
+    }
+  },
+  "verticalWelcome": {
+    "salud": "Bem-vindo ao seu consultório virtual, {name}",
+    "moda_belleza": "Seu salão de beleza está pronto, {name}",
+    "inmobiliaria": "Seu escritório imobiliário está pronto, {name}",
+    "restaurantes": "Seu restaurante está pronto para receber clientes, {name}",
+    "automotriz": "Sua concessionária virtual está pronta, {name}",
+    "turismo": "Sua agência de viagens está pronta, {name}",
+    "education": "Seu centro educacional está pronto, {name}",
+    "default": "Bem-vindo, {name} · Visão geral da plataforma"
   }
 }

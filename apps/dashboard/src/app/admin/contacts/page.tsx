@@ -50,6 +50,7 @@ const segmentStyles: Record<string, string> = {
 export default function ContactsPage() {
     const t = useTranslations('contacts');
     const tc = useTranslations("common");
+    const tEmpty = useTranslations("verticalEmptyStates");
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const router = useRouter();
@@ -589,6 +590,14 @@ export default function ContactsPage() {
                         })}
                     </tbody>
                 </table>
+                {filtered.length === 0 && !loading && (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Users size={48} className="text-[var(--text-secondary)] opacity-20 mb-4" />
+                        <p className="text-sm text-[var(--text-secondary)]">
+                            {tEmpty(vt.industry !== 'otro' ? `${vt.industry}.contacts` : 'default.contacts')}
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Advanced Filter Drawer */}

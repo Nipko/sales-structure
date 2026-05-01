@@ -2974,5 +2974,131 @@
     "checkInInstructions": "Instructions de check-in",
     "houseRules": "Regles de la maison",
     "saved": "Enregistre"
+  },
+  "verticalEmptyStates": {
+    "salud": {
+      "contacts": "Votre premier patient apparaîtra ici",
+      "pipeline": "Votre premier patient démarrera le suivi médical",
+      "inbox": "Les demandes de vos patients apparaîtront ici",
+      "appointments": "Planifiez votre premier rendez-vous médical",
+      "broadcast": "Envoyez des rappels à vos patients"
+    },
+    "moda_belleza": {
+      "contacts": "Vos clients apparaîtront ici lorsqu'ils vous contacteront",
+      "pipeline": "Le suivi des rendez-vous commencera avec votre premier client",
+      "inbox": "Les demandes de vos clients apparaîtront ici",
+      "appointments": "Configurez vos services et planifiez votre premier rendez-vous",
+      "broadcast": "Envoyez des promotions à vos clients"
+    },
+    "inmobiliaria": {
+      "contacts": "Vos prospects immobiliers apparaîtront ici",
+      "pipeline": "Les négociations immobilières commenceront avec votre premier prospect",
+      "inbox": "Les demandes sur vos propriétés apparaîtront ici",
+      "appointments": "Planifiez votre première visite de propriété",
+      "broadcast": "Envoyez de nouvelles annonces à vos prospects"
+    },
+    "restaurantes": {
+      "contacts": "Vos convives apparaîtront lors de leur première réservation",
+      "pipeline": "Les réservations de votre restaurant apparaîtront ici",
+      "inbox": "Les messages de vos convives apparaîtront ici",
+      "appointments": "Votre première réservation de table arrive bientôt",
+      "broadcast": "Envoyez des offres et événements à vos convives"
+    },
+    "automotriz": {
+      "contacts": "Vos prospects automobiles apparaîtront ici",
+      "pipeline": "Les négociations de véhicules commenceront ici",
+      "inbox": "Les demandes sur les véhicules apparaîtront ici",
+      "appointments": "Planifiez votre premier essai routier",
+      "broadcast": "Envoyez des offres de véhicules à vos prospects"
+    },
+    "turismo": {
+      "contacts": "Vos voyageurs apparaîtront lors de leur première demande",
+      "pipeline": "Les réservations de voyage commenceront ici",
+      "inbox": "Les demandes des voyageurs apparaîtront ici",
+      "appointments": "Votre premier itinéraire arrive bientôt",
+      "broadcast": "Envoyez des destinations et offres à vos voyageurs"
+    },
+    "education": {
+      "contacts": "Vos étudiants apparaîtront lors de leur inscription",
+      "pipeline": "Les inscriptions commenceront avec votre premier étudiant",
+      "inbox": "Les demandes des étudiants apparaîtront ici",
+      "appointments": "Planifiez votre premier cours d'essai",
+      "broadcast": "Envoyez des informations de cours à vos étudiants"
+    },
+    "default": {
+      "contacts": "Vos contacts apparaîtront ici lorsqu'ils vous écriront",
+      "pipeline": "Votre entonnoir de vente commencera avec votre premier prospect",
+      "inbox": "Les messages de vos clients apparaîtront ici",
+      "appointments": "Planifiez votre premier rendez-vous",
+      "broadcast": "Envoyez des campagnes à vos contacts"
+    }
+  },
+  "verticalChecklist": {
+    "salud": {
+      "configureAgent": "Configurez votre assistant médical",
+      "connectChannel": "Connectez WhatsApp pour recevoir des patients",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez vos services médicaux et FAQs",
+      "inviteTeam": "Invitez votre équipe du cabinet"
+    },
+    "moda_belleza": {
+      "configureAgent": "Configurez votre assistant beauté",
+      "connectChannel": "Connectez WhatsApp pour recevoir des clients",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez vos services et tarifs",
+      "inviteTeam": "Invitez votre équipe du salon"
+    },
+    "inmobiliaria": {
+      "configureAgent": "Configurez votre conseiller immobilier virtuel",
+      "connectChannel": "Connectez WhatsApp pour recevoir des prospects",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez votre portefeuille de propriétés",
+      "inviteTeam": "Invitez vos conseillers"
+    },
+    "restaurantes": {
+      "configureAgent": "Configurez votre assistant de restaurant",
+      "connectChannel": "Connectez WhatsApp pour les réservations",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez votre menu et horaires",
+      "inviteTeam": "Invitez votre équipe"
+    },
+    "automotriz": {
+      "configureAgent": "Configurez votre conseiller automobile",
+      "connectChannel": "Connectez WhatsApp pour recevoir des prospects",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez votre inventaire de véhicules",
+      "inviteTeam": "Invitez votre équipe de vente"
+    },
+    "turismo": {
+      "configureAgent": "Configurez votre conseiller de voyage",
+      "connectChannel": "Connectez WhatsApp pour recevoir des voyageurs",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez vos destinations et forfaits",
+      "inviteTeam": "Invitez votre équipe d'agents"
+    },
+    "education": {
+      "configureAgent": "Configurez votre assistant éducatif",
+      "connectChannel": "Connectez WhatsApp pour recevoir des étudiants",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez vos cours et programmes",
+      "inviteTeam": "Invitez votre équipe enseignante"
+    },
+    "default": {
+      "configureAgent": "Configurez votre agent IA",
+      "connectChannel": "Connectez un canal de messagerie",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez votre base de connaissances",
+      "inviteTeam": "Invitez votre équipe"
+    }
+  },
+  "verticalWelcome": {
+    "salud": "Bienvenue dans votre cabinet virtuel, {name}",
+    "moda_belleza": "Votre salon de beauté est prêt, {name}",
+    "inmobiliaria": "Votre agence immobilière est prête, {name}",
+    "restaurantes": "Votre restaurant est prêt à accueillir des convives, {name}",
+    "automotriz": "Votre concession virtuelle est prête, {name}",
+    "turismo": "Votre agence de voyages est prête, {name}",
+    "education": "Votre centre éducatif est prêt, {name}",
+    "default": "Bienvenue, {name} · Vue d'ensemble de la plateforme"
   }
 }

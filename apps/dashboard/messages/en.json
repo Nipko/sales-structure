@@ -2974,5 +2974,131 @@
     "checkInInstructions": "Check-in instructions",
     "houseRules": "House rules",
     "saved": "Saved"
+  },
+  "verticalEmptyStates": {
+    "salud": {
+      "contacts": "Your first patient will appear here",
+      "pipeline": "Your first patient will start the medical journey",
+      "inbox": "Patient inquiries will appear here",
+      "appointments": "Schedule your first medical appointment",
+      "broadcast": "Send reminders to your patients"
+    },
+    "moda_belleza": {
+      "contacts": "Your clients will appear here when they contact you",
+      "pipeline": "Appointment tracking will start with your first client",
+      "inbox": "Client inquiries will appear here",
+      "appointments": "Set up your services and schedule your first appointment",
+      "broadcast": "Send promotions to your clients"
+    },
+    "inmobiliaria": {
+      "contacts": "Your property prospects will appear here",
+      "pipeline": "Real estate negotiations will start with your first lead",
+      "inbox": "Property inquiries will appear here",
+      "appointments": "Schedule your first property visit",
+      "broadcast": "Send new listings to your prospects"
+    },
+    "restaurantes": {
+      "contacts": "Your diners will appear when they make their first reservation",
+      "pipeline": "Your restaurant reservations will appear here",
+      "inbox": "Messages from your diners will appear here",
+      "appointments": "Your first table reservation is on its way",
+      "broadcast": "Send offers and events to your diners"
+    },
+    "automotriz": {
+      "contacts": "Your automotive prospects will appear here",
+      "pipeline": "Vehicle negotiations will start here",
+      "inbox": "Vehicle inquiries will appear here",
+      "appointments": "Schedule your first test drive",
+      "broadcast": "Send vehicle offers to your prospects"
+    },
+    "turismo": {
+      "contacts": "Your travelers will appear when they make their first inquiry",
+      "pipeline": "Travel bookings will start here",
+      "inbox": "Traveler inquiries will appear here",
+      "appointments": "Your first itinerary is on its way",
+      "broadcast": "Send destinations and offers to your travelers"
+    },
+    "education": {
+      "contacts": "Your students will appear when they enroll",
+      "pipeline": "Enrollments will start with your first student",
+      "inbox": "Student inquiries will appear here",
+      "appointments": "Schedule your first trial class",
+      "broadcast": "Send course information to your students"
+    },
+    "default": {
+      "contacts": "Your contacts will appear here when they message you",
+      "pipeline": "Your sales funnel will start with your first lead",
+      "inbox": "Messages from your customers will appear here",
+      "appointments": "Schedule your first appointment",
+      "broadcast": "Send campaigns to your contacts"
+    }
+  },
+  "verticalChecklist": {
+    "salud": {
+      "configureAgent": "Set up your medical assistant",
+      "connectChannel": "Connect WhatsApp to receive patients",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your medical services and FAQs",
+      "inviteTeam": "Invite your clinic team"
+    },
+    "moda_belleza": {
+      "configureAgent": "Set up your beauty assistant",
+      "connectChannel": "Connect WhatsApp to receive clients",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your services and prices",
+      "inviteTeam": "Invite your salon team"
+    },
+    "inmobiliaria": {
+      "configureAgent": "Set up your virtual real estate advisor",
+      "connectChannel": "Connect WhatsApp to receive prospects",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your property portfolio",
+      "inviteTeam": "Invite your advisors"
+    },
+    "restaurantes": {
+      "configureAgent": "Set up your restaurant assistant",
+      "connectChannel": "Connect WhatsApp for reservations",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your menu and hours",
+      "inviteTeam": "Invite your team"
+    },
+    "automotriz": {
+      "configureAgent": "Set up your automotive advisor",
+      "connectChannel": "Connect WhatsApp to receive prospects",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your vehicle inventory",
+      "inviteTeam": "Invite your sales team"
+    },
+    "turismo": {
+      "configureAgent": "Set up your travel advisor",
+      "connectChannel": "Connect WhatsApp to receive travelers",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your destinations and packages",
+      "inviteTeam": "Invite your agent team"
+    },
+    "education": {
+      "configureAgent": "Set up your education assistant",
+      "connectChannel": "Connect WhatsApp to receive students",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your courses and programs",
+      "inviteTeam": "Invite your teaching staff"
+    },
+    "default": {
+      "configureAgent": "Set up your AI agent",
+      "connectChannel": "Connect a messaging channel",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your knowledge base",
+      "inviteTeam": "Invite your team"
+    }
+  },
+  "verticalWelcome": {
+    "salud": "Welcome to your virtual clinic, {name}",
+    "moda_belleza": "Your beauty salon is ready, {name}",
+    "inmobiliaria": "Your real estate office is ready, {name}",
+    "restaurantes": "Your restaurant is ready to receive diners, {name}",
+    "automotriz": "Your virtual dealership is ready, {name}",
+    "turismo": "Your travel agency is ready, {name}",
+    "education": "Your education center is ready, {name}",
+    "default": "Welcome, {name} · Platform overview"
   }
 }

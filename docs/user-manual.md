@@ -27,8 +27,8 @@
 | 2.4 | [Recuperar contraseña](#24-recuperar-contraseña) | |
 | 3 | [Dashboard](#3-dashboard) | |
 | 4 | [Navegación — Cómo usar la plataforma](#4-navegación--cómo-usar-la-plataforma) | |
-| 4.1 | [Menú principal](#41-menú-principal) | |
-| 4.2 | [Configuración — 8 secciones](#42-configuración--8-secciones) | |
+| 4.1 | [Menú principal — 3 secciones, 14 items](#41-menú-principal) | |
+| 4.2 | [Configuración — 5 secciones](#42-configuración--5-secciones) | |
 | 4.3 | [Analytics — 10 pestañas](#43-analytics--10-pestañas) | |
 | 5 | [Inbox — Bandeja de Entrada](#5-inbox--bandeja-de-entrada) | |
 | 5.1 | [Vista general](#51-vista-general) | |
@@ -78,6 +78,7 @@
 | 21 | [Adaptación por Industria (Verticales)](#21-adaptación-por-industria) | |
 | 22 | [Propiedades y Alquiler Vacacional](#22-propiedades-y-alquiler-vacacional) | |
 | 23 | [Panel de Super Administrador](#23-panel-de-super-administrador) | |
+| 24 | [Sistema de Ayuda Contextual](#24-sistema-de-ayuda-contextual) | |
 | A | [Apéndice: Guía de Screenshots](#apéndice-guía-de-screenshots) | |
 
 ---
@@ -248,66 +249,77 @@ Si tu cuenta es nueva, aparece un checklist adaptado a tu industria:
 
 # 4. Navegación — Cómo usar la plataforma
 
-Parallly está organizado en **8 secciones principales** accesibles desde el menú lateral, más una sección de Configuración en la parte inferior.
+Parallly está organizado en **3 secciones nombradas** (14 items en total) accesibles desde el menú lateral izquierdo, más Configuración en la parte inferior.
 
 ## 4.1 Menú principal
 
 ```
 ┌─────────────────────────────┐
-│  [Logo Parallly]            │
+│  [Logo]  Nombre del negocio │
 ├─────────────────────────────┤
+│  OPERACIÓN                  │
 │  💬  Conversaciones         │
 │  👥  CRM                    │
 │  📊  Embudo                 │
 │  📅  Agenda                 │
-│  📣  Campañas               │
-│  📈  Análisis               │
-│  🤖  Agente IA              │
 │  🏠  Propiedades *          │
+│                             │
+│  CRECIMIENTO                │
+│  📣  Campañas               │
+│  ⚡  Automatización         │
+│  🤖  Agente IA              │
+│  📚  Base de Conocimiento   │
+│                             │
+│  GESTIÓN                    │
+│  📈  Analíticas             │
+│  📡  Canales                │
+│  👤  Usuarios               │
 ├─────────────────────────────┤
 │  ⚙️  Configuración          │
+│  [Avatar]  Nombre usuario   │
 └─────────────────────────────┘
 * Solo visible en industria Turismo
 ```
 
-| Sección | Para qué sirve |
-|---------|---------------|
-| **Conversaciones** | Bandeja de entrada con todas las conversaciones de clientes en tiempo real |
-| **CRM** | Contactos, leads, segmentos y gestión de relaciones |
-| **Embudo** | Pipeline de ventas tipo Kanban con etapas configurables |
-| **Agenda** | Citas, calendario, servicios y disponibilidad |
-| **Campañas** | Broadcasts masivos, secuencias y automatización de mensajes |
-| **Análisis** | Todos los reportes y analíticas en 10 pestañas |
-| **Agente IA** | Configuración, plantillas y prueba de tus agentes de IA |
-| **Propiedades** | Gestión de propiedades de alquiler vacacional (Turismo) |
-| **Configuración** | Toda la configuración del negocio, usuarios, canales y más |
+| Item | Sección | Para qué sirve |
+|------|---------|---------------|
+| **Conversaciones** | OPERACIÓN | Bandeja de entrada con todas las conversaciones en tiempo real |
+| **CRM** | OPERACIÓN | Contactos, leads, segmentos y gestión de relaciones |
+| **Embudo** | OPERACIÓN | Pipeline de ventas tipo Kanban con etapas configurables |
+| **Agenda** | OPERACIÓN | Citas, calendario, servicios y disponibilidad |
+| **Propiedades** | OPERACIÓN | Gestión de propiedades de alquiler vacacional (Turismo) |
+| **Campañas** | CRECIMIENTO | Broadcasts masivos, secuencias y automatización de mensajes |
+| **Automatización** | CRECIMIENTO | Reglas de automatización (triggers, condiciones, acciones) |
+| **Agente IA** | CRECIMIENTO | Configuración, plantillas y prueba de tus agentes de IA |
+| **Base de Conocimiento** | CRECIMIENTO | Artículos, FAQs, políticas para el RAG del agente |
+| **Analíticas** | GESTIÓN | Todos los reportes y analíticas en 10 pestañas |
+| **Canales** | GESTIÓN | Conectar y gestionar WhatsApp, Instagram, Messenger, Telegram, SMS |
+| **Usuarios** | GESTIÓN | Gestión de equipo, roles y habilidades |
+| **Configuración** | — | Ajustes de cuenta, empresa, IA y herramientas |
 
 ### Permisos de acceso
 
-| Sección | Acceso mínimo requerido |
-|---------|------------------------|
+| Item | Acceso mínimo requerido |
+|------|------------------------|
 | Conversaciones, CRM, Embudo, Agenda | Agente |
-| Campañas | Supervisor |
-| Análisis, Propiedades | Agente |
-| Agente IA | Admin |
-| Configuración | Admin |
+| Analíticas, Propiedades | Agente |
+| Campañas, Automatización, Base de Conocimiento | Supervisor |
+| Agente IA, Usuarios | Admin |
+| Canales, Configuración | Admin |
 
-## 4.2 Configuración — 8 secciones
+## 4.2 Configuración — 5 secciones
 
-Al hacer clic en **Configuración**, accedes a un hub organizado en 8 dominios:
+Al hacer clic en **Configuración**, accedes a 5 secciones limpias sin enlaces externos:
 
 | Sección | Qué incluye |
 |---------|-------------|
 | **Cuenta** | Perfil personal, contraseña, 2FA, sesiones activas |
-| **Empresa** | Información del negocio, logo, horario de atención, zonas horarias |
-| **IA & Automatización** | Agentes IA, reglas de automatización, base de conocimiento, FAQs, políticas |
-| **Canales** | WhatsApp, Instagram, Messenger, Telegram, SMS — conectar y configurar |
-| **Catálogo & Datos** | Inventario, catálogo de servicios, scoring de leads, atributos personalizados |
-| **Contenido** | Plantillas de email, macros, formularios de pre-chat, librería de medios |
-| **Equipo** | Usuarios, roles, habilidades del equipo, listas de distribución |
-| **Privacidad & Avanzado** | Compliance, textos legales, alertas, reportes programados, landing pages |
+| **Empresa** | Información del negocio, logo, horario de atención, info de contacto |
+| **Herramientas** | Canales (WhatsApp, IG, Messenger, Telegram, SMS), inventario, servicios, atributos personalizados, formularios pre-chat, compliance |
+| **IA** | Agentes IA, automatización, base de conocimiento, FAQs, políticas, scoring de leads, plantillas de email, macros |
+| **Avanzado** | Alertas, reportes programados, gestión de medios, opciones del sistema |
 
-> **Tip:** Los 10 módulos que antes requerían navegar por menús separados (alertas, políticas, landings, scoring, pre-chat, medios, macros, compliance, base de conocimiento) ahora están todos en Configuración.
+> **Tip:** Todos los módulos de configuración están organizados por propósito. Ya no necesitas buscar en menús separados — todo está en 5 secciones claras.
 
 ## 4.3 Analytics — 10 pestañas
 
@@ -1757,6 +1769,54 @@ Cada tenant tiene un score de salud (0-100) calculado automáticamente:
 
 ---
 
+# 24. Sistema de Ayuda Contextual
+
+Cada sección de la plataforma incluye un botón de ayuda **"?"** que al hacer clic despliega información específica de ese módulo.
+
+## ¿Qué muestra el panel de ayuda?
+
+- **Descripción** de la sección y qué puedes hacer en ella
+- **Video tutorial** (cuando esté disponible) — se reproduce directamente en la plataforma sin salir de la página
+- **Imágenes** de referencia mostrando la funcionalidad
+- **Tips prácticos** para aprovechar al máximo cada herramienta
+
+## ¿Dónde aparece?
+
+El botón de ayuda está disponible en las 15 secciones principales:
+
+| Sección | Tipo de ayuda disponible |
+|---------|--------------------------|
+| Conversaciones | Cómo gestionar conversaciones y usar filtros |
+| CRM | Cómo gestionar leads, pipeline y segmentos |
+| Embudo | Cómo configurar etapas y mover deals |
+| Agenda | Cómo configurar servicios, disponibilidad y calendarios |
+| Propiedades | Cómo gestionar propiedades y sincronizar disponibilidad |
+| Campañas | Cómo crear y monitorear campañas masivas |
+| Automatización | Cómo configurar reglas de automatización |
+| Agente IA | Cómo configurar y probar tu agente |
+| Base de Conocimiento | Cómo cargar contenido para el RAG |
+| Analíticas | Cómo interpretar métricas y reportes |
+| Canales | Cómo conectar cada canal de mensajería |
+| Usuarios | Cómo gestionar el equipo y roles |
+| Configuración | Cómo configurar cada aspecto de tu negocio |
+| Empresas | Guía para super administradores |
+| Finanzas | Cómo interpretar métricas SaaS |
+
+## Cómo usar el panel de ayuda
+
+1. Busca el botón **"?"** en la esquina superior derecha de cualquier página
+2. Haz clic para expandir el panel de ayuda
+3. Lee la descripción, mira el video si está disponible, y sigue los tips
+4. Haz clic nuevamente en "?" para colapsar el panel y recuperar espacio en pantalla
+
+## Videos tutoriales
+
+Los videos se embeben directamente de YouTube. Para verlos en pantalla completa, haz clic en el ícono de pantalla completa del reproductor de YouTube integrado.
+
+> **Tip:** Los videos se irán agregando gradualmente. Si aún no hay video para una sección, la ayuda textual y los tips están siempre disponibles.
+
+---
+
 ---
 
 # Apéndice: Guía de Screenshots
@@ -1777,8 +1837,8 @@ Para documentar visualmente la plataforma, estas son las pantallas clave donde t
 
 ## Navegación
 
-7. **Sidebar completo**: Menú lateral con 8 items (Conversaciones, CRM, Embudo, Agenda, Campañas, Análisis, Agente IA) + Configuración al fondo
-8. **Hub de Configuración**: Vista de configuración con las 8 secciones en cards organizadas por dominio
+7. **Sidebar definitivo**: Menú lateral con 3 secciones nombradas (OPERACIÓN, CRECIMIENTO, GESTIÓN) y 14 items + Configuración al fondo + avatar del usuario
+8. **Hub de Configuración**: Vista de configuración con las 5 secciones (Cuenta, Empresa, Herramientas, IA, Avanzado)
 
 ## CRM
 

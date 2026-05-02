@@ -169,6 +169,7 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Session management** | `auth/auth.service.ts` (refresh rotation, Redis, logout, revoke) |
 | **Idle timer** | `dashboard/src/hooks/useIdleTimer.ts` (60min, BroadcastChannel) |
 | **Session modal** | `dashboard/src/components/SessionTimeoutModal.tsx` |
+| **Help panel** | `dashboard/src/components/ui/help-panel.tsx` (contextual help with YouTube support, on all 15 admin pages) |
 | DB tenant schema | `apps/api/prisma/tenant-schema.sql` |
 | Shared types | `packages/shared/src/index.ts` |
 | Dashboard API client | `apps/dashboard/src/lib/api.ts` (105+ methods) |
@@ -670,6 +671,34 @@ Root cause: 3 Prisma instances (API main + API worker + WhatsApp) each defaultin
 - **Redis connection leak fixes**: `WebhooksService` (WhatsApp) and `HealthController` now properly release Redis client instances after use
 - **NurturingService fixes**: Transaction timeout 15s→30s + added `updated_at > (now() - 73h)` pre-filter to avoid scanning full conversations table
 - **FeatureRequestsService column fix**: Raw SQL referenced `content` column (Prisma alias) instead of correct DB column name `content_text`
+
+## Navigation Redesign — Definitive (May 2, 2026)
+
+Sidebar redesigned twice — first attempt (22→8 items) made platform feel empty. Final version:
+- **3 named sections**: OPERACIÓN (Conversaciones, CRM, Embudo, Agenda, Propiedades), CRECIMIENTO (Campañas, Automatización, Agente IA, Base de Conocimiento), GESTIÓN (Analíticas, Canales, Usuarios)
+- **14 items total**: Automation, Channels, Knowledge Base, and Users returned to the sidebar after the 8-item version removed them
+- **Settings**: 5 clean sections with ZERO external links — Account, Company, Tools, AI, Advanced (was 8 sections with broken external links)
+- **Premium visual**: left-border active state (Linear/Stripe pattern), 240px sidebar width, 16px icons, tenant name in header, user avatar in footer
+- **Role-based**: Campañas/Automatización/KB visible to supervisor+, Agente IA/Usuarios visible to admin+
+- **Key file**: `dashboard/src/components/AppSidebar.tsx`
+
+## Breadcrumbs & i18n Completion (May 2, 2026)
+
+- ALL 47 breadcrumb `pathLabels` migrated from hardcoded English to i18n (4 languages)
+- 25 missing page labels added (settings subpages, properties, scoring config, etc.)
+- 7 notification category labels, 3 theme labels, 3 user menu entries — all i18n
+- WebSocket event strings migrated from hardcoded Spanish to i18n
+- New `topbar` i18n namespace with ~90 keys in all 4 language files
+- Zero hardcoded strings remaining in `TopBar` component
+
+## Contextual Help System (May 2, 2026)
+
+- **Component**: `dashboard/src/components/ui/help-panel.tsx`
+- Collapsible "?" pill button → expands to: title, description, YouTube video iframe embed, image grid, tips list
+- Integrated into ALL 15 admin pages with section-specific content
+- **YouTube embed**: pass `videoUrl="https://www.youtube.com/embed/VIDEO_ID"` prop; renders at full width with `aspect-video` ratio
+- Help content stored in `help` i18n namespace (15 sections × 4 languages, ~300 keys total)
+- Content covers: what the section does, practical tips, and links to related features
 
 ## Verification before pushing
 

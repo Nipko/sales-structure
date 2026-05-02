@@ -4,6 +4,31 @@
 
 ---
 
+## v5.1.1 — May 2, 2026
+
+### Navigation Redesign (Definitive)
+- **Sidebar corrected**: 3 named sections (OPERACIÓN, CRECIMIENTO, GESTIÓN) with 14 visible items
+- Previous 8-item sidebar made platform feel empty — Automation, Channels, Knowledge Base, Users returned to main nav
+- **Section grouping**: OPERACIÓN (Conversaciones, CRM, Embudo, Agenda, Propiedades), CRECIMIENTO (Campañas, Automatización, Agente IA, Base de Conocimiento), GESTIÓN (Analíticas, Canales, Usuarios)
+- **Premium visual**: left-border active state (Linear pattern), tenant name header, user avatar footer, 240px width
+- **Settings cleaned**: 5 sections, ZERO external links (was 8 sections with broken external links)
+- **Role-based**: campaigns/automation/KB = supervisor+, aiAgent/users = admin+
+
+### Breadcrumbs & i18n
+- **79+ hardcoded strings** migrated to i18n in TopBar
+- 47 breadcrumb labels, 7 notification categories, 3 theme labels, 3 user menu entries — all i18n
+- 25 missing page labels added (settings subpages, properties, scoring config, etc.)
+- New `topbar` namespace with ~90 keys in all 4 language files
+- Zero hardcoded strings remaining in TopBar component
+
+### Contextual Help System
+- **HelpPanel component** (`components/ui/help-panel.tsx`) on ALL 15 admin pages
+- Collapsible "?" pill button → expands to: title, description, YouTube iframe embed, image grid, tips list
+- 15 section-specific help contents in 4 languages (~300 keys in `help` i18n namespace)
+- YouTube embed: full width, `aspect-video` ratio, fullscreen-capable
+
+---
+
 ## v5.1.0 — May 2, 2026
 
 ### Navigation Restructure

@@ -35,32 +35,40 @@ export class AgentAvailabilityService {
     }
 
     async getAvailableAgents(tenantId: string): Promise<any[]> {
-        const agents = await this.prisma.$queryRaw<any[]>`
-            SELECT u.id, u.first_name, u.last_name, u.email, u.role,
-                   u.availability_status, u.max_capacity,
-                   COALESCE(active.count, 0)::int as active_conversations
-            FROM public.users u
-            LEFT JOIN (
-                SELECT assigned_to, COUNT(*)::int as count
-                FROM (
-                    SELECT DISTINCT c.assigned_to
-                    FROM public.users pu
-                    CROSS JOIN LATERAL (
-                        SELECT assigned_to FROM conversations
-                        WHERE status IN ('with_human', 'waiting_human')
-                        AND assigned_to IS NOT NULL
-                    ) c
-                    WHERE c.assigned_to = pu.id::text
-                ) sub
-                GROUP BY assigned_to
-            ) active ON active.assigned_to = u.id::text
-            WHERE u.tenant_id = ${tenantId}::uuid
-              AND u.is_active = true
-              AND u.availability_status = 'online'
-              AND COALESCE(active.count, 0) < u.max_capacity
-            ORDER BY COALESCE(active.count, 0) ASC
-        `;
+        // SECURITY: Must scope conversations query to tenant schema
+        // to prevent cross-tenant data leakage
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return [];
+
+        const agents = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT u.id, u.first_name, u.last_name, u.email, u.role,
+                    u.availability_status, u.max_capacity,
+                    COALESCE(active.count, 0)::int as active_conversations
+             FROM public.users u
+             LEFT JOIN (
+                 SELECT assigned_to, COUNT(*)::int as count
+                 FROM conversations
+                 WHERE status IN ('with_human', 'waiting_human')
+                   AND assigned_to IS NOT NULL
+                 GROUP BY assigned_to
+             ) active ON active.assigned_to = u.id::text
+             WHERE u.tenant_id = $1::uuid
+               AND u.is_active = true
+               AND u.availability_status = 'online'
+               AND COALESCE(active.count, 0) < u.max_capacity
+             ORDER BY COALESCE(active.count, 0) ASC`,
+            [tenantId],
+        );
         return agents;
+    }
+
+    private async getTenantSchema(tenantId: string): Promise<string | null> {
+        try {
+            return await this.prisma.getTenantSchemaName(tenantId);
+        } catch {
+            return null;
+        }
     }
 
     async getAgentsWithStatus(tenantId: string): Promise<any[]> {

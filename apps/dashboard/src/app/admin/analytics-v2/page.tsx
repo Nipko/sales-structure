@@ -2,6 +2,7 @@
 
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -42,7 +43,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 const MODEL_COLORS = ["#6c5ce7", "#00cec9", "#fdcb6e", "#e17055", "#0984e3", "#d63031", "#00b894"];
 
-const TABS = ["overview", "aiBotTab", "automationTab", "broadcastTab", "channelsTab", "csatTab", "anomaliesTab", "cohortsTab"] as const;
+const TABS = ["overview", "aiBotTab", "crmTab", "agentsTab", "automationTab", "broadcastTab", "channelsTab", "csatTab", "anomaliesTab", "cohortsTab"] as const;
 
 // ── Main Page ──
 
@@ -190,6 +191,8 @@ export default function AnalyticsV2Page() {
                 <>
                     {activeTab === "overview" && <OverviewTab kpis={kpis} volume={volume} heatmap={heatmap} responseTimes={responseTimes} />}
                     {activeTab === "aiBotTab" && <AIBotTab data={aiMetrics} />}
+                    {activeTab === "crmTab" && <CrmRedirectTab />}
+                    {activeTab === "agentsTab" && <AgentsRedirectTab />}
                     {activeTab === "automationTab" && <AutomationTab data={automation} />}
                     {activeTab === "broadcastTab" && <BroadcastTab data={broadcast} />}
                     {activeTab === "channelsTab" && <ChannelsTab volume={volume} />}
@@ -752,6 +755,32 @@ function CohortsTab({ data }: { data: any }) {
                     </table>
                 </div>
             </div>
+        </div>
+    );
+}
+
+// ── Tab: CRM Analytics (link to dedicated page) ──
+function CrmRedirectTab() {
+    return (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+            <Activity size={40} className="text-indigo-500 opacity-40" />
+            <p className="text-sm text-muted-foreground">Embudo de ventas, velocidad del pipeline, win/loss y leaderboard</p>
+            <Link href="/admin/crm-analytics" className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors">
+                Abrir CRM Analytics →
+            </Link>
+        </div>
+    );
+}
+
+// ── Tab: Agent Performance (link to dedicated page) ──
+function AgentsRedirectTab() {
+    return (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+            <Users size={40} className="text-emerald-500 opacity-40" />
+            <p className="text-sm text-muted-foreground">Rendimiento por agente, tiempos de respuesta, CSAT y leaderboard</p>
+            <Link href="/admin/agent-analytics" className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors">
+                Abrir Reportes de Agentes →
+            </Link>
         </div>
     );
 }

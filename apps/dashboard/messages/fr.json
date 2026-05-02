@@ -2432,7 +2432,10 @@
     "variables": "Variables",
     "preview": "Aperçu",
     "testSend": "Envoyer un test",
-    "active": "Actif"
+    "active": "Actif",
+    "createFromTemplate": "Créer depuis un modèle",
+    "presetTitle": "Choisissez un type d'email",
+    "presetSubtitle": "Sélectionnez un modèle pré-conçu à personnaliser"
   },
   "changePassword": {
     "title": "Changer le mot de passe",

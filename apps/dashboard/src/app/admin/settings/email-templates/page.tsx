@@ -20,6 +20,13 @@ import {
   Code2,
   ToggleLeft,
   ToggleRight,
+  Calendar,
+  Bell,
+  Home,
+  MapPin,
+  UserPlus,
+  Users,
+  Layers,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -91,6 +98,95 @@ const emptyTemplate = (): Omit<EmailTemplate, "id" | "createdAt" | "updatedAt"> 
 });
 
 // ---------------------------------------------------------------------------
+// Preset templates
+// ---------------------------------------------------------------------------
+
+type LucideIconName = "Calendar" | "Bell" | "Home" | "MapPin" | "UserPlus" | "Users";
+
+interface TemplatePreset {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIconName;
+  slug: string;
+  subject: string;
+  variables: string[];
+  bodyHtml: string;
+}
+
+const TEMPLATE_PRESETS: TemplatePreset[] = [
+  {
+    id: "preset_appointment_confirm",
+    name: "Confirmación de cita",
+    description: "Email automático cuando se agenda una cita",
+    icon: "Calendar",
+    slug: "appointment_confirmation_email",
+    subject: "Cita confirmada — {{service_name}}",
+    variables: ["customer_name", "service_name", "appointment_date", "appointment_time", "location"],
+    bodyHtml: `<h2>Tu cita está confirmada</h2><p>Hola {{customer_name}},</p><p>Tu cita de <strong>{{service_name}}</strong> ha sido agendada para el <strong>{{appointment_date}}</strong> a las <strong>{{appointment_time}}</strong>.</p>{{#if location}}<p>Ubicación: {{location}}</p>{{/if}}<p>Si necesitas cancelar o reprogramar, contáctanos con 24h de anticipación.</p>`,
+  },
+  {
+    id: "preset_appointment_reminder",
+    name: "Recordatorio de cita",
+    description: "Enviado automáticamente 24h antes de la cita",
+    icon: "Bell",
+    slug: "appointment_reminder_email",
+    subject: "Recordatorio: tu cita mañana — {{service_name}}",
+    variables: ["customer_name", "service_name", "appointment_date", "appointment_time", "location"],
+    bodyHtml: `<h2>Recordatorio de tu cita</h2><p>Hola {{customer_name}},</p><p>Te recordamos que tienes una cita mañana:</p><p><strong>{{service_name}}</strong><br/>{{appointment_date}} a las {{appointment_time}}</p>{{#if location}}<p>Ubicación: {{location}}</p>{{/if}}<p>¡Te esperamos!</p>`,
+  },
+  {
+    id: "preset_booking_confirm",
+    name: "Confirmación de reserva",
+    description: "Para reservas de propiedades/alojamiento",
+    icon: "Home",
+    slug: "property_booking_confirmation",
+    subject: "Reserva confirmada — {{property_name}}",
+    variables: ["guest_name", "property_name", "check_in", "check_out", "nights", "total_price", "currency", "check_in_instructions"],
+    bodyHtml: `<h2>¡Tu reserva está confirmada!</h2><p>Hola {{guest_name}},</p><p>Tu reserva en <strong>{{property_name}}</strong> ha sido confirmada.</p><table style="width:100%;margin:16px 0"><tr><td><strong>Check-in:</strong></td><td>{{check_in}}</td></tr><tr><td><strong>Check-out:</strong></td><td>{{check_out}}</td></tr><tr><td><strong>Noches:</strong></td><td>{{nights}}</td></tr><tr><td><strong>Total:</strong></td><td>{{total_price}} {{currency}}</td></tr></table>{{#if check_in_instructions}}<h3>Instrucciones de llegada</h3><p>{{check_in_instructions}}</p>{{/if}}`,
+  },
+  {
+    id: "preset_checkin_reminder",
+    name: "Recordatorio de check-in",
+    description: "Instrucciones de llegada 24h antes",
+    icon: "MapPin",
+    slug: "property_check_in_reminder",
+    subject: "Mañana es tu check-in — {{property_name}}",
+    variables: ["guest_name", "property_name", "check_in_date", "check_in_time", "address", "check_in_instructions"],
+    bodyHtml: `<h2>¡Tu llegada es mañana!</h2><p>Hola {{guest_name}},</p><p>Tu check-in en <strong>{{property_name}}</strong> es mañana.</p><p><strong>Fecha:</strong> {{check_in_date}}<br/><strong>Hora:</strong> {{check_in_time}}</p>{{#if address}}<p><strong>Dirección:</strong> {{address}}</p>{{/if}}{{#if check_in_instructions}}<h3>Instrucciones de llegada</h3><p>{{check_in_instructions}}</p>{{/if}}`,
+  },
+  {
+    id: "preset_welcome",
+    name: "Bienvenida",
+    description: "Email de bienvenida para nuevos clientes",
+    icon: "UserPlus",
+    slug: "custom_welcome",
+    subject: "Bienvenido a {{company_name}}",
+    variables: ["customer_name", "company_name"],
+    bodyHtml: `<h2>¡Bienvenido!</h2><p>Hola {{customer_name}},</p><p>Gracias por confiar en <strong>{{company_name}}</strong>. Estamos aquí para ayudarte.</p><p>Si tienes alguna pregunta, no dudes en contactarnos.</p>`,
+  },
+  {
+    id: "preset_team_notification",
+    name: "Notificación al equipo",
+    description: "Alerta interna cuando se escala una conversación",
+    icon: "Users",
+    slug: "handoff_notification",
+    subject: "🔴 Escalación: {{contact_name}} necesita atención",
+    variables: ["agent_name", "contact_name", "contact_phone", "reason", "last_message", "inbox_url"],
+    bodyHtml: `<h2>Conversación escalada</h2><p>Hola {{agent_name}},</p><p>Un cliente necesita atención humana.</p><p><strong>Cliente:</strong> {{contact_name}}<br/><strong>Teléfono:</strong> {{contact_phone}}<br/><strong>Razón:</strong> {{reason}}</p>{{#if last_message}}<blockquote style="border-left:3px solid #ddd;padding:8px 12px;color:#666">{{last_message}}</blockquote>{{/if}}<p><a href="{{inbox_url}}" style="display:inline-block;padding:10px 20px;background:#6c5ce7;color:white;border-radius:8px;text-decoration:none">Abrir Inbox</a></p>`,
+  },
+];
+
+const PRESET_ICON_MAP: Record<LucideIconName, React.ElementType> = {
+  Calendar,
+  Bell,
+  Home,
+  MapPin,
+  UserPlus,
+  Users,
+};
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -112,6 +208,8 @@ export default function EmailTemplatesPage() {
   const [sendingTest, setSendingTest] = useState(false);
   const [previewTab, setPreviewTab] = useState<"preview" | "code">("preview");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showPresetPicker, setShowPresetPicker] = useState(false);
+  const [creatingFromPreset, setCreatingFromPreset] = useState(false);
 
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -177,6 +275,35 @@ export default function EmailTemplatesPage() {
   function closeEditor() {
     setSelectedId(null);
     setIsCreating(false);
+  }
+
+  async function createFromPreset(preset: TemplatePreset) {
+    if (!activeTenantId) return;
+    setCreatingFromPreset(true);
+    try {
+      const payload = {
+        name: preset.name,
+        slug: preset.slug,
+        subject: preset.subject,
+        bodyHtml: preset.bodyHtml,
+        bodyJson: null,
+        variables: preset.variables,
+        isActive: true,
+      };
+      const res = await api.createEmailTemplate(activeTenantId, payload);
+      if (res?.success && res.data?.id) {
+        showToast("Template created");
+        setShowPresetPicker(false);
+        await loadTemplates();
+        await selectTemplate(res.data.id);
+      } else {
+        showToast(res?.error || tc("errorSaving"), true);
+      }
+    } catch {
+      showToast(tc("connectionError"), true);
+    } finally {
+      setCreatingFromPreset(false);
+    }
   }
 
   // Auto-generate slug from name
@@ -347,12 +474,21 @@ export default function EmailTemplatesPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={startCreate}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
-        >
-          <Plus size={16} /> Create template
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPresetPicker(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-[10px] bg-card border border-border text-foreground cursor-pointer text-sm font-semibold hover:bg-muted transition-colors"
+          >
+            <Layers size={16} className="text-primary" />
+            {t('createFromTemplate')}
+          </button>
+          <button
+            onClick={startCreate}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} /> Create template
+          </button>
+        </div>
       </div>
 
       {/* Main layout */}
@@ -610,6 +746,87 @@ export default function EmailTemplatesPage() {
           </div>
         )}
       </div>
+
+      {/* Preset Picker Modal */}
+      {showPresetPicker && (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowPresetPicker(false)}
+        >
+          <div
+            className="bg-card rounded-xl border border-border p-6 w-full max-w-[640px] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
+                  <Layers size={18} className="text-primary" />
+                </div>
+                <h3 className="text-base font-semibold text-foreground m-0">
+                  {t('presetTitle')}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowPresetPicker(false)}
+                className="w-8 h-8 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground cursor-pointer flex items-center justify-center transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-5 ml-11">
+              {t('presetSubtitle')}
+            </p>
+
+            {/* 2×3 grid of preset cards */}
+            <div className="grid grid-cols-2 gap-3">
+              {TEMPLATE_PRESETS.map((preset) => {
+                const Icon = PRESET_ICON_MAP[preset.icon];
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => createFromPreset(preset)}
+                    disabled={creatingFromPreset}
+                    className="p-4 rounded-xl border border-border bg-[var(--bg-secondary)] text-left hover:border-primary/60 hover:bg-primary/5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                        <Icon size={15} className="text-primary" />
+                      </div>
+                      <h4 className="text-sm font-semibold text-foreground m-0 leading-tight">
+                        {preset.name}
+                      </h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground m-0 leading-relaxed">
+                      {preset.description}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-2.5">
+                      {preset.variables.slice(0, 3).map((v) => (
+                        <span
+                          key={v}
+                          className="px-1.5 py-0.5 rounded bg-primary/8 text-primary text-[10px] font-mono border border-primary/15"
+                        >
+                          {`{{${v}}}`}
+                        </span>
+                      ))}
+                      {preset.variables.length > 3 && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px]">
+                          +{preset.variables.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer hint */}
+            <p className="text-xs text-muted-foreground text-center mt-4">
+              La plantilla se creará lista para personalizar
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Test Email Modal */}
       {testModalOpen && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
@@ -90,6 +91,7 @@ const emptyRuleForm = () => ({
 export default function AutomationPage() {
     const t = useTranslations('automation');
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     // -- State --
@@ -300,6 +302,12 @@ export default function AutomationPage() {
                             <Plus size={18} /> {t('newRule')}
                         </Button>
                     }
+                />
+
+                <HelpPanel
+                    title={tHelp("automation.title")}
+                    description={tHelp("automation.description")}
+                    tips={tHelp.raw("automation.tips") as string[]}
                 />
 
                 {/* Stats row */}

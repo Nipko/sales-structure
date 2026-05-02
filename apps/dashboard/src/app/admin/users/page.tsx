@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
@@ -143,6 +144,7 @@ export default function UsersPage() {
     const t = useTranslations('users');
     const tc = useTranslations("common");
     const tRoles = useTranslations("roles");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
 
     const roleLabel = (role: string): string => {
@@ -228,6 +230,12 @@ export default function UsersPage() {
                             <UserPlus size={16} /> {tc("create")}
                         </button>
                     }
+                />
+
+                <HelpPanel
+                    title={tHelp("users.title")}
+                    description={tHelp("users.description")}
+                    tips={tHelp.raw("users.tips") as string[]}
                 />
 
                 <div className="grid grid-cols-4 gap-4 mb-6">

@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -51,6 +52,7 @@ export default function ContactsPage() {
     const t = useTranslations('contacts');
     const tc = useTranslations("common");
     const tEmpty = useTranslations("verticalEmptyStates");
+    const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
     const router = useRouter();
@@ -253,6 +255,12 @@ export default function ContactsPage() {
                         </button>
                     </div>
                 }
+            />
+
+            <HelpPanel
+                title={tHelp("contacts.title")}
+                description={tHelp("contacts.description")}
+                tips={tHelp.raw("contacts.tips") as string[]}
             />
 
             {/* Stats Cards */}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -207,6 +208,7 @@ export default function InboxPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("inbox");
     const tEmpty = useTranslations("verticalEmptyStates");
+    const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
     const [filter, setFilter] = useState<InboxFilter>("all");
@@ -944,6 +946,15 @@ export default function InboxPage() {
                             className="w-full py-2 px-3 pl-9 rounded-xl border border-border bg-muted/50 text-foreground text-[13px] outline-none focus:border-indigo-500/50 transition-colors"
                         />
                     </div>
+                </div>
+
+                {/* Help */}
+                <div className="px-3 pt-2">
+                    <HelpPanel
+                        title={tHelp("inbox.title")}
+                        description={tHelp("inbox.description")}
+                        tips={tHelp.raw("inbox.tips") as string[]}
+                    />
                 </div>
 
                 {/* Conversation List */}

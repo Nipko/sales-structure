@@ -3258,5 +3258,82 @@
     "turismo": "Votre agence de voyages est prête, {name}",
     "education": "Votre centre éducatif est prêt, {name}",
     "default": "Bienvenue, {name} · Vue d'ensemble de la plateforme"
+  },
+  "help": {
+    "inbox": {
+      "title": "Comment fonctionne la Boîte de réception ?",
+      "description": "Ici, vous voyez toutes les conversations de vos clients en temps réel. Les messages arrivent de WhatsApp, Instagram, Messenger et Telegram au même endroit. Vous pouvez répondre, assigner à un agent ou laisser l'IA s'en charger.",
+      "tips": ["Utilisez les filtres pour voir uniquement vos conversations ou celles non assignées", "Les conversations avec handoff apparaissent avec un badge orange", "Cliquez sur le panneau droit pour voir les données du contact"]
+    },
+    "contacts": {
+      "title": "Comment gérer les contacts ?",
+      "description": "Votre CRM centralise tous les contacts qui ont interagi avec votre entreprise. Vous pouvez créer des leads, modifier les informations, assigner des étapes et utiliser des filtres avancés pour segmenter.",
+      "tips": ["Utilisez le bouton 'Filtres avancés' pour rechercher par score, date ou tags", "Cliquez sur un contact pour voir le détail complet avec chronologie", "Les actions groupées permettent de changer d'étape ou d'ajouter des tags à plusieurs contacts"]
+    },
+    "pipeline": {
+      "title": "Comment fonctionne l'Entonnoir ?",
+      "description": "L'entonnoir de ventes visualise à quelle étape se trouve chaque opportunité. Faites glisser les cartes entre les colonnes pour déplacer les deals. Les étapes sont configurables dans les Paramètres.",
+      "tips": ["Faites glisser une carte vers une étape terminale pour demander une approbation", "Les cartes avec un badge jaune sont en attente d'approbation", "Personnalisez les étapes dans Paramètres → Outils → Étapes du pipeline"]
+    },
+    "appointments": {
+      "title": "Comment gérer les rendez-vous ?",
+      "description": "Planifiez des rendez-vous, configurez des services avec durée et prix, gérez la disponibilité de votre équipe et connectez des calendriers externes (Google/Microsoft).",
+      "tips": ["Configurez vos services avec prix et durée pour que l'agent IA puisse planifier automatiquement", "Connectez Google Agenda pour une synchronisation bidirectionnelle des rendez-vous", "Les rappels sont envoyés automatiquement 24h et 1h avant"]
+    },
+    "properties": {
+      "title": "Comment gérer les propriétés ?",
+      "description": "Gérez vos appartements de location saisonnière. Ajoutez des photos, des équipements, des prix et des règles. Synchronisez la disponibilité avec Airbnb et Booking.com via iCal.",
+      "tips": ["Le calendrier est la vue principale — affiche la disponibilité en vert, les réservations en rouge et les blocages externes en orange", "Collez l'URL iCal d'Airbnb/Booking pour synchroniser automatiquement toutes les 30 minutes", "Copiez votre URL d'exportation et collez-la dans Airbnb/Booking pour qu'ils voient vos réservations directes"]
+    },
+    "broadcast": {
+      "title": "Comment envoyer des campagnes ?",
+      "description": "Envoyez des messages en masse à vos contacts via WhatsApp en utilisant des modèles approuvés par Meta. Segmentez votre audience par tags, étape ou segments enregistrés.",
+      "tips": ["Vous ne pouvez envoyer que des modèles approuvés par Meta (pas de messages libres)", "Planifiez l'envoi pour une date et heure spécifique", "Surveillez les métriques : envoyés, livrés, lus, échoués"]
+    },
+    "automation": {
+      "title": "Comment créer des automatisations ?",
+      "description": "Créez des règles qui s'exécutent automatiquement lorsqu'un événement se produit. Par exemple : quand un lead chaud arrive, l'assigner à un agent spécifique. Ou quand il n'y a pas de réponse en 4 heures, envoyer un suivi.",
+      "tips": ["Chaque règle a : déclencheur (quand), conditions (si) et actions (alors)", "Les automatisations de nurturing envoient des suivis aux leads qui ne répondent pas", "Vous pouvez activer/désactiver les règles sans les supprimer"]
+    },
+    "agent": {
+      "title": "Comment configurer l'Agent IA ?",
+      "description": "Votre agent IA répond automatiquement aux messages de vos clients. Configurez son nom, sa personnalité, ses règles, ses sujets interdits et les canaux assignés. Utilisez des modèles pré-conçus pour votre secteur.",
+      "tips": ["Chaque canal (WhatsApp, Instagram, etc.) peut avoir un agent différent", "L'agent respecte les règles et sujets interdits que vous configurez", "Testez votre agent dans la section Test avant de l'activer"]
+    },
+    "knowledge": {
+      "title": "Comment fonctionne la Base de Connaissances ?",
+      "description": "La base de connaissances alimente l'agent IA avec des informations sur votre entreprise. Téléchargez des documents, créez des FAQs et définissez des politiques. L'agent cherche ici avant de répondre.",
+      "tips": ["Les FAQs sont le moyen le plus rapide d'enseigner à l'agent", "Les documents sont traités avec IA (RAG) pour des réponses contextuelles", "Plus vous chargez d'informations, mieux l'agent répondra"]
+    },
+    "analyticsV2": {
+      "title": "Comment lire les Analytiques ?",
+      "description": "Les analytiques montrent les performances de votre entreprise : conversations, résolution par IA, campagnes, CSAT et plus. Utilisez les filtres de date pour différentes périodes.",
+      "tips": ["L'onglet 'IA & Bot' montre combien de conversations l'IA a résolues sans intervention humaine", "L'onglet 'CRM' renvoie aux analytiques d'entonnoir et de vélocité du pipeline", "Exportez des rapports en CSV depuis le bouton de téléchargement"]
+    },
+    "channels": {
+      "title": "Comment connecter les canaux ?",
+      "description": "Connectez vos canaux de messagerie pour recevoir et répondre aux messages depuis la plateforme. WhatsApp utilise Embedded Signup, Instagram et Messenger utilisent OAuth, Telegram utilise un Token de Bot.",
+      "tips": ["WhatsApp nécessite un compte WhatsApp Business", "Instagram nécessite un compte professionnel connecté à une page Facebook", "Chaque canal peut avoir un agent IA différent assigné"]
+    },
+    "users": {
+      "title": "Comment gérer l'équipe ?",
+      "description": "Gérez les utilisateurs de votre équipe. Assignez des rôles (admin, superviseur, agent), configurez des compétences pour un routage intelligent et réinitialisez les mots de passe.",
+      "tips": ["Les agents ne voient que les conversations qui leur sont assignées", "Les superviseurs peuvent voir toutes les conversations et rapports", "Les compétences sont utilisées pour assigner les conversations à l'agent le plus approprié"]
+    },
+    "settings": {
+      "title": "Que puis-je configurer ?",
+      "description": "Les paramètres sont organisés en 5 sections : Compte (votre profil et sécurité), Entreprise (infos et horaires), Outils (attributs, macros, templates), IA (fournisseurs et config) et Avancé (alertes et intégrations).",
+      "tips": ["Dans 'Entreprise', configurez vos heures d'ouverture — l'agent les respecte", "Dans 'Outils', personnalisez les étapes du pipeline et le scoring des leads", "Dans 'IA', configurez quel modèle LLM utiliser (GPT-4, Claude, Gemini, etc.)"]
+    },
+    "tenants": {
+      "title": "Panneau Super Admin",
+      "description": "Gérez tous les tenants de la plateforme. Consultez les métriques de santé, l'activité, la configuration IA et le statut de facturation de chaque entreprise.",
+      "tips": ["Le Health Score (0-100) indique à quel point chaque tenant est bien configuré", "Utilisez 'Usurper' pour voir la plateforme comme si vous étiez le tenant", "L'onglet 'Activité' affiche les messages, conversations et handoffs"]
+    },
+    "financials": {
+      "title": "Que montrent les Finances ?",
+      "description": "Métriques financières de la plateforme : MRR, ARR, churn, LTV et rentabilité par tenant. Visible uniquement pour les super administrateurs.",
+      "tips": ["Le MRR est calculé à partir des abonnements actifs (pas des essais)", "L'onglet 'Coûts' montre l'infrastructure + les coûts LLM par tenant", "Générez des instantanés mensuels pour un suivi historique"]
+    }
   }
 }

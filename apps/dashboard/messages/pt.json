@@ -3258,5 +3258,82 @@
     "turismo": "Sua agência de viagens está pronta, {name}",
     "education": "Seu centro educacional está pronto, {name}",
     "default": "Bem-vindo, {name} · Visão geral da plataforma"
+  },
+  "help": {
+    "inbox": {
+      "title": "Como funciona a Caixa de Entrada?",
+      "description": "Aqui você vê todas as conversas dos seus clientes em tempo real. As mensagens chegam do WhatsApp, Instagram, Messenger e Telegram em um só lugar. Você pode responder, atribuir a um agente ou deixar a IA cuidar.",
+      "tips": ["Use os filtros para ver apenas suas conversas ou as não atribuídas", "Conversas com handoff aparecem com um badge laranja", "Clique no painel direito para ver os dados do contato"]
+    },
+    "contacts": {
+      "title": "Como gerenciar contatos?",
+      "description": "Seu CRM centraliza todos os contatos que interagiram com o seu negócio. Você pode criar leads, editar informações, atribuir etapas e usar filtros avançados para segmentar.",
+      "tips": ["Use o botão 'Filtros avançados' para pesquisar por score, data ou tags", "Clique em um contato para ver o detalhe completo com linha do tempo", "As ações em massa permitem mudar de etapa ou adicionar tags a vários contatos"]
+    },
+    "pipeline": {
+      "title": "Como funciona o Funil?",
+      "description": "O funil de vendas visualiza em qual etapa cada oportunidade está. Arraste os cartões entre colunas para mover negócios. As etapas são configuráveis nas Configurações.",
+      "tips": ["Arraste um cartão para uma etapa terminal para solicitar aprovação", "Cartões com badge amarelo estão aguardando aprovação", "Personalize as etapas em Configurações → Ferramentas → Etapas do funil"]
+    },
+    "appointments": {
+      "title": "Como gerenciar compromissos?",
+      "description": "Agende compromissos, configure serviços com duração e preço, gerencie a disponibilidade da sua equipe e conecte calendários externos (Google/Microsoft).",
+      "tips": ["Configure seus serviços com preço e duração para que o agente de IA possa agendar automaticamente", "Conecte o Google Agenda para sincronização bidirecional de compromissos", "Os lembretes são enviados automaticamente 24h e 1h antes"]
+    },
+    "properties": {
+      "title": "Como gerenciar propriedades?",
+      "description": "Gerencie seus apartamentos de aluguel por temporada. Adicione fotos, comodidades, preços e regras. Sincronize a disponibilidade com Airbnb e Booking.com usando iCal.",
+      "tips": ["O calendário é a visualização principal — mostra disponibilidade em verde, reservas em vermelho e bloqueios externos em laranja", "Cole a URL do iCal do Airbnb/Booking para sincronizar automaticamente a cada 30 minutos", "Copie sua URL de exportação e cole no Airbnb/Booking para que vejam suas reservas diretas"]
+    },
+    "broadcast": {
+      "title": "Como enviar campanhas?",
+      "description": "Envie mensagens em massa para seus contatos via WhatsApp usando templates aprovados pela Meta. Segmente seu público por tags, etapa ou segmentos salvos.",
+      "tips": ["Você só pode enviar templates aprovados pela Meta (não mensagens livres)", "Programe o envio para uma data e hora específica", "Monitore as métricas: enviados, entregues, lidos, com falha"]
+    },
+    "automation": {
+      "title": "Como criar automações?",
+      "description": "Crie regras que rodam automaticamente quando um evento ocorre. Por exemplo: quando um lead quente chega, atribuir a um agente específico. Ou quando não há resposta em 4 horas, enviar acompanhamento.",
+      "tips": ["Cada regra tem: gatilho (quando), condições (se) e ações (então)", "As automações de nutrição enviam acompanhamentos a leads que não respondem", "Você pode ativar/desativar regras sem excluí-las"]
+    },
+    "agent": {
+      "title": "Como configurar o Agente de IA?",
+      "description": "Seu agente de IA responde automaticamente às mensagens dos seus clientes. Configure nome, personalidade, regras, tópicos proibidos e canais atribuídos. Use templates pré-criados para sua indústria.",
+      "tips": ["Cada canal (WhatsApp, Instagram, etc.) pode ter um agente diferente", "O agente respeita as regras e tópicos proibidos que você configurar", "Teste seu agente na seção de Teste antes de ativá-lo"]
+    },
+    "knowledge": {
+      "title": "Como funciona a Base de Conhecimento?",
+      "description": "A base de conhecimento alimenta o agente de IA com informações sobre o seu negócio. Faça upload de documentos, crie FAQs e defina políticas. O agente pesquisa aqui antes de responder.",
+      "tips": ["As FAQs são a maneira mais rápida de ensinar o agente", "Os documentos são processados com IA (RAG) para respostas contextuais", "Quanto mais informações você carregar, melhor será a resposta do agente"]
+    },
+    "analyticsV2": {
+      "title": "Como ler as Análises?",
+      "description": "As análises mostram o desempenho do seu negócio: conversas, resolução por IA, campanhas, CSAT e mais. Use os filtros de data para diferentes períodos.",
+      "tips": ["A guia 'IA & Bot' mostra quantas conversas a IA resolveu sem intervenção humana", "A guia 'CRM' vincula às análises de funil e velocidade do pipeline", "Exporte relatórios em CSV pelo botão de download"]
+    },
+    "channels": {
+      "title": "Como conectar canais?",
+      "description": "Conecte seus canais de mensagens para receber e responder mensagens pela plataforma. WhatsApp usa Embedded Signup, Instagram e Messenger usam OAuth, Telegram usa Token de Bot.",
+      "tips": ["WhatsApp requer uma conta WhatsApp Business", "Instagram requer uma conta profissional conectada a uma página do Facebook", "Cada canal pode ter um agente de IA diferente atribuído"]
+    },
+    "users": {
+      "title": "Como gerenciar a equipe?",
+      "description": "Gerencie os usuários da sua equipe. Atribua funções (admin, supervisor, agente), configure habilidades para roteamento inteligente e redefina senhas.",
+      "tips": ["Os agentes veem apenas as conversas atribuídas a eles", "Os supervisores podem ver todas as conversas e relatórios", "As habilidades são usadas para atribuir conversas ao agente mais adequado"]
+    },
+    "settings": {
+      "title": "O que posso configurar?",
+      "description": "As configurações são organizadas em 5 seções: Conta (seu perfil e segurança), Empresa (informações e horários), Ferramentas (atributos, macros, templates), IA (provedores e configuração) e Avançado (alertas e integrações).",
+      "tips": ["Em 'Empresa' configure seu horário de atendimento — o agente o respeita", "Em 'Ferramentas' personalize as etapas do pipeline e o scoring de leads", "Em 'IA' configure qual modelo LLM usar (GPT-4, Claude, Gemini, etc.)"]
+    },
+    "tenants": {
+      "title": "Painel Super Admin",
+      "description": "Gerencie todos os tenants da plataforma. Veja métricas de saúde, atividade, configuração de IA e status de faturamento de cada empresa.",
+      "tips": ["O Health Score (0-100) indica o quão bem configurado está cada tenant", "Use 'Personificar' para ver a plataforma como se fosse o tenant", "A guia 'Atividade' mostra mensagens, conversas e handoffs"]
+    },
+    "financials": {
+      "title": "O que as Finanças mostram?",
+      "description": "Métricas financeiras da plataforma: MRR, ARR, churn, LTV e rentabilidade por tenant. Visível apenas para super administradores.",
+      "tips": ["O MRR é calculado das assinaturas ativas (não trials)", "A guia 'Custos' mostra infraestrutura + custos de LLM por tenant", "Gere snapshots mensais para rastreamento histórico"]
+    }
   }
 }

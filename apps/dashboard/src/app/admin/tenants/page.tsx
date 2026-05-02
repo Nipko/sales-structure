@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import {
   Building2, Plus, LayoutGrid, UserPlus, UserMinus,
@@ -27,6 +28,7 @@ type TabId = "overview" | "onboarding" | "offboarding" | "billing" | "usage" | "
 export default function TenantsPage() {
   const t = useTranslations("tenants");
   const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { user } = useAuth();
   const router = useRouter();
 
@@ -185,6 +187,12 @@ export default function TenantsPage() {
             <Plus size={16} /> {t("newTenant")}
           </button>
         }
+      />
+
+      <HelpPanel
+        title={tHelp("tenants.title")}
+        description={tHelp("tenants.description")}
+        tips={tHelp.raw("tenants.tips") as string[]}
       />
 
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as TabId)} />

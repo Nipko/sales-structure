@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +21,7 @@ const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ec
 export default function KnowledgePage() {
     const t = useTranslations('knowledge');
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [tab, setTab] = useState<Tab>("library");
@@ -72,6 +74,12 @@ export default function KnowledgePage() {
                         <Plus size={16} /> {tc("create")}
                     </button>
                 ) : undefined}
+            />
+
+            <HelpPanel
+                title={tHelp("knowledge.title")}
+                description={tHelp("knowledge.description")}
+                tips={tHelp.raw("knowledge.tips") as string[]}
             />
 
             <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit">

@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import Link from "next/link";
 import {
   Home,
@@ -91,6 +92,7 @@ const formatCurrency = (n: number, currency = "USD") =>
 export default function PropertiesPage() {
   const t = useTranslations("properties");
   const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { activeTenantId } = useTenant();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +169,12 @@ export default function PropertiesPage() {
             {t("addProperty")}
           </button>
         }
+      />
+
+      <HelpPanel
+        title={tHelp("properties.title")}
+        description={tHelp("properties.description")}
+        tips={tHelp.raw("properties.tips") as string[]}
       />
 
       {properties.length === 0 ? (

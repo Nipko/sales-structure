@@ -3258,5 +3258,82 @@
     "turismo": "Your travel agency is ready, {name}",
     "education": "Your education center is ready, {name}",
     "default": "Welcome, {name} · Platform overview"
+  },
+  "help": {
+    "inbox": {
+      "title": "How does the Inbox work?",
+      "description": "Here you see all your customer conversations in real time. Messages arrive from WhatsApp, Instagram, Messenger and Telegram in one place. You can reply, assign to an agent, or let AI handle it.",
+      "tips": ["Use filters to view only your conversations or unassigned ones", "Conversations with handoff appear with an orange badge", "Click the right panel to view the contact's data"]
+    },
+    "contacts": {
+      "title": "How to manage contacts?",
+      "description": "Your CRM centralizes all contacts that have interacted with your business. You can create leads, edit information, assign stages, and use advanced filters to segment.",
+      "tips": ["Use the 'Advanced filters' button to search by score, date or tags", "Click a contact to view the full detail with timeline", "Bulk actions let you change stage or add tags to multiple contacts"]
+    },
+    "pipeline": {
+      "title": "How does the Pipeline work?",
+      "description": "The sales funnel visualizes which stage each opportunity is in. Drag cards between columns to move deals. Stages are configurable from Settings.",
+      "tips": ["Drag a card to a terminal stage to request approval", "Cards with a yellow badge are pending approval", "Customize stages in Settings → Tools → Pipeline stages"]
+    },
+    "appointments": {
+      "title": "How to manage appointments?",
+      "description": "Schedule appointments, configure services with duration and price, manage your team's availability, and connect external calendars (Google/Microsoft).",
+      "tips": ["Configure your services with price and duration so the AI agent can schedule automatically", "Connect Google Calendar for two-way appointment sync", "Reminders are sent automatically 24h and 1h before"]
+    },
+    "properties": {
+      "title": "How to manage properties?",
+      "description": "Manage your vacation rental apartments. Add photos, amenities, prices and rules. Sync availability with Airbnb and Booking.com using iCal.",
+      "tips": ["The calendar is the main view — shows availability in green, bookings in red and external blocks in orange", "Paste the iCal URL from Airbnb/Booking to sync automatically every 30 minutes", "Copy your export URL and paste it in Airbnb/Booking so they see your direct bookings"]
+    },
+    "broadcast": {
+      "title": "How to send campaigns?",
+      "description": "Send mass messages to your contacts via WhatsApp using Meta-approved templates. Segment your audience by tags, stage or saved segments.",
+      "tips": ["You can only send Meta-approved templates (not free-form messages)", "Schedule the send for a specific date and time", "Monitor metrics: sent, delivered, read, failed"]
+    },
+    "automation": {
+      "title": "How to create automations?",
+      "description": "Create rules that run automatically when an event occurs. For example: when a hot lead arrives, assign to a specific agent. Or when there is no response in 4 hours, send a follow-up.",
+      "tips": ["Each rule has: trigger (when), conditions (if), and actions (then)", "Nurturing automations send follow-ups to leads that don't respond", "You can activate/deactivate rules without deleting them"]
+    },
+    "agent": {
+      "title": "How to configure the AI Agent?",
+      "description": "Your AI agent automatically responds to your customers' messages. Configure its name, personality, rules, forbidden topics, and assigned channels. Use pre-designed templates for your industry.",
+      "tips": ["Each channel (WhatsApp, Instagram, etc.) can have a different agent", "The agent respects the rules and forbidden topics you configure", "Test your agent in the Test section before activating it"]
+    },
+    "knowledge": {
+      "title": "How does the Knowledge Base work?",
+      "description": "The knowledge base feeds the AI agent with information about your business. Upload documents, create FAQs, and define policies. The agent searches here before responding.",
+      "tips": ["FAQs are the fastest way to teach the agent", "Documents are processed with AI (RAG) for contextual answers", "The more information you load, the better the agent will respond"]
+    },
+    "analyticsV2": {
+      "title": "How to read Analytics?",
+      "description": "Analytics show your business performance: conversations, AI resolution, campaigns, CSAT, and more. Use date filters for different periods.",
+      "tips": ["The 'AI & Bot' tab shows how many conversations AI resolved without human intervention", "The 'CRM' tab links to funnel and pipeline velocity analytics", "Export reports in CSV from the download button"]
+    },
+    "channels": {
+      "title": "How to connect channels?",
+      "description": "Connect your messaging channels to receive and respond to messages from the platform. WhatsApp uses Embedded Signup, Instagram and Messenger use OAuth, Telegram uses Bot Token.",
+      "tips": ["WhatsApp requires a WhatsApp Business account", "Instagram requires a professional account connected to a Facebook page", "Each channel can have a different AI agent assigned"]
+    },
+    "users": {
+      "title": "How to manage the team?",
+      "description": "Manage your team users. Assign roles (admin, supervisor, agent), configure skills for smart routing, and reset passwords.",
+      "tips": ["Agents only see conversations assigned to them", "Supervisors can view all conversations and reports", "Skills are used to assign conversations to the most suitable agent"]
+    },
+    "settings": {
+      "title": "What can I configure?",
+      "description": "Settings are organized in 5 sections: Account (your profile and security), Company (info and hours), Tools (attributes, macros, templates), AI (providers and config), and Advanced (alerts and integrations).",
+      "tips": ["In 'Company' configure your business hours — the agent respects them", "In 'Tools' customize pipeline stages and lead scoring", "In 'AI' configure which LLM model to use (GPT-4, Claude, Gemini, etc.)"]
+    },
+    "tenants": {
+      "title": "Super Admin Panel",
+      "description": "Manage all platform tenants. View health metrics, activity, AI configuration, and billing status for each company.",
+      "tips": ["The Health Score (0-100) indicates how well configured each tenant is", "Use 'Impersonate' to view the platform as if you were the tenant", "The 'Activity' tab shows messages, conversations and handoffs"]
+    },
+    "financials": {
+      "title": "What do Financials show?",
+      "description": "Platform financial metrics: MRR, ARR, churn, LTV, and profitability per tenant. Only visible to super administrators.",
+      "tips": ["MRR is calculated from active subscriptions (not trials)", "The 'Costs' tab shows infrastructure + LLM costs per tenant", "Generate monthly snapshots for historical tracking"]
+    }
   }
 }

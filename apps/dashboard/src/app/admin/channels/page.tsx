@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
@@ -63,6 +64,7 @@ const channels = [
 
 export default function ChannelsOverviewPage() {
     const t = useTranslations('channels');
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [connectedChannels, setConnectedChannels] = useState<string[]>([]);
@@ -109,6 +111,12 @@ export default function ChannelsOverviewPage() {
                     {t('subtitle')}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("channels.title")}
+                description={tHelp("channels.description")}
+                tips={tHelp.raw("channels.tips") as string[]}
+            />
 
             {/* Channel Cards Grid */}
             <div className="grid grid-cols-3 gap-6">

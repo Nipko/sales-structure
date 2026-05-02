@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import ConfigTab from "@/components/appointments/ConfigTab";
 import ServicesTab from "@/components/appointments/ServicesTab";
@@ -95,6 +96,7 @@ function MicrosoftIcon({ size = 18 }: { size?: number }) {
 export default function AppointmentsPage() {
   const t = useTranslations("appointments");
   const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const locale = useLocale();
   const dateLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-MX";
   const { activeTenantId } = useTenant();
@@ -773,6 +775,12 @@ export default function AppointmentsPage() {
               <Plus size={16} /> {t("newAppointment")}
             </button>
           }
+        />
+
+        <HelpPanel
+          title={tHelp("appointments.title")}
+          description={tHelp("appointments.description")}
+          tips={tHelp.raw("appointments.tips") as string[]}
         />
 
         {/* ── KPI row (compact) ─────────────────────────────────── */}

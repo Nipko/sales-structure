@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,6 +27,7 @@ const statusStyle: Record<string, { color: string; icon: any }> = {
 export default function BroadcastPage() {
     const t = useTranslations('broadcast');
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
@@ -100,6 +102,12 @@ export default function BroadcastPage() {
                             <Plus size={16} /> {tc("create")}
                         </button>
                     }
+                />
+
+                <HelpPanel
+                    title={tHelp("broadcast.title")}
+                    description={tHelp("broadcast.description")}
+                    tips={tHelp.raw("broadcast.tips") as string[]}
                 />
 
                 {/* Stats */}

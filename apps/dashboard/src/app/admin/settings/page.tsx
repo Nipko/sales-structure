@@ -26,6 +26,7 @@ import {
     type LucideIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface SettingsCard {
     label: string;
@@ -49,6 +50,7 @@ export default function SettingsHub() {
     const router = useRouter();
     const { user } = useAuth();
     const t = useTranslations("settings");
+    const tHelp = useTranslations("help");
     const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
     const isSuperAdmin = user?.role === "super_admin";
 
@@ -119,6 +121,12 @@ export default function SettingsHub() {
                     {t("subtitle")}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settings.title")}
+                description={tHelp("settings.description")}
+                tips={tHelp.raw("settings.tips") as string[]}
+            />
 
             {/* Sections */}
             {sections.map((section) => {

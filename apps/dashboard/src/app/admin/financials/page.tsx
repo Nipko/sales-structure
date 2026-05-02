@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import {
   BarChart3, LayoutGrid, DollarSign, Users, Server, Settings,
@@ -21,6 +22,7 @@ type TabId = "overview" | "revenue" | "customers" | "costs" | "settings";
 export default function FinancialsPage() {
   const t = useTranslations("financials");
   const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { user } = useAuth();
   const router = useRouter();
 
@@ -87,6 +89,12 @@ export default function FinancialsPage() {
         title={t("title")}
         subtitle={t("subtitle")}
         icon={BarChart3}
+      />
+
+      <HelpPanel
+        title={tHelp("financials.title")}
+        description={tHelp("financials.description")}
+        tips={tHelp.raw("financials.tips") as string[]}
       />
 
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as TabId)} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -49,6 +50,7 @@ const TABS = ["overview", "aiBotTab", "crmTab", "agentsTab", "automationTab", "b
 
 export default function AnalyticsV2Page() {
     const t = useTranslations("analyticsV2");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const tenantId = user?.tenantId;
 
@@ -153,6 +155,12 @@ export default function AnalyticsV2Page() {
                     </button>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("analyticsV2.title")}
+                description={tHelp("analyticsV2.description")}
+                tips={tHelp.raw("analyticsV2.tips") as string[]}
+            />
 
             {/* Tabs */}
             <div className="flex gap-1 mb-6 border-b border-neutral-200 dark:border-white/10 overflow-x-auto">

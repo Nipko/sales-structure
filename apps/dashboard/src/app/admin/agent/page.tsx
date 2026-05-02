@@ -13,6 +13,7 @@ import {
   Clock, Shield, Wrench, BookmarkPlus, CheckCircle, AlertTriangle, X, Sparkles,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { SetupBanner } from "@/components/SetupBanner";
 import { Badge } from "@/components/ui/badge";
 
@@ -63,6 +64,7 @@ const STARTER_LIMITS: PlanFeatures = { maxAgents: 1, templates: false, customPro
 export default function AgentListPage() {
   const t = useTranslations("agent");
   const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { activeTenantId } = useTenant();
   const { verticalConfig } = useAuth();
   const router = useRouter();
@@ -367,6 +369,12 @@ export default function AgentListPage() {
             <Plus size={16} /> {t("newAgent")}
           </button>
         }
+      />
+
+      <HelpPanel
+        title={tHelp("agent.title")}
+        description={tHelp("agent.description")}
+        tips={tHelp.raw("agent.tips") as string[]}
       />
 
       <SetupBanner show={needsSetup} onAction={() => {

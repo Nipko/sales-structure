@@ -306,7 +306,7 @@ export class AnalyticsService {
         try {
             const apptRows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
                 schemaName,
-                `SELECT COUNT(*) as cnt FROM appointments WHERE date::date = CURRENT_DATE AND status != 'cancelled'`
+                `SELECT COUNT(*)::int as cnt FROM appointments WHERE start_at::date = CURRENT_DATE AND status != 'cancelled'`
             );
             appointmentsToday = parseInt(apptRows[0]?.cnt ?? '0');
         } catch {
@@ -316,7 +316,7 @@ export class AnalyticsService {
         try {
             const noShowRows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
                 schemaName,
-                `SELECT COUNT(*) as cnt FROM appointments WHERE status = 'no_show' AND date >= NOW() - INTERVAL '7 days'`
+                `SELECT COUNT(*)::int as cnt FROM appointments WHERE status = 'no_show' AND start_at >= NOW() - INTERVAL '7 days'`
             );
             noShowsWeek = parseInt(noShowRows[0]?.cnt ?? '0');
         } catch {

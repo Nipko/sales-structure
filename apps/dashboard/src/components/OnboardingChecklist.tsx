@@ -142,7 +142,7 @@ export default function OnboardingChecklist() {
                                                 {done && <Check size={12} />}
                                             </div>
                                             <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                                                {vt.industry !== 'otro'
+                                                {vt.industry !== 'otro' && tChecklist.has(`${vt.industry}.${item.key}`)
                                                     ? tChecklist(`${vt.industry}.${item.key}`)
                                                     : t(`items.${item.key}`)}
                                             </span>
@@ -174,7 +174,7 @@ export default function OnboardingChecklist() {
                                                 {done && <Check size={12} />}
                                             </div>
                                             <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                                                {vt.industry !== 'otro'
+                                                {vt.industry !== 'otro' && tChecklist.has(`${vt.industry}.${item.key}`)
                                                     ? tChecklist(`${vt.industry}.${item.key}`)
                                                     : t(`items.${item.key}`)}
                                             </span>

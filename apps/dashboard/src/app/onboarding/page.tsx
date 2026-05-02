@@ -107,6 +107,87 @@ const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
     ],
 };
 
+const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: string}>> = {
+    salud: [
+        { key: 'appointments', label: 'Agendar citas médicas', icon: '📅' },
+        { key: 'faq', label: 'Responder preguntas de pacientes', icon: '❓' },
+        { key: 'support', label: 'Atención y seguimiento post-consulta', icon: '💊' },
+        { key: 'reminders', label: 'Recordatorios de citas y tratamientos', icon: '🔔' },
+    ],
+    moda_belleza: [
+        { key: 'appointments', label: 'Reservar citas de servicios', icon: '💇' },
+        { key: 'faq', label: 'Informar sobre servicios y precios', icon: '💅' },
+        { key: 'promotions', label: 'Enviar promociones y ofertas', icon: '🎁' },
+        { key: 'sales', label: 'Recomendar y vender productos', icon: '🛍️' },
+    ],
+    inmobiliaria: [
+        { key: 'lead_qualification', label: 'Calificar interesados (presupuesto, zona)', icon: '🏠' },
+        { key: 'appointments', label: 'Agendar visitas a propiedades', icon: '📍' },
+        { key: 'faq', label: 'Informar sobre portafolio y financiación', icon: '📋' },
+        { key: 'sales', label: 'Seguimiento de prospectos', icon: '📞' },
+    ],
+    restaurantes: [
+        { key: 'appointments', label: 'Gestionar reservas de mesa', icon: '🍽️' },
+        { key: 'faq', label: 'Mostrar menú y recomendaciones', icon: '📖' },
+        { key: 'sales', label: 'Procesar pedidos a domicilio', icon: '🛵' },
+        { key: 'promotions', label: 'Enviar ofertas y eventos especiales', icon: '🎉' },
+    ],
+    automotriz: [
+        { key: 'lead_qualification', label: 'Calificar prospectos de vehículos', icon: '🚗' },
+        { key: 'appointments', label: 'Agendar pruebas de manejo', icon: '🏁' },
+        { key: 'faq', label: 'Información de financiamiento y garantías', icon: '💰' },
+        { key: 'sales', label: 'Mostrar inventario de vehículos', icon: '📦' },
+    ],
+    turismo: [
+        { key: 'sales', label: 'Cotizar paquetes de viaje', icon: '✈️' },
+        { key: 'appointments', label: 'Gestionar reservas', icon: '🏨' },
+        { key: 'faq', label: 'Información de destinos y documentos', icon: '🗺️' },
+        { key: 'support', label: 'Soporte al viajero', icon: '🆘' },
+    ],
+    education: [
+        { key: 'faq', label: 'Informar sobre programas y requisitos', icon: '🎓' },
+        { key: 'appointments', label: 'Agendar clases de prueba', icon: '📚' },
+        { key: 'lead_qualification', label: 'Proceso de inscripción', icon: '📝' },
+        { key: 'support', label: 'Soporte académico', icon: '👩‍🏫' },
+    ],
+    finanzas: [
+        { key: 'lead_qualification', label: 'Pre-calificar solicitudes', icon: '📊' },
+        { key: 'faq', label: 'Informar sobre productos financieros', icon: '💳' },
+        { key: 'appointments', label: 'Agendar asesorías', icon: '📅' },
+        { key: 'support', label: 'Soporte y seguimiento', icon: '📞' },
+    ],
+    servicios_profesionales: [
+        { key: 'appointments', label: 'Agendar consultas', icon: '📅' },
+        { key: 'lead_qualification', label: 'Evaluar tipo de caso', icon: '⚖️' },
+        { key: 'faq', label: 'Información de servicios y honorarios', icon: '📋' },
+        { key: 'support', label: 'Seguimiento de casos', icon: '📂' },
+    ],
+};
+
+const VERTICAL_AGENT_NAMES: Record<string, string> = {
+    salud: 'Sofía',
+    moda_belleza: 'Luna',
+    inmobiliaria: 'Carlos',
+    restaurantes: 'Luca',
+    automotriz: 'Marco',
+    turismo: 'Maya',
+    education: 'Pablo',
+    finanzas: 'Roberto',
+    servicios_profesionales: 'Elena',
+};
+
+const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
+    salud: 'pacientes',
+    moda_belleza: 'clientes',
+    inmobiliaria: 'prospectos',
+    restaurantes: 'comensales',
+    automotriz: 'compradores',
+    turismo: 'viajeros',
+    education: 'estudiantes',
+    finanzas: 'clientes',
+    servicios_profesionales: 'clientes',
+};
+
 // TikTok icon (lucide doesn't have one)
 function TikTokIcon({ className }: { className?: string }) {
     return (
@@ -590,31 +671,42 @@ export default function OnboardingPage() {
                     {/* Step 3: Goals */}
                     {step === 2 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('goalsTitle')}</h2>
-                            <p className="text-muted-foreground text-sm mb-6">{t('step3')}</p>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">
+                                {VERTICAL_AGENT_NAMES[industry]
+                                    ? `¿Cómo ayudará ${VERTICAL_AGENT_NAMES[industry]} a tus ${VERTICAL_CUSTOMER_NOUN[industry] ?? 'clientes'}?`
+                                    : t('goalsTitle')}
+                            </h2>
+                            <p className="text-muted-foreground text-sm mb-6">
+                                {VERTICAL_AGENT_NAMES[industry]
+                                    ? `Selecciona las funciones que ${VERTICAL_AGENT_NAMES[industry]} realizará automáticamente`
+                                    : t('step3')}
+                            </p>
 
                             <div className="space-y-3">
-                                {GOAL_KEYS.map((key) => (
+                                {(VERTICAL_GOALS[industry] ?? GOAL_KEYS.map(k => ({ key: k, label: t(`goals.${k}`), icon: '' }))).map((goal) => (
                                     <label
-                                        key={key}
+                                        key={goal.key}
                                         className={cn(
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                                            goals.includes(key)
+                                            goals.includes(goal.key)
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
                                                 : "border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] hover:border-neutral-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
                                             type="checkbox"
-                                            checked={goals.includes(key)}
-                                            onChange={() => toggleCheckbox(goals, setGoals, key)}
+                                            checked={goals.includes(goal.key)}
+                                            onChange={() => toggleCheckbox(goals, setGoals, goal.key)}
                                             className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-foreground">{t(`goals.${key}`)}</span>
+                                        <span className="text-sm text-foreground">
+                                            {goal.icon && <span className="mr-1.5">{goal.icon}</span>}
+                                            {goal.label}
+                                        </span>
                                     </label>
                                 ))}
 
-                                {goals.includes("other") && (
+                                {goals.includes("other") && !VERTICAL_GOALS[industry] && (
                                     <input
                                         type="text"
                                         value={goalOther}

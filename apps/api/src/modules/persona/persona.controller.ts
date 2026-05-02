@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Req, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
@@ -146,9 +146,9 @@ export class PersonaController {
     }
 
     @Get(':tenantId/agent-templates')
-    @ApiOperation({ summary: 'List agent templates (built-in + user-saved)' })
-    async listTemplates(@Param('tenantId') tenantId: string) {
-        const templates = await this.personaService.listTemplates(tenantId);
+    @ApiOperation({ summary: 'List agent templates (vertical-specific first, then built-in + user-saved). Pass ?industry=salud|restaurantes|inmobiliaria|automotriz|turismo|educacion to prepend vertical templates.' })
+    async listTemplates(@Param('tenantId') tenantId: string, @Query('industry') industry?: string) {
+        const templates = await this.personaService.listTemplates(tenantId, industry);
         return { success: true, data: templates };
     }
 

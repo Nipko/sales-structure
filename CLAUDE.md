@@ -452,6 +452,44 @@ audit_logs                 — Offboarding and billing audit trail
 - **Disconnect protection**: Can't disconnect calendar if future appointments exist
 - **Live calendar updates**: WebSocket `appointmentCreated`/`Updated` events refresh dashboard in real-time
 
+## Navigation Restructure (May 2, 2026)
+
+- **Sidebar reduced from 22 to 8 items**: Conversaciones, CRM, Embudo, Agenda, Campañas, Análisis, Agente IA, Propiedades — following HubSpot/Intercom/Zendesk patterns
+- **Settings separated at bottom**: No longer in the main nav; all settings accessible via dedicated Configuración hub
+- **Role-based nav**: Campañas requires supervisor+, Agente IA requires admin+, Settings sections require admin+
+- **Settings reorganized into 8 domain sections**: Cuenta, Empresa, IA & Automatización, Canales, Catálogo & Datos, Contenido, Equipo, Privacidad & Avanzado
+- **Analytics consolidated**: 10 tabs (added CRM Analytics + Agentes — no more separate report pages)
+- **10 orphan pages now accessible via Settings**: alerts, policies, landings, scoring config, pre-chat forms, media, macros, compliance, knowledge base, etc.
+- **Propiedades** sidebar item visible only when vertical = turismo
+
+## Onboarding Vertical Overhaul (May 2, 2026)
+
+- **Step 2 (Audiencia) adapts per vertical**: "Pacientes particulares / Por derivación / Obra social" for salud; "Compradores / Inversores / Arrendatarios" for inmobiliaria
+- **Step 3 (Objetivos) adapts per vertical** with dynamic title: "¿Cómo ayudará Sofía a tus pacientes?" (using agent name from vertical config)
+- **16 vertical agent templates** across 7 industries (salud, belleza, inmobiliaria, restaurantes, automotriz, turismo, educación) in `persona/persona.service.ts`
+- **Template picker**: shows "Recomendados para tu negocio" section first when creating a new agent, filtered by tenant vertical
+
+## Properties UX Overhaul (May 2, 2026)
+
+- **30 amenities in 6 categories**: Básicos (WiFi/AC/heating/TV/washer/dryer), Dormitorio & Baño (towels/linens/hair dryer/iron/wardrobe), Cocina (full kitchen/microwave/coffee/dishes/fridge/freezer), Exterior (pool/BBQ/patio/balcony/garden/parking), Servicios (gym/spa/breakfast/concierge/elevator/wheelchair), Seguridad (lock/safe/fire extinguisher/smoke detector/security)
+- **Description field** for rich property details (textarea in create/edit modal)
+- **Image gallery** with upload via MediaService — first image becomes card thumbnail in list view
+- **Calendar as Tab 1** (most important view for vacation rental operators; was previously not the default)
+- **"Sync availability" banner** shown in Calendar tab when no iCal feeds are connected, with direct link to iCal Feeds tab
+
+## Email Templates Transversal (May 2, 2026)
+
+- **5 new default templates seeded**: `property_booking_confirmation`, `property_check_in_reminder`, `appointment_confirmation_email`, `appointment_reminder_email`, `handoff_notification`
+- **Connected to flows**: booking engine → sends `property_booking_confirmation` email automatically; appointment created → sends `appointment_confirmation_email`; handoff triggers → uses `handoff_notification` template instead of hardcoded string
+- **Template picker wizard**: "Crear desde plantilla" button in email editor opens modal with 6 presets (appointment confirm, reminder, booking confirm, check-in reminder, welcome, team notification)
+- **Total default templates**: 14 (9 previous + 5 new)
+
+## Security Fixes (May 1-2, 2026)
+
+- **CRITICAL**: `getAvailableAgents()` in `agent-console.service.ts` was querying the `conversations` table without schema scope — leaked agent data across tenants. Fixed with `executeInTenantSchema`
+- **Schema reuse cleanup**: `createTenantSchema()` in `tenants.service.ts` now detects an existing schema (from a deleted tenant reusing the same slug) and cleans stale data before bootstrapping
+- **Checklist fallback**: Onboarding vertical checklist uses `.has()` guard to prevent `MISSING_MESSAGE` errors for undefined vertical keys
+
 ## Service Modality (Apr 22-23, 2026)
 
 - **location_type**: `in_person` | `online` | `hybrid` on services table

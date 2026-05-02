@@ -26,53 +26,59 @@
 | 2.3 | [Iniciar sesión](#23-iniciar-sesión) | |
 | 2.4 | [Recuperar contraseña](#24-recuperar-contraseña) | |
 | 3 | [Dashboard](#3-dashboard) | |
-| 4 | [Inbox — Bandeja de Entrada](#4-inbox--bandeja-de-entrada) | |
-| 4.1 | [Vista general](#41-vista-general) | |
-| 4.2 | [Filtros](#42-filtros) | |
-| 4.3 | [Acciones de conversación](#43-acciones-de-conversación) | |
-| 4.4 | [Panel del contacto](#44-panel-del-contacto) | |
-| 5 | [CRM — Gestión de Contactos](#5-crm--gestión-de-contactos) | |
-| 5.1 | [Contactos](#51-contactos) | |
-| 5.2 | [Pipeline (Kanban)](#52-pipeline-kanban) | |
-| 5.3 | [Segmentos](#53-segmentos) | |
-| 5.4 | [CRM Analytics](#54-crm-analytics) | |
-| 5.5 | [Identidad y Merge](#55-identidad-y-merge) | |
-| 5.6 | [Lead Scoring Configurable](#56-lead-scoring-configurable) | |
-| 5.7 | [AI Insights](#57-ai-insights) | |
-| 5.8 | [Aprobación de Deals](#58-aprobación-de-deals) | |
-| 5.9 | [Filtros Avanzados](#59-filtros-avanzados) | |
-| 6 | [Agentes IA](#6-agentes-ia) | |
-| 6.1 | [Lista de agentes](#61-lista-de-agentes) | |
-| 6.2 | [Editor del agente](#62-editor-del-agente) | |
-| 6.3 | [Plantillas](#63-plantillas) | |
-| 6.4 | [Test del agente](#64-test-del-agente) | |
-| 7 | [Canales de Comunicación](#7-canales-de-comunicación) | |
-| 7.1 | [WhatsApp](#71-whatsapp) | |
-| 7.2 | [Instagram](#72-instagram) | |
-| 7.3 | [Messenger](#73-messenger) | |
-| 7.4 | [Telegram](#74-telegram) | |
-| 7.5 | [SMS (Twilio)](#75-sms-twilio) | |
-| 7.6 | [Desconectar un canal](#76-desconectar-un-canal) | |
-| 8 | [Citas y Agenda](#8-citas-y-agenda) | |
-| 8.1 | [Calendario](#81-calendario) | |
-| 8.2 | [Servicios](#82-servicios) | |
-| 8.3 | [Disponibilidad](#83-disponibilidad) | |
-| 8.4 | [Calendarios conectados](#84-calendarios-conectados) | |
-| 8.5 | [Reserva por IA](#85-cómo-funciona-la-reserva-por-ia) | |
-| 9 | [Automatización](#9-automatización) | |
-| 10 | [Campañas y Broadcast](#10-campañas-y-broadcast) | |
-| 11 | [Base de Conocimiento](#11-base-de-conocimiento) | |
-| 12 | [Analytics y Reportes](#12-analytics-y-reportes) | |
-| 13 | [Inventario y Pedidos](#13-inventario-y-pedidos) | |
-| 14 | [Privacidad y Cumplimiento](#14-privacidad-y-cumplimiento) | |
-| 15 | [Configuración](#15-configuración) | |
-| 16 | [Gestión de Usuarios](#16-gestión-de-usuarios) | |
-| 16.1 | [Habilidades del equipo](#161-habilidades-del-equipo) | |
-| 17 | [Facturación y Planes](#17-facturación-y-planes) | |
-| 18 | [Preguntas Frecuentes (FAQ)](#18-preguntas-frecuentes) | |
-| 19 | [Adaptación por Industria (Verticales)](#19-adaptación-por-industria) | |
-| 20 | [Propiedades y Alquiler Vacacional](#20-propiedades-y-alquiler-vacacional) | |
-| 21 | [Panel de Super Administrador](#21-panel-de-super-administrador) | |
+| 4 | [Navegación — Cómo usar la plataforma](#4-navegación--cómo-usar-la-plataforma) | |
+| 4.1 | [Menú principal](#41-menú-principal) | |
+| 4.2 | [Configuración — 8 secciones](#42-configuración--8-secciones) | |
+| 4.3 | [Analytics — 10 pestañas](#43-analytics--10-pestañas) | |
+| 5 | [Inbox — Bandeja de Entrada](#5-inbox--bandeja-de-entrada) | |
+| 5.1 | [Vista general](#51-vista-general) | |
+| 5.2 | [Filtros](#52-filtros) | |
+| 5.3 | [Acciones de conversación](#53-acciones-de-conversación) | |
+| 5.4 | [Panel del contacto](#54-panel-del-contacto) | |
+| 6 | [CRM — Gestión de Contactos](#6-crm--gestión-de-contactos) | |
+| 6.1 | [Contactos](#61-contactos) | |
+| 6.2 | [Pipeline (Kanban)](#62-pipeline-kanban) | |
+| 6.3 | [Segmentos](#63-segmentos) | |
+| 6.4 | [CRM Analytics](#64-crm-analytics) | |
+| 6.5 | [Identidad y Merge](#65-identidad-y-merge) | |
+| 6.6 | [Lead Scoring Configurable](#66-lead-scoring-configurable) | |
+| 6.7 | [AI Insights](#67-ai-insights) | |
+| 6.8 | [Aprobación de Deals](#68-aprobación-de-deals) | |
+| 6.9 | [Filtros Avanzados](#69-filtros-avanzados) | |
+| 7 | [Agentes IA](#7-agentes-ia) | |
+| 7.1 | [Lista de agentes](#71-lista-de-agentes) | |
+| 7.2 | [Editor del agente](#72-editor-del-agente) | |
+| 7.3 | [Plantillas verticales](#73-plantillas-verticales) | |
+| 7.4 | [Test del agente](#74-test-del-agente) | |
+| 8 | [Canales de Comunicación](#8-canales-de-comunicación) | |
+| 8.1 | [WhatsApp](#81-whatsapp) | |
+| 8.2 | [Instagram](#82-instagram) | |
+| 8.3 | [Messenger](#83-messenger) | |
+| 8.4 | [Telegram](#84-telegram) | |
+| 8.5 | [SMS (Twilio)](#85-sms-twilio) | |
+| 8.6 | [Desconectar un canal](#86-desconectar-un-canal) | |
+| 9 | [Citas y Agenda](#9-citas-y-agenda) | |
+| 9.1 | [Calendario](#91-calendario) | |
+| 9.2 | [Servicios](#92-servicios) | |
+| 9.3 | [Disponibilidad](#93-disponibilidad) | |
+| 9.4 | [Calendarios conectados](#94-calendarios-conectados) | |
+| 9.5 | [Reserva por IA](#95-cómo-funciona-la-reserva-por-ia) | |
+| 10 | [Automatización](#10-automatización) | |
+| 11 | [Campañas y Broadcast](#11-campañas-y-broadcast) | |
+| 12 | [Base de Conocimiento](#12-base-de-conocimiento) | |
+| 13 | [Plantillas de Email](#13-plantillas-de-email) | |
+| 14 | [Analytics y Reportes](#14-analytics-y-reportes) | |
+| 15 | [Inventario y Pedidos](#15-inventario-y-pedidos) | |
+| 16 | [Privacidad y Cumplimiento](#16-privacidad-y-cumplimiento) | |
+| 17 | [Configuración General](#17-configuración-general) | |
+| 18 | [Gestión de Usuarios](#18-gestión-de-usuarios) | |
+| 18.1 | [Habilidades del equipo](#181-habilidades-del-equipo) | |
+| 19 | [Facturación y Planes](#19-facturación-y-planes) | |
+| 20 | [Preguntas Frecuentes (FAQ)](#20-preguntas-frecuentes) | |
+| 21 | [Adaptación por Industria (Verticales)](#21-adaptación-por-industria) | |
+| 22 | [Propiedades y Alquiler Vacacional](#22-propiedades-y-alquiler-vacacional) | |
+| 23 | [Panel de Super Administrador](#23-panel-de-super-administrador) | |
+| A | [Apéndice: Guía de Screenshots](#apéndice-guía-de-screenshots) | |
 
 ---
 
@@ -132,16 +138,38 @@ Al crear tu cuenta, un asistente de 5 pasos te guía para configurar tu negocio:
 | Zona horaria | Tu zona horaria local | ✅ |
 
 ### Paso 2 — Audiencia
-Selecciona tu público objetivo: B2C, B2B, Gobierno u Otro.
+
+Las opciones se adaptan automáticamente a la industria que seleccionaste en el Paso 1:
+
+| Industria | Ejemplos de audiencia |
+|-----------|----------------------|
+| **Salud** | Pacientes particulares, Por derivación médica, Obra social / prepaga |
+| **Inmobiliaria** | Compradores, Inversores, Arrendatarios |
+| **Restaurantes** | Comensales locales, Turistas, Corporativo / eventos |
+| **Otras industrias** | B2C (consumidores), B2B (empresas), Gobierno |
 
 ### Paso 3 — Objetivos
-¿Para qué usarás Parallly? FAQ, Citas, Ventas, Soporte, Promociones, etc.
+
+El título y las opciones se adaptan a tu industria usando el nombre de tu agente IA:
+
+- **Salud**: "¿Cómo ayudará Sofía a tus pacientes?" — Agendar citas, Responder preguntas médicas frecuentes, Dar seguimiento post-consulta
+- **Inmobiliaria**: "¿Cómo ayudará Carlos a tus clientes?" — Filtrar propiedades, Agendar visitas, Calificar compradores
+- **Restaurantes**: "¿Cómo ayudará Luca a tus comensales?" — Tomar reservas, Responder preguntas del menú, Gestionar delivery
+- **General**: FAQ, Citas, Ventas, Soporte al cliente, Promociones
 
 ### Paso 4 — Referencia
 ¿Cómo conociste Parallly?
 
 ### Paso 5 — Plan y pago
 Selecciona tu plan (Starter gratuito, Pro o Enterprise) y agrega método de pago si es necesario.
+
+### ¿Qué se configura automáticamente al terminar el onboarding?
+
+Al completar el asistente, Parallly pre-configura automáticamente:
+- **Etapas del pipeline** adaptadas a tu industria
+- **Agente IA** con nombre, rol, tono y reglas específicos de tu vertical
+- **FAQs base** con las preguntas más comunes de tu industria
+- **Servicios** de ejemplo según tu tipo de negocio
 
 ---
 
@@ -170,16 +198,38 @@ Selecciona tu plan (Starter gratuito, Pro o Enterprise) y agrega método de pago
 
 **Ruta:** Menú → Dashboard
 
-El dashboard es tu vista general del negocio al iniciar sesión.
+El dashboard es tu vista general del negocio al iniciar sesión. Se adapta automáticamente a tu industria.
 
-### Métricas principales
+### Mensaje de bienvenida
 
+Al iniciar sesión, el dashboard te recibe con un mensaje contextual según tu industria:
+- **Salud**: "Bienvenido a tu consultorio virtual, Dr. López"
+- **Restaurantes**: "Tu restaurante está listo"
+- **Inmobiliaria**: "Tu agencia está lista para cerrar negocios"
+- **General**: "Bienvenido a Parallly"
+
+### Métricas principales (KPIs por industria)
+
+Los KPIs se adaptan a tu tipo de negocio:
+
+| Industria | KPI 1 | KPI 2 | KPI 3 |
+|-----------|-------|-------|-------|
+| **Salud** | Citas hoy | Pacientes nuevos | No shows |
+| **Automotriz** | Leads hoy | Test drives | Cotizaciones |
+| **Restaurantes** | Reservas hoy | Comensales | No shows |
+| **General** | Leads hoy | Leads calientes | Mensajes procesados |
+
+También siempre disponibles:
 | Métrica | Descripción |
 |---------|-------------|
-| Leads hoy | Nuevos leads capturados en el día |
-| Leads calientes | Leads con score alto listos para cerrar |
 | Mensajes procesados | Total de mensajes IA enviados/recibidos hoy |
 | Costo IA | Costo de los modelos de lenguaje usados hoy |
+
+### Vista principal (homepage vertical)
+
+La sección central del dashboard cambia según tu industria:
+- **Salud, Belleza, Restaurantes**: Vista de **agenda del día** — próximas citas, servicios agendados, hora y cliente
+- **Inmobiliaria, Automotriz**: Vista de **leads recientes** — últimos leads capturados, etapa, score
 
 ### Actividad reciente
 Lista de las últimas interacciones: conversaciones nuevas, handoffs a humanos, y pedidos recibidos.
@@ -187,15 +237,104 @@ Lista de las últimas interacciones: conversaciones nuevas, handoffs a humanos, 
 ### Uso de modelos
 Distribución de qué modelos IA se están usando con porcentajes y ahorro del router inteligente.
 
+### Checklist de configuración
+
+Si tu cuenta es nueva, aparece un checklist adaptado a tu industria:
+- **Salud**: "Configura tu asistente médico", "Carga tus servicios (consultas, procedimientos)", "Conecta tu calendario"
+- **Restaurantes**: "Carga tu menú y horarios", "Conecta WhatsApp Business", "Activa reservas"
+- **General**: "Conecta un canal de mensajería", "Configura tu agente IA", "Carga tu base de conocimiento"
+
 ---
 
-# 4. Inbox — Bandeja de Entrada
+# 4. Navegación — Cómo usar la plataforma
 
-**Ruta:** Menú → Inbox
+Parallly está organizado en **8 secciones principales** accesibles desde el menú lateral, más una sección de Configuración en la parte inferior.
+
+## 4.1 Menú principal
+
+```
+┌─────────────────────────────┐
+│  [Logo Parallly]            │
+├─────────────────────────────┤
+│  💬  Conversaciones         │
+│  👥  CRM                    │
+│  📊  Embudo                 │
+│  📅  Agenda                 │
+│  📣  Campañas               │
+│  📈  Análisis               │
+│  🤖  Agente IA              │
+│  🏠  Propiedades *          │
+├─────────────────────────────┤
+│  ⚙️  Configuración          │
+└─────────────────────────────┘
+* Solo visible en industria Turismo
+```
+
+| Sección | Para qué sirve |
+|---------|---------------|
+| **Conversaciones** | Bandeja de entrada con todas las conversaciones de clientes en tiempo real |
+| **CRM** | Contactos, leads, segmentos y gestión de relaciones |
+| **Embudo** | Pipeline de ventas tipo Kanban con etapas configurables |
+| **Agenda** | Citas, calendario, servicios y disponibilidad |
+| **Campañas** | Broadcasts masivos, secuencias y automatización de mensajes |
+| **Análisis** | Todos los reportes y analíticas en 10 pestañas |
+| **Agente IA** | Configuración, plantillas y prueba de tus agentes de IA |
+| **Propiedades** | Gestión de propiedades de alquiler vacacional (Turismo) |
+| **Configuración** | Toda la configuración del negocio, usuarios, canales y más |
+
+### Permisos de acceso
+
+| Sección | Acceso mínimo requerido |
+|---------|------------------------|
+| Conversaciones, CRM, Embudo, Agenda | Agente |
+| Campañas | Supervisor |
+| Análisis, Propiedades | Agente |
+| Agente IA | Admin |
+| Configuración | Admin |
+
+## 4.2 Configuración — 8 secciones
+
+Al hacer clic en **Configuración**, accedes a un hub organizado en 8 dominios:
+
+| Sección | Qué incluye |
+|---------|-------------|
+| **Cuenta** | Perfil personal, contraseña, 2FA, sesiones activas |
+| **Empresa** | Información del negocio, logo, horario de atención, zonas horarias |
+| **IA & Automatización** | Agentes IA, reglas de automatización, base de conocimiento, FAQs, políticas |
+| **Canales** | WhatsApp, Instagram, Messenger, Telegram, SMS — conectar y configurar |
+| **Catálogo & Datos** | Inventario, catálogo de servicios, scoring de leads, atributos personalizados |
+| **Contenido** | Plantillas de email, macros, formularios de pre-chat, librería de medios |
+| **Equipo** | Usuarios, roles, habilidades del equipo, listas de distribución |
+| **Privacidad & Avanzado** | Compliance, textos legales, alertas, reportes programados, landing pages |
+
+> **Tip:** Los 10 módulos que antes requerían navegar por menús separados (alertas, políticas, landings, scoring, pre-chat, medios, macros, compliance, base de conocimiento) ahora están todos en Configuración.
+
+## 4.3 Analytics — 10 pestañas
+
+La sección **Análisis** consolida todos los reportes en una sola página con 10 pestañas:
+
+| Pestaña | Contenido |
+|---------|-----------|
+| **General** | KPIs globales: conversaciones, handoffs, costo IA, CSAT |
+| **IA & Bot** | Tasa de resolución IA, contención, uso de modelos, motivos de handoff |
+| **Automatización** | Reglas activas, ejecuciones, tasa de éxito por regla |
+| **Campañas** | Funnel (enviado→entregado→leído→fallido) por campaña |
+| **Canales** | Comparación de volumen y rendimiento por canal |
+| **CSAT** | Encuestas de satisfacción, distribución 1-5, comentarios |
+| **Anomalías** | Detección automática de desvíos >2σ del promedio 30 días |
+| **Cohortes** | Retención de contactos por mes de primer contacto |
+| **CRM** | Funnel, velocidad de pipeline, leaderboard de agentes |
+| **Agentes** | Rendimiento individual: mensajes, tiempo respuesta, CSAT |
+
+---
+
+# 5. Inbox — Bandeja de Entrada
+
+**Ruta:** Menú → Conversaciones
 
 El inbox es tu centro de operaciones para conversaciones en tiempo real con clientes.
 
-## 4.1 Vista general
+## 5.1 Vista general
 
 La bandeja tiene 3 paneles:
 
@@ -211,7 +350,7 @@ Las conversaciones nuevas llegan en **tiempo real** gracias a WebSocket: cuando 
 
 ---
 
-## 4.2 Filtros
+## 5.2 Filtros
 
 | Filtro | Muestra |
 |--------|---------|
@@ -233,7 +372,7 @@ Cuando una conversación se escala a un agente humano:
 
 ---
 
-## 4.3 Acciones de conversación
+## 5.3 Acciones de conversación
 
 La barra de acciones es **responsiva**: en pantallas pequeñas se muestran solo los iconos, y las acciones secundarias (archivar, eliminar) se agrupan en un menú desplegable **"Más"**.
 
@@ -252,7 +391,7 @@ La barra de acciones es **responsiva**: en pantallas pequeñas se muestran solo 
 
 ---
 
-## 4.4 Panel del contacto
+## 5.4 Panel del contacto
 
 El panel derecho es **colapsable**: puedes ocultarlo o mostrarlo con un botón de toggle para ganar espacio en pantalla cuando no lo necesitas.
 
@@ -268,7 +407,7 @@ Al seleccionar una conversación, el panel muestra:
 
 ---
 
-# 5. CRM — Gestión de Contactos
+# 6. CRM — Gestión de Contactos
 
 ## 5.1 Contactos
 
@@ -667,9 +806,23 @@ El editor incluye un checklist que guía los pasos pendientes. El paso de conect
 
 ---
 
-## 6.3 Plantillas
+## 6.3 Plantillas verticales
 
-6 plantillas predefinidas para empezar rápido:
+Al crear un nuevo agente, el selector de plantillas muestra primero las **"Recomendadas para tu negocio"** según tu industria.
+
+### Plantillas por industria
+
+| Industria | Plantillas disponibles |
+|-----------|----------------------|
+| **Salud** | Asistente médico general, Recepcionista dental, Psicología y terapia |
+| **Belleza** | Asistente de salón / barbería, Coordinadora de spa |
+| **Inmobiliaria** | Asesor inmobiliario, Coordinador de visitas |
+| **Restaurantes** | Host de reservas, Asistente de delivery |
+| **Automotriz** | Asesor de ventas de autos, Coordinador de test drives |
+| **Turismo** | Agente de alquiler vacacional, Coordinador de tours |
+| **Educación** | Asesor de inscripciones, Soporte estudiantil |
+
+### Plantillas generales
 
 | Plantilla | Ideal para |
 |-----------|-----------|
@@ -1035,7 +1188,92 @@ Los clientes pueden buscar artículos sin contactar al agente.
 
 ---
 
-# 12. Analytics y Reportes
+# 13. Plantillas de Email
+
+**Ruta:** Configuración → Contenido → Plantillas de Email
+
+Las plantillas de email te permiten crear y enviar correos electrónicos con diseño profesional a tus clientes.
+
+## 13.1 Plantillas predeterminadas
+
+Parallly incluye **14 plantillas predeterminadas** listas para usar:
+
+| Plantilla | Cuándo se usa |
+|-----------|--------------|
+| **appointment_confirmation** | Al confirmar una cita por WhatsApp/IA |
+| **appointment_reminder** | 24h y 1h antes de la cita (automático) |
+| **appointment_confirmation_email** | Email de confirmación al agendar una cita |
+| **appointment_reminder_email** | Email recordatorio 24h antes de la cita |
+| **property_booking_confirmation** | Al crear una reserva de alquiler vacacional |
+| **property_check_in_reminder** | 24h antes del check-in de una propiedad |
+| **handoff_notification** | Cuando una conversación se escala a agente humano |
+| **order_confirmation** | Al crear un pedido |
+| **welcome** | Al registrarse un nuevo usuario |
+| **verification** | Verificación de email (código OTP) |
+| **password_reset** | Recuperación de contraseña |
+| **2fa_code** | Código de autenticación de dos factores |
+| **payment_success** | Al procesar un pago exitoso |
+| **trial_ending** | 3 días antes de que termine el período de prueba |
+
+## 13.2 Flujos automáticos conectados
+
+Algunas plantillas se disparan automáticamente:
+
+| Evento | Plantilla enviada | Canal |
+|--------|-------------------|-------|
+| Cita creada por IA o manual | `appointment_confirmation_email` | Email |
+| 24h antes de la cita | `appointment_reminder_email` | Email |
+| Reserva de propiedad creada | `property_booking_confirmation` | Email |
+| 24h antes del check-in | `property_check_in_reminder` | Email |
+| Handoff a agente humano | `handoff_notification` | Email al agente |
+
+## 13.3 Editor de plantillas
+
+El editor tiene dos modos:
+
+- **Editor visual (bloques)**: arrastra y suelta secciones (header, texto, botón, imagen, footer)
+- **Editor HTML**: acceso directo al HTML para personalización avanzada
+
+### Variables disponibles
+
+Las plantillas soportan variables que se reemplazan automáticamente:
+
+| Variable | Descripción |
+|----------|-------------|
+| `{{customer_name}}` | Nombre del cliente |
+| `{{service_name}}` | Nombre del servicio agendado |
+| `{{appointment_date}}` | Fecha de la cita |
+| `{{appointment_time}}` | Hora de la cita |
+| `{{agent_name}}` | Nombre del agente IA o humano |
+| `{{company_name}}` | Nombre de tu empresa |
+| `{{property_name}}` | Nombre de la propiedad (alquiler vacacional) |
+| `{{check_in_date}}` | Fecha de check-in |
+| `{{check_out_date}}` | Fecha de check-out |
+| `{{booking_link}}` | URL de la reserva |
+
+### Preview en tiempo real
+
+Al editar, el panel derecho muestra el email renderizado en tiempo real. Puedes:
+1. Ver cómo se verá en escritorio y móvil
+2. Enviar un **email de prueba** a tu dirección para verificar el diseño
+3. Guardar como borrador antes de activar
+
+## 13.4 Crear desde plantilla
+
+Al crear una nueva plantilla de email, haz clic en **"Crear desde plantilla"** para abrir el selector de presets:
+
+| Preset | Caso de uso |
+|--------|-------------|
+| Confirmación de cita | Email que confirma un agendamiento |
+| Recordatorio de cita | Recordatorio automático pre-cita |
+| Confirmación de reserva | Para alquiler vacacional y propiedades |
+| Recordatorio de check-in | Instrucciones de llegada para huéspedes |
+| Bienvenida | Email de bienvenida a nuevos clientes |
+| Notificación de equipo | Para notificar al equipo sobre eventos |
+
+---
+
+# 14. Analytics y Reportes
 
 ## 12.1 Analytics del negocio
 
@@ -1374,10 +1612,29 @@ Para negocios de alquiler vacacional (Airbnb, Booking.com, etc.), Parallly ofrec
 
 1. Ve a **Propiedades** en el menú
 2. Clic en **"Agregar propiedad"**
-3. Completa: nombre, dirección, ciudad, capacidad, habitaciones, baños
+3. Completa: nombre, descripción, dirección, ciudad, capacidad, habitaciones, baños
 4. Configura el precio por noche y tarifa de limpieza
-5. Selecciona amenidades (WiFi, piscina, parking, AC, etc.)
-6. Guarda
+5. Selecciona amenidades (organizadas en 6 categorías)
+6. Agrega imágenes de la propiedad
+7. Guarda
+
+### Amenidades — 30 opciones en 6 categorías
+
+| Categoría | Amenidades incluidas |
+|-----------|---------------------|
+| **Básicos** | WiFi, Aire acondicionado, Calefacción, TV, Lavadora, Secadora |
+| **Dormitorio & Baño** | Toallas, Ropa de cama, Secador de cabello, Plancha, Armario/Closet |
+| **Cocina** | Cocina completa, Microondas, Cafetera, Platos/Utensilios, Refrigerador, Congelador |
+| **Exterior** | Piscina, BBQ/Parrilla, Patio/Terraza, Balcón, Jardín, Estacionamiento |
+| **Servicios** | Gimnasio, Spa, Desayuno incluido, Conserjería, Ascensor, Acceso silla de ruedas |
+| **Seguridad** | Cerradura inteligente, Caja de seguridad, Extintor, Detector de humo, Vigilancia |
+
+### Galería de imágenes
+
+- Sube múltiples imágenes directamente desde el modal de creación/edición
+- La **primera imagen** se usa como miniatura en la lista de propiedades
+- Puedes reordenar imágenes arrastrando
+- Formatos soportados: JPG, PNG, WebP (máx. 5MB por imagen)
 
 ### Límites por plan
 | Plan | Propiedades máximas |
@@ -1389,13 +1646,19 @@ Para negocios de alquiler vacacional (Airbnb, Booking.com, etc.), Parallly ofrec
 
 ## 20.2 Calendario de disponibilidad
 
-En el detalle de cada propiedad, el tab **Calendario** muestra una vista mensual:
-- 🟢 Verde = disponible
-- 🔴 Rojo = reservado (reserva directa en Parallly)
-- 🟠 Naranja = bloqueado (importado de Airbnb/Booking)
-- ⚫ Gris = fecha pasada
+El **Calendario es la primera pestaña** del detalle de la propiedad, ya que es la vista más importante para gestionar alquileres vacacionales.
+
+La vista mensual usa un sistema de colores:
+- Verde = días disponibles para reservar
+- Rojo = reservado (reserva directa en Parallly)
+- Naranja/Amber = bloqueado (importado de Airbnb/Booking.com)
+- Gris = fechas pasadas (no se pueden reservar)
 
 Navega entre meses con las flechas ← →.
+
+### Banner "Sincroniza tu disponibilidad"
+
+Si no tienes feeds iCal conectados, aparece un **banner informativo** en la parte superior del calendario indicando que tu disponibilidad no está sincronizada con plataformas externas. Haz clic en "Configurar iCal" para ir directamente a la pestaña de feeds.
 
 ## 20.3 Sincronización iCal (Airbnb / Booking.com)
 
@@ -1491,6 +1754,72 @@ Cada tenant tiene un score de salud (0-100) calculado automáticamente:
 - FAQs cargadas (≥3): +15 puntos
 - Servicios creados: +10 puntos
 - Actividad reciente (mensajes 7d): +35 puntos
+
+---
+
+---
+
+# Apéndice: Guía de Screenshots
+
+Para documentar visualmente la plataforma, estas son las pantallas clave donde tomar capturas para el manual y materiales de marketing:
+
+## Onboarding
+
+1. **Step 1 — Industria**: Formulario con selector de industria + sub-tipo seleccionado (ej: Salud → Odontología)
+2. **Step 3 — Objetivos verticales**: Pantalla mostrando "¿Cómo ayudará Sofía a tus pacientes?" con opciones adaptadas a salud
+3. **Step 5 — Plan picker**: Selector de plan con los 3 opciones y características comparadas
+
+## Dashboard
+
+4. **Bienvenida vertical**: Dashboard con mensaje "Bienvenido a tu consultorio virtual, Dr. López"
+5. **KPIs verticales**: Cards mostrando "Citas Hoy", "Pacientes Nuevos", "No Shows" para industria salud
+6. **Agenda del día**: Sección de homepage con citas del día listadas con hora, servicio y nombre del paciente
+
+## Navegación
+
+7. **Sidebar completo**: Menú lateral con 8 items (Conversaciones, CRM, Embudo, Agenda, Campañas, Análisis, Agente IA) + Configuración al fondo
+8. **Hub de Configuración**: Vista de configuración con las 8 secciones en cards organizadas por dominio
+
+## CRM
+
+9. **Lista de contactos**: Con filtros avanzados abiertos mostrando chips de filtros activos (score, fecha, tags)
+10. **Pipeline Kanban**: Con badges amarillos de "Pendiente aprobación" visibles en tarjetas
+11. **Detalle de lead**: Con panel de score breakdown expandido + tarjeta AI Insights abierta
+
+## Agente IA
+
+12. **Lista de agentes**: Con selector de plantillas mostrando sección "Recomendados para tu negocio" destacada
+13. **Editor de agente — Persona médica**: Agente "Sofía" configurada con rol de asistente médico, reglas y herramientas activadas
+
+## Canales
+
+14. **Vista general de canales**: WhatsApp, Instagram y Messenger conectados con foto de perfil y nombre de cuenta
+15. **Modal de desconectar canal**: Confirmación unificada con ícono de advertencia, descripción del impacto y botones Cancelar/Desconectar
+
+## Propiedades (Turismo)
+
+16. **Lista de propiedades**: Cards con imagen miniatura, amenidades resumidas, badges de disponibilidad
+17. **Detalle — Pestaña Calendario**: Vista mensual con colores (verde/rojo/amber/gris) y banner "Sincroniza tu disponibilidad"
+18. **Detalle — Pestaña Info**: Amenidades organizadas en 6 categorías + galería de imágenes con upload
+19. **Detalle — Pestaña iCal Feeds**: URL de exportación visible + feeds de Airbnb/Booking sincronizados con fecha de última sync
+20. **Crear propiedad — Modal**: Formulario con selector de amenidades por categoría (acordeón por categoría) + zona de upload de imágenes
+
+## Plantillas de Email
+
+21. **Editor de templates**: Editor visual con preview renderizado del email a la derecha
+22. **Template picker modal**: Modal con 6 presets visuales organizados por caso de uso
+
+## Analytics
+
+23. **Vista general**: KPIs principales + gráfico de volumen de conversaciones
+24. **Pestaña CRM Analytics**: Funnel de ventas + gráfico de velocidad de pipeline
+25. **Pestaña Agentes**: Tabla leaderboard con ranking, deals cerrados y tasa de conversión
+
+## Super Administrador
+
+26. **Tenants Overview**: Tabla con columna de vertical badge (etiqueta de industria) + health dot indicator
+27. **Tenant Detail — Actividad**: Health score circular + KPIs de actividad (mensajes 7d/30d, conversaciones activas)
+28. **Platform Dashboard**: 6 KPIs de la plataforma + distribución de tenants por vertical
 
 ---
 

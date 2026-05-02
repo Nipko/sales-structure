@@ -4,6 +4,43 @@
 
 ---
 
+## v5.1.0 — May 2, 2026
+
+### Navigation Restructure
+- **Sidebar reduced from 22 to 8 items** following HubSpot/Intercom/Zendesk patterns
+- **Settings reorganized into 8 domain sections**: Account, Company, AI & Automation, Channels, Catalog & Data, Content, Team, Privacy & Advanced
+- **Analytics consolidated**: 10 tabs (added CRM + Agents) — no more separate report pages
+- **Role-based navigation**: campaigns=supervisor+, aiAgent=admin+, settings sections=admin+
+- **10 orphan pages** now accessible via Settings (alerts, policies, landings, scoring config, pre-chat forms, etc.)
+- **Propiedades** sidebar item scoped to turismo vertical only
+
+### Onboarding Vertical Overhaul
+- **Step 2 adapted per vertical**: "Pacientes particulares" (health), "Compradores" (real estate), etc.
+- **Step 3 adapted per vertical**: "¿Cómo ayudará Sofía a tus pacientes?" with industry-specific goals
+- **16 vertical agent templates** across 7 industries (salud, belleza, inmobiliaria, restaurantes, automotriz, turismo, educación)
+- **Template picker**: "Recomendados para tu negocio" shown first when creating agents, filtered by tenant vertical
+
+### Properties UX Overhaul
+- **30 amenities in 6 categories** (was 12 flat checkboxes): Básicos, Dormitorio & Baño, Cocina, Exterior, Servicios, Seguridad
+- **Description field** for rich property details in create/edit modal
+- **Image gallery** with upload via MediaService — first image is card thumbnail in list view
+- **Calendar as Tab 1** (most important view for vacation rental operators)
+- **"Sync availability" banner** when no iCal feeds connected, links directly to iCal Feeds tab
+
+### Email Templates Transversal
+- **5 new default templates**: property_booking_confirmation, property_check_in_reminder, appointment_confirmation_email, appointment_reminder_email, handoff_notification
+- **Automatic email flows**: booking → confirmation email, appointment created → confirmation email, handoff → template instead of hardcoded string
+- **Template picker wizard**: 6 presets (appointment confirm, reminder, booking confirm, check-in reminder, welcome, team notification)
+- **Total default templates**: 14
+
+### Security Fixes
+- **CRITICAL**: `getAvailableAgents()` cross-tenant data leakage — conversations table queried without schema scope. Fixed with `executeInTenantSchema`
+- **Schema reuse**: `createTenantSchema()` now detects and cleans stale data when slug is reused after tenant deletion
+- **Checklist fallback**: `.has()` check prevents MISSING_MESSAGE errors for undefined vertical keys in onboarding checklist
+- **Analytics column**: `date` → `start_at` in appointment queries
+
+---
+
 ## v5.0.0 — April 30, 2026
 
 ### Vertical Adaptation System (12 Industries)

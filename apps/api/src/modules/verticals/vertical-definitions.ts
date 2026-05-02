@@ -84,7 +84,7 @@ const SALUD: VerticalDefinition = {
             pipeline: { es: 'Seguimiento', en: 'Patient Journey', pt: 'Acompanhamento', fr: 'Suivi' },
             appointments: { es: 'Agenda Medica', en: 'Medical Schedule', pt: 'Agenda Medica', fr: 'Agenda Medicale' },
         },
-        hiddenItems: ['inventory', 'orders', 'catalog'],
+        hiddenItems: [],
     },
     dashboard: {
         kpis: [
@@ -156,7 +156,7 @@ const MODA_BELLEZA: VerticalDefinition = {
             pipeline: { es: 'Citas', en: 'Appointments', pt: 'Agendamentos', fr: 'Rendez-vous' },
             appointments: { es: 'Agenda', en: 'Schedule', pt: 'Agenda', fr: 'Agenda' },
         },
-        hiddenItems: ['inventory', 'orders'],
+        hiddenItems: [],
     },
     dashboard: {
         kpis: [
@@ -230,7 +230,7 @@ const INMOBILIARIA: VerticalDefinition = {
             pipeline: { es: 'Negociaciones', en: 'Deals', pt: 'Negociacoes', fr: 'Negociations' },
             catalog: { es: 'Propiedades', en: 'Properties', pt: 'Imoveis', fr: 'Biens' },
         },
-        hiddenItems: ['inventory', 'orders'],
+        hiddenItems: [],
     },
     dashboard: {
         kpis: [
@@ -424,7 +424,7 @@ const TURISMO: VerticalDefinition = {
         { name: { es: 'Excursion medio dia', en: 'Half day excursion', pt: 'Excursao meio dia', fr: 'Excursion demi-journee' }, description: { es: 'Excursion de medio dia con transporte', en: 'Half day excursion with transport', pt: 'Excursao meio dia com transporte', fr: 'Excursion demi-journee avec transport' }, durationMinutes: 240, price: 150000, currency: 'COP', category: 'tours' },
     ],
     businessHours: { schedule: { mon: '08:00-19:00', tue: '08:00-19:00', wed: '08:00-19:00', thu: '08:00-19:00', fri: '08:00-19:00', sat: '09:00-16:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horario.', fr: 'Nous sommes fermes.' } },
-    sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Reservations' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerarios', fr: 'Itineraires' } }, hiddenItems: ['inventory'] },
+    sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Reservations' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerarios', fr: 'Itineraires' } }, hiddenItems: [] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Plane', color: '#1abc9c' },
         { key: 'appointmentsToday', label: { es: 'Reservas Confirmadas', en: 'Confirmed Bookings', pt: 'Reservas Confirmadas', fr: 'Reservations Confirmees' }, icon: 'Calendar', color: '#3498db' },
@@ -467,7 +467,7 @@ const EDUCATION: VerticalDefinition = {
         { name: { es: 'Test de nivel', en: 'Placement test', pt: 'Teste de nivel', fr: 'Test de niveau' }, description: { es: 'Evaluacion de nivel para ubicacion', en: 'Level assessment for placement', pt: 'Avaliacao de nivel para classificacao', fr: 'Evaluation de niveau pour le placement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'evaluacion' },
     ],
     businessHours: { schedule: { mon: '07:00-20:00', tue: '07:00-20:00', wed: '07:00-20:00', thu: '07:00-20:00', fri: '07:00-20:00', sat: '08:00-14:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horario.', fr: 'Nous sommes fermes.' } },
-    sidebar: { labelOverrides: { crm: { es: 'Estudiantes', en: 'Students', pt: 'Estudantes', fr: 'Etudiants' }, pipeline: { es: 'Inscripciones', en: 'Enrollments', pt: 'Inscricoes', fr: 'Inscriptions' } }, hiddenItems: ['inventory'] },
+    sidebar: { labelOverrides: { crm: { es: 'Estudiantes', en: 'Students', pt: 'Estudantes', fr: 'Etudiants' }, pipeline: { es: 'Inscripciones', en: 'Enrollments', pt: 'Inscricoes', fr: 'Inscriptions' } }, hiddenItems: [] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Interesados Hoy', en: 'Inquiries Today', pt: 'Interessados Hoje', fr: 'Interesses Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
         { key: 'appointmentsToday', label: { es: 'Matriculas Hoy', en: 'Enrollments Today', pt: 'Matriculas Hoje', fr: 'Inscriptions Aujourd\'hui' }, icon: 'GraduationCap', color: '#2ecc71' },
@@ -579,7 +579,7 @@ const RETAIL = createGenericVertical('retail', {
         { name: { es: 'Entregado', en: 'Delivered', pt: 'Entregue', fr: 'Livre' }, slug: 'entregado', color: '#2ecc71', probability: 100, isTerminal: true },
         { name: { es: 'Devolucion', en: 'Return', pt: 'Devolucao', fr: 'Retour' }, slug: 'devolucion', color: '#e74c3c', probability: 0, isTerminal: true },
     ] },
-    sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Ventas', en: 'Sales', pt: 'Vendas', fr: 'Ventes' }, catalog: { es: 'Productos', en: 'Products', pt: 'Produtos', fr: 'Produits' } }, hiddenItems: ['appointments'] },
+    sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Ventas', en: 'Sales', pt: 'Vendas', fr: 'Ventes' }, catalog: { es: 'Productos', en: 'Products', pt: 'Produtos', fr: 'Produits' } }, hiddenItems: [] },
 });
 
 const TECHNOLOGY = createGenericVertical('technology', {

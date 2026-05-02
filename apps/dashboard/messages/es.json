@@ -60,7 +60,10 @@
       "main": "Principal",
       "operations": "Operación",
       "analytics": "Análisis",
-      "config": "Configuración"
+      "config": "Configuración",
+      "operation": "Operación",
+      "growth": "Crecimiento",
+      "management": "Gestión"
     },
     "items": {
       "conversations": "Conversaciones",
@@ -546,6 +549,7 @@
     "advanced": "Avanzado",
     "advancedDesc": "Nombre de plataforma, limites y features",
     "companyGeneral": "Información general",
+    "ai": "Inteligencia Artificial",
     "aiAutomation": "IA y Automatización",
     "aiProviders": "Proveedores LLM",
     "dataCatalog": "Catálogo y Datos",

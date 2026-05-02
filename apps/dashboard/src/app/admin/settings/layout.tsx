@@ -8,16 +8,14 @@ import { useTranslations } from "next-intl";
 import {
     User, Shield, Bell, Palette, Building2, Globe, Clock,
     Database, Zap, MessageSquare, Mail, Image, Brain,
-    SlidersHorizontal, Phone, Settings, CreditCard, Plug, GitBranch, BarChart2,
-    Radio, Workflow, FileText, Layout, Boxes, ShieldCheck, BellRing, Lightbulb, BookOpen, Package,
-    Users, type LucideIcon,
+    SlidersHorizontal, Settings, CreditCard, Plug, GitBranch, BarChart2,
+    BellRing, type LucideIcon,
 } from "lucide-react";
 
 interface NavItem { i18nKey: string; href: string; icon: LucideIcon; }
 interface NavSection { i18nKey: string; items: NavItem[]; adminOnly?: boolean; }
 
 const NAV_SECTIONS: NavSection[] = [
-    // Section 1: Account (all users)
     {
         i18nKey: "account",
         items: [
@@ -27,7 +25,6 @@ const NAV_SECTIONS: NavSection[] = [
             { i18nKey: "appearance", href: "/admin/settings/appearance", icon: Palette },
         ],
     },
-    // Section 2: Company (adminOnly)
     {
         i18nKey: "company", adminOnly: true,
         items: [
@@ -37,62 +34,30 @@ const NAV_SECTIONS: NavSection[] = [
             { i18nKey: "billing", href: "/admin/settings/billing", icon: CreditCard },
         ],
     },
-    // Section 3: AI & Automation (adminOnly)
     {
-        i18nKey: "aiAutomation", adminOnly: true,
+        i18nKey: "tools", adminOnly: true,
+        items: [
+            { i18nKey: "customAttributes", href: "/admin/settings/custom-attributes", icon: Database },
+            { i18nKey: "macros", href: "/admin/settings/macros", icon: Zap },
+            { i18nKey: "prechat", href: "/admin/settings/prechat", icon: MessageSquare },
+            { i18nKey: "emailTemplates", href: "/admin/settings/email-templates", icon: Mail },
+            { i18nKey: "mediaBank", href: "/admin/settings/media", icon: Image },
+            { i18nKey: "pipelineStages", href: "/admin/settings/pipeline", icon: GitBranch },
+            { i18nKey: "scoringConfig", href: "/admin/settings/scoring-config", icon: BarChart2 },
+        ],
+    },
+    {
+        i18nKey: "ai", adminOnly: true,
         items: [
             { i18nKey: "aiProviders", href: "/admin/settings/ai-providers", icon: Brain },
             { i18nKey: "aiConfig", href: "/admin/settings/ai-config", icon: SlidersHorizontal },
-            { i18nKey: "macros", href: "/admin/settings/macros", icon: Zap },
-            { i18nKey: "prechat", href: "/admin/settings/prechat", icon: MessageSquare },
-            { i18nKey: "automation", href: "/admin/automation", icon: Workflow },
         ],
     },
-    // Section 4: Channels (adminOnly)
     {
-        i18nKey: "channelsSection", adminOnly: true,
+        i18nKey: "advanced", adminOnly: true,
         items: [
-            { i18nKey: "channelOverview", href: "/admin/channels", icon: Radio },
-            { i18nKey: "channelConfig", href: "/admin/settings/channels", icon: Phone },
-        ],
-    },
-    // Section 5: Data & Catalog (adminOnly)
-    {
-        i18nKey: "dataCatalog", adminOnly: true,
-        items: [
-            { i18nKey: "customAttributes", href: "/admin/settings/custom-attributes", icon: Database },
-            { i18nKey: "pipelineStages", href: "/admin/settings/pipeline", icon: GitBranch },
-            { i18nKey: "scoringConfig", href: "/admin/settings/scoring-config", icon: BarChart2 },
-            { i18nKey: "emailTemplates", href: "/admin/settings/email-templates", icon: Mail },
-            { i18nKey: "catalog", href: "/admin/catalog", icon: Package },
-            { i18nKey: "inventory", href: "/admin/inventory", icon: Boxes },
-        ],
-    },
-    // Section 6: Content (adminOnly)
-    {
-        i18nKey: "content", adminOnly: true,
-        items: [
-            { i18nKey: "knowledgeBase", href: "/admin/knowledge", icon: BookOpen },
-            { i18nKey: "policies", href: "/admin/settings/policies", icon: FileText },
-            { i18nKey: "landings", href: "/admin/landings", icon: Layout },
-            { i18nKey: "mediaBank", href: "/admin/settings/media", icon: Image },
-        ],
-    },
-    // Section 7: Team (adminOnly)
-    {
-        i18nKey: "team", adminOnly: true,
-        items: [
-            { i18nKey: "users", href: "/admin/users", icon: Users },
-            { i18nKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
-            { i18nKey: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug },
-        ],
-    },
-    // Section 8: Privacy & Advanced (adminOnly)
-    {
-        i18nKey: "privacyAdvanced", adminOnly: true,
-        items: [
-            { i18nKey: "compliance", href: "/admin/compliance", icon: ShieldCheck },
             { i18nKey: "alerts", href: "/admin/settings/alerts", icon: BellRing },
+            { i18nKey: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug },
             { i18nKey: "advanced", href: "/admin/settings/platform", icon: Settings },
         ],
     },

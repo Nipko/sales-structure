@@ -14,17 +14,22 @@ import {
 import {
   Inbox,
   Contact,
-  UserPlus,
-  Megaphone,
-  BarChart3,
-  Bot,
-  Settings,
-  PanelLeftClose,
-  PanelLeft,
-  Building2,
-  DollarSign,
+  TrendingUp,
   CalendarDays,
   Home,
+  Megaphone,
+  Zap,
+  Bot,
+  BookOpen,
+  BarChart3,
+  Radio,
+  Users,
+  Settings,
+  Building2,
+  DollarSign,
+  PanelLeftClose,
+  PanelLeft,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -47,16 +52,30 @@ interface NavSectionDef {
 
 const sectionDefs: NavSectionDef[] = [
   {
-    titleKey: "main",
+    titleKey: "operation",
     items: [
       { labelKey: "conversations", href: "/admin/inbox", icon: Inbox },
       { labelKey: "crm", href: "/admin/contacts", icon: Contact },
-      { labelKey: "pipeline", href: "/admin/pipeline", icon: UserPlus },
+      { labelKey: "pipeline", href: "/admin/pipeline", icon: TrendingUp },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
       { labelKey: "properties", href: "/admin/properties", icon: Home },
+    ],
+  },
+  {
+    titleKey: "growth",
+    items: [
       { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
-      { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
+      { labelKey: "automation", href: "/admin/automation", icon: Zap },
       { labelKey: "aiAgent", href: "/admin/agent", icon: Bot },
+      { labelKey: "knowledgeBase", href: "/admin/knowledge", icon: BookOpen },
+    ],
+  },
+  {
+    titleKey: "management",
+    items: [
+      { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
+      { labelKey: "channels", href: "/admin/channels", icon: Radio },
+      { labelKey: "users", href: "/admin/users", icon: Users },
     ],
   },
   {
@@ -85,7 +104,6 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const isAdmin = user?.role === 'super_admin' || user?.role === 'tenant_admin';
   const isSupervisor = isAdmin || user?.role === 'tenant_supervisor';
 
-  // Show the tenant/company name + friendly role (hide internal tenant_ prefix).
   const roleLabel = (() => {
     switch (user?.role) {
       case "super_admin": return tRoles("superAdmin");
@@ -96,7 +114,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     }
   })();
 
-  // Resolve translated sections with vertical overrides and hidden items
+  // Vertical overrides
   const hiddenItems = verticalConfig?.sidebar?.hiddenItems as string[] | undefined;
   const labelOverrides = verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined;
   const itemOrder = verticalConfig?.sidebar?.itemOrder as string[] | undefined;
@@ -110,7 +128,10 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
       // Role-based visibility
       .filter(i => {
         if (i.labelKey === 'campaigns') return isSupervisor;
+        if (i.labelKey === 'automation') return isSupervisor;
         if (i.labelKey === 'aiAgent') return isAdmin;
+        if (i.labelKey === 'users') return isAdmin;
+        if (i.labelKey === 'knowledgeBase') return isSupervisor;
         return true;
       });
 
@@ -148,11 +169,11 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   }, [onMobileClose]);
 
   const sidebarContent = (
-    <>
-      {/* Header */}
+    <div className="flex flex-col h-full">
+      {/* Logo header */}
       <div
         className={cn(
-          "flex items-center h-14 border-b border-neutral-200 dark:border-neutral-800 px-4 shrink-0",
+          "flex items-center h-14 border-b border-border/50 px-4 shrink-0",
           showExpanded ? "justify-between" : "justify-center"
         )}
       >
@@ -171,54 +192,76 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         </button>
       </div>
 
+      {/* Tenant header */}
+      {showExpanded && (
+        <div className="px-3 py-3 border-b border-border/30 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+              <Building2 size={14} className="text-indigo-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-foreground truncate">
+                {user?.tenantName || user?.firstName || 'Parallly'}
+              </p>
+              <p className="text-[10px] text-neutral-400 capitalize">
+                {(user as any)?.plan || 'starter'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+      <nav className="flex-1 overflow-y-auto py-2 px-1.5">
         {sections.map((section, sectionIdx) => (
           <Fragment key={section.titleKey}>
-            <div>
-              {/* "main" section: no visible title. "config" section: thin separator line instead of text. */}
-              {section.titleKey === "config" && (
-                <div className="mx-3 mb-3 border-t border-neutral-200 dark:border-neutral-800" />
-              )}
-              {section.titleKey !== "main" && section.titleKey !== "config" && showExpanded && (
-                <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+            {/* Section header */}
+            {section.titleKey === "config" ? (
+              <div className="my-2 mx-3 border-t border-border/40" />
+            ) : (
+              showExpanded && (
+                <p className="px-3 mb-1.5 mt-5 first:mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-400/80 dark:text-neutral-500/80 select-none">
                   {tNav(`sections.${section.titleKey}`)}
                 </p>
-              )}
-              <ul className="space-y-0.5">
-                {section.items.map((item) => {
-                  const active = isActive(item.href);
-                  const Icon = item.icon;
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        title={!showExpanded ? item.label : undefined}
-                        onClick={handleNavClick}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
-                          showExpanded
-                            ? "px-3 py-2"
-                            : "justify-center px-2 py-2.5",
-                          active
-                            ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                            : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
-                        )}
-                      >
-                        <Icon size={18} className="shrink-0" />
-                        {showExpanded && <span>{item.label}</span>}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+              )
+            )}
 
-            {/* Plataforma section — after main section (index 0), super_admin only */}
-            {sectionIdx === 0 && user?.role === "super_admin" && (
-              <div>
+            {/* Section items */}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = isActive(item.href);
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      title={!showExpanded ? item.label : undefined}
+                      onClick={handleNavClick}
+                      className={cn(
+                        "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium rounded-r-md transition-all duration-150",
+                        "border-l-2",
+                        !showExpanded && "justify-center px-2",
+                        active
+                          ? "border-indigo-500 bg-indigo-500/5 text-foreground dark:bg-indigo-500/10"
+                          : "border-transparent text-neutral-500 dark:text-neutral-400 hover:text-foreground hover:bg-neutral-500/5 dark:hover:bg-neutral-500/10"
+                      )}
+                    >
+                      <Icon size={16} className={cn(
+                        "shrink-0 transition-colors",
+                        active ? "text-indigo-500" : "text-neutral-400 dark:text-neutral-500"
+                      )} />
+                      {showExpanded && <span className="truncate">{item.label}</span>}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Plataforma section — injected after the last regular section (management, index 2), super_admin only */}
+            {sectionIdx === 2 && user?.role === "super_admin" && (
+              <div className="mt-1">
                 {showExpanded && (
-                  <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+                  <p className="px-3 mb-1.5 mt-5 text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-400/80 dark:text-neutral-500/80 select-none">
                     Plataforma
                   </p>
                 )}
@@ -229,15 +272,19 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                       title={!showExpanded ? "Tenants" : undefined}
                       onClick={handleNavClick}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
-                        showExpanded ? "px-3 py-2" : "justify-center px-2 py-2.5",
+                        "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium rounded-r-md transition-all duration-150",
+                        "border-l-2",
+                        !showExpanded && "justify-center px-2",
                         isActive("/admin/tenants")
-                          ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                          : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
+                          ? "border-indigo-500 bg-indigo-500/5 text-foreground dark:bg-indigo-500/10"
+                          : "border-transparent text-neutral-500 dark:text-neutral-400 hover:text-foreground hover:bg-neutral-500/5 dark:hover:bg-neutral-500/10"
                       )}
                     >
-                      <Building2 size={18} className="shrink-0" />
-                      {showExpanded && <span>Tenants</span>}
+                      <Building2 size={16} className={cn(
+                        "shrink-0 transition-colors",
+                        isActive("/admin/tenants") ? "text-indigo-500" : "text-neutral-400 dark:text-neutral-500"
+                      )} />
+                      {showExpanded && <span className="truncate">Tenants</span>}
                     </Link>
                   </li>
                   <li>
@@ -246,15 +293,19 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                       title={!showExpanded ? tNav('items.financials') : undefined}
                       onClick={handleNavClick}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
-                        showExpanded ? "px-3 py-2" : "justify-center px-2 py-2.5",
+                        "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium rounded-r-md transition-all duration-150",
+                        "border-l-2",
+                        !showExpanded && "justify-center px-2",
                         isActive("/admin/financials")
-                          ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                          : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200"
+                          ? "border-indigo-500 bg-indigo-500/5 text-foreground dark:bg-indigo-500/10"
+                          : "border-transparent text-neutral-500 dark:text-neutral-400 hover:text-foreground hover:bg-neutral-500/5 dark:hover:bg-neutral-500/10"
                       )}
                     >
-                      <DollarSign size={18} className="shrink-0" />
-                      {showExpanded && <span>{tNav('items.financials')}</span>}
+                      <DollarSign size={16} className={cn(
+                        "shrink-0 transition-colors",
+                        isActive("/admin/financials") ? "text-indigo-500" : "text-neutral-400 dark:text-neutral-500"
+                      )} />
+                      {showExpanded && <span className="truncate">{tNav('items.financials')}</span>}
                     </Link>
                   </li>
                 </ul>
@@ -264,41 +315,36 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         ))}
       </nav>
 
-      {/* Footer */}
-      <div
-        className={cn(
-          "border-t border-neutral-200 dark:border-neutral-800 p-3 shrink-0",
-          showExpanded ? "flex items-center gap-3" : "flex justify-center"
-        )}
-      >
-        {user?.picture ? (
-          <img
-            src={user.picture}
-            alt=""
-            referrerPolicy="no-referrer"
-            className="w-8 h-8 rounded-full object-cover shrink-0"
-            title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
-          />
-        ) : (
+      {/* User footer */}
+      {showExpanded ? (
+        <div className="px-3 py-3 border-t border-border/30 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
+              <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+                {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '')}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-medium text-foreground truncate">
+                {user?.firstName} {user?.lastName}
+              </p>
+              <p className="text-[10px] text-neutral-400">{roleLabel}</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-center py-3 border-t border-border/30 shrink-0">
           <div
-            className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold shrink-0"
-            title={!showExpanded ? `${user?.firstName} ${user?.lastName}` : undefined}
+            className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center"
+            title={`${user?.firstName} ${user?.lastName}`}
           >
-            {user?.firstName?.charAt(0) || "U"}
+            <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+              {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '')}
+            </span>
           </div>
-        )}
-        {showExpanded && (
-          <div className="overflow-hidden">
-            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-              {user?.tenantName || `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()}
-            </p>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-              {roleLabel}
-            </p>
-          </div>
-        )}
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 
   return (
@@ -310,7 +356,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         className={cn(
           "hidden md:flex flex-col h-screen border-r border-neutral-200 dark:border-neutral-800",
           "bg-white dark:bg-neutral-950 transition-all duration-200 shrink-0 overflow-hidden",
-          showExpanded ? "w-[272px]" : "w-16"
+          showExpanded ? "w-[240px]" : "w-12"
         )}
       >
         {sidebarContent}
@@ -321,7 +367,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         <SheetContent
           side="left"
           showCloseButton={true}
-          className="w-[272px] p-0 bg-white dark:bg-neutral-950 flex flex-col"
+          className="w-[240px] p-0 bg-white dark:bg-neutral-950 flex flex-col"
         >
           <SheetTitle className="sr-only">Menu</SheetTitle>
           {sidebarContent}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,32 +11,19 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
-import AnimatedLogo from "@/components/AnimatedLogo";
 import {
-  LayoutDashboard,
   Inbox,
   Contact,
   UserPlus,
-  Workflow,
   Megaphone,
-  Phone,
   BarChart3,
-  Shield,
   Bot,
-  BookOpen,
-  Fingerprint,
-  Users,
   Settings,
   PanelLeftClose,
   PanelLeft,
   Building2,
   DollarSign,
   CalendarDays,
-  Bell,
-  Package,
-  Boxes,
-  ShoppingCart,
-  Lightbulb,
   Home,
   type LucideIcon,
 } from "lucide-react";
@@ -48,7 +35,7 @@ interface NavItem {
 }
 
 interface NavSection {
-  title: string;
+  titleKey: string;
   items: NavItem[];
 }
 
@@ -62,41 +49,19 @@ const sectionDefs: NavSectionDef[] = [
   {
     titleKey: "main",
     items: [
-      { labelKey: "dashboard", href: "/admin", icon: LayoutDashboard },
-      { labelKey: "inbox", href: "/admin/inbox", icon: Inbox },
+      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox },
       { labelKey: "crm", href: "/admin/contacts", icon: Contact },
       { labelKey: "pipeline", href: "/admin/pipeline", icon: UserPlus },
-    ],
-  },
-  {
-    titleKey: "operations",
-    items: [
-      { labelKey: "automation", href: "/admin/automation", icon: Workflow },
-      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
       { labelKey: "properties", href: "/admin/properties", icon: Home },
-      { labelKey: "catalog", href: "/admin/catalog", icon: Package },
-      { labelKey: "inventory", href: "/admin/inventory", icon: Boxes },
-      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart },
-      { labelKey: "channels", href: "/admin/channels", icon: Phone },
-    ],
-  },
-  {
-    titleKey: "analytics",
-    items: [
+      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
       { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
-      { labelKey: "reports", href: "/admin/agent-analytics", icon: BarChart3 },
-      { labelKey: "compliance", href: "/admin/compliance", icon: Shield },
+      { labelKey: "aiAgent", href: "/admin/agent", icon: Bot },
     ],
   },
   {
     titleKey: "config",
     items: [
-      { labelKey: "aiAgent", href: "/admin/agent", icon: Bot },
-      { labelKey: "knowledgeBase", href: "/admin/knowledge", icon: BookOpen },
-      { labelKey: "identity", href: "/admin/identity", icon: Fingerprint },
-      { labelKey: "users", href: "/admin/users", icon: Users },
-      { labelKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
       { labelKey: "settings", href: "/admin/settings", icon: Settings },
     ],
   },
@@ -116,6 +81,10 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const tRoles = useTranslations('roles');
   const locale = useLocale();
 
+  // Role helpers
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'tenant_admin';
+  const isSupervisor = isAdmin || user?.role === 'tenant_supervisor';
+
   // Show the tenant/company name + friendly role (hide internal tenant_ prefix).
   const roleLabel = (() => {
     switch (user?.role) {
@@ -130,7 +99,6 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   // Resolve translated sections with vertical overrides and hidden items
   const hiddenItems = verticalConfig?.sidebar?.hiddenItems as string[] | undefined;
   const labelOverrides = verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined;
-
   const itemOrder = verticalConfig?.sidebar?.itemOrder as string[] | undefined;
 
   const showProperties = verticalConfig?.industry === 'turismo';
@@ -138,7 +106,13 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const sections: NavSection[] = sectionDefs.map(s => {
     const filteredItems = s.items
       .filter(i => !hiddenItems?.includes(i.labelKey))
-      .filter(i => i.labelKey !== 'properties' || showProperties);
+      .filter(i => i.labelKey !== 'properties' || showProperties)
+      // Role-based visibility
+      .filter(i => {
+        if (i.labelKey === 'campaigns') return isSupervisor;
+        if (i.labelKey === 'aiAgent') return isAdmin;
+        return true;
+      });
 
     if (itemOrder && itemOrder.length > 0) {
       filteredItems.sort((a, b) => {
@@ -152,7 +126,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     }
 
     return {
-      title: tNav(`sections.${s.titleKey}`),
+      titleKey: s.titleKey,
       items: filteredItems.map(i => ({
         label: labelOverrides?.[i.labelKey]?.[locale] ?? tNav(`items.${i.labelKey}`),
         href: i.href,
@@ -200,11 +174,15 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
         {sections.map((section, sectionIdx) => (
-          <Fragment key={section.title}>
+          <Fragment key={section.titleKey}>
             <div>
-              {showExpanded && (
+              {/* "main" section: no visible title. "config" section: thin separator line instead of text. */}
+              {section.titleKey === "config" && (
+                <div className="mx-3 mb-3 border-t border-neutral-200 dark:border-neutral-800" />
+              )}
+              {section.titleKey !== "main" && section.titleKey !== "config" && showExpanded && (
                 <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
-                  {section.title}
+                  {tNav(`sections.${section.titleKey}`)}
                 </p>
               )}
               <ul className="space-y-0.5">
@@ -236,8 +214,8 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
               </ul>
             </div>
 
-            {/* Plataforma section — after Análisis (index 2), super_admin only */}
-            {sectionIdx === 2 && user?.role === "super_admin" && (
+            {/* Plataforma section — after main section (index 0), super_admin only */}
+            {sectionIdx === 0 && user?.role === "super_admin" && (
               <div>
                 {showExpanded && (
                   <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 whitespace-nowrap">

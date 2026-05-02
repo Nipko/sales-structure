@@ -176,6 +176,54 @@ const VERTICAL_AGENT_NAMES: Record<string, string> = {
     servicios_profesionales: 'Elena',
 };
 
+const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = {
+    salud: [
+        { key: 'b2c', label: 'Pacientes particulares' },
+        { key: 'b2b', label: 'Empresas y convenios' },
+        { key: 'insurance', label: 'Pacientes con seguro médico' },
+    ],
+    moda_belleza: [
+        { key: 'b2c', label: 'Clientes individuales' },
+        { key: 'b2b', label: 'Eventos y grupos' },
+        { key: 'vip', label: 'Clientes VIP y membresías' },
+    ],
+    inmobiliaria: [
+        { key: 'buyers', label: 'Compradores' },
+        { key: 'renters', label: 'Arrendatarios' },
+        { key: 'investors', label: 'Inversionistas' },
+    ],
+    restaurantes: [
+        { key: 'b2c', label: 'Comensales individuales' },
+        { key: 'events', label: 'Eventos corporativos y privados' },
+        { key: 'delivery', label: 'Clientes de delivery' },
+    ],
+    automotriz: [
+        { key: 'new_buyers', label: 'Compradores de vehículos nuevos' },
+        { key: 'used_buyers', label: 'Compradores de vehículos usados' },
+        { key: 'service', label: 'Clientes de taller y servicio' },
+    ],
+    turismo: [
+        { key: 'leisure', label: 'Viajeros de ocio' },
+        { key: 'corporate', label: 'Viajes corporativos' },
+        { key: 'groups', label: 'Grupos y familias' },
+    ],
+    education: [
+        { key: 'students', label: 'Estudiantes individuales' },
+        { key: 'parents', label: 'Padres de familia' },
+        { key: 'corporate', label: 'Capacitación empresarial' },
+    ],
+    finanzas: [
+        { key: 'individuals', label: 'Personas naturales' },
+        { key: 'businesses', label: 'Empresas y PYMES' },
+        { key: 'investors', label: 'Inversionistas' },
+    ],
+    servicios_profesionales: [
+        { key: 'individuals', label: 'Personas naturales' },
+        { key: 'businesses', label: 'Empresas' },
+        { key: 'legal', label: 'Casos legales/contables' },
+    ],
+};
+
 const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
     salud: 'pacientes',
     moda_belleza: 'clientes',
@@ -629,33 +677,37 @@ export default function OnboardingPage() {
                     {/* Step 2: Audience */}
                     {step === 1 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('step2')}</h2>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">
+                                {VERTICAL_AGENT_NAMES[industry]
+                                    ? `¿Quién contactará a ${VERTICAL_AGENT_NAMES[industry]}?`
+                                    : t('step2')}
+                            </h2>
                             <p className="text-muted-foreground text-sm mb-6">
                                 {t('audienceTitle')}
                             </p>
 
                             <div className="space-y-3">
-                                {AUDIENCE_KEYS.map((key) => (
+                                {(VERTICAL_AUDIENCES[industry] ?? AUDIENCE_KEYS.map(k => ({ key: k, label: t(`audiences.${k}`) }))).map((audience) => (
                                     <label
-                                        key={key}
+                                        key={audience.key}
                                         className={cn(
                                             "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                                            audiences.includes(key)
+                                            audiences.includes(audience.key)
                                                 ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
                                                 : "border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] hover:border-neutral-300 dark:hover:border-white/20"
                                         )}
                                     >
                                         <input
                                             type="checkbox"
-                                            checked={audiences.includes(key)}
-                                            onChange={() => toggleCheckbox(audiences, setAudiences, key)}
+                                            checked={audiences.includes(audience.key)}
+                                            onChange={() => toggleCheckbox(audiences, setAudiences, audience.key)}
                                             className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-foreground">{t(`audiences.${key}`)}</span>
+                                        <span className="text-sm text-foreground">{audience.label}</span>
                                     </label>
                                 ))}
 
-                                {audiences.includes("other") && (
+                                {audiences.includes("other") && !VERTICAL_AUDIENCES[industry] && (
                                     <input
                                         type="text"
                                         value={audienceOther}

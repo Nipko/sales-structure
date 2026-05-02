@@ -52,8 +52,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Create a new tenant schema from the SQL template
      */
     async createTenantSchema(schemaName: string): Promise<void> {
-        // 1. Always create the schema first (separate call, guaranteed to run)
-        await this.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}";`);
+        // 1. Check if schema already exists (stale data from deleted tenant)
+        const existing = await this.$queryRawUnsafe<any[]>(
+            `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1 LIMIT 1`,
+            schemaName,
+        );
+
+        if (existing?.length > 0) {
+            // Schema exists — clean stale data from previous tenant
+            this.logger.warn(`[createTenantSchema] Schema "${schemaName}" already exists — cleaning stale data`);
+            await this.cleanStaleSchemaData(schemaName);
+        } else {
+            await this.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}";`);
+        }
 
         // 2. Read and execute the tenant schema template
         const fs = await import('fs');
@@ -177,5 +188,49 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         }
 
         return tenant.schemaName;
+    }
+
+    /**
+     * Clean stale data from a reused tenant schema.
+     * Called when a new tenant gets the same slug as a previously deleted one.
+     * Truncates data tables but keeps the schema structure intact.
+     */
+    private async cleanStaleSchemaData(schemaName: string): Promise<void> {
+        // Order matters: delete child tables before parent tables (FK constraints)
+        const tablesToClean = [
+            'property_bookings', 'ical_blocks', 'ical_feeds', 'properties',
+            'campaign_recipients', 'campaign_logs',
+            'messages', 'conversation_assignments',
+            'conversations',
+            'csat_surveys', 'analytics_events', 'daily_metrics',
+            'automation_executions', 'wait_jobs',
+            'notes', 'tasks', 'stage_history',
+            'opportunities', 'lead_tags', 'custom_attribute_values',
+            'leads', 'contacts', 'customer_profiles',
+            'deals', 'stage_transitions',
+            'agent_personas', 'persona_config',
+            'faqs', 'knowledge_chunks', 'knowledge_resources', 'knowledge_approvals',
+            'pipeline_stages', 'scoring_config',
+            'services', 'service_staff', 'appointments', 'availability_slots', 'blocked_dates',
+            'calendar_integrations',
+            'companies',
+            'tags', 'contact_segments',
+            'whatsapp_channels', 'whatsapp_templates', 'whatsapp_webhook_events', 'whatsapp_message_logs',
+            'consent_records', 'opt_out_records', 'deletion_requests', 'legal_text_versions',
+            'orders', 'order_items', 'inventory_items', 'inventory_movements',
+            'landing_pages', 'form_definitions', 'form_submissions', 'intake_sources',
+            'commercial_offers', 'campaigns', 'campaign_courses', 'courses', 'products',
+            'alert_rules', 'alert_history', 'scheduled_reports', 'dashboard_preferences',
+        ];
+
+        for (const table of tablesToClean) {
+            try {
+                await this.$executeRawUnsafe(`DELETE FROM "${schemaName}"."${table}"`);
+            } catch {
+                // Table may not exist in older schemas — skip silently
+            }
+        }
+
+        this.logger.log(`[cleanStaleSchemaData] Cleaned ${tablesToClean.length} tables in "${schemaName}"`);
     }
 }

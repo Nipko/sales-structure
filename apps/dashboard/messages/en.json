@@ -499,7 +499,7 @@
     "accountDesc": "Your profile, security and personal preferences",
     "profile": "Profile",
     "profileDesc": "Name, email, avatar and personal data",
-    "security": "API keys are stored encrypted and shown masked.",
+    "security": "Security",
     "securityDesc": "Password, two-factor authentication",
     "notifications": "Notifications",
     "notificationsDesc": "Configure alerts by category and channel",
@@ -545,7 +545,6 @@
     "platformSectionDesc": "Advanced platform settings",
     "advanced": "Advanced",
     "advancedDesc": "Platform name, limits and features",
-    "security": "Security",
     "companyGeneral": "General information",
     "aiAutomation": "AI & Automation",
     "aiProviders": "LLM Providers",
@@ -554,7 +553,41 @@
     "inventory": "Inventory",
     "content": "Content",
     "knowledgeBase": "Knowledge base",
-    "policies": "Policies",
+    "policies": {
+      "title": "Policies",
+      "subtitle": "Official policies the agent cites (never invents)",
+      "hint": "The agent can only reference active policies. Each change creates a new version preserving full history.",
+      "loading": "Loading...",
+      "saved": "Policy saved",
+      "saving": "Saving...",
+      "saveNewVersion": "Save new version",
+      "createPolicy": "Create policy",
+      "viewHistory": "View history",
+      "versionPrefix": "v",
+      "history": "Version history",
+      "active": "Active",
+      "markdownHint": "Basic markdown is supported for formatting",
+      "types": {
+        "shipping": "Shipping",
+        "return": "Return",
+        "warranty": "Warranty",
+        "cancellation": "Cancellation",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      },
+      "fields": {
+        "title": "Title",
+        "content": "Content"
+      },
+      "placeholders": {
+        "content": "Describe the policy in detail. The agent will quote this content when customers ask."
+      },
+      "errors": {
+        "required": "Title and content are required",
+        "saveFailed": "Failed to save",
+        "connection": "Connection error"
+      }
+    },
     "landings": "Landing pages",
     "team": "Team",
     "users": "Users & roles",
@@ -831,41 +864,6 @@
       },
       "errors": {
         "companyNameRequired": "Company name is required",
-        "saveFailed": "Failed to save",
-        "connection": "Connection error"
-      }
-    },
-    "policies": {
-      "title": "Policies",
-      "subtitle": "Official policies the agent cites (never invents)",
-      "hint": "The agent can only reference active policies. Each change creates a new version preserving full history.",
-      "loading": "Loading...",
-      "saved": "Policy saved",
-      "saving": "Saving...",
-      "saveNewVersion": "Save new version",
-      "createPolicy": "Create policy",
-      "viewHistory": "View history",
-      "versionPrefix": "v",
-      "history": "Version history",
-      "active": "Active",
-      "markdownHint": "Basic markdown is supported for formatting",
-      "types": {
-        "shipping": "Shipping",
-        "return": "Return",
-        "warranty": "Warranty",
-        "cancellation": "Cancellation",
-        "terms": "Terms",
-        "privacy": "Privacy"
-      },
-      "fields": {
-        "title": "Title",
-        "content": "Content"
-      },
-      "placeholders": {
-        "content": "Describe the policy in detail. The agent will quote this content when customers ask."
-      },
-      "errors": {
-        "required": "Title and content are required",
         "saveFailed": "Failed to save",
         "connection": "Connection error"
       }
@@ -1247,15 +1245,42 @@
   "crmAnalytics": {
     "title": "CRM Analytics",
     "subtitle": "Sales metrics, pipeline performance and team insights",
-    "tabs": { "overview": "Overview", "funnel": "Funnel", "velocity": "Velocity", "agents": "Agents" },
-    "kpi": { "totalLeads": "Total leads", "activeOpps": "Active opportunities", "pipelineValue": "Pipeline value", "avgScore": "Avg score", "convRate": "Conversion rate" },
-    "charts": { "leadsByStage": "Leads by stage", "leadSources": "Lead sources", "winLoss": "Won vs Lost", "conversionFunnel": "Conversion funnel", "pipelineVelocity": "Pipeline velocity", "agentLeaderboard": "Agent leaderboard" },
-    "won": "Won", "lost": "Lost", "winRate": "Win rate", "totalValue": "Total value", "lossReasons": "Loss reasons",
-    "agent": "Agent", "dealsClosed": "Deals closed", "avgDeal": "Average", "days": "Days", "avgDays": "Avg days", "noData": "No data available"
+    "tabs": {
+      "overview": "Overview",
+      "funnel": "Funnel",
+      "velocity": "Velocity",
+      "agents": "Agents"
+    },
+    "kpi": {
+      "totalLeads": "Total leads",
+      "activeOpps": "Active opportunities",
+      "pipelineValue": "Pipeline value",
+      "avgScore": "Avg score",
+      "convRate": "Conversion rate"
+    },
+    "charts": {
+      "leadsByStage": "Leads by stage",
+      "leadSources": "Lead sources",
+      "winLoss": "Won vs Lost",
+      "conversionFunnel": "Conversion funnel",
+      "pipelineVelocity": "Pipeline velocity",
+      "agentLeaderboard": "Agent leaderboard"
+    },
+    "won": "Won",
+    "lost": "Lost",
+    "winRate": "Win rate",
+    "totalValue": "Total value",
+    "lossReasons": "Loss reasons",
+    "agent": "Agent",
+    "dealsClosed": "Deals closed",
+    "avgDeal": "Average",
+    "days": "Days",
+    "avgDays": "Avg days",
+    "noData": "No data available"
   },
   "pipeline": {
     "title": "Sales Funnel",
-    "subtitle": "Drag opportunities between stages to advance the process",
+    "subtitle": "Drag deals between stages",
     "dragHere": "Drag opportunities here",
     "loading": "Loading...",
     "customizeStages": "Customize stages",
@@ -1272,7 +1297,6 @@
     "value": "Value",
     "stage": "Stage",
     "dragToMove": "Drag to move",
-    "subtitle": "Drag deals between stages",
     "approvalPending": "Pending approval",
     "approvalRejected": "Rejected",
     "requestApproval": "Request approval",
@@ -1430,11 +1454,50 @@
     "disconnected": "Disconnected",
     "connect": "Connect",
     "configure": "Configure",
-    "whatsapp": "WhatsApp",
+    "whatsapp": {
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Are you sure you want to disconnect WhatsApp? Messages will no longer be received.",
+      "disconnectSuccess": "WhatsApp disconnected successfully."
+    },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
-    "instagram": "Instagram",
+    "instagram": {
+      "connectTitle": "Connect Instagram",
+      "connectDesc": "Click the button to connect your Instagram Business account and start receiving direct messages automatically.",
+      "connectWithInstagram": "Connect with Instagram",
+      "oauthConnecting": "Connecting...",
+      "connectSuccess": "Instagram channel connected successfully.",
+      "connectFailed": "Failed to connect Instagram. Please try again.",
+      "connectedAccount": "Connected Account",
+      "tokenExpiresIn": "Token expires in {days} days",
+      "tokenExpired": "Token expired. Please reconnect your account.",
+      "reconnect": "Reconnect",
+      "disconnectTitle": "Disconnect Instagram",
+      "disconnectDesc": "Direct messages will no longer be received from this account",
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Are you sure you want to disconnect Instagram?",
+      "disconnectSuccess": "Instagram disconnected successfully.",
+      "redirecting": "Redirecting...",
+      "backToSetup": "Back to setup",
+      "closeWindow": "You can close this window."
+    },
     "instagramDesc": "Instagram Direct Messages via Graph API",
-    "messenger": "Messenger",
+    "messenger": {
+      "connectTitle": "Connect Messenger",
+      "connectDesc": "Click the button to connect your Facebook Page and start receiving Messenger messages automatically.",
+      "connectWithFacebook": "Connect with Facebook",
+      "oauthConnecting": "Connecting...",
+      "loadingSdk": "Loading Facebook SDK...",
+      "sdkNotLoaded": "Facebook SDK is not ready yet. Please try again.",
+      "connectSuccess": "Messenger channel connected successfully.",
+      "connectFailed": "Failed to connect Messenger. Please try again.",
+      "connectedPage": "Connected Page",
+      "pagesConnected": "{count} page(s) connected",
+      "disconnectTitle": "Disconnect Messenger",
+      "disconnectDesc": "Messages will no longer be received from this page",
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Are you sure you want to disconnect Messenger?",
+      "disconnectSuccess": "Messenger disconnected successfully."
+    },
     "messengerDesc": "Messenger via Facebook Page integration",
     "telegramDesc": "Telegram Bot API — automated direct messages",
     "smsDesc": "Twilio SMS — two-way text messages",
@@ -1472,43 +1535,6 @@
       "testFailed": "Test failed",
       "disconnectDesc": "SMS messages will no longer be sent or received through this number"
     },
-    "messenger": {
-      "connectTitle": "Connect Messenger",
-      "connectDesc": "Click the button to connect your Facebook Page and start receiving Messenger messages automatically.",
-      "connectWithFacebook": "Connect with Facebook",
-      "oauthConnecting": "Connecting...",
-      "loadingSdk": "Loading Facebook SDK...",
-      "sdkNotLoaded": "Facebook SDK is not ready yet. Please try again.",
-      "connectSuccess": "Messenger channel connected successfully.",
-      "connectFailed": "Failed to connect Messenger. Please try again.",
-      "connectedPage": "Connected Page",
-      "pagesConnected": "{count} page(s) connected",
-      "disconnectTitle": "Disconnect Messenger",
-      "disconnectDesc": "Messages will no longer be received from this page",
-      "disconnect": "Disconnect",
-      "disconnectConfirm": "Are you sure you want to disconnect Messenger?",
-      "disconnectSuccess": "Messenger disconnected successfully."
-    },
-    "instagram": {
-      "connectTitle": "Connect Instagram",
-      "connectDesc": "Click the button to connect your Instagram Business account and start receiving direct messages automatically.",
-      "connectWithInstagram": "Connect with Instagram",
-      "oauthConnecting": "Connecting...",
-      "connectSuccess": "Instagram channel connected successfully.",
-      "connectFailed": "Failed to connect Instagram. Please try again.",
-      "connectedAccount": "Connected Account",
-      "tokenExpiresIn": "Token expires in {days} days",
-      "tokenExpired": "Token expired. Please reconnect your account.",
-      "reconnect": "Reconnect",
-      "disconnectTitle": "Disconnect Instagram",
-      "disconnectDesc": "Direct messages will no longer be received from this account",
-      "disconnect": "Disconnect",
-      "disconnectConfirm": "Are you sure you want to disconnect Instagram?",
-      "disconnectSuccess": "Instagram disconnected successfully.",
-      "redirecting": "Redirecting...",
-      "backToSetup": "Back to setup",
-      "closeWindow": "You can close this window."
-    },
     "telegram": {
       "setupTitle": "Connect Telegram",
       "setupSubtitle": "Automate your customer support on Telegram in less than 2 minutes",
@@ -1537,11 +1563,6 @@
       "disconnectTitle": "Disconnect bot",
       "disconnectDesc": "The webhook will be removed and it will stop receiving messages",
       "disconnect": "Disconnect"
-    },
-    "whatsapp": {
-      "disconnect": "Disconnect",
-      "disconnectConfirm": "Are you sure you want to disconnect WhatsApp? Messages will no longer be received.",
-      "disconnectSuccess": "WhatsApp disconnected successfully."
     },
     "webhook": "Webhook",
     "callbackUrl": "Callback URL",
@@ -2306,9 +2327,21 @@
     "cardReady": "Card saved. Finish signup below.",
     "changeCard": "Change card",
     "plans": {
-      "starter": { "name": "Starter", "price": "USD $49/mo", "desc": "1 AI agent, 5,000 messages/mo, 7-day trial" },
-      "pro": { "name": "Pro", "price": "USD $129/mo", "desc": "3 AI agents, 25,000 messages/mo, 15-day trial" },
-      "enterprise": { "name": "Enterprise", "price": "USD $349/mo", "desc": "10 AI agents, 100,000 messages/mo, SSO, priority support" }
+      "starter": {
+        "name": "Starter",
+        "price": "USD $49/mo",
+        "desc": "1 AI agent, 5,000 messages/mo, 7-day trial"
+      },
+      "pro": {
+        "name": "Pro",
+        "price": "USD $129/mo",
+        "desc": "3 AI agents, 25,000 messages/mo, 15-day trial"
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "price": "USD $349/mo",
+        "desc": "10 AI agents, 100,000 messages/mo, SSO, priority support"
+      }
     },
     "companyName": "Company name",
     "website": "Website",
@@ -3003,7 +3036,14 @@
     "exportUrlDesc": "Copy this URL and paste it in Airbnb/Booking to sync",
     "checkInInstructions": "Check-in instructions",
     "houseRules": "House rules",
-    "saved": "Saved"
+    "saved": "Saved",
+    "description": "Description",
+    "descriptionPlaceholder": "Describe your property: location, views, style, what makes it special...",
+    "photos": "Property photos",
+    "addPhoto": "Add photo",
+    "syncAvailability": "Sync your availability",
+    "syncAvailabilityDesc": "Connect Airbnb or Booking.com to avoid double bookings",
+    "connect": "Connect"
   },
   "verticalEmptyStates": {
     "salud": {

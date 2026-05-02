@@ -499,7 +499,7 @@
     "accountDesc": "Tu perfil, seguridad y preferencias personales",
     "profile": "Perfil",
     "profileDesc": "Nombre, email, avatar y datos personales",
-    "security": "Las API keys se almacenan encriptadas y se muestran enmascaradas.",
+    "security": "Seguridad",
     "securityDesc": "Contrasena, autenticacion de dos factores",
     "notifications": "Notificaciones",
     "notificationsDesc": "Configura alertas por categoria y canal",
@@ -545,7 +545,6 @@
     "platformSectionDesc": "Configuracion avanzada de la plataforma",
     "advanced": "Avanzado",
     "advancedDesc": "Nombre de plataforma, limites y features",
-    "security": "Seguridad",
     "companyGeneral": "Información general",
     "aiAutomation": "IA y Automatización",
     "aiProviders": "Proveedores LLM",
@@ -554,7 +553,41 @@
     "inventory": "Inventario",
     "content": "Contenido",
     "knowledgeBase": "Base de conocimiento",
-    "policies": "Políticas",
+    "policies": {
+      "title": "Políticas",
+      "subtitle": "Políticas oficiales que el agente consulta (nunca inventa)",
+      "hint": "El agente solo puede referenciar políticas activas. Cada cambio crea una nueva versión manteniendo el historial completo.",
+      "loading": "Cargando...",
+      "saved": "Política guardada",
+      "saving": "Guardando...",
+      "saveNewVersion": "Guardar nueva versión",
+      "createPolicy": "Crear política",
+      "viewHistory": "Ver historial",
+      "versionPrefix": "v",
+      "history": "Historial de versiones",
+      "active": "Activa",
+      "markdownHint": "Puedes usar markdown básico para formato",
+      "types": {
+        "shipping": "Envío",
+        "return": "Devolución",
+        "warranty": "Garantía",
+        "cancellation": "Cancelación",
+        "terms": "Términos",
+        "privacy": "Privacidad"
+      },
+      "fields": {
+        "title": "Título",
+        "content": "Contenido"
+      },
+      "placeholders": {
+        "content": "Describe la política en detalle. El agente citará esta información textual cuando los clientes pregunten."
+      },
+      "errors": {
+        "required": "Título y contenido son obligatorios",
+        "saveFailed": "Error al guardar",
+        "connection": "Error de conexión"
+      }
+    },
     "landings": "Landing pages",
     "team": "Equipo",
     "users": "Usuarios y roles",
@@ -831,41 +864,6 @@
       },
       "errors": {
         "companyNameRequired": "El nombre de la empresa es obligatorio",
-        "saveFailed": "Error al guardar",
-        "connection": "Error de conexión"
-      }
-    },
-    "policies": {
-      "title": "Políticas",
-      "subtitle": "Políticas oficiales que el agente consulta (nunca inventa)",
-      "hint": "El agente solo puede referenciar políticas activas. Cada cambio crea una nueva versión manteniendo el historial completo.",
-      "loading": "Cargando...",
-      "saved": "Política guardada",
-      "saving": "Guardando...",
-      "saveNewVersion": "Guardar nueva versión",
-      "createPolicy": "Crear política",
-      "viewHistory": "Ver historial",
-      "versionPrefix": "v",
-      "history": "Historial de versiones",
-      "active": "Activa",
-      "markdownHint": "Puedes usar markdown básico para formato",
-      "types": {
-        "shipping": "Envío",
-        "return": "Devolución",
-        "warranty": "Garantía",
-        "cancellation": "Cancelación",
-        "terms": "Términos",
-        "privacy": "Privacidad"
-      },
-      "fields": {
-        "title": "Título",
-        "content": "Contenido"
-      },
-      "placeholders": {
-        "content": "Describe la política en detalle. El agente citará esta información textual cuando los clientes pregunten."
-      },
-      "errors": {
-        "required": "Título y contenido son obligatorios",
         "saveFailed": "Error al guardar",
         "connection": "Error de conexión"
       }
@@ -1282,7 +1280,7 @@
   },
   "pipeline": {
     "title": "Embudo de ventas",
-    "subtitle": "Arrastra oportunidades entre etapas para avanzar en el proceso",
+    "subtitle": "Arrastra oportunidades entre etapas",
     "stages": "Etapas",
     "deals": "Negocios",
     "newDeal": "Nuevo negocio",
@@ -1299,7 +1297,6 @@
       "opportunities": "Oportunidades",
       "average": "Promedio"
     },
-    "subtitle": "Arrastra oportunidades entre etapas",
     "approvalPending": "Pendiente aprobación",
     "approvalRejected": "Rechazado",
     "requestApproval": "Solicitar aprobación",
@@ -1457,11 +1454,50 @@
     "disconnected": "Desconectado",
     "connect": "Conectar",
     "configure": "Configurar",
-    "whatsapp": "WhatsApp",
+    "whatsapp": {
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "¿Seguro que deseas desconectar WhatsApp? Se dejarán de recibir mensajes.",
+      "disconnectSuccess": "WhatsApp desconectado correctamente."
+    },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
-    "instagram": "Instagram",
+    "instagram": {
+      "connectTitle": "Conectar Instagram",
+      "connectDesc": "Haz clic en el botón para conectar tu cuenta de Instagram Business y empezar a recibir mensajes directos automáticamente.",
+      "connectWithInstagram": "Conectar con Instagram",
+      "oauthConnecting": "Conectando...",
+      "connectSuccess": "Canal de Instagram conectado correctamente.",
+      "connectFailed": "Error al conectar Instagram. Intenta de nuevo.",
+      "connectedAccount": "Cuenta conectada",
+      "tokenExpiresIn": "El token expira en {days} días",
+      "tokenExpired": "Token expirado. Por favor reconecta tu cuenta.",
+      "reconnect": "Reconectar",
+      "disconnectTitle": "Desconectar Instagram",
+      "disconnectDesc": "Se dejarán de recibir mensajes directos de esta cuenta",
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "Seguro que deseas desconectar Instagram?",
+      "disconnectSuccess": "Instagram desconectado correctamente.",
+      "redirecting": "Redirigiendo...",
+      "backToSetup": "Volver a configuración",
+      "closeWindow": "Puedes cerrar esta ventana."
+    },
     "instagramDesc": "Instagram Direct Messages via Graph API",
-    "messenger": "Messenger",
+    "messenger": {
+      "connectTitle": "Conectar Messenger",
+      "connectDesc": "Haz clic en el botón para conectar tu página de Facebook y empezar a recibir mensajes de Messenger automáticamente.",
+      "connectWithFacebook": "Conectar con Facebook",
+      "oauthConnecting": "Conectando...",
+      "loadingSdk": "Cargando SDK de Facebook...",
+      "sdkNotLoaded": "El SDK de Facebook aún no está listo. Intenta de nuevo.",
+      "connectSuccess": "Canal de Messenger conectado correctamente.",
+      "connectFailed": "Error al conectar Messenger. Intenta de nuevo.",
+      "connectedPage": "Página conectada",
+      "pagesConnected": "{count} página(s) conectada(s)",
+      "disconnectTitle": "Desconectar Messenger",
+      "disconnectDesc": "Se dejarán de recibir mensajes de esta página",
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "Seguro que deseas desconectar Messenger?",
+      "disconnectSuccess": "Messenger desconectado correctamente."
+    },
     "messengerDesc": "Messenger via integracion de pagina de Facebook",
     "telegramDesc": "Telegram Bot API — mensajes directos automatizados",
     "smsDesc": "Twilio SMS — mensajes de texto bidireccionales",
@@ -1499,43 +1535,6 @@
       "testFailed": "Error en la prueba",
       "disconnectDesc": "Los mensajes SMS dejarán de enviarse y recibirse a través de este número"
     },
-    "messenger": {
-      "connectTitle": "Conectar Messenger",
-      "connectDesc": "Haz clic en el botón para conectar tu página de Facebook y empezar a recibir mensajes de Messenger automáticamente.",
-      "connectWithFacebook": "Conectar con Facebook",
-      "oauthConnecting": "Conectando...",
-      "loadingSdk": "Cargando SDK de Facebook...",
-      "sdkNotLoaded": "El SDK de Facebook aún no está listo. Intenta de nuevo.",
-      "connectSuccess": "Canal de Messenger conectado correctamente.",
-      "connectFailed": "Error al conectar Messenger. Intenta de nuevo.",
-      "connectedPage": "Página conectada",
-      "pagesConnected": "{count} página(s) conectada(s)",
-      "disconnectTitle": "Desconectar Messenger",
-      "disconnectDesc": "Se dejarán de recibir mensajes de esta página",
-      "disconnect": "Desconectar",
-      "disconnectConfirm": "Seguro que deseas desconectar Messenger?",
-      "disconnectSuccess": "Messenger desconectado correctamente."
-    },
-    "instagram": {
-      "connectTitle": "Conectar Instagram",
-      "connectDesc": "Haz clic en el botón para conectar tu cuenta de Instagram Business y empezar a recibir mensajes directos automáticamente.",
-      "connectWithInstagram": "Conectar con Instagram",
-      "oauthConnecting": "Conectando...",
-      "connectSuccess": "Canal de Instagram conectado correctamente.",
-      "connectFailed": "Error al conectar Instagram. Intenta de nuevo.",
-      "connectedAccount": "Cuenta conectada",
-      "tokenExpiresIn": "El token expira en {days} días",
-      "tokenExpired": "Token expirado. Por favor reconecta tu cuenta.",
-      "reconnect": "Reconectar",
-      "disconnectTitle": "Desconectar Instagram",
-      "disconnectDesc": "Se dejarán de recibir mensajes directos de esta cuenta",
-      "disconnect": "Desconectar",
-      "disconnectConfirm": "Seguro que deseas desconectar Instagram?",
-      "disconnectSuccess": "Instagram desconectado correctamente.",
-      "redirecting": "Redirigiendo...",
-      "backToSetup": "Volver a configuración",
-      "closeWindow": "Puedes cerrar esta ventana."
-    },
     "telegram": {
       "setupTitle": "Conectar Telegram",
       "setupSubtitle": "Automatiza tu atencion al cliente en Telegram en menos de 2 minutos",
@@ -1564,11 +1563,6 @@
       "disconnectTitle": "Desconectar bot",
       "disconnectDesc": "Se eliminara el webhook y dejara de recibir mensajes",
       "disconnect": "Desconectar"
-    },
-    "whatsapp": {
-      "disconnect": "Desconectar",
-      "disconnectConfirm": "¿Seguro que deseas desconectar WhatsApp? Se dejarán de recibir mensajes.",
-      "disconnectSuccess": "WhatsApp desconectado correctamente."
     },
     "webhook": "Webhook",
     "callbackUrl": "URL de Callback",
@@ -2333,9 +2327,21 @@
     "cardReady": "Tarjeta lista. Terminamos el registro abajo.",
     "changeCard": "Cambiar tarjeta",
     "plans": {
-      "starter": { "name": "Starter", "price": "USD $49/mes", "desc": "1 agente IA, 5.000 mensajes/mes, 7 dias de prueba" },
-      "pro": { "name": "Pro", "price": "USD $129/mes", "desc": "3 agentes IA, 25.000 mensajes/mes, 15 dias de prueba" },
-      "enterprise": { "name": "Enterprise", "price": "USD $349/mes", "desc": "10 agentes IA, 100.000 mensajes/mes, SSO, soporte prioritario" }
+      "starter": {
+        "name": "Starter",
+        "price": "USD $49/mes",
+        "desc": "1 agente IA, 5.000 mensajes/mes, 7 dias de prueba"
+      },
+      "pro": {
+        "name": "Pro",
+        "price": "USD $129/mes",
+        "desc": "3 agentes IA, 25.000 mensajes/mes, 15 dias de prueba"
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "price": "USD $349/mes",
+        "desc": "10 agentes IA, 100.000 mensajes/mes, SSO, soporte prioritario"
+      }
     },
     "companyName": "Nombre de la empresa",
     "website": "Sitio web",
@@ -3030,7 +3036,14 @@
     "exportUrlDesc": "Copia esta URL y pegala en Airbnb/Booking para sincronizar",
     "checkInInstructions": "Instrucciones de check-in",
     "houseRules": "Reglas de la casa",
-    "saved": "Guardado"
+    "saved": "Guardado",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Describe tu propiedad: ubicación, vistas, estilo, qué la hace especial...",
+    "photos": "Fotos de la propiedad",
+    "addPhoto": "Agregar foto",
+    "syncAvailability": "Sincroniza tu disponibilidad",
+    "syncAvailabilityDesc": "Conecta Airbnb o Booking.com para evitar dobles reservas",
+    "connect": "Conectar"
   },
   "verticalEmptyStates": {
     "salud": {

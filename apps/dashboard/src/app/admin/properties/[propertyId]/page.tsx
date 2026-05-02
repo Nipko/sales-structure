@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -20,8 +20,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Save,
+  AlertTriangle,
+  Plus,
+  X,
+  Image,
 } from "lucide-react";
 import Link from "next/link";
+import { AMENITY_CATEGORIES } from "../page";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -30,6 +35,7 @@ import Link from "next/link";
 interface Property {
   id: string;
   name: string;
+  description?: string;
   address: string;
   city: string;
   max_guests: number;
@@ -40,6 +46,7 @@ interface Property {
   currency: string;
   min_nights: number;
   amenities: string[];
+  images?: string[];
   is_active: boolean;
   check_in_instructions: string;
   house_rules: string;
@@ -75,11 +82,6 @@ interface Feed {
   errors: number;
 }
 
-const AMENITY_OPTIONS = [
-  "wifi", "pool", "parking", "ac", "kitchen", "washer",
-  "dryer", "tv", "bbq", "gym", "hot_tub", "balcony",
-];
-
 const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
@@ -94,13 +96,14 @@ export default function PropertyDetailPage() {
   const { activeTenantId } = useTenant();
   const t = useTranslations("properties");
   const tc = useTranslations("common");
-  const [activeTab, setActiveTab] = useState("info");
+  // Calendar is the first tab (most important for vacation rental)
+  const [activeTab, setActiveTab] = useState("calendar");
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
 
   const tabs: TabItem[] = [
-    { id: "info", label: "Info", icon: Info },
     { id: "calendar", label: t("calendar"), icon: CalendarDays },
+    { id: "info", label: "Info", icon: Info },
     { id: "bookings", label: t("bookings"), icon: List },
     { id: "feeds", label: t("feeds"), icon: Link2 },
     { id: "checkin", label: t("checkIn"), icon: DoorOpen },
@@ -141,6 +144,14 @@ export default function PropertyDetailPage() {
 
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} className="mb-6" />
 
+      {activeTab === "calendar" && (
+        <CalendarTab
+          tenantId={activeTenantId!}
+          propertyId={propertyId}
+          t={t}
+          onGoToFeeds={() => setActiveTab("feeds")}
+        />
+      )}
       {activeTab === "info" && (
         <InfoTab
           property={property}
@@ -149,9 +160,6 @@ export default function PropertyDetailPage() {
           t={t}
           tc={tc}
         />
-      )}
-      {activeTab === "calendar" && (
-        <CalendarTab tenantId={activeTenantId!} propertyId={propertyId} t={t} />
       )}
       {activeTab === "bookings" && (
         <BookingsTab tenantId={activeTenantId!} propertyId={propertyId} t={t} tc={tc} />
@@ -173,7 +181,7 @@ export default function PropertyDetailPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab 1: Info                                                        */
+/*  Tab: Info                                                          */
 /* ------------------------------------------------------------------ */
 
 function InfoTab({
@@ -189,9 +197,14 @@ function InfoTab({
   t: any;
   tc: any;
 }) {
-  const [form, setForm] = useState({ ...property });
+  const [form, setForm] = useState({
+    ...property,
+    description: property.description || "",
+    images: property.images || [],
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   function toggleAmenity(a: string) {
     setForm(prev => ({
@@ -202,10 +215,47 @@ function InfoTab({
     }));
   }
 
+  function removeImage(idx: number) {
+    setForm(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== idx),
+    }));
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "https://api.parallly-chat.cloud"}/api/v1/media/upload`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const url = data.url || data.data?.url;
+        if (url) {
+          setForm(prev => ({ ...prev, images: [...prev.images, url] }));
+        }
+      }
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     const res = await api.updateProperty(tenantId, property.id, {
       name: form.name,
+      description: form.description,
       address: form.address,
       city: form.city,
       max_guests: form.max_guests,
@@ -216,6 +266,7 @@ function InfoTab({
       currency: form.currency,
       min_nights: form.min_nights,
       amenities: form.amenities,
+      images: form.images,
       is_active: form.is_active,
     });
     if (res.success) {
@@ -226,116 +277,133 @@ function InfoTab({
     setSaving(false);
   }
 
+  const inputCls = "w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500";
+
   return (
     <div className="space-y-6 max-w-2xl">
+      {/* Name + City */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")}</label>
-          <input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
-          <input
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className={inputCls} />
         </div>
       </div>
 
+      {/* Address */}
       <div>
         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("address")}</label>
-        <input
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-          className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className={inputCls} />
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("description")}</label>
+        <textarea
+          rows={3}
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          placeholder={t("descriptionPlaceholder")}
+          className={`${inputCls} resize-y`}
         />
       </div>
 
+      {/* Guests / Rooms / Baths */}
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("maxGuests")}</label>
-          <input
-            type="number" min={1}
-            value={form.max_guests}
-            onChange={(e) => setForm({ ...form, max_guests: +e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input type="number" min={1} value={form.max_guests} onChange={(e) => setForm({ ...form, max_guests: +e.target.value })} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bedrooms")}</label>
-          <input
-            type="number" min={0}
-            value={form.bedrooms}
-            onChange={(e) => setForm({ ...form, bedrooms: +e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input type="number" min={0} value={form.bedrooms} onChange={(e) => setForm({ ...form, bedrooms: +e.target.value })} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
-          <input
-            type="number" min={0}
-            value={form.bathrooms}
-            onChange={(e) => setForm({ ...form, bathrooms: +e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input type="number" min={0} value={form.bathrooms} onChange={(e) => setForm({ ...form, bathrooms: +e.target.value })} className={inputCls} />
         </div>
       </div>
 
+      {/* Pricing */}
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("nightPrice")}</label>
-          <input
-            type="number" min={0}
-            value={form.night_price}
-            onChange={(e) => setForm({ ...form, night_price: +e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input type="number" min={0} value={form.night_price} onChange={(e) => setForm({ ...form, night_price: +e.target.value })} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("cleaningFee")}</label>
-          <input
-            type="number" min={0}
-            value={form.cleaning_fee}
-            onChange={(e) => setForm({ ...form, cleaning_fee: +e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input type="number" min={0} value={form.cleaning_fee} onChange={(e) => setForm({ ...form, cleaning_fee: +e.target.value })} className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("minNights")}</label>
-          <input
-            type="number" min={1}
-            value={form.min_nights}
-            onChange={(e) => setForm({ ...form, min_nights: +e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <input type="number" min={1} value={form.min_nights} onChange={(e) => setForm({ ...form, min_nights: +e.target.value })} className={inputCls} />
         </div>
       </div>
 
+      {/* Images */}
       <div>
-        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2">{t("amenities")}</label>
-        <div className="flex flex-wrap gap-2">
-          {AMENITY_OPTIONS.map((a) => (
-            <button
-              key={a}
-              type="button"
-              onClick={() => toggleAmenity(a)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                (form.amenities || []).includes(a)
-                  ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                  : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-              }`}
-            >
-              {a}
-            </button>
+        <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{t("photos")}</h4>
+        <div className="grid grid-cols-4 gap-2">
+          {form.images.map((url, i) => (
+            <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800">
+              <img src={url} alt="" className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => removeImage(i)}
+                className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+          <label className={`aspect-square rounded-lg border-2 border-dashed border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+            {uploading ? (
+              <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <Image size={20} className="text-neutral-400 dark:text-neutral-500 mb-1" />
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{t("addPhoto")}</span>
+              </>
+            )}
+          </label>
+        </div>
+      </div>
+
+      {/* Amenities by category */}
+      <div>
+        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">{t("amenities")}</label>
+        <div className="space-y-4">
+          {AMENITY_CATEGORIES.map(cat => (
+            <div key={cat.key}>
+              <p className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5 uppercase tracking-wide">
+                {cat.label}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {cat.items.map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => toggleAmenity(item.key)}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                      (form.amenities || []).includes(item.key)
+                        ? "bg-indigo-500 text-white border-indigo-500"
+                        : "border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:border-indigo-300 dark:hover:border-indigo-700"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
+      {/* Active toggle */}
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
           <input
@@ -361,27 +429,41 @@ function InfoTab({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab 2: Calendar                                                    */
+/*  Tab: Calendar                                                      */
 /* ------------------------------------------------------------------ */
 
 function CalendarTab({
   tenantId,
   propertyId,
   t,
+  onGoToFeeds,
 }: {
   tenantId: string;
   propertyId: string;
   t: any;
+  onGoToFeeds: () => void;
 }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [days, setDays] = useState<CalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [feedsLoaded, setFeedsLoaded] = useState(false);
 
   useEffect(() => {
     loadCalendar();
   }, [tenantId, propertyId, year, month]);
+
+  useEffect(() => {
+    loadFeedsCount();
+  }, [tenantId, propertyId]);
+
+  async function loadFeedsCount() {
+    const res = await api.listPropertyFeeds(tenantId, propertyId);
+    if (res.success && res.data) setFeeds(res.data);
+    setFeedsLoaded(true);
+  }
 
   async function loadCalendar() {
     setLoading(true);
@@ -413,7 +495,6 @@ function CalendarTab({
   const dayMap = new Map(days.map(d => [d.date, d]));
 
   const cells: { day: number; date: string; status: string }[] = [];
-  // Empty cells for offset
   for (let i = 0; i < startDow; i++) cells.push({ day: 0, date: "", status: "" });
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -427,6 +508,23 @@ function CalendarTab({
 
   return (
     <div>
+      {/* No feeds banner */}
+      {feedsLoaded && feeds.length === 0 && (
+        <div className="mb-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-center gap-3">
+          <AlertTriangle size={20} className="text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t("syncAvailability")}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("syncAvailabilityDesc")}</p>
+          </div>
+          <button
+            onClick={onGoToFeeds}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 transition-colors shrink-0"
+          >
+            {t("connect")}
+          </button>
+        </div>
+      )}
+
       {/* Month nav */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
@@ -498,7 +596,7 @@ function CalendarTab({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab 3: Bookings                                                    */
+/*  Tab: Bookings                                                      */
 /* ------------------------------------------------------------------ */
 
 function BookingsTab({
@@ -590,7 +688,7 @@ function BookingsTab({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab 4: iCal Feeds                                                  */
+/*  Tab: iCal Feeds                                                    */
 /* ------------------------------------------------------------------ */
 
 function FeedsTab({
@@ -788,7 +886,7 @@ function FeedsTab({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tab 5: Check-in                                                    */
+/*  Tab: Check-in                                                      */
 /* ------------------------------------------------------------------ */
 
 function CheckInTab({

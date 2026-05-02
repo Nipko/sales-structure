@@ -8,10 +8,12 @@ import { CalendarIntegrationService } from './calendar-integration.service';
 import { AppointmentRemindersService } from './appointment-reminders.service';
 import { AppointmentNotificationsService } from './appointment-notifications.service';
 import { ChannelsModule } from '../channels/channels.module';
+import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 
 @Module({
     imports: [
         forwardRef(() => ChannelsModule),
+        EmailTemplatesModule,
     ],
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [

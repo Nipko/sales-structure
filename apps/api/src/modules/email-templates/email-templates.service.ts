@@ -226,6 +226,108 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
         isActive: true,
     },
 
+    // -----------------------------------------------------------------------
+    // Property / Vacation-rental templates
+    // -----------------------------------------------------------------------
+
+    {
+        name: 'Confirmación de Reserva de Propiedad',
+        slug: 'property_booking_confirmation',
+        subject: 'Reserva confirmada — {{property_name}}',
+        bodyHtml: `<h2>¡Tu reserva está confirmada!</h2>
+<p>Hola {{guest_name}},</p>
+<p>Tu reserva en <strong>{{property_name}}</strong> ha sido confirmada.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0">
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Check-in</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{check_in}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Check-out</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{check_out}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Noches</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{nights}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Total</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{total_price}} {{currency}}</td></tr>
+</table>
+{{#if check_in_instructions}}<h3>Instrucciones de check-in</h3><p>{{check_in_instructions}}</p>{{/if}}
+<p>Si tienes alguna pregunta, no dudes en contactarnos.</p>`,
+        bodyJson: {},
+        variables: ['guest_name', 'property_name', 'check_in', 'check_out', 'nights', 'total_price', 'currency', 'check_in_instructions'],
+        isActive: true,
+    },
+
+    {
+        name: 'Recordatorio de Check-in',
+        slug: 'property_check_in_reminder',
+        subject: 'Mañana es tu check-in — {{property_name}}',
+        bodyHtml: `<h2>¡Tu llegada es mañana!</h2>
+<p>Hola {{guest_name}},</p>
+<p>Te recordamos que tu check-in en <strong>{{property_name}}</strong> es mañana.</p>
+<p><strong>Fecha:</strong> {{check_in_date}}<br/><strong>Hora:</strong> {{check_in_time}}</p>
+{{#if address}}<p><strong>Dirección:</strong> {{address}}</p>{{/if}}
+{{#if check_in_instructions}}<h3>Instrucciones de llegada</h3><p>{{check_in_instructions}}</p>{{/if}}
+<p>¡Te esperamos!</p>`,
+        bodyJson: {},
+        variables: ['guest_name', 'property_name', 'check_in_date', 'check_in_time', 'address', 'check_in_instructions'],
+        isActive: true,
+    },
+
+    // -----------------------------------------------------------------------
+    // Appointment email-specific templates (complement the WhatsApp channel
+    // notifications already sent by AppointmentNotificationsService)
+    // -----------------------------------------------------------------------
+
+    {
+        name: 'Confirmación de Cita (Email)',
+        slug: 'appointment_confirmation_email',
+        subject: 'Cita confirmada — {{service_name}}',
+        bodyHtml: `<h2>Tu cita está confirmada</h2>
+<p>Hola {{customer_name}},</p>
+<p>Tu cita ha sido agendada exitosamente.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0">
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Servicio</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{service_name}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Fecha</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{appointment_date}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Hora</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{appointment_time}}</td></tr>
+{{#if location}}<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Ubicación</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{location}}</td></tr>{{/if}}
+</table>
+<p>Si necesitas cancelar o reprogramar, contáctanos con al menos 24 horas de anticipación.</p>`,
+        bodyJson: {},
+        variables: ['customer_name', 'service_name', 'appointment_date', 'appointment_time', 'location'],
+        isActive: true,
+    },
+
+    {
+        name: 'Recordatorio de Cita (Email)',
+        slug: 'appointment_reminder_email',
+        subject: 'Recordatorio: tu cita mañana — {{service_name}}',
+        bodyHtml: `<h2>Recordatorio de tu cita</h2>
+<p>Hola {{customer_name}},</p>
+<p>Te recordamos que tienes una cita mañana:</p>
+<p><strong>Servicio:</strong> {{service_name}}<br/><strong>Fecha:</strong> {{appointment_date}}<br/><strong>Hora:</strong> {{appointment_time}}</p>
+{{#if location}}<p><strong>Ubicación:</strong> {{location}}</p>{{/if}}
+<p>¡Te esperamos!</p>`,
+        bodyJson: {},
+        variables: ['customer_name', 'service_name', 'appointment_date', 'appointment_time', 'location'],
+        isActive: true,
+    },
+
+    // -----------------------------------------------------------------------
+    // Handoff / escalation notification template
+    // -----------------------------------------------------------------------
+
+    {
+        name: 'Notificación de Escalación',
+        slug: 'handoff_notification',
+        subject: '🔴 Escalación: {{contact_name}} necesita atención',
+        bodyHtml: `<h2>Conversación escalada</h2>
+<p>Hola {{agent_name}},</p>
+<p>Un cliente necesita atención humana.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0">
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Cliente</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{contact_name}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Teléfono</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{contact_phone}}</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Razón</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{reason}}</td></tr>
+</table>
+{{#if last_message}}<p><strong>Último mensaje:</strong></p><blockquote style="border-left:3px solid #ddd;padding:8px 12px;margin:8px 0;color:#666">{{last_message}}</blockquote>{{/if}}
+<p><a href="{{inbox_url}}" style="display:inline-block;padding:10px 20px;background:#6c5ce7;color:white;border-radius:8px;text-decoration:none">Abrir Inbox</a></p>`,
+        bodyJson: {},
+        variables: ['agent_name', 'contact_name', 'contact_phone', 'reason', 'last_message', 'inbox_url'],
+        isActive: true,
+    },
+
     {
         name: 'Pago fallido',
         slug: 'billing_payment_failed',

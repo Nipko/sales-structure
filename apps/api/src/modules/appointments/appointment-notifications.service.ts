@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import type { OutboundMessage } from '@parallext/shared';
 
 /**
@@ -19,6 +20,7 @@ export class AppointmentNotificationsService {
         private eventEmitter: EventEmitter2,
         private outboundQueue: OutboundQueueService,
         private channelToken: ChannelTokenService,
+        private emailTemplates: EmailTemplatesService,
     ) {}
 
     @OnEvent('appointment.created')
@@ -58,6 +60,19 @@ export class AppointmentNotificationsService {
                 source: 'appointment_confirmation',
                 appointmentId: appointment.id,
             });
+
+            // Also send email confirmation if contact has an email address (fire-and-forget)
+            try {
+                if (contact?.email) {
+                    await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
+                        customer_name: contact.name || 'Cliente',
+                        service_name: appointment.serviceName,
+                        appointment_date: new Date(appointment.startAt).toLocaleDateString('es-CO'),
+                        appointment_time: new Date(appointment.startAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+                        location: appointment.location || '',
+                    });
+                }
+            } catch { /* non-critical — channel notification already sent */ }
 
             // Emit event for WebSocket relay to dashboard (handled by ConversationsGateway)
             this.eventEmitter.emit('appointment.ws', { tenantId, type: 'created', appointment });
@@ -107,7 +122,7 @@ export class AppointmentNotificationsService {
     private async getContactInfo(schemaName: string, contactId: string | null) {
         if (!contactId) return null;
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT name, phone, channel_type FROM contacts WHERE id = $1::uuid`,
+            `SELECT name, phone, email, channel_type FROM contacts WHERE id = $1::uuid`,
             [contactId],
         );
         return rows?.[0] || null;

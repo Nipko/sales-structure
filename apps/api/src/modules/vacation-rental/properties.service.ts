@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
 
 @Injectable()
 export class PropertiesService {
@@ -9,6 +10,7 @@ export class PropertiesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
+        private readonly emailTemplates: EmailTemplatesService,
     ) {}
 
     async list(schemaName: string): Promise<any[]> {
@@ -221,6 +223,26 @@ export class PropertiesService {
         );
 
         this.logger.log(`Direct booking created for property ${propertyId}: ${data.checkIn} to ${data.checkOut}`);
+
+        // After successful booking insert, try to send confirmation email (fire-and-forget)
+        try {
+            const property = await this.getById(schemaName, propertyId);
+            if (data.guestEmail) {
+                await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
+                    guest_name: data.guestName || 'Huésped',
+                    property_name: property?.name || '',
+                    check_in: data.checkIn,
+                    check_out: data.checkOut,
+                    nights: String(nights),
+                    total_price: String(totalPrice),
+                    currency: avail.currency,
+                    check_in_instructions: property?.check_in_instructions || '',
+                });
+            }
+        } catch (e: any) {
+            this.logger.warn(`Booking confirmation email failed: ${e.message}`);
+        }
+
         return rows?.[0];
     }
 

@@ -499,7 +499,7 @@
     "accountDesc": "Seu perfil, seguranca e preferencias pessoais",
     "profile": "Perfil",
     "profileDesc": "Nome, email, avatar e dados pessoais",
-    "security": "As chaves de API sao armazenadas criptografadas e exibidas mascaradas.",
+    "security": "Segurança",
     "securityDesc": "Senha, autenticacao de dois fatores",
     "notifications": "Notificacoes",
     "notificationsDesc": "Configure alertas por categoria e canal",
@@ -545,7 +545,6 @@
     "platformSectionDesc": "Configuração avançada da plataforma",
     "advanced": "Avancado",
     "advancedDesc": "Nome da plataforma, limites e recursos",
-    "security": "Segurança",
     "companyGeneral": "Informações gerais",
     "aiAutomation": "IA e Automação",
     "aiProviders": "Provedores LLM",
@@ -554,7 +553,41 @@
     "inventory": "Estoque",
     "content": "Conteúdo",
     "knowledgeBase": "Base de conhecimento",
-    "policies": "Políticas",
+    "policies": {
+      "title": "Políticas",
+      "subtitle": "Políticas oficiais que o agente cita (nunca inventa)",
+      "hint": "O agente só pode referenciar políticas ativas. Cada alteração cria uma nova versão preservando o histórico completo.",
+      "loading": "Carregando...",
+      "saved": "Política salva",
+      "saving": "Salvando...",
+      "saveNewVersion": "Salvar nova versão",
+      "createPolicy": "Criar política",
+      "viewHistory": "Ver histórico",
+      "versionPrefix": "v",
+      "history": "Histórico de versões",
+      "active": "Ativa",
+      "markdownHint": "Markdown básico é suportado para formatação",
+      "types": {
+        "shipping": "Envio",
+        "return": "Devolução",
+        "warranty": "Garantia",
+        "cancellation": "Cancelamento",
+        "terms": "Termos",
+        "privacy": "Privacidade"
+      },
+      "fields": {
+        "title": "Título",
+        "content": "Conteúdo"
+      },
+      "placeholders": {
+        "content": "Descreva a política em detalhes. O agente citará este conteúdo quando os clientes perguntarem."
+      },
+      "errors": {
+        "required": "Título e conteúdo são obrigatórios",
+        "saveFailed": "Falha ao salvar",
+        "connection": "Erro de conexão"
+      }
+    },
     "landings": "Landing pages",
     "team": "Equipe",
     "users": "Usuários e funções",
@@ -831,41 +864,6 @@
       },
       "errors": {
         "companyNameRequired": "Nome da empresa é obrigatório",
-        "saveFailed": "Falha ao salvar",
-        "connection": "Erro de conexão"
-      }
-    },
-    "policies": {
-      "title": "Políticas",
-      "subtitle": "Políticas oficiais que o agente cita (nunca inventa)",
-      "hint": "O agente só pode referenciar políticas ativas. Cada alteração cria uma nova versão preservando o histórico completo.",
-      "loading": "Carregando...",
-      "saved": "Política salva",
-      "saving": "Salvando...",
-      "saveNewVersion": "Salvar nova versão",
-      "createPolicy": "Criar política",
-      "viewHistory": "Ver histórico",
-      "versionPrefix": "v",
-      "history": "Histórico de versões",
-      "active": "Ativa",
-      "markdownHint": "Markdown básico é suportado para formatação",
-      "types": {
-        "shipping": "Envio",
-        "return": "Devolução",
-        "warranty": "Garantia",
-        "cancellation": "Cancelamento",
-        "terms": "Termos",
-        "privacy": "Privacidade"
-      },
-      "fields": {
-        "title": "Título",
-        "content": "Conteúdo"
-      },
-      "placeholders": {
-        "content": "Descreva a política em detalhes. O agente citará este conteúdo quando os clientes perguntarem."
-      },
-      "errors": {
-        "required": "Título e conteúdo são obrigatórios",
         "saveFailed": "Falha ao salvar",
         "connection": "Erro de conexão"
       }
@@ -1247,15 +1245,42 @@
   "crmAnalytics": {
     "title": "Análise CRM",
     "subtitle": "Métricas de vendas, pipeline e desempenho da equipe",
-    "tabs": { "overview": "Visão geral", "funnel": "Funil", "velocity": "Velocidade", "agents": "Agentes" },
-    "kpi": { "totalLeads": "Total leads", "activeOpps": "Oportunidades ativas", "pipelineValue": "Valor do pipeline", "avgScore": "Score médio", "convRate": "Taxa de conversão" },
-    "charts": { "leadsByStage": "Leads por etapa", "leadSources": "Fontes de leads", "winLoss": "Ganhos vs Perdidos", "conversionFunnel": "Funil de conversão", "pipelineVelocity": "Velocidade do pipeline", "agentLeaderboard": "Ranking de agentes" },
-    "won": "Ganhos", "lost": "Perdidos", "winRate": "Taxa de sucesso", "totalValue": "Valor total", "lossReasons": "Razões de perda",
-    "agent": "Agente", "dealsClosed": "Negócios fechados", "avgDeal": "Média", "days": "Dias", "avgDays": "Dias médios", "noData": "Sem dados disponíveis"
+    "tabs": {
+      "overview": "Visão geral",
+      "funnel": "Funil",
+      "velocity": "Velocidade",
+      "agents": "Agentes"
+    },
+    "kpi": {
+      "totalLeads": "Total leads",
+      "activeOpps": "Oportunidades ativas",
+      "pipelineValue": "Valor do pipeline",
+      "avgScore": "Score médio",
+      "convRate": "Taxa de conversão"
+    },
+    "charts": {
+      "leadsByStage": "Leads por etapa",
+      "leadSources": "Fontes de leads",
+      "winLoss": "Ganhos vs Perdidos",
+      "conversionFunnel": "Funil de conversão",
+      "pipelineVelocity": "Velocidade do pipeline",
+      "agentLeaderboard": "Ranking de agentes"
+    },
+    "won": "Ganhos",
+    "lost": "Perdidos",
+    "winRate": "Taxa de sucesso",
+    "totalValue": "Valor total",
+    "lossReasons": "Razões de perda",
+    "agent": "Agente",
+    "dealsClosed": "Negócios fechados",
+    "avgDeal": "Média",
+    "days": "Dias",
+    "avgDays": "Dias médios",
+    "noData": "Sem dados disponíveis"
   },
   "pipeline": {
     "title": "Funil de vendas",
-    "subtitle": "Arraste oportunidades entre etapas para avançar no processo",
+    "subtitle": "Arraste negocios entre etapas",
     "dragHere": "Arraste oportunidades aqui",
     "loading": "Carregando...",
     "customizeStages": "Personalizar etapas",
@@ -1272,7 +1297,6 @@
     "value": "Valor",
     "stage": "Etapa",
     "dragToMove": "Arraste para mover",
-    "subtitle": "Arraste negocios entre etapas",
     "approvalPending": "Aprovação pendente",
     "approvalRejected": "Rejeitado",
     "requestApproval": "Solicitar aprovação",
@@ -1430,11 +1454,50 @@
     "disconnected": "Desconectado",
     "connect": "Conectar",
     "configure": "Configurar",
-    "whatsapp": "WhatsApp",
+    "whatsapp": {
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "Tem certeza que deseja desconectar o WhatsApp? As mensagens não serão mais recebidas.",
+      "disconnectSuccess": "WhatsApp desconectado com sucesso."
+    },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
-    "instagram": "Instagram",
+    "instagram": {
+      "connectTitle": "Conectar Instagram",
+      "connectDesc": "Clique no botão para conectar sua conta Instagram Business e começar a receber mensagens diretas automaticamente.",
+      "connectWithInstagram": "Conectar com Instagram",
+      "oauthConnecting": "Conectando...",
+      "connectSuccess": "Canal do Instagram conectado com sucesso.",
+      "connectFailed": "Erro ao conectar o Instagram. Tente novamente.",
+      "connectedAccount": "Conta conectada",
+      "tokenExpiresIn": "O token expira em {days} dias",
+      "tokenExpired": "Token expirado. Por favor reconecte sua conta.",
+      "reconnect": "Reconectar",
+      "disconnectTitle": "Desconectar Instagram",
+      "disconnectDesc": "As mensagens diretas desta conta deixarão de ser recebidas",
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "Tem certeza que deseja desconectar o Instagram?",
+      "disconnectSuccess": "Instagram desconectado com sucesso.",
+      "redirecting": "Redirecionando...",
+      "backToSetup": "Voltar à configuração",
+      "closeWindow": "Você pode fechar esta janela."
+    },
     "instagramDesc": "Instagram Direct Messages via Graph API",
-    "messenger": "Messenger",
+    "messenger": {
+      "connectTitle": "Conectar Messenger",
+      "connectDesc": "Clique no botão para conectar sua página do Facebook e começar a receber mensagens do Messenger automaticamente.",
+      "connectWithFacebook": "Conectar com Facebook",
+      "oauthConnecting": "Conectando...",
+      "loadingSdk": "Carregando SDK do Facebook...",
+      "sdkNotLoaded": "O SDK do Facebook ainda não está pronto. Tente novamente.",
+      "connectSuccess": "Canal do Messenger conectado com sucesso.",
+      "connectFailed": "Erro ao conectar o Messenger. Tente novamente.",
+      "connectedPage": "Página conectada",
+      "pagesConnected": "{count} página(s) conectada(s)",
+      "disconnectTitle": "Desconectar Messenger",
+      "disconnectDesc": "As mensagens desta página deixarão de ser recebidas",
+      "disconnect": "Desconectar",
+      "disconnectConfirm": "Tem certeza que deseja desconectar o Messenger?",
+      "disconnectSuccess": "Messenger desconectado com sucesso."
+    },
     "messengerDesc": "Messenger via integracao de pagina do Facebook",
     "telegramDesc": "Telegram Bot API — mensagens diretas automatizadas",
     "smsDesc": "Twilio SMS — mensagens de texto bidirecionais",
@@ -1472,43 +1535,6 @@
       "testFailed": "Erro no teste",
       "disconnectDesc": "As mensagens SMS deixarão de ser enviadas e recebidas através deste número"
     },
-    "messenger": {
-      "connectTitle": "Conectar Messenger",
-      "connectDesc": "Clique no botão para conectar sua página do Facebook e começar a receber mensagens do Messenger automaticamente.",
-      "connectWithFacebook": "Conectar com Facebook",
-      "oauthConnecting": "Conectando...",
-      "loadingSdk": "Carregando SDK do Facebook...",
-      "sdkNotLoaded": "O SDK do Facebook ainda não está pronto. Tente novamente.",
-      "connectSuccess": "Canal do Messenger conectado com sucesso.",
-      "connectFailed": "Erro ao conectar o Messenger. Tente novamente.",
-      "connectedPage": "Página conectada",
-      "pagesConnected": "{count} página(s) conectada(s)",
-      "disconnectTitle": "Desconectar Messenger",
-      "disconnectDesc": "As mensagens desta página deixarão de ser recebidas",
-      "disconnect": "Desconectar",
-      "disconnectConfirm": "Tem certeza que deseja desconectar o Messenger?",
-      "disconnectSuccess": "Messenger desconectado com sucesso."
-    },
-    "instagram": {
-      "connectTitle": "Conectar Instagram",
-      "connectDesc": "Clique no botão para conectar sua conta Instagram Business e começar a receber mensagens diretas automaticamente.",
-      "connectWithInstagram": "Conectar com Instagram",
-      "oauthConnecting": "Conectando...",
-      "connectSuccess": "Canal do Instagram conectado com sucesso.",
-      "connectFailed": "Erro ao conectar o Instagram. Tente novamente.",
-      "connectedAccount": "Conta conectada",
-      "tokenExpiresIn": "O token expira em {days} dias",
-      "tokenExpired": "Token expirado. Por favor reconecte sua conta.",
-      "reconnect": "Reconectar",
-      "disconnectTitle": "Desconectar Instagram",
-      "disconnectDesc": "As mensagens diretas desta conta deixarão de ser recebidas",
-      "disconnect": "Desconectar",
-      "disconnectConfirm": "Tem certeza que deseja desconectar o Instagram?",
-      "disconnectSuccess": "Instagram desconectado com sucesso.",
-      "redirecting": "Redirecionando...",
-      "backToSetup": "Voltar à configuração",
-      "closeWindow": "Você pode fechar esta janela."
-    },
     "telegram": {
       "setupTitle": "Conectar Telegram",
       "setupSubtitle": "Automatize seu atendimento ao cliente no Telegram em menos de 2 minutos",
@@ -1537,11 +1563,6 @@
       "disconnectTitle": "Desconectar bot",
       "disconnectDesc": "O webhook sera removido e parara de receber mensagens",
       "disconnect": "Desconectar"
-    },
-    "whatsapp": {
-      "disconnect": "Desconectar",
-      "disconnectConfirm": "Tem certeza que deseja desconectar o WhatsApp? As mensagens não serão mais recebidas.",
-      "disconnectSuccess": "WhatsApp desconectado com sucesso."
     },
     "webhook": "Webhook",
     "callbackUrl": "URL de Callback",
@@ -2306,9 +2327,21 @@
     "cardReady": "Cartao salvo. Finalize o cadastro abaixo.",
     "changeCard": "Trocar cartao",
     "plans": {
-      "starter": { "name": "Starter", "price": "USD $49/mes", "desc": "1 agente IA, 5.000 mensagens/mes, 7 dias de teste" },
-      "pro": { "name": "Pro", "price": "USD $129/mes", "desc": "3 agentes IA, 25.000 mensagens/mes, 15 dias de teste" },
-      "enterprise": { "name": "Enterprise", "price": "USD $349/mes", "desc": "10 agentes IA, 100.000 mensagens/mes, SSO, suporte prioritario" }
+      "starter": {
+        "name": "Starter",
+        "price": "USD $49/mes",
+        "desc": "1 agente IA, 5.000 mensagens/mes, 7 dias de teste"
+      },
+      "pro": {
+        "name": "Pro",
+        "price": "USD $129/mes",
+        "desc": "3 agentes IA, 25.000 mensagens/mes, 15 dias de teste"
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "price": "USD $349/mes",
+        "desc": "10 agentes IA, 100.000 mensagens/mes, SSO, suporte prioritario"
+      }
     },
     "companyName": "Nome da empresa",
     "website": "Site",
@@ -3003,7 +3036,14 @@
     "exportUrlDesc": "Copie esta URL e cole no Airbnb/Booking para sincronizar",
     "checkInInstructions": "Instrucoes de check-in",
     "houseRules": "Regras da casa",
-    "saved": "Salvo"
+    "saved": "Salvo",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Descreva sua propriedade: localização, vistas, estilo, o que a torna especial...",
+    "photos": "Fotos da propriedade",
+    "addPhoto": "Adicionar foto",
+    "syncAvailability": "Sincronize sua disponibilidade",
+    "syncAvailabilityDesc": "Conecte Airbnb ou Booking.com para evitar reservas duplicadas",
+    "connect": "Conectar"
   },
   "verticalEmptyStates": {
     "salud": {

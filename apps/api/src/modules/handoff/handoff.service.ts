@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { NormalizedMessage, TenantConfig } from '@parallext/shared';
 
 export interface HandoffResult {
@@ -34,6 +35,7 @@ export class HandoffService {
         private redis: RedisService,
         private eventEmitter: EventEmitter2,
         private emailService: EmailService,
+        private emailTemplates: EmailTemplatesService,
     ) {}
 
     /**
@@ -189,29 +191,46 @@ export class HandoffService {
             handoffTriggeredAt,
         } as HandoffEscalatedEvent);
 
-        // 9. Send email to assigned agent (fire-and-forget)
+        // 9. Send email to assigned agent via template (fire-and-forget)
         if (assignedAgentEmail) {
-            this.emailService.send({
-                to: assignedAgentEmail,
-                subject: `🔴 Handoff: ${contact.contact_name || 'Cliente'} necesita atención`,
-                html: `
-                    <div style="font-family: sans-serif; max-width: 500px;">
-                        <h2 style="color: #e74c3c;">Conversación escalada</h2>
-                        <p><strong>Cliente:</strong> ${contact.contact_name || 'Desconocido'}</p>
-                        <p><strong>Teléfono:</strong> ${contact.contact_phone || 'N/A'}</p>
-                        <p><strong>Razón:</strong> ${reason}</p>
-                        <p><strong>Último mensaje:</strong></p>
-                        <blockquote style="border-left: 3px solid #e74c3c; padding-left: 12px; color: #555;">
-                            ${(contact.last_message || '').substring(0, 200)}
-                        </blockquote>
-                        <p style="margin-top: 20px;">
-                            <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px;">
-                                Abrir Inbox
-                            </a>
-                        </p>
-                    </div>
-                `,
-            }).catch(e => this.logger.warn(`Handoff email failed: ${e.message}`));
+            const contactName = contact.contact_name || 'Cliente';
+            const contactPhone = contact.contact_phone || 'N/A';
+            const lastMessage = (contact.last_message || '').substring(0, 200);
+
+            try {
+                const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification', assignedAgentEmail, {
+                    agent_name: assignedAgentName || 'Agente',
+                    contact_name: contactName,
+                    contact_phone: contactPhone,
+                    reason,
+                    last_message: lastMessage,
+                    inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
+                });
+                if (!sent) throw new Error('Template not found or inactive');
+            } catch (e: any) {
+                // Fallback to direct email if template is not yet seeded
+                this.emailService.send({
+                    to: assignedAgentEmail,
+                    subject: `🔴 Handoff: ${contactName} necesita atención`,
+                    html: `
+                        <div style="font-family: sans-serif; max-width: 500px;">
+                            <h2 style="color: #e74c3c;">Conversación escalada</h2>
+                            <p><strong>Cliente:</strong> ${contactName}</p>
+                            <p><strong>Teléfono:</strong> ${contactPhone}</p>
+                            <p><strong>Razón:</strong> ${reason}</p>
+                            <p><strong>Último mensaje:</strong></p>
+                            <blockquote style="border-left: 3px solid #e74c3c; padding-left: 12px; color: #555;">
+                                ${lastMessage}
+                            </blockquote>
+                            <p style="margin-top: 20px;">
+                                <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px;">
+                                    Abrir Inbox
+                                </a>
+                            </p>
+                        </div>
+                    `,
+                }).catch(fe => this.logger.warn(`Handoff fallback email failed: ${fe.message}`));
+            }
         }
 
         this.logger.log(

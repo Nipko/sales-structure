@@ -1594,6 +1594,8 @@
     "chooseTemplate": "Elige una plantilla",
     "chooseTemplateDesc": "Comienza con una plantilla preconfigurada y personalízala según tus necesidades.",
     "builtInTemplates": "Plantillas integradas",
+    "recommendedTemplates": "Recomendados para tu negocio",
+    "generalTemplates": "Plantillas generales",
     "myTemplates": "Mis plantillas",
     "noTemplates": "No hay plantillas disponibles.",
     "useTemplate": "Usar esta",

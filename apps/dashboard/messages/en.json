@@ -1567,6 +1567,8 @@
     "chooseTemplate": "Choose a template",
     "chooseTemplateDesc": "Start with a pre-configured template and customize it to your needs.",
     "builtInTemplates": "Built-in templates",
+    "recommendedTemplates": "Recommended for your business",
+    "generalTemplates": "General templates",
     "myTemplates": "My templates",
     "noTemplates": "No templates available.",
     "useTemplate": "Use this",

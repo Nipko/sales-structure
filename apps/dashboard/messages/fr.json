@@ -1567,6 +1567,8 @@
     "chooseTemplate": "Choisir un modèle",
     "chooseTemplateDesc": "Commencez avec un modèle préconstruit et personnalisez-le selon vos besoins.",
     "builtInTemplates": "Modèles intégrés",
+    "recommendedTemplates": "Recommandés pour votre entreprise",
+    "generalTemplates": "Modèles généraux",
     "myTemplates": "Mes modèles",
     "noTemplates": "Aucun modèle disponible.",
     "useTemplate": "Utiliser",

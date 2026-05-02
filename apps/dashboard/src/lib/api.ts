@@ -212,7 +212,7 @@ export const api = {
     deleteAgent: (tenantId: string, agentId: string) => apiDelete(`/persona/${tenantId}/agents/${agentId}`),
     duplicateAgent: (tenantId: string, agentId: string) => apiPost(`/persona/${tenantId}/agents/${agentId}/duplicate`, {}),
     saveAgentAsTemplate: (tenantId: string, agentId: string, name: string, description: string) => apiPost(`/persona/${tenantId}/agents/${agentId}/save-template`, { name, description }),
-    listAgentTemplates: (tenantId: string) => apiGet(`/persona/${tenantId}/agent-templates`),
+    listAgentTemplates: (tenantId: string, industry?: string) => apiGet(`/persona/${tenantId}/agent-templates${industry ? `?industry=${encodeURIComponent(industry)}` : ''}`),
     deleteAgentTemplate: (tenantId: string, templateId: string) => apiDelete(`/persona/${tenantId}/agent-templates/${templateId}`),
     getPlanFeatures: (tenantId: string) => apiGet(`/persona/${tenantId}/plan-features`),
 

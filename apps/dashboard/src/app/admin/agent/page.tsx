@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Bot, Plus, Copy, MoreVertical, Star, Trash2,
   MessageSquare, Instagram, Facebook, Send, Phone,
-  Clock, Shield, Wrench, BookmarkPlus, CheckCircle, AlertTriangle, X,
+  Clock, Shield, Wrench, BookmarkPlus, CheckCircle, AlertTriangle, X, Sparkles,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { SetupBanner } from "@/components/SetupBanner";
@@ -63,6 +64,7 @@ export default function AgentListPage() {
   const t = useTranslations("agent");
   const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
+  const { verticalConfig } = useAuth();
   const router = useRouter();
 
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -129,7 +131,7 @@ export default function AgentListPage() {
     if (templates.length === 0 && activeTenantId) {
       setTemplatesLoading(true);
       try {
-        const res = await api.listAgentTemplates(activeTenantId);
+        const res = await api.listAgentTemplates(activeTenantId, verticalConfig?.industry);
         if (res?.success && Array.isArray(res.data)) {
           setTemplates(res.data);
         }
@@ -675,10 +677,22 @@ interface TemplatePickerModalProps {
   t: ReturnType<typeof useTranslations>;
 }
 
+// Vertical template ID prefixes (e.g. tpl_salud_recepcion, tpl_restaurante_*)
+const VERTICAL_PREFIXES = [
+  "tpl_salud_", "tpl_restaurante_", "tpl_inmobiliaria_",
+  "tpl_belleza_", "tpl_educacion_", "tpl_retail_",
+  "tpl_legal_", "tpl_fitness_", "tpl_automotriz_",
+];
+
+function isVerticalTemplate(id: string): boolean {
+  return VERTICAL_PREFIXES.some(prefix => id.startsWith(prefix));
+}
+
 function TemplatePickerModal({
   templates, loading, onSelect, onClose, onDeleteTemplate, t,
 }: TemplatePickerModalProps) {
-  const builtIn = templates.filter(tp => tp.is_builtin);
+  const verticalTemplates = templates.filter(tp => tp.is_builtin && isVerticalTemplate(tp.id));
+  const genericBuiltIn = templates.filter(tp => tp.is_builtin && !isVerticalTemplate(tp.id));
   const userTemplates = templates.filter(tp => !tp.is_builtin);
 
   return (
@@ -719,19 +733,35 @@ function TemplatePickerModal({
             </div>
           ) : (
             <>
-              {builtIn.length > 0 && (
+              {/* Vertical / recommended templates */}
+              {verticalTemplates.length > 0 && (
                 <div className="mb-6">
-                  <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
-                    {t("builtInTemplates")}
+                  <h4 className="text-xs font-semibold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Sparkles size={12} /> {t("recommendedTemplates")}
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {builtIn.map(tp => (
+                    {verticalTemplates.map(tp => (
                       <TemplateCard key={tp.id} template={tp} onSelect={onSelect} t={t} />
                     ))}
                   </div>
                 </div>
               )}
 
+              {/* Generic built-in templates */}
+              {genericBuiltIn.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
+                    {verticalTemplates.length > 0 ? t("generalTemplates") : t("builtInTemplates")}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {genericBuiltIn.map(tp => (
+                      <TemplateCard key={tp.id} template={tp} onSelect={onSelect} t={t} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* User-saved templates */}
               {userTemplates.length > 0 && (
                 <div>
                   <h4 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">

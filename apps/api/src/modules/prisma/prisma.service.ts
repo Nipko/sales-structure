@@ -53,10 +53,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      */
     async createTenantSchema(schemaName: string): Promise<void> {
         // 1. Check if schema already exists (stale data from deleted tenant)
-        const existing = await this.$queryRawUnsafe<any[]>(
+        const existing = await this.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1 LIMIT 1`,
             schemaName,
-        );
+        ) as any[];
 
         if (existing?.length > 0) {
             // Schema exists — clean stale data from previous tenant

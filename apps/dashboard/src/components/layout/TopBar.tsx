@@ -17,18 +17,7 @@ import { api } from "@/lib/api";
 import { useLocale, useTranslations } from "next-intl";
 import { locales, localeNames, type Locale } from "@/i18n/config";
 
-// Notification categories with colors and icons
-const NOTIF_CATEGORIES = {
-  chat:       { label: "Messages",    icon: MessageSquare, color: "text-emerald-500", bg: "bg-emerald-100 dark:bg-emerald-500/15", href: "/admin/inbox" },
-  handoff:    { label: "Transfers",   icon: Users,      color: "text-orange-500",  bg: "bg-orange-100 dark:bg-orange-500/15",  href: "/admin/inbox" },
-  compliance: { label: "Compliance",  icon: Shield,        color: "text-red-500",     bg: "bg-red-100 dark:bg-red-500/15",        href: "/admin/compliance" },
-  appointment:{ label: "Appointments", icon: Calendar,    color: "text-blue-500",    bg: "bg-blue-100 dark:bg-blue-500/15",      href: "/admin/appointments" },
-  automation: { label: "Automation",  icon: Zap,           color: "text-purple-500",  bg: "bg-purple-100 dark:bg-purple-500/15",  href: "/admin/automation" },
-  order:      { label: "Orders",      icon: Package,       color: "text-cyan-500",    bg: "bg-cyan-100 dark:bg-cyan-500/15",      href: "/admin/orders" },
-  system:     { label: "System",      icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-100 dark:bg-amber-500/15",    href: "/admin" },
-} as const;
-
-type NotifType = keyof typeof NOTIF_CATEGORIES;
+type NotifType = "chat" | "handoff" | "compliance" | "appointment" | "automation" | "order" | "system";
 
 interface Notification {
   id: string;
@@ -38,40 +27,6 @@ interface Notification {
   time: string;
   read: boolean;
 }
-
-const pathLabels: Record<string, string> = {
-  admin: "",
-  inbox: "Inbox",
-  contacts: "CRM",
-  pipeline: "Pipeline",
-  automation: "Automation",
-  agent: "AI Agent",
-  settings: "Settings",
-  channels: "Channels",
-  analytics: "Analytics",
-  "analytics-v2": "Analytics",
-  "agent-analytics": "Reports",
-  identity: "Identity",
-  knowledge: "Knowledge Base",
-  users: "Users",
-  broadcast: "Campaigns",
-  compliance: "Compliance",
-  inventory: "Inventory",
-  orders: "Orders",
-  tenants: "Tenants",
-  appointments: "Appointments",
-  "email-templates": "Templates",
-  media: "Images",
-  "change-password": "Password",
-  "custom-attributes": "Attributes",
-  macros: "Macros",
-  prechat: "Pre-Chat",
-  appearance: "Appearance",
-  segments: "Segments",
-  whatsapp: "WhatsApp",
-  instagram: "Instagram",
-  messenger: "Messenger",
-};
 
 interface TopBarProps {
   onMobileMenuToggle?: () => void;
@@ -92,6 +47,78 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
   const currentLocale = useLocale();
   const tRoles = useTranslations("roles");
+  const t = useTranslations("topbar");
+
+  // NOTIF_CATEGORIES — must be inside component to use t()
+  const NOTIF_CATEGORIES = useMemo(() => ({
+    chat:       { label: t("categories.chat"),        icon: MessageSquare, color: "text-emerald-500", bg: "bg-emerald-100 dark:bg-emerald-500/15", href: "/admin/inbox" },
+    handoff:    { label: t("categories.handoff"),     icon: Users,         color: "text-orange-500",  bg: "bg-orange-100 dark:bg-orange-500/15",  href: "/admin/inbox" },
+    compliance: { label: t("categories.compliance"),  icon: Shield,        color: "text-red-500",     bg: "bg-red-100 dark:bg-red-500/15",        href: "/admin/compliance" },
+    appointment:{ label: t("categories.appointment"), icon: Calendar,      color: "text-blue-500",    bg: "bg-blue-100 dark:bg-blue-500/15",      href: "/admin/appointments" },
+    automation: { label: t("categories.automation"),  icon: Zap,           color: "text-purple-500",  bg: "bg-purple-100 dark:bg-purple-500/15",  href: "/admin/automation" },
+    order:      { label: t("categories.order"),       icon: Package,       color: "text-cyan-500",    bg: "bg-cyan-100 dark:bg-cyan-500/15",      href: "/admin/orders" },
+    system:     { label: t("categories.system"),      icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-100 dark:bg-amber-500/15",    href: "/admin" },
+  } as const), [t]);
+
+  // pathLabels — must be inside component to use t()
+  const pathLabels: Record<string, string> = useMemo(() => ({
+    admin: "",
+    inbox: t("breadcrumbs.inbox"),
+    contacts: t("breadcrumbs.contacts"),
+    pipeline: t("breadcrumbs.pipeline"),
+    automation: t("breadcrumbs.automation"),
+    agent: t("breadcrumbs.agent"),
+    settings: t("breadcrumbs.settings"),
+    channels: t("breadcrumbs.channels"),
+    analytics: t("breadcrumbs.analytics"),
+    "analytics-v2": t("breadcrumbs.analytics"),
+    "agent-analytics": t("breadcrumbs.reports"),
+    identity: t("breadcrumbs.identity"),
+    knowledge: t("breadcrumbs.knowledge"),
+    users: t("breadcrumbs.users"),
+    broadcast: t("breadcrumbs.campaigns"),
+    compliance: t("breadcrumbs.compliance"),
+    inventory: t("breadcrumbs.inventory"),
+    orders: t("breadcrumbs.orders"),
+    tenants: t("breadcrumbs.tenants"),
+    appointments: t("breadcrumbs.appointments"),
+    "email-templates": t("breadcrumbs.emailTemplates"),
+    media: t("breadcrumbs.media"),
+    "change-password": t("breadcrumbs.changePassword"),
+    "custom-attributes": t("breadcrumbs.customAttributes"),
+    macros: t("breadcrumbs.macros"),
+    prechat: t("breadcrumbs.prechat"),
+    appearance: t("breadcrumbs.appearance"),
+    segments: t("breadcrumbs.segments"),
+    // Brand names — not translated
+    whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    messenger: "Messenger",
+    telegram: "Telegram",
+    sms: "SMS",
+    // Additional pages
+    catalog: t("breadcrumbs.catalog"),
+    "crm-analytics": t("breadcrumbs.crmAnalytics"),
+    "feature-requests": t("breadcrumbs.featureRequests"),
+    financials: t("breadcrumbs.financials"),
+    properties: t("breadcrumbs.properties"),
+    landings: t("breadcrumbs.landings"),
+    // Settings subpages
+    profile: t("breadcrumbs.profile"),
+    security: t("breadcrumbs.security"),
+    notifications: t("breadcrumbs.notifications"),
+    billing: t("breadcrumbs.billing"),
+    "business-hours": t("breadcrumbs.businessHours"),
+    "business-info": t("breadcrumbs.businessInfo"),
+    company: t("breadcrumbs.company"),
+    localization: t("breadcrumbs.localization"),
+    platform: t("breadcrumbs.platform"),
+    policies: t("breadcrumbs.policies"),
+    "scoring-config": t("breadcrumbs.scoringConfig"),
+    "ai-config": t("breadcrumbs.aiConfig"),
+    "ai-providers": t("breadcrumbs.aiProviders"),
+    alerts: t("breadcrumbs.alerts"),
+  }), [t]);
 
   const isSuperAdmin = user?.role === "super_admin";
   const showTenantSelector = isSuperAdmin && tenants.length > 1;
@@ -154,28 +181,28 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     socket.on("newMessage", (payload: any) => {
       const { message } = payload;
       if (message?.direction === "inbound") {
-        addNotif("chat", "New incoming message", (message.content_text || message.content || "").slice(0, 80));
+        addNotif("chat", t("notifTitles.newMessage"), (message.content_text || message.content || "").slice(0, 80));
       }
     });
 
     // ── Handoff ──
     socket.on("handoff.escalated", (payload: any) => {
-      const contactName = payload.contactName || "Cliente";
+      const contactName = payload.contactName || t("notifications.unknownClient");
       const lastMsg = payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : "";
-      addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || "Transferencia a agente humano"}${lastMsg}`);
+      addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || t("notifications.transfer")}${lastMsg}`);
       // Play notification sound
       try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
     });
     socket.on("inbox:handoff", (payload: any) => {
       if (payload.urgent) {
-        const contactName = payload.contactName || "Cliente";
-        addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || "Transferencia"}${payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : ""}`);
+        const contactName = payload.contactName || t("notifications.unknownClient");
+        addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || t("notifications.transfer")}${payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : ""}`);
         try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
       }
     });
     // Supervisor escalation — conversation waiting too long
     socket.on("inbox:escalation", (payload: any) => {
-      addNotif("handoff", `⚠️ ${payload.contactName || "Cliente"} — ${payload.waitMinutes}min`, `Escalación: ${payload.reason || "Sin respuesta"}`);
+      addNotif("handoff", `⚠️ ${payload.contactName || t("notifications.unknownClient")} — ${payload.waitMinutes}min`, `${t("notifications.escalation")}: ${payload.reason || t("notifications.noResponse")}`);
       // Browser push for escalation (critical — works even with tab minimized)
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`⚠️ ESCALACIÓN: ${payload.contactName}`, {
@@ -189,11 +216,11 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     });
     // Direct assignment notification
     socket.on("inbox:assigned_to_you", (payload: any) => {
-      addNotif("handoff", `⚡ Asignado a ti`, payload.message || "Una conversación ha sido asignada a ti");
+      addNotif("handoff", `⚡ ${t("notifications.assignedToYou")}`, payload.message || t("notifTitles.conversationAssigned"));
       // Browser push notification (works even if tab is in background)
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        new Notification(`⚡ ${payload.contactName || 'Cliente'} asignado a ti`, {
-          body: payload.reason || 'Conversación escalada',
+        new Notification(`⚡ ${payload.contactName || t("notifications.unknownClient")} ${t("notifications.assignedToYou").toLowerCase()}`, {
+          body: payload.reason || t("notifications.transfer"),
           icon: '/favicon.ico',
           tag: `handoff-${payload.conversationId}`,
         });
@@ -203,33 +230,33 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
     // ── Compliance / Opt-out ──
     socket.on("optout.detected", (payload: any) => {
-      addNotif("compliance", "Opt-out detected", `${payload.phone || "Contact"}: "${(payload.triggerMessage || "").slice(0, 60)}"`);
+      addNotif("compliance", t("notifTitles.optoutDetected"), `${payload.phone || t("notifTitles.contact")}: "${(payload.triggerMessage || "").slice(0, 60)}"`);
     });
 
     // ── Appointments ──
     socket.on("appointment.created", (payload: any) => {
-      addNotif("appointment", "New appointment", `${payload.serviceName || "Appointment"} — ${payload.startAt ? new Date(payload.startAt).toLocaleDateString() : ""}`);
+      addNotif("appointment", t("notifTitles.newAppointment"), `${payload.serviceName || t("notifTitles.appointment")} — ${payload.startAt ? new Date(payload.startAt).toLocaleDateString() : ""}`);
     });
     socket.on("appointment.cancelled", (payload: any) => {
-      addNotif("appointment", "Appointment cancelled", payload.serviceName || "An appointment was cancelled");
+      addNotif("appointment", t("notifTitles.appointmentCancelled"), payload.serviceName || t("notifTitles.appointmentCancelledDefault"));
     });
 
     // ── Automation ──
     socket.on("automation.triggered", (payload: any) => {
-      addNotif("automation", "Rule executed", payload.ruleName || "An automation rule was executed");
+      addNotif("automation", t("notifTitles.ruleExecuted"), payload.ruleName || t("notifTitles.ruleExecutedDefault"));
     });
     socket.on("lead.captured", (payload: any) => {
-      addNotif("automation", "New lead captured", `${payload.name || payload.phone || "New contact"} via ${payload.channel || "whatsapp"}`);
+      addNotif("automation", t("notifTitles.newLead"), `${payload.name || payload.phone || t("notifTitles.newContact")} via ${payload.channel || "whatsapp"}`);
     });
 
     // ── Orders ──
     socket.on("order.created", (payload: any) => {
-      addNotif("order", "New order", `Order for $${payload.totalAmount || 0} — ${payload.status || "pending"}`);
+      addNotif("order", t("notifTitles.newOrder"), `${t("notifTitles.orderFor")} $${payload.totalAmount || 0} — ${payload.status || t("notifTitles.pending")}`);
     });
 
     // ── System ──
     socket.on("error", (err: any) => {
-      addNotif("system", "System error", typeof err === "string" ? err : err?.message || "Connection error");
+      addNotif("system", t("notifTitles.systemError"), typeof err === "string" ? err : err?.message || t("notifTitles.connectionError"));
     });
 
     socketRef.current = socket;
@@ -255,7 +282,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
     // Always start with Dashboard
     segments.push({
-      label: "Dashboard",
+      label: t("breadcrumbs.dashboard"),
       href: "/admin",
       isLast: parts.length <= 1,
     });
@@ -275,13 +302,13 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
     }
 
     return segments;
-  }, [pathname]);
+  }, [pathname, pathLabels, t]);
 
-  const themeOptions = [
-    { key: "light", icon: Sun, label: "Light" },
-    { key: "dark", icon: Moon, label: "Dark" },
-    { key: "system", icon: Monitor, label: "System" },
-  ] as const;
+  const themeOptions = useMemo(() => [
+    { key: "light", icon: Sun,     label: t("theme.light") },
+    { key: "dark",  icon: Moon,    label: t("theme.dark") },
+    { key: "system",icon: Monitor, label: t("theme.system") },
+  ] as const, [t]);
 
   return (
     <header className="h-14 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 md:px-6 flex items-center gap-4 shrink-0">
@@ -289,7 +316,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       <button
         onClick={onMobileMenuToggle}
         className="md:hidden p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-        title="Menu"
+        title={t("menu")}
       >
         <Menu size={20} />
       </button>
@@ -351,7 +378,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           window.location.reload();
         }}
         className="h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        title="Language"
+        title={t("language")}
       >
         {locales.map((l) => (
           <option key={l} value={l}>{localeNames[l]}</option>
@@ -366,7 +393,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         <button
           onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markAllRead(); }}
           className="relative p-2 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          title="Notifications"
+          title={t("notifications.title")}
         >
           <Bell size={18} />
           {unreadCount > 0 && (
@@ -380,18 +407,18 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           <div className="absolute right-0 top-full mt-2 w-96 max-h-[500px] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-xl z-50 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
-              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Notifications</span>
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("notifications.title")}</span>
               <div className="flex items-center gap-2">
                 {filteredNotifs.length > 0 && (
                   <button onClick={clearNotifications}
                     className="text-[11px] text-red-500 hover:text-red-400 cursor-pointer bg-transparent border-none font-medium">
-                    Clear{notifTab !== "all" ? ` ${NOTIF_CATEGORIES[notifTab]?.label}` : ""}
+                    {t("notifications.clear")}{notifTab !== "all" ? ` ${NOTIF_CATEGORIES[notifTab]?.label}` : ""}
                   </button>
                 )}
                 {unreadCount > 0 && (
                   <button onClick={markAllRead}
                     className="text-[11px] text-indigo-500 hover:text-indigo-400 cursor-pointer bg-transparent border-none font-medium">
-                    Mark read
+                    {t("notifications.markRead")}
                   </button>
                 )}
               </div>
@@ -402,7 +429,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               <button onClick={() => setNotifTab("all")}
                 className={cn("px-2.5 py-1 rounded-md text-[11px] font-medium border-none cursor-pointer whitespace-nowrap transition-colors",
                   notifTab === "all" ? "bg-indigo-500 text-white" : "bg-transparent text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}>
-                All {unreadCount > 0 && <span className="ml-1 text-[10px]">({unreadCount})</span>}
+                {t("categories.all")} {unreadCount > 0 && <span className="ml-1 text-[10px]">({unreadCount})</span>}
               </button>
               {(Object.entries(NOTIF_CATEGORIES) as [NotifType, typeof NOTIF_CATEGORIES[NotifType]][]).map(([key, cat]) => {
                 const count = unreadByType[key] || 0;
@@ -425,7 +452,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 <div className="py-10 text-center">
                   <Bell size={24} className="text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
                   <p className="text-sm text-neutral-400 dark:text-neutral-500">
-                    {notifTab === "all" ? "No notifications" : `No ${NOTIF_CATEGORIES[notifTab]?.label.toLowerCase()}`}
+                    {notifTab === "all" ? t("notifications.empty") : `${t("notifications.noCategory")} ${NOTIF_CATEGORIES[notifTab]?.label.toLowerCase()}`}
                   </p>
                 </div>
               ) : (
@@ -529,7 +556,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
               <User size={15} />
-              My profile
+              {t("userMenu.profile")}
             </Link>
             <Link
               href="/admin/settings"
@@ -537,7 +564,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               className="flex items-center gap-2 w-full px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
             >
               <Settings size={15} />
-              Settings
+              {t("userMenu.settings")}
             </Link>
             {/* Logout */}
             <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
@@ -549,7 +576,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                 className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
               >
                 <LogOut size={15} />
-                Logout
+                {t("userMenu.logout")}
               </button>
             </div>
           </div>

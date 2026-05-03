@@ -157,11 +157,11 @@ export class PropertiesService {
         // Get all blocks + bookings for this month
         const blocks = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, check_in, check_out, source FROM ical_blocks
+            `SELECT id, check_in, check_out, source, summary FROM ical_blocks
              WHERE property_id = $1::uuid AND is_deleted = false
                AND NOT (check_out < $2::date OR check_in > $3::date)
              UNION ALL
-             SELECT id, check_in, check_out, 'direct' as source FROM property_bookings
+             SELECT id, check_in, check_out, 'direct' as source, NULL as summary FROM property_bookings
              WHERE property_id = $1::uuid AND status != 'cancelled'
                AND NOT (check_out < $2::date OR check_in > $3::date)`,
             [propertyId, startDate, endDate],
@@ -177,6 +177,7 @@ export class PropertiesService {
             let status = 'available';
             let source: string | null = null;
             let blockId: string | null = null;
+            let summary: string | null = null;
 
             for (const block of blocks || []) {
                 const bIn = new Date(block.check_in).toISOString().split('T')[0];
@@ -185,11 +186,12 @@ export class PropertiesService {
                     status = block.source === 'direct' ? 'booked' : 'blocked';
                     source = block.source;
                     blockId = block.id;
+                    summary = block.summary || null;
                     break;
                 }
             }
 
-            calendar.push({ date: dateStr, status, source, blockId });
+            calendar.push({ date: dateStr, status, source, blockId, summary });
         }
 
         return calendar;

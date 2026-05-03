@@ -62,6 +62,7 @@ interface CalendarDay {
   bookingId?: string;
   source?: string;
   blockId?: string;
+  summary?: string | null;
 }
 
 interface Booking {
@@ -153,6 +154,7 @@ export default function PropertyDetailPage() {
           tenantId={activeTenantId!}
           propertyId={propertyId}
           t={t}
+          tc={tc}
           onGoToFeeds={() => setActiveTab("feeds")}
         />
       )}
@@ -209,6 +211,20 @@ function InfoTab({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Resync form when property reloads from parent (after save) — otherwise the
+  // editor would show stale values until the user navigates away and back.
+  useEffect(() => {
+    setForm({
+      ...property,
+      description: property.description || "",
+      images: property.images || [],
+    });
+  }, [property.id, property.name, property.address, property.city, property.max_guests, property.bedrooms, property.bathrooms, property.night_price, property.cleaning_fee, property.min_nights, property.is_active]);
+
+  const MAX_IMAGES = 5;
+  const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
   function toggleAmenity(a: string) {
     setForm(prev => ({
@@ -227,8 +243,26 @@ function InfoTab({
   }
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    setUploadError(null);
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (form.images.length >= MAX_IMAGES) {
+      setUploadError(t("photoLimitReached", { max: MAX_IMAGES }));
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setUploadError(t("photoTooLarge", { maxMb: 2 }));
+      e.target.value = "";
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setUploadError(t("photoInvalidType"));
+      e.target.value = "";
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
@@ -248,6 +282,8 @@ function InfoTab({
         if (url) {
           setForm(prev => ({ ...prev, images: [...prev.images, url] }));
         }
+      } else {
+        setUploadError(tc("errorSaving"));
       }
     } finally {
       setUploading(false);
@@ -317,39 +353,26 @@ function InfoTab({
 
       {/* Guests / Rooms / Baths */}
       <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("maxGuests")}</label>
-          <input type="number" min={1} value={form.max_guests} onChange={(e) => setForm({ ...form, max_guests: +e.target.value })} className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bedrooms")}</label>
-          <input type="number" min={0} value={form.bedrooms} onChange={(e) => setForm({ ...form, bedrooms: +e.target.value })} className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
-          <input type="number" min={0} value={form.bathrooms} onChange={(e) => setForm({ ...form, bathrooms: +e.target.value })} className={inputCls} />
-        </div>
+        <NumberField label={t("maxGuests")} min={1} value={form.max_guests} onChange={(v) => setForm({ ...form, max_guests: v })} className={inputCls} />
+        <NumberField label={t("bedrooms")} min={0} value={form.bedrooms} onChange={(v) => setForm({ ...form, bedrooms: v })} className={inputCls} />
+        <NumberField label={t("bathrooms")} min={0} value={form.bathrooms} onChange={(v) => setForm({ ...form, bathrooms: v })} className={inputCls} />
       </div>
 
       {/* Pricing */}
       <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("nightPrice")}</label>
-          <input type="number" min={0} value={form.night_price} onChange={(e) => setForm({ ...form, night_price: +e.target.value })} className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("cleaningFee")}</label>
-          <input type="number" min={0} value={form.cleaning_fee} onChange={(e) => setForm({ ...form, cleaning_fee: +e.target.value })} className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("minNights")}</label>
-          <input type="number" min={1} value={form.min_nights} onChange={(e) => setForm({ ...form, min_nights: +e.target.value })} className={inputCls} />
-        </div>
+        <NumberField label={t("nightPrice")} min={0} value={form.night_price} onChange={(v) => setForm({ ...form, night_price: v })} className={inputCls} />
+        <NumberField label={t("cleaningFee")} min={0} value={form.cleaning_fee} onChange={(v) => setForm({ ...form, cleaning_fee: v })} className={inputCls} />
+        <NumberField label={t("minNights")} min={1} value={form.min_nights} onChange={(v) => setForm({ ...form, min_nights: v })} className={inputCls} />
       </div>
 
       {/* Images */}
       <div>
-        <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{t("photos")}</h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("photos")}</h4>
+          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            {form.images.length}/{MAX_IMAGES} · {t("photoMaxSizeNote", { maxMb: 2 })}
+          </span>
+        </div>
         <div className="grid grid-cols-4 gap-2">
           {form.images.map((url, i) => (
             <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800">
@@ -363,18 +386,23 @@ function InfoTab({
               </button>
             </div>
           ))}
-          <label className={`aspect-square rounded-lg border-2 border-dashed border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
-            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
-            {uploading ? (
-              <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <Image size={20} className="text-neutral-400 dark:text-neutral-500 mb-1" />
-                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{t("addPhoto")}</span>
-              </>
-            )}
-          </label>
+          {form.images.length < MAX_IMAGES && (
+            <label className={`aspect-square rounded-lg border-2 border-dashed border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+              {uploading ? (
+                <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Image size={20} className="text-neutral-400 dark:text-neutral-500 mb-1" />
+                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{t("addPhoto")}</span>
+                </>
+              )}
+            </label>
+          )}
         </div>
+        {uploadError && (
+          <p className="mt-2 text-xs text-red-500">{uploadError}</p>
+        )}
       </div>
 
       {/* Amenities by category */}
@@ -440,11 +468,13 @@ function CalendarTab({
   tenantId,
   propertyId,
   t,
+  tc: tcCommon,
   onGoToFeeds,
 }: {
   tenantId: string;
   propertyId: string;
   t: any;
+  tc: any;
   onGoToFeeds: () => void;
 }) {
   const today = new Date();
@@ -454,7 +484,14 @@ function CalendarTab({
   const [loading, setLoading] = useState(true);
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [feedsLoaded, setFeedsLoaded] = useState(false);
-  const [selectedDateToBlock, setSelectedDateToBlock] = useState<string | null>(null);
+  // Range selection state for blocking multiple days
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<string | null>(null);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockNote, setBlockNote] = useState("");
+  const [blockSaving, setBlockSaving] = useState(false);
+  const [unblockTarget, setUnblockTarget] = useState<{ blockId: string; date: string } | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
 
   useEffect(() => {
     loadCalendar();
@@ -489,24 +526,71 @@ function CalendarTab({
     else setMonth(m => m + 1);
   }
 
-  async function handleDayClick(cell: any) {
+  function handleDayClick(cell: any) {
     if (cell.status === "past" || cell.status === "booked") return;
 
-    if (cell.status === "available") {
-      setSelectedDateToBlock(cell.date);
-    } else if (cell.status === "blocked" && cell.source === "Manual") {
-      if (confirm(`¿Desbloquear el ${cell.date}?`)) {
-        await api.deletePropertyBlock(tenantId, cell.blockId);
-        loadCalendar();
+    if (cell.status === "blocked" && cell.source === "Manual" && cell.blockId) {
+      setUnblockTarget({ blockId: cell.blockId, date: cell.date });
+      return;
+    }
+    if (cell.status === "blocked") return;
+
+    // Range selection on available cells: first click sets start, second click sets end
+    if (!rangeStart || (rangeStart && rangeEnd)) {
+      setRangeStart(cell.date);
+      setRangeEnd(null);
+    } else {
+      // Second click — finalize range and open modal
+      if (cell.date < rangeStart) {
+        setRangeEnd(rangeStart);
+        setRangeStart(cell.date);
+      } else {
+        setRangeEnd(cell.date);
       }
+      setShowBlockModal(true);
     }
   }
 
+  function handleSingleDayBlock(date: string) {
+    setRangeStart(date);
+    setRangeEnd(date);
+    setShowBlockModal(true);
+  }
+
   async function handleConfirmBlock() {
-    if (!selectedDateToBlock) return;
-    await api.createPropertyBlock(tenantId, propertyId, { checkIn: selectedDateToBlock, checkOut: selectedDateToBlock });
-    setSelectedDateToBlock(null);
+    const start = rangeStart;
+    const end = rangeEnd || rangeStart;
+    if (!start || !end) return;
+    setBlockSaving(true);
+    try {
+      await api.createPropertyBlock(tenantId, propertyId, {
+        checkIn: start,
+        checkOut: end,
+        summary: blockNote.trim() || undefined,
+      });
+      setShowBlockModal(false);
+      setRangeStart(null);
+      setRangeEnd(null);
+      setBlockNote("");
+      loadCalendar();
+    } finally {
+      setBlockSaving(false);
+    }
+  }
+
+  async function handleConfirmUnblock() {
+    if (!unblockTarget) return;
+    await api.deletePropertyBlock(tenantId, unblockTarget.blockId);
+    setUnblockTarget(null);
     loadCalendar();
+  }
+
+  function isInRange(date: string): boolean {
+    if (!rangeStart) return false;
+    const end = rangeEnd || hoverDate || rangeStart;
+    const lo = rangeStart < end ? rangeStart : end;
+    const hi = rangeStart < end ? end : rangeStart;
+    return date >= lo && date <= hi;
   }
 
   const monthName = new Date(year, month - 1).toLocaleString(undefined, { month: "long", year: "numeric" });
@@ -519,14 +603,14 @@ function CalendarTab({
 
   const dayMap = new Map(days.map(d => [d.date, d]));
 
-  const cells: { day: number; date: string; status: string; source?: string; blockId?: string }[] = [];
+  const cells: { day: number; date: string; status: string; source?: string; blockId?: string; summary?: string | null }[] = [];
   for (let i = 0; i < startDow; i++) cells.push({ day: 0, date: "", status: "" });
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const entry = dayMap.get(dateStr);
     let status: string = entry?.status || "available";
     if (dateStr < todayStr) status = "past";
-    cells.push({ day: d, date: dateStr, status, source: entry?.source, blockId: entry?.blockId });
+    cells.push({ day: d, date: dateStr, status, source: entry?.source, blockId: entry?.blockId, summary: entry?.summary });
   }
 
   const DOW_LABELS = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
@@ -578,11 +662,25 @@ function CalendarTab({
             ))}
           </div>
 
+          {/* Range selection hint */}
+          {rangeStart && !rangeEnd && (
+            <div className="mb-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
+              <span>{t("blockRangeHint", { start: rangeStart })}</span>
+              <button
+                onClick={() => { setRangeStart(null); setRangeEnd(null); }}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {tcCommon("cancel")}
+              </button>
+            </div>
+          )}
+
           {/* Day cells */}
           <div className="grid grid-cols-7 gap-1">
             {cells.map((c, i) => {
               if (c.day === 0) return <div key={`empty-${i}`} />;
 
+              const inRange = c.status === "available" && isInRange(c.date);
               let bg = "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400";
               let cursor = "cursor-pointer hover:ring-2 hover:ring-emerald-500 hover:ring-offset-1";
 
@@ -599,56 +697,125 @@ function CalendarTab({
                 cursor = "cursor-not-allowed opacity-60";
               }
 
+              if (inRange) {
+                bg = "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500";
+              }
+
+              const sourceLabel = c.source === 'direct' ? null
+                : c.source === 'Manual' ? 'Manual'
+                : c.source; // 'Airbnb', 'Booking', 'Vrbo', etc.
+              const tooltip = c.summary
+                ? `${sourceLabel || ''}${sourceLabel ? ' · ' : ''}${c.summary}`
+                : sourceLabel || undefined;
+
               return (
                 <div
                   key={c.date}
                   onClick={() => handleDayClick(c)}
-                  className={`flex flex-col items-center justify-center h-12 rounded-lg text-xs font-medium transition-all ${bg} ${cursor}`}
+                  onMouseEnter={() => setHoverDate(c.date)}
+                  onMouseLeave={() => setHoverDate(null)}
+                  title={tooltip}
+                  className={`flex flex-col items-center justify-center h-14 rounded-lg text-xs font-medium transition-all ${bg} ${cursor}`}
                 >
-                  <span className="text-[13px]">{c.day}</span>
-                  {c.source === 'Manual' && <span className="text-[9px] opacity-70 leading-none">Manual</span>}
+                  <span className="text-[13px] leading-none">{c.day}</span>
+                  {sourceLabel && (
+                    <span className="text-[9px] opacity-80 leading-none mt-0.5 truncate max-w-full px-1">
+                      {sourceLabel}
+                    </span>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-4 mt-4 text-xs text-neutral-500 dark:text-neutral-400">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-emerald-100 dark:bg-emerald-900/30" />
-              {t("available")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/30" />
-              {t("booked")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30" />
-              {t("blocked")}
-            </span>
+          {/* Legend + how-to */}
+          <div className="mt-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-emerald-100 dark:bg-emerald-900/30" />
+                {t("available")}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/30" />
+                {t("booked")}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30" />
+                {t("blocked")}
+              </span>
+            </div>
+            <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+              {t("blockHowTo")}
+            </p>
           </div>
         </>
       )}
 
-      {selectedDateToBlock && (
+      {/* Block range modal */}
+      {showBlockModal && rangeStart && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-xs shadow-xl">
-            <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Bloquear Fecha</h4>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              ¿Quieres bloquear el {selectedDateToBlock} manualmente?
+          <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-sm shadow-xl">
+            <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{t("blockDates")}</h4>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+              {rangeEnd && rangeEnd !== rangeStart
+                ? t("blockRangeFromTo", { start: rangeStart, end: rangeEnd })
+                : t("blockSingleDay", { date: rangeStart })}
             </p>
+            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+              {t("blockNote")}
+            </label>
+            <textarea
+              rows={2}
+              value={blockNote}
+              onChange={(e) => setBlockNote(e.target.value)}
+              placeholder={t("blockNotePlaceholder")}
+              className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y mb-4"
+            />
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setSelectedDateToBlock(null)}
+                onClick={() => {
+                  setShowBlockModal(false);
+                  setRangeStart(null);
+                  setRangeEnd(null);
+                  setBlockNote("");
+                }}
+                disabled={blockSaving}
                 className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
-                Cancelar
+                {tcCommon("cancel")}
               </button>
               <button
                 onClick={handleConfirmBlock}
-                className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+                disabled={blockSaving}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
               >
-                Bloquear
+                {blockSaving ? tcCommon("saving") : t("block")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unblock confirmation modal */}
+      {unblockTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-xs shadow-xl">
+            <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-2">{t("unblockDate")}</h4>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+              {t("unblockConfirm", { date: unblockTarget.date })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setUnblockTarget(null)}
+                className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                {tcCommon("cancel")}
+              </button>
+              <button
+                onClick={handleConfirmUnblock}
+                className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+              >
+                {t("unblock")}
               </button>
             </div>
           </div>
@@ -1131,6 +1298,50 @@ function CheckInTab({
         {saved ? <Check size={16} /> : <Save size={16} />}
         {saved ? t("saved") : tc("save")}
       </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reusable: NumberField (lets users clear the value & retype)        */
+/* ------------------------------------------------------------------ */
+
+function NumberField({
+  label, min, value, onChange, className,
+}: {
+  label: string;
+  min: number;
+  value: number;
+  onChange: (n: number) => void;
+  className: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{label}</label>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={draft}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9]/g, "");
+          setDraft(v);
+          if (v !== "") onChange(Math.max(min, parseInt(v, 10)));
+        }}
+        onBlur={() => {
+          if (draft === "") {
+            setDraft(String(min));
+            onChange(min);
+          }
+        }}
+        className={className}
+      />
     </div>
   );
 }

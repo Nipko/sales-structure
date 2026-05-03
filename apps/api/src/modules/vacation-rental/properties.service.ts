@@ -176,6 +176,7 @@ export class PropertiesService {
             const dateStr = d.toISOString().split('T')[0];
             let status = 'available';
             let source: string | null = null;
+            let blockId: string | null = null;
 
             for (const block of blocks || []) {
                 const bIn = new Date(block.check_in).toISOString().split('T')[0];

@@ -91,6 +91,19 @@ const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
+/**
+ * Resolve a media URL returned by the API. Backend returns paths like
+ * "/api/v1/media/file/..." which would otherwise resolve against the dashboard
+ * origin (admin.parallly-chat.cloud) instead of the API origin
+ * (api.parallly-chat.cloud). Already-absolute URLs are returned untouched.
+ */
+function resolveMediaUrl(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  const apiOrigin = BASE_URL.replace(/\/api\/v1\/?$/, "");
+  return `${apiOrigin}${url.startsWith("/") ? url : "/" + url}`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Main Page                                                          */
 /* ------------------------------------------------------------------ */
@@ -612,7 +625,7 @@ function PhotosTab({
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {images.map((url, i) => (
             <div key={url + i} className="group relative aspect-[4/3] rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-800">
-              <img src={url} alt="" className="w-full h-full object-cover" />
+              <img src={resolveMediaUrl(url)} alt="" className="w-full h-full object-cover" />
 
               {/* Primary badge */}
               {i === 0 && (

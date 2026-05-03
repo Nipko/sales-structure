@@ -3,6 +3,14 @@
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+
+const PROPERTIES_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+function resolveMediaUrl(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  const apiOrigin = PROPERTIES_API_BASE.replace(/\/api\/v1\/?$/, "");
+  return `${apiOrigin}${url.startsWith("/") ? url : "/" + url}`;
+}
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -196,7 +204,7 @@ export default function PropertiesPage() {
               {p.images?.[0] ? (
                 <div
                   className="h-32 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${p.images[0]})` }}
+                  style={{ backgroundImage: `url(${resolveMediaUrl(p.images[0])})` }}
                 />
               ) : (
                 <div className="h-32 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950/30 dark:to-indigo-900/20 flex items-center justify-center">

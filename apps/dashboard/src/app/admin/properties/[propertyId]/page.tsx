@@ -77,12 +77,13 @@ interface Booking {
 
 interface Feed {
   id: string;
-  name: string;
+  feed_name: string;
   source: string;
   import_url: string;
-  last_sync: string | null;
+  last_sync_at: string | null;
   events_imported: number;
-  errors: number;
+  last_sync_status: string | null;
+  last_sync_error: string | null;
 }
 
 const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
@@ -823,7 +824,7 @@ function FeedsTab({
   }
 
   function handleEdit(f: any) {
-    setForm({ name: f.name, source: f.source, import_url: f.import_url || "" });
+    setForm({ name: f.feed_name, source: f.source, import_url: f.import_url || "" });
     setEditingFeedId(f.id);
     setShowForm(true);
   }
@@ -977,18 +978,32 @@ function FeedsTab({
                 key={f.id}
                 className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 flex items-center justify-between"
               >
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{f.name}</span>
+                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{f.feed_name}</span>
                     <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
                       {f.source}
                     </span>
+                    {f.last_sync_status === "success" && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 inline-flex items-center gap-1">
+                        <Check size={10} /> OK
+                      </span>
+                    )}
+                    {f.last_sync_status === "error" && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 inline-flex items-center gap-1">
+                        <AlertTriangle size={10} /> Error
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-                    <span>{t("lastSync")}: {formatDate(f.last_sync)}</span>
-                    <span>{f.events_imported} eventos</span>
-                    {f.errors > 0 && <span className="text-red-500">{f.errors} errores</span>}
+                    <span>{t("lastSync")}: {formatDate(f.last_sync_at)}</span>
+                    <span>{f.events_imported || 0} eventos</span>
                   </div>
+                  {f.last_sync_status === "error" && f.last_sync_error && (
+                    <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400 break-words">
+                      {f.last_sync_error}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button

@@ -210,7 +210,31 @@ export class VacationRentalController {
             [propertyId, body.feedName, body.source, body.importUrl || null, exportToken],
         );
 
-        return { success: true, data: rows?.[0] };
+        const created = rows?.[0];
+
+        // Trigger an initial sync immediately so users see imported blocks
+        // without waiting up to 30 min for the cron. Failures are reflected
+        // in last_sync_status but do NOT roll back the feed creation —
+        // the user can fix the URL and retry from the UI.
+        let syncResult: { imported: number; deleted: number } | null = null;
+        if (created?.id && body.importUrl) {
+            try {
+                syncResult = await this.icalSyncService.syncFeed(schemaName, created.id);
+            } catch (err: any) {
+                // syncFeed already persists the error state; just log here
+                console.error(`[addFeed] initial sync failed for ${created.id}:`, err?.message);
+            }
+
+            // Re-read the row to include last_sync_at / events_imported
+            const refreshed = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT * FROM ical_feeds WHERE id = $1::uuid`,
+                [created.id],
+            );
+            return { success: true, data: refreshed?.[0] || created, sync: syncResult };
+        }
+
+        return { success: true, data: created };
     }
 
     @Put(':tenantId/feeds/:feedId')

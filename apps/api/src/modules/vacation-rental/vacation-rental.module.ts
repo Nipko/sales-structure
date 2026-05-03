@@ -3,11 +3,12 @@ import { PropertiesService } from './properties.service';
 import { IcalSyncService } from './ical-sync.service';
 import { VacationRentalController } from './vacation-rental.controller';
 import { IcalFeedController } from './ical-feed.controller';
+import { IcalExportPublicController } from './ical-export-public.controller';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 
 @Module({
     imports: [EmailTemplatesModule],
-    controllers: [VacationRentalController, IcalFeedController],
+    controllers: [VacationRentalController, IcalFeedController, IcalExportPublicController],
     providers: [PropertiesService, IcalSyncService],
     exports: [PropertiesService, IcalSyncService],
 })

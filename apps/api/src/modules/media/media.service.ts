@@ -113,7 +113,7 @@ export class MediaService {
             const tagArray = tags || [];
             await this.prisma.executeInTenantSchema(schemaName,
                 `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, tags, created_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())`,
+                 VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())`,
                 [id, entityType, entityId || null, file.originalname, fileName, 'image/webp', mainSize, mainMeta.width, mainMeta.height, thumbName, label || null, description || null, tagArray],
             );
 

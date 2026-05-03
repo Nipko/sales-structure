@@ -789,7 +789,7 @@ function FeedsTab({
   async function handleAdd() {
     setAddError(null);
     if (!form.name || !form.import_url) return;
-    if (!/^https?:\/\/.+\.ics(\?.*)?$/i.test(form.import_url.trim())) {
+    if (!/^https?:\/\/.+/i.test(form.import_url.trim())) {
       setAddError(t("invalidIcalUrl") || "URL de iCal inválida");
       return;
     }

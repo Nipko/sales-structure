@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import * as ical from 'node-ical';
 import ICalGenerator, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator';
+import axios from 'axios';
 
 @Injectable()
 export class IcalSyncService {
@@ -28,7 +29,17 @@ export class IcalSyncService {
 
         try {
             // 2. Fetch and parse .ics
-            const events = await ical.async.fromURL(feed.import_url);
+            // We use axios directly to set User-Agent, as Airbnb/Booking block default node HTTP clients
+            const url = feed.import_url.trim().replace(/&amp;/g, '&');
+            const response = await axios.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/calendar, text/plain, */*'
+                },
+                timeout: 15000,
+                responseType: 'text'
+            });
+            const events = await ical.async.parseICS(response.data);
             const now = new Date();
             let imported = 0;
             const seenUids = new Set<string>();

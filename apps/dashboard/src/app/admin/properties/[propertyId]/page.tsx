@@ -258,16 +258,16 @@ function InfoTab({
       description: form.description,
       address: form.address,
       city: form.city,
-      max_guests: form.max_guests,
+      maxGuests: form.max_guests,
       bedrooms: form.bedrooms,
       bathrooms: form.bathrooms,
-      night_price: form.night_price,
-      cleaning_fee: form.cleaning_fee,
+      nightPrice: form.night_price,
+      cleaningFee: form.cleaning_fee,
       currency: form.currency,
-      min_nights: form.min_nights,
+      minNights: form.min_nights,
       amenities: form.amenities,
       images: form.images,
-      is_active: form.is_active,
+      isActive: form.is_active,
     });
     if (res.success) {
       setSaved(true);
@@ -722,13 +722,26 @@ function FeedsTab({
     setLoading(false);
   }
 
+  const [addError, setAddError] = useState<string | null>(null);
   async function handleAdd() {
+    setAddError(null);
     if (!form.name || !form.import_url) return;
-    const res = await api.addPropertyFeed(tenantId, propertyId, form);
+    if (!/^https?:\/\/.+\.ics(\?.*)?$/i.test(form.import_url.trim())) {
+      setAddError(t("invalidIcalUrl"));
+      return;
+    }
+    const payload = {
+      feedName: form.name,
+      source: form.source,
+      importUrl: form.import_url.trim(),
+    };
+    const res = await api.addPropertyFeed(tenantId, propertyId, payload);
     if (res.success) {
       setShowForm(false);
       setForm({ name: "", source: "Airbnb", import_url: "" });
       loadFeeds();
+    } else {
+      setAddError(res.error || tc("errorSaving"));
     }
   }
 
@@ -795,12 +808,29 @@ function FeedsTab({
 
         {showForm && (
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 mb-4 space-y-3">
+            {/* How-to instructions */}
+            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 p-3 text-xs text-indigo-900 dark:text-indigo-200">
+              <p className="font-semibold mb-1.5">{t("addFeedHowToTitle")}</p>
+              <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed">
+                <li>{t("addFeedStep1", { source: form.source })}</li>
+                <li>{t("addFeedStep2")}</li>
+                <li>{t("addFeedStep3")}</li>
+              </ol>
+              <p className="mt-2 text-[11px] opacity-80">
+                {t("addFeedExportHint")}{" "}
+                <button onClick={copyExportUrl} className="underline hover:no-underline font-medium">
+                  {t("copyExportUrl")}
+                </button>
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("feedName")}</label>
                 <input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={t("feedNamePlaceholder")}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -821,14 +851,19 @@ function FeedsTab({
                 <input
                   value={form.import_url}
                   onChange={(e) => setForm({ ...form, import_url: e.target.value })}
-                  placeholder="https://..."
+                  placeholder="https://www.airbnb.com/calendar/ical/...ics"
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
+
+            {addError && (
+              <p className="text-xs text-red-500">{addError}</p>
+            )}
+
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => { setShowForm(false); setAddError(null); }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
                 {tc("cancel")}
@@ -913,7 +948,12 @@ function CheckInTab({
 
   async function handleSave() {
     setSaving(true);
-    const res = await api.updateProperty(tenantId, property.id, form);
+    const res = await api.updateProperty(tenantId, property.id, {
+      checkInInstructions: form.check_in_instructions,
+      houseRules: form.house_rules,
+      checkInTime: form.check_in_time,
+      checkOutTime: form.check_out_time,
+    });
     if (res.success) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);

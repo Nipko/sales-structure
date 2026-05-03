@@ -685,11 +685,11 @@ interface TemplatePickerModalProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-// Vertical template ID prefixes (e.g. tpl_salud_recepcion, tpl_restaurante_*)
+// Vertical template ID prefixes (must match backend persona.service.ts vertical template IDs)
 const VERTICAL_PREFIXES = [
   "tpl_salud_", "tpl_restaurante_", "tpl_inmobiliaria_",
-  "tpl_belleza_", "tpl_educacion_", "tpl_retail_",
-  "tpl_legal_", "tpl_fitness_", "tpl_automotriz_",
+  "tpl_belleza_", "tpl_educacion_", "tpl_automotriz_",
+  "tpl_turismo_",
 ];
 
 function isVerticalTemplate(id: string): boolean {

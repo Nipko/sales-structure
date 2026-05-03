@@ -936,6 +936,7 @@ export class AuthService {
         }
 
         // 6.5. Bootstrap vertical-specific defaults (pipeline stages, agent persona, FAQs, services)
+        let verticalConfig: any = null;
         try {
             const tenantLang = (timezone?.includes('America') ? 'es' : 'en');
             const verticalIndustry = industry || 'otro';
@@ -947,6 +948,7 @@ export class AuthService {
                 verticalSubType,
                 tenantLang,
             );
+            verticalConfig = await this.verticalsService.getVerticalConfig(result.tenant.id);
             console.log(`[Onboarding] Vertical bootstrap completed successfully for "${result.tenant.schemaName}"`);
         } catch (error: any) {
             console.error(`[Onboarding] Failed vertical bootstrap for "${result.tenant.schemaName}":`, error?.message || error);
@@ -1003,6 +1005,7 @@ export class AuthService {
                 tenantName: result.tenant.name,
                 onboardingCompleted: result.user.onboardingCompleted,
             },
+            verticalConfig,
         };
     }
 

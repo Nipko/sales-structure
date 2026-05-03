@@ -381,6 +381,7 @@ export default function OnboardingPage() {
                 if (d.accessToken) localStorage.setItem("accessToken", d.accessToken);
                 if (d.refreshToken) localStorage.setItem("refreshToken", d.refreshToken);
                 if (d.user) localStorage.setItem("user", JSON.stringify(d.user));
+                if (d.verticalConfig) localStorage.setItem("verticalConfig", JSON.stringify(d.verticalConfig));
             }
 
             // Full page reload so AuthContext re-reads the new tokens with tenantId

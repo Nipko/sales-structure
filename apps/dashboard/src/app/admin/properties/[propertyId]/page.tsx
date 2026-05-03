@@ -24,6 +24,8 @@ import {
   Plus,
   X,
   Image,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { AMENITY_CATEGORIES } from "../page";
@@ -59,6 +61,7 @@ interface CalendarDay {
   status: "available" | "booked" | "blocked";
   bookingId?: string;
   source?: string;
+  blockId?: string;
 }
 
 interface Booking {

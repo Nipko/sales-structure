@@ -157,11 +157,11 @@ export class PropertiesService {
         // Get all blocks + bookings for this month
         const blocks = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT check_in, check_out, source FROM ical_blocks
+            `SELECT id, check_in, check_out, source FROM ical_blocks
              WHERE property_id = $1::uuid AND is_deleted = false
                AND NOT (check_out < $2::date OR check_in > $3::date)
              UNION ALL
-             SELECT check_in, check_out, 'direct' as source FROM property_bookings
+             SELECT id, check_in, check_out, 'direct' as source FROM property_bookings
              WHERE property_id = $1::uuid AND status != 'cancelled'
                AND NOT (check_out < $2::date OR check_in > $3::date)`,
             [propertyId, startDate, endDate],
@@ -183,14 +183,48 @@ export class PropertiesService {
                 if (dateStr >= bIn && dateStr <= bOut) {
                     status = block.source === 'direct' ? 'booked' : 'blocked';
                     source = block.source;
+                    blockId = block.id;
                     break;
                 }
             }
 
-            calendar.push({ date: dateStr, status, source });
+            calendar.push({ date: dateStr, status, source, blockId });
         }
 
         return calendar;
+    }
+
+    /**
+     * Create a manual calendar block.
+     */
+    async createBlock(schemaName: string, propertyId: string, data: { checkIn: string, checkOut: string, summary?: string }): Promise<any> {
+        // First check availability
+        const avail = await this.checkAvailability(schemaName, propertyId, data.checkIn, data.checkOut);
+        if (!avail.available) {
+            throw new BadRequestException(`Property not available for these dates (conflict: ${avail.conflictSource})`);
+        }
+
+        const externalUid = 'manual-' + Math.random().toString(36).substring(2, 15);
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `INSERT INTO ical_blocks (property_id, external_uid, source, check_in, check_out, summary)
+             VALUES ($1::uuid, $2, 'Manual', $3::date, $4::date, $5)
+             RETURNING *`,
+            [propertyId, externalUid, data.checkIn, data.checkOut, data.summary || 'Bloqueo Manual'],
+        );
+        return rows?.[0];
+    }
+
+    /**
+     * Delete a manual calendar block.
+     */
+    async deleteBlock(schemaName: string, blockId: string): Promise<void> {
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE ical_blocks SET is_deleted = true, updated_at = NOW() WHERE id = $1::uuid`,
+            [blockId],
+        );
     }
 
     /**

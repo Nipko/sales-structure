@@ -450,6 +450,7 @@ function CalendarTab({
   const [loading, setLoading] = useState(true);
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [feedsLoaded, setFeedsLoaded] = useState(false);
+  const [selectedDateToBlock, setSelectedDateToBlock] = useState<string | null>(null);
 
   useEffect(() => {
     loadCalendar();
@@ -484,6 +485,26 @@ function CalendarTab({
     else setMonth(m => m + 1);
   }
 
+  async function handleDayClick(cell: any) {
+    if (cell.status === "past" || cell.status === "booked") return;
+
+    if (cell.status === "available") {
+      setSelectedDateToBlock(cell.date);
+    } else if (cell.status === "blocked" && cell.source === "Manual") {
+      if (confirm(`¿Desbloquear el ${cell.date}?`)) {
+        await api.deletePropertyBlock(tenantId, cell.blockId);
+        loadCalendar();
+      }
+    }
+  }
+
+  async function handleConfirmBlock() {
+    if (!selectedDateToBlock) return;
+    await api.createPropertyBlock(tenantId, propertyId, { checkIn: selectedDateToBlock, checkOut: selectedDateToBlock });
+    setSelectedDateToBlock(null);
+    loadCalendar();
+  }
+
   const monthName = new Date(year, month - 1).toLocaleString(undefined, { month: "long", year: "numeric" });
 
   // Build calendar grid
@@ -494,14 +515,14 @@ function CalendarTab({
 
   const dayMap = new Map(days.map(d => [d.date, d]));
 
-  const cells: { day: number; date: string; status: string }[] = [];
+  const cells: { day: number; date: string; status: string; source?: string; blockId?: string }[] = [];
   for (let i = 0; i < startDow; i++) cells.push({ day: 0, date: "", status: "" });
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const entry = dayMap.get(dateStr);
     let status: string = entry?.status || "available";
     if (dateStr < todayStr) status = "past";
-    cells.push({ day: d, date: dateStr, status });
+    cells.push({ day: d, date: dateStr, status, source: entry?.source, blockId: entry?.blockId });
   }
 
   const DOW_LABELS = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
@@ -559,16 +580,29 @@ function CalendarTab({
               if (c.day === 0) return <div key={`empty-${i}`} />;
 
               let bg = "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400";
-              if (c.status === "booked") bg = "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400";
-              else if (c.status === "blocked") bg = "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400";
-              else if (c.status === "past") bg = "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500";
+              let cursor = "cursor-pointer hover:ring-2 hover:ring-emerald-500 hover:ring-offset-1";
+
+              if (c.status === "booked") {
+                bg = "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400";
+                cursor = "cursor-not-allowed opacity-80";
+              }
+              else if (c.status === "blocked") {
+                bg = "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400";
+                cursor = c.source === 'Manual' ? "cursor-pointer hover:ring-2 hover:ring-amber-500 hover:ring-offset-1" : "cursor-not-allowed opacity-80";
+              }
+              else if (c.status === "past") {
+                bg = "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500";
+                cursor = "cursor-not-allowed opacity-60";
+              }
 
               return (
                 <div
                   key={c.date}
-                  className={`flex items-center justify-center h-10 rounded-lg text-xs font-medium ${bg}`}
+                  onClick={() => handleDayClick(c)}
+                  className={`flex flex-col items-center justify-center h-12 rounded-lg text-xs font-medium transition-all ${bg} ${cursor}`}
                 >
-                  {c.day}
+                  <span className="text-[13px]">{c.day}</span>
+                  {c.source === 'Manual' && <span className="text-[9px] opacity-70 leading-none">Manual</span>}
                 </div>
               );
             })}
@@ -590,6 +624,31 @@ function CalendarTab({
             </span>
           </div>
         </>
+      )}
+
+      {selectedDateToBlock && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-xs shadow-xl">
+            <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Bloquear Fecha</h4>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+              ¿Quieres bloquear el {selectedDateToBlock} manualmente?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setSelectedDateToBlock(null)}
+                className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmBlock}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+              >
+                Bloquear
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -708,6 +767,7 @@ function FeedsTab({
   const [syncing, setSyncing] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ name: "", source: "Airbnb", import_url: "" });
+  const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
 
   const exportUrl = `${BASE_URL}/vacation-rental/${tenantId}/properties/${propertyId}/ical`;
 
@@ -727,7 +787,7 @@ function FeedsTab({
     setAddError(null);
     if (!form.name || !form.import_url) return;
     if (!/^https?:\/\/.+\.ics(\?.*)?$/i.test(form.import_url.trim())) {
-      setAddError(t("invalidIcalUrl"));
+      setAddError(t("invalidIcalUrl") || "URL de iCal inválida");
       return;
     }
     const payload = {
@@ -735,14 +795,34 @@ function FeedsTab({
       source: form.source,
       importUrl: form.import_url.trim(),
     };
-    const res = await api.addPropertyFeed(tenantId, propertyId, payload);
+    
+    let res;
+    if (editingFeedId) {
+      res = await api.updatePropertyFeed(tenantId, editingFeedId, payload);
+    } else {
+      res = await api.addPropertyFeed(tenantId, propertyId, payload);
+    }
+
     if (res.success) {
       setShowForm(false);
+      setEditingFeedId(null);
       setForm({ name: "", source: "Airbnb", import_url: "" });
       loadFeeds();
     } else {
       setAddError(res.error || tc("errorSaving"));
     }
+  }
+
+  async function handleDelete(feedId: string) {
+    if (!confirm("¿Estás seguro de que quieres eliminar este calendario?")) return;
+    await api.deletePropertyFeed(tenantId, feedId);
+    loadFeeds();
+  }
+
+  function handleEdit(f: any) {
+    setForm({ name: f.name, source: f.source, import_url: f.import_url || "" });
+    setEditingFeedId(f.id);
+    setShowForm(true);
   }
 
   async function handleSync(feedId: string) {
@@ -797,12 +877,16 @@ function FeedsTab({
       {/* Feeds list */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Feeds</h3>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Sincronización (iCal)</h3>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              setEditingFeedId(null);
+              setForm({ name: "", source: "Airbnb", import_url: "" });
+              setShowForm(!showForm);
+            }}
             className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
           >
-            + {t("addFeed")}
+            + Agregar Calendario
           </button>
         </div>
 
@@ -863,7 +947,7 @@ function FeedsTab({
 
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => { setShowForm(false); setAddError(null); }}
+                onClick={() => { setShowForm(false); setAddError(null); setEditingFeedId(null); }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
                 {tc("cancel")}
@@ -903,14 +987,30 @@ function FeedsTab({
                     {f.errors > 0 && <span className="text-red-500">{f.errors} errores</span>}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleSync(f.id)}
-                  disabled={syncing === f.id}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 transition-colors"
-                >
-                  <RefreshCw size={14} className={syncing === f.id ? "animate-spin" : ""} />
-                  {t("syncNow")}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEdit(f)}
+                    className="p-1.5 rounded-lg text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                    title="Editar"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(f.id)}
+                    className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleSync(f.id)}
+                    disabled={syncing === f.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 transition-colors ml-2"
+                  >
+                    <RefreshCw size={14} className={syncing === f.id ? "animate-spin" : ""} />
+                    Sincronizar
+                  </button>
+                </div>
               </div>
             ))}
           </div>

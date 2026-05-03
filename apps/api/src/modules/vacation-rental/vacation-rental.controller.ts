@@ -104,6 +104,33 @@ export class VacationRentalController {
         return { success: true, data };
     }
 
+    @Post(':tenantId/properties/:propertyId/blocks')
+    @ApiOperation({ summary: 'Create a manual calendar block' })
+    async createBlock(
+        @Param('tenantId') tenantId: string,
+        @Param('propertyId') propertyId: string,
+        @Body() body: { checkIn: string; checkOut: string; summary?: string },
+    ) {
+        if (!body.checkIn || !body.checkOut) {
+            throw new BadRequestException('checkIn and checkOut are required');
+        }
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.propertiesService.createBlock(schemaName, propertyId, body);
+        return { success: true, data };
+    }
+
+    @Delete(':tenantId/blocks/:blockId')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Delete a manual calendar block' })
+    async deleteBlock(
+        @Param('tenantId') tenantId: string,
+        @Param('blockId') blockId: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.propertiesService.deleteBlock(schemaName, blockId);
+        return { success: true };
+    }
+
     // ── Bookings ────────────────────────────────────────────────
 
     @Get(':tenantId/properties/:propertyId/bookings')
@@ -181,6 +208,43 @@ export class VacationRentalController {
              VALUES ($1::uuid, $2, $3, $4, $5)
              RETURNING *`,
             [propertyId, body.feedName, body.source, body.importUrl || null, exportToken],
+        );
+
+        return { success: true, data: rows?.[0] };
+    }
+
+    @Put(':tenantId/feeds/:feedId')
+    @ApiOperation({ summary: 'Update an iCal feed' })
+    async updateFeed(
+        @Param('tenantId') tenantId: string,
+        @Param('feedId') feedId: string,
+        @Body() body: { feedName?: string; importUrl?: string },
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const sets: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+
+        if (body.feedName !== undefined) {
+            sets.push(`feed_name = $${idx}`);
+            params.push(body.feedName);
+            idx++;
+        }
+        if (body.importUrl !== undefined) {
+            sets.push(`import_url = $${idx}`);
+            params.push(body.importUrl);
+            idx++;
+        }
+
+        if (sets.length === 0) return { success: true };
+
+        sets.push(`updated_at = NOW()`);
+        params.push(feedId);
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE ical_feeds SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
+            params,
         );
 
         return { success: true, data: rows?.[0] };

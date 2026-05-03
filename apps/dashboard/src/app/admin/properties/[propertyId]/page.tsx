@@ -109,6 +109,7 @@ export default function PropertyDetailPage() {
   const tabs: TabItem[] = [
     { id: "calendar", label: t("calendar"), icon: CalendarDays },
     { id: "info", label: "Info", icon: Info },
+    { id: "photos", label: t("photos"), icon: Image },
     { id: "bookings", label: t("bookings"), icon: List },
     { id: "feeds", label: t("feeds"), icon: Link2 },
     { id: "checkin", label: t("checkIn"), icon: DoorOpen },
@@ -167,6 +168,15 @@ export default function PropertyDetailPage() {
           tc={tc}
         />
       )}
+      {activeTab === "photos" && (
+        <PhotosTab
+          property={property}
+          tenantId={activeTenantId!}
+          onSaved={loadProperty}
+          t={t}
+          tc={tc}
+        />
+      )}
       {activeTab === "bookings" && (
         <BookingsTab tenantId={activeTenantId!} propertyId={propertyId} t={t} tc={tc} />
       )}
@@ -206,12 +216,9 @@ function InfoTab({
   const [form, setForm] = useState({
     ...property,
     description: property.description || "",
-    images: property.images || [],
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Resync form when property reloads from parent (after save) — otherwise the
   // editor would show stale values until the user navigates away and back.
@@ -219,12 +226,8 @@ function InfoTab({
     setForm({
       ...property,
       description: property.description || "",
-      images: property.images || [],
     });
   }, [property.id, property.name, property.address, property.city, property.max_guests, property.bedrooms, property.bathrooms, property.night_price, property.cleaning_fee, property.min_nights, property.is_active]);
-
-  const MAX_IMAGES = 5;
-  const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
   function toggleAmenity(a: string) {
     setForm(prev => ({
@@ -233,62 +236,6 @@ function InfoTab({
         ? prev.amenities.filter((x: string) => x !== a)
         : [...(prev.amenities || []), a],
     }));
-  }
-
-  function removeImage(idx: number) {
-    setForm(prev => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== idx),
-    }));
-  }
-
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    setUploadError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (form.images.length >= MAX_IMAGES) {
-      setUploadError(t("photoLimitReached", { max: MAX_IMAGES }));
-      e.target.value = "";
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setUploadError(t("photoTooLarge", { maxMb: 2 }));
-      e.target.value = "";
-      return;
-    }
-    if (!file.type.startsWith("image/")) {
-      setUploadError(t("photoInvalidType"));
-      e.target.value = "";
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "https://api.parallly-chat.cloud"}/api/v1/media/upload`,
-        {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: formData,
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const url = data.url || data.data?.url;
-        if (url) {
-          setForm(prev => ({ ...prev, images: [...prev.images, url] }));
-        }
-      } else {
-        setUploadError(tc("errorSaving"));
-      }
-    } finally {
-      setUploading(false);
-      e.target.value = "";
-    }
   }
 
   async function handleSave() {
@@ -306,7 +253,6 @@ function InfoTab({
       currency: form.currency,
       minNights: form.min_nights,
       amenities: form.amenities,
-      images: form.images,
       isActive: form.is_active,
     });
     if (res.success) {
@@ -365,46 +311,6 @@ function InfoTab({
         <NumberField label={t("minNights")} min={1} value={form.min_nights} onChange={(v) => setForm({ ...form, min_nights: v })} className={inputCls} />
       </div>
 
-      {/* Images */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("photos")}</h4>
-          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            {form.images.length}/{MAX_IMAGES} · {t("photoMaxSizeNote", { maxMb: 2 })}
-          </span>
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          {form.images.map((url, i) => (
-            <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800">
-              <img src={url} alt="" className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => removeImage(i)}
-                className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-          {form.images.length < MAX_IMAGES && (
-            <label className={`aspect-square rounded-lg border-2 border-dashed border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
-              {uploading ? (
-                <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <Image size={20} className="text-neutral-400 dark:text-neutral-500 mb-1" />
-                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{t("addPhoto")}</span>
-                </>
-              )}
-            </label>
-          )}
-        </div>
-        {uploadError && (
-          <p className="mt-2 text-xs text-red-500">{uploadError}</p>
-        )}
-      </div>
-
       {/* Amenities by category */}
       <div>
         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">{t("amenities")}</label>
@@ -456,6 +362,332 @@ function InfoTab({
         {saved ? <Check size={16} /> : <Save size={16} />}
         {saved ? t("saved") : tc("save")}
       </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tab: Photos                                                        */
+/* ------------------------------------------------------------------ */
+
+const MAX_IMAGES = 5;
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+function PhotosTab({
+  property,
+  tenantId,
+  onSaved,
+  t,
+  tc,
+}: {
+  property: Property;
+  tenantId: string;
+  onSaved: () => void;
+  t: any;
+  tc: any;
+}) {
+  const [images, setImages] = useState<string[]>(property.images || []);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  // Resync when property reloads
+  useEffect(() => {
+    setImages(property.images || []);
+  }, [property.id, JSON.stringify(property.images)]);
+
+  const dirty = JSON.stringify(images) !== JSON.stringify(property.images || []);
+
+  async function uploadFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList);
+    const slotsLeft = MAX_IMAGES - images.length;
+    const errs: string[] = [];
+
+    if (slotsLeft <= 0) {
+      setErrors([t("photoLimitReached", { max: MAX_IMAGES })]);
+      return;
+    }
+
+    // Filter & slice up to slotsLeft
+    const valid: File[] = [];
+    for (const f of files) {
+      if (valid.length >= slotsLeft) {
+        errs.push(t("photoLimitWillExceed", { max: MAX_IMAGES, dropped: files.length - valid.length }));
+        break;
+      }
+      if (!f.type.startsWith("image/")) {
+        errs.push(`${f.name}: ${t("photoInvalidType")}`);
+        continue;
+      }
+      if (f.size > MAX_IMAGE_BYTES) {
+        errs.push(`${f.name}: ${t("photoTooLarge", { maxMb: 2 })}`);
+        continue;
+      }
+      valid.push(f);
+    }
+
+    if (valid.length === 0) {
+      setErrors(errs);
+      return;
+    }
+
+    setErrors(errs);
+    setUploading(true);
+    setProgress({ current: 0, total: valid.length });
+
+    const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+    const newUrls: string[] = [];
+
+    for (let i = 0; i < valid.length; i++) {
+      const f = valid[i];
+      try {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch(
+          `${apiBase}/media/upload/${tenantId}?entityType=property&entityId=${property.id}`,
+          {
+            method: "POST",
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+            body: fd,
+          },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const url = data.url || data.data?.url;
+          if (url) newUrls.push(url);
+        } else {
+          const text = await res.text();
+          errs.push(`${f.name}: ${tc("errorSaving")} (${res.status})`);
+          console.error("upload error", res.status, text);
+        }
+      } catch (err: any) {
+        errs.push(`${f.name}: ${err?.message || tc("errorSaving")}`);
+      }
+      setProgress({ current: i + 1, total: valid.length });
+    }
+
+    setImages(prev => [...prev, ...newUrls]);
+    setErrors(errs);
+    setUploading(false);
+    setProgress(null);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files && e.target.files.length > 0) {
+      uploadFiles(e.target.files);
+    }
+    e.target.value = "";
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      uploadFiles(e.dataTransfer.files);
+    }
+  }
+
+  function removeAt(idx: number) {
+    setImages(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function setPrimary(idx: number) {
+    if (idx === 0) return;
+    setImages(prev => {
+      const next = [...prev];
+      const [picked] = next.splice(idx, 1);
+      next.unshift(picked);
+      return next;
+    });
+  }
+
+  function moveLeft(idx: number) {
+    if (idx === 0) return;
+    setImages(prev => {
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  }
+
+  function moveRight(idx: number) {
+    if (idx === images.length - 1) return;
+    setImages(prev => {
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const res = await api.updateProperty(tenantId, property.id, { images });
+    if (res.success) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      onSaved();
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="max-w-4xl space-y-5">
+      {/* Header with counter */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("photos")}</h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            {t("photosDesc", { max: MAX_IMAGES, maxMb: 2 })}
+          </p>
+        </div>
+        <span className={`text-xs font-medium ${images.length >= MAX_IMAGES ? "text-amber-600 dark:text-amber-400" : "text-neutral-500 dark:text-neutral-400"}`}>
+          {images.length}/{MAX_IMAGES}
+        </span>
+      </div>
+
+      {/* Drop zone */}
+      {images.length < MAX_IMAGES && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          className={`relative rounded-xl border-2 border-dashed transition-colors px-6 py-10 text-center ${
+            dragOver
+              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30"
+              : "border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900"
+          } ${uploading ? "opacity-60 pointer-events-none" : "cursor-pointer hover:border-indigo-400"}`}
+        >
+          <label className="absolute inset-0 cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
+          </label>
+          <Image size={32} className="mx-auto text-neutral-400 dark:text-neutral-500 mb-2" />
+          <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            {t("photoDropTitle")}
+          </p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+            {t("photoDropSubtitle", { remaining: MAX_IMAGES - images.length, maxMb: 2 })}
+          </p>
+          {progress && (
+            <div className="mt-4 max-w-xs mx-auto">
+              <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-all"
+                  style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
+                {t("photoUploadingProgress", { current: progress.current, total: progress.total })}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Errors */}
+      {errors.length > 0 && (
+        <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 p-3">
+          <ul className="text-xs text-red-700 dark:text-red-300 space-y-0.5">
+            {errors.map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* Gallery */}
+      {images.length === 0 ? (
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-6">
+          {t("noPhotosYet")}
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {images.map((url, i) => (
+            <div key={url + i} className="group relative aspect-[4/3] rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-800">
+              <img src={url} alt="" className="w-full h-full object-cover" />
+
+              {/* Primary badge */}
+              {i === 0 && (
+                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-indigo-500 text-white text-[10px] font-semibold uppercase tracking-wide">
+                  {t("photoPrimary")}
+                </span>
+              )}
+
+              {/* Actions overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-2 gap-1">
+                <div className="flex gap-1">
+                  {i > 0 && (
+                    <button
+                      onClick={() => setPrimary(i)}
+                      title={t("photoSetPrimary")}
+                      className="p-1.5 rounded-lg bg-white/90 hover:bg-white text-neutral-700 transition-colors"
+                    >
+                      <Check size={14} />
+                    </button>
+                  )}
+                  {i > 0 && (
+                    <button
+                      onClick={() => moveLeft(i)}
+                      title={t("photoMoveLeft")}
+                      className="p-1.5 rounded-lg bg-white/90 hover:bg-white text-neutral-700 transition-colors"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                  )}
+                  {i < images.length - 1 && (
+                    <button
+                      onClick={() => moveRight(i)}
+                      title={t("photoMoveRight")}
+                      className="p-1.5 rounded-lg bg-white/90 hover:bg-white text-neutral-700 transition-colors"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => removeAt(i)}
+                  title={tc("delete")}
+                  className="p-1.5 rounded-lg bg-red-500/90 hover:bg-red-600 text-white transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Save bar (only when dirty) */}
+      {dirty && (
+        <div className="sticky bottom-4 flex items-center justify-end gap-2 p-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-lg">
+          <span className="text-xs text-neutral-500 dark:text-neutral-400 mr-auto">
+            {t("photosUnsaved")}
+          </span>
+          <button
+            onClick={() => setImages(property.images || [])}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          >
+            {tc("cancel")}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {saved ? <Check size={14} /> : <Save size={14} />}
+            {saved ? t("saved") : tc("save")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

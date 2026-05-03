@@ -29,16 +29,29 @@ export class IcalSyncService {
 
         try {
             // 2. Fetch and parse .ics
-            // We use axios directly to set User-Agent, as Airbnb/Booking block default node HTTP clients
-            const url = feed.import_url.trim().replace(/&amp;/g, '&');
+            // We use axios directly, mimicking Google Calendar to bypass Cloudflare/Bot protection
+            // Airbnb and Booking.com whitelist Google Calendar's User-Agent
+            let url = feed.import_url.trim().replace(/&amp;/g, '&');
+            url = url.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Remove zero-width spaces
+            
+            this.logger.log(`Fetching feed ${feedId} from ${url.substring(0, 50)}...`);
+            
             const response = await axios.get(url, {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/calendar, text/plain, */*'
+                    'User-Agent': 'Mozilla/5.0 (compatible; Google-Calendar-Importer; +http://www.google.com/bot.html)',
+                    'Accept': 'text/calendar, text/plain, */*',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate'
                 },
-                timeout: 15000,
+                timeout: 20000,
                 responseType: 'text'
             });
+            
+            this.logger.log(`Feed ${feedId} response status: ${response.status}, length: ${response.data?.length || 0}`);
+            if (response.data && response.data.length > 0) {
+                this.logger.debug(`Feed ${feedId} preview: ${response.data.substring(0, 200).replace(/\n/g, ' ')}`);
+            }
+
             const events = await ical.async.parseICS(response.data);
             const now = new Date();
             let imported = 0;
@@ -67,8 +80,8 @@ export class IcalSyncService {
                     checkOut = vevent.end ? vevent.end.toISOString().split('T')[0] : checkIn;
                 }
 
-                // Skip past events
-                if (new Date(checkOut) < now) continue;
+                // We import all events provided by the feed (including past ones) 
+                // so the user can see historical blocks and recent checkouts in their calendar.
 
                 // 3. UPSERT into ical_blocks
                 await this.prisma.executeInTenantSchema(
@@ -123,6 +136,9 @@ export class IcalSyncService {
                 [error.message?.substring(0, 500), feedId],
             );
             this.logger.error(`Feed sync failed ${feedId}: ${error.message}`);
+            if (error.response) {
+                this.logger.error(`Feed sync failed ${feedId} with response: ${error.response.status} - ${typeof error.response.data === 'string' ? error.response.data.substring(0, 200) : JSON.stringify(error.response.data).substring(0, 200)}`);
+            }
             return { imported: 0, deleted: 0 };
         }
     }

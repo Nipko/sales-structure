@@ -98,9 +98,19 @@ export class BillingService {
         const providerName = (tenant.paymentProvider || 'mercadopago') as PaymentProviderName;
         const provider = this.providerFactory.getByName(providerName);
 
-        // Create the customer on the provider side (or reuse existing one)
+        // Free trial without a card: skip the provider entirely. MP cannot
+        // create a preapproval without card_token_id, so we'd just 400. Keep
+        // the subscription local in 'trialing' state until the user adds a
+        // payment method via /subscription/payment-method, at which point we
+        // create the provider subscription. The plan's requiresCardForTrial
+        // flag has already gated this above for Pro/Enterprise.
+        const skipProviderCreate = !input.cardTokenId && plan.trialDays > 0 && !plan.requiresCardForTrial;
+
+        // Create the customer on the provider side (or reuse existing one).
+        // We still create the customer up front when possible so subsequent
+        // payment-method additions don't need to re-do this step.
         let providerCustomerId = tenant.paymentProviderCustomerId;
-        if (!providerCustomerId) {
+        if (!providerCustomerId && !skipProviderCreate) {
             const customer = await provider.createCustomer({
                 tenantId: tenant.id,
                 email: input.billingEmail || tenant.billingEmail || '',
@@ -110,17 +120,27 @@ export class BillingService {
             providerCustomerId = customer.providerCustomerId;
         }
 
-        // Create the subscription on the provider side. status=trialing is
-        // asserted by the provider via native trial support — if the provider
-        // returns something else, the adapter has a bug and we log+throw.
-        const providerSub = await provider.createSubscription({
-            tenantId: tenant.id,
-            providerCustomerId,
-            providerPlanId: this.resolveProviderPlanId(plan, providerName, input.billingCountry ?? tenant.billingCountry),
-            trialDays: plan.trialDays > 0 ? plan.trialDays : undefined,
-            cardTokenId: input.cardTokenId,
-            externalReference: tenant.id,
-        });
+        const providerSub = skipProviderCreate
+            ? {
+                  providerSubscriptionId: null as string | null,
+                  status: SubscriptionStatus.TRIALING,
+                  trialEndsAt: new Date(Date.now() + plan.trialDays * 86_400_000),
+                  currentPeriodStart: new Date(),
+                  currentPeriodEnd: new Date(Date.now() + plan.trialDays * 86_400_000),
+                  cancelAtPeriodEnd: false,
+              }
+            : await provider.createSubscription({
+                  tenantId: tenant.id,
+                  providerCustomerId: providerCustomerId!,
+                  providerPlanId: this.resolveProviderPlanId(plan, providerName, input.billingCountry ?? tenant.billingCountry),
+                  trialDays: plan.trialDays > 0 ? plan.trialDays : undefined,
+                  cardTokenId: input.cardTokenId,
+                  externalReference: tenant.id,
+                  metadata: {
+                      email: input.billingEmail || tenant.billingEmail || '',
+                      billingEmail: input.billingEmail || tenant.billingEmail || '',
+                  },
+              });
 
         const trialEndsAt = providerSub.trialEndsAt
             ?? (plan.trialDays > 0 ? new Date(Date.now() + plan.trialDays * 86_400_000) : undefined);

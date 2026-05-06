@@ -692,7 +692,8 @@ interface TemplatePickerModalProps {
 const VERTICAL_PREFIXES = [
   "tpl_salud_", "tpl_restaurante_", "tpl_inmobiliaria_",
   "tpl_belleza_", "tpl_educacion_", "tpl_automotriz_",
-  "tpl_turismo_",
+  "tpl_turismo_", "tpl_finanzas_", "tpl_legal_",
+  "tpl_retail_", "tpl_technology_",
 ];
 
 function isVerticalTemplate(id: string): boolean {

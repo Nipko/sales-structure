@@ -789,6 +789,32 @@ export const api = {
     createPropertyBlock: (tenantId: string, propertyId: string, data: { checkIn: string, checkOut: string, summary?: string }) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/blocks`, data),
     deletePropertyBlock: (tenantId: string, blockId: string) => apiDelete(`/vacation-rental/${tenantId}/blocks/${blockId}`),
 
+    // ─── Tours / Travel Packages (turismo: tours + agencia_viajes) ───
+    listTourPackages: (tenantId: string, includeInactive = false) =>
+        apiGet(`/tours/${tenantId}/packages${includeInactive ? '?includeInactive=true' : ''}`),
+    createTourPackage: (tenantId: string, data: any) =>
+        apiPost(`/tours/${tenantId}/packages`, data),
+    getTourPackage: (tenantId: string, packageId: string) =>
+        apiGet(`/tours/${tenantId}/packages/${packageId}`),
+    updateTourPackage: (tenantId: string, packageId: string, data: any) =>
+        apiPut(`/tours/${tenantId}/packages/${packageId}`, data),
+    deleteTourPackage: (tenantId: string, packageId: string) =>
+        apiDelete(`/tours/${tenantId}/packages/${packageId}`),
+    listTourInventory: (tenantId: string, packageId: string, fromDate?: string) =>
+        apiGet(`/tours/${tenantId}/packages/${packageId}/inventory${fromDate ? `?fromDate=${fromDate}` : ''}`),
+    createTourInventory: (tenantId: string, packageId: string, data: { departureDate: string; departureTime?: string; totalSeats: number; priceOverride?: number; notes?: string }) =>
+        apiPost(`/tours/${tenantId}/packages/${packageId}/inventory`, data),
+    deleteTourInventory: (tenantId: string, inventoryId: string) =>
+        apiDelete(`/tours/${tenantId}/inventory/${inventoryId}`),
+    checkTourAvailability: (tenantId: string, packageId: string, date: string, partySize: number) =>
+        apiGet(`/tours/${tenantId}/packages/${packageId}/availability?date=${date}&partySize=${partySize}`),
+    listTourBookings: (tenantId: string, packageId?: string) =>
+        apiGet(`/tours/${tenantId}/bookings${packageId ? `?packageId=${packageId}` : ''}`),
+    createTourBooking: (tenantId: string, data: any) =>
+        apiPost(`/tours/${tenantId}/bookings`, data),
+    cancelTourBooking: (tenantId: string, bookingId: string) =>
+        apiPut(`/tours/${tenantId}/bookings/${bookingId}/cancel`, {}),
+
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),
     getMrrTrend: (months = 12) => apiGet(`/financials/mrr-trend?months=${months}`),

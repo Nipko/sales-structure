@@ -44,6 +44,15 @@ export class VerticalsService {
             await this.seedServices(schemaName, definition, l);
         }
 
+        // 4b. Sub-type specific extras: tours / agencia_viajes get extra FAQs
+        // tailored to the operational reality (transfer, child discount,
+        // languages, cancellation, meeting point) and the tours.enabled tool
+        // flag is turned on so the AI can use search_packages out of the box.
+        if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) {
+            await this.seedToursExtras(tenantId, schemaName, l);
+            await this.enableToursTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -252,6 +261,136 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${definition.services.length} services`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed services: ${error.message}`);
+        }
+    }
+
+    /**
+     * Tours / agencia_viajes specific FAQs covering the operational questions
+     * customers always ask before booking an experience or package.
+     */
+    private async seedToursExtras(tenantId: string, schemaName: string, lang: string): Promise<void> {
+        try {
+            const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
+                {
+                    question: {
+                        es: '¿Incluye traslado desde el hotel?',
+                        en: 'Does it include hotel transfer?',
+                        pt: 'Inclui traslado do hotel?',
+                        fr: 'Le transfert depuis l\'hôtel est-il inclus?',
+                    },
+                    answer: {
+                        es: 'En la mayoría de tours sí está incluido el traslado desde hoteles del centro. Para zonas alejadas puede aplicar un costo extra. Confírmamelo y te cotizo.',
+                        en: 'Most tours include transfer from downtown hotels. Outlying areas may have an extra fee. Confirm your hotel and I\'ll quote.',
+                        pt: 'A maioria dos tours inclui traslado de hotéis do centro. Áreas distantes podem ter custo extra.',
+                        fr: 'La plupart des tours incluent le transfert depuis les hôtels du centre. Zones éloignées : supplément possible.',
+                    },
+                    category: 'tours',
+                },
+                {
+                    question: {
+                        es: '¿Hay descuento para niños?',
+                        en: 'Is there a discount for children?',
+                        pt: 'Há desconto para crianças?',
+                        fr: 'Y a-t-il une réduction pour les enfants?',
+                    },
+                    answer: {
+                        es: 'Sí, ofrecemos descuento para niños según el paquete. Cuéntame las edades para darte el precio exacto.',
+                        en: 'Yes, child discount applies depending on the package. Share the ages and I\'ll give you the exact price.',
+                        pt: 'Sim, oferecemos desconto para crianças conforme o pacote. Me diga as idades.',
+                        fr: 'Oui, une réduction enfant s\'applique selon le forfait. Indiquez-moi les âges.',
+                    },
+                    category: 'tours',
+                },
+                {
+                    question: {
+                        es: '¿En qué idiomas se hace el tour?',
+                        en: 'What languages is the tour offered in?',
+                        pt: 'Em quais idiomas é o passeio?',
+                        fr: 'Dans quelles langues le tour est-il offert?',
+                    },
+                    answer: {
+                        es: 'Trabajamos con guías en español, inglés y según disponibilidad portugués y francés. Indícame tu idioma preferido.',
+                        en: 'We have guides in Spanish, English and depending on availability Portuguese and French. Let me know your preferred language.',
+                        pt: 'Temos guias em espanhol, inglês e conforme disponibilidade português e francês.',
+                        fr: 'Nous avons des guides en espagnol, anglais et selon disponibilité portugais et français.',
+                    },
+                    category: 'tours',
+                },
+                {
+                    question: {
+                        es: '¿Cuál es la política de cancelación?',
+                        en: 'What is the cancellation policy?',
+                        pt: 'Qual é a política de cancelamento?',
+                        fr: 'Quelle est la politique d\'annulation?',
+                    },
+                    answer: {
+                        es: 'Cancelaciones con 48h de anticipación tienen reembolso completo. Menos de 48h aplica cargo del 50%. Sin aviso (no-show) no hay reembolso.',
+                        en: 'Cancellations 48h in advance get a full refund. Within 48h a 50% fee applies. No-shows are non-refundable.',
+                        pt: 'Cancelamentos com 48h de antecedência têm reembolso total. Menos de 48h aplica taxa de 50%.',
+                        fr: 'Annulations 48h à l\'avance : remboursement intégral. Moins de 48h : 50% de frais.',
+                    },
+                    category: 'politicas',
+                },
+                {
+                    question: {
+                        es: '¿Dónde es el punto de encuentro?',
+                        en: 'Where is the meeting point?',
+                        pt: 'Onde é o ponto de encontro?',
+                        fr: 'Où est le point de rencontre?',
+                    },
+                    answer: {
+                        es: 'Te enviaré el punto exacto al confirmar la reserva. Generalmente recogemos en hoteles del centro 15 minutos antes de la salida.',
+                        en: 'I\'ll send the exact location once your booking is confirmed. We usually pick up at downtown hotels 15 minutes before departure.',
+                        pt: 'Enviarei o ponto exato ao confirmar a reserva. Geralmente buscamos em hotéis do centro 15 minutos antes.',
+                        fr: 'J\'enverrai le point exact à la confirmation. Généralement ramassage dans les hôtels du centre 15 minutes avant.',
+                    },
+                    category: 'logistica',
+                },
+            ];
+
+            for (const f of faqs) {
+                const q = f.question[lang] || f.question['es'];
+                const a = f.answer[lang] || f.answer['es'];
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `INSERT INTO faqs (tenant_id, question, answer, category, is_published)
+                     VALUES ($1::uuid, $2, $3, $4, true)
+                     ON CONFLICT DO NOTHING`,
+                    [tenantId, q, a, f.category],
+                );
+            }
+            this.logger.debug(`Seeded ${faqs.length} tours-specific FAQs`);
+        } catch (error: any) {
+            this.logger.warn(`Failed to seed tours FAQs: ${error.message}`);
+        }
+    }
+
+    /**
+     * Turn on config.tools.tours.enabled for the default agent so the
+     * AI can call search_packages / create_tour_booking out of the box.
+     */
+    private async enableToursTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.tours = { ...(tools.tours || {}), enabled: true };
+            const newConfig = { ...config, tools };
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled tours tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable tours tool: ${error.message}`);
         }
     }
 }

@@ -38,6 +38,7 @@ import {
   PanelLeft,
   ChevronDown,
   ChevronRight,
+  Compass,
   type LucideIcon,
 } from "lucide-react";
 
@@ -71,6 +72,7 @@ const sectionDefs: NavSectionDef[] = [
       },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
       { labelKey: "properties", href: "/admin/properties", icon: Home },
+      { labelKey: "tours", href: "/admin/tours", icon: Compass },
     ],
   },
   {
@@ -143,6 +145,11 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const itemOrder = verticalConfig?.sidebar?.itemOrder as string[] | undefined;
 
   const showProperties = verticalConfig?.industry === 'turismo';
+  // Tours visible for all turismo tenants — sub-types `tours` and
+  // `agencia_viajes` get them as their primary surface, but `alquiler_vacacional`
+  // and `hotel` operators may also offer day experiences alongside their main
+  // service, so we don't gate by sub-type.
+  const showTours = verticalConfig?.industry === 'turismo';
 
   const isActive = useCallback((href?: string) => {
     if (!href) return false;
@@ -182,6 +189,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         if (!children) {
           if (hiddenItems?.includes(item.labelKey)) return null;
           if (item.labelKey === 'properties' && !showProperties) return null;
+          if (item.labelKey === 'tours' && !showTours) return null;
           if (item.labelKey === 'campaigns' && !isSupervisor) return null;
           if (item.labelKey === 'automation' && !isSupervisor) return null;
           if (item.labelKey === 'aiAgent' && !isAdmin) return null;

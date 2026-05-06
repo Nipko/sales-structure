@@ -3430,5 +3430,42 @@
       "cancelled": "Cancelled",
       "no_show": "No-show"
     }
+  },
+  "treatmentPlans": {
+    "title": "Treatment plans",
+    "active": "active",
+    "createPlan": "Create treatment plan",
+    "cancelPlan": "Cancel plan",
+    "cancelPlanConfirm": "Cancel this treatment plan? This cannot be undone.",
+    "emptyDesc": "No plans yet for this patient. Create one to track multi-session treatments.",
+    "name": "Plan name",
+    "namePlaceholder": "E.g. Orthodontics 18 months",
+    "nameRequired": "Name is required",
+    "planType": "Treatment type",
+    "totalSessions": "Total sessions",
+    "totalSessionsMin": "Must have at least 1 session",
+    "frequencyDays": "Frequency (days)",
+    "totalCost": "Total cost",
+    "currency": "Currency",
+    "startedAt": "Start date",
+    "notes": "Notes",
+    "sessionsShort": "sessions",
+    "noSessionsYet": "No sessions scheduled yet",
+    "addSession": "Add session",
+    "notScheduled": "Not scheduled",
+    "markCompleted": "Mark as completed",
+    "status": {
+      "active": "Active",
+      "completed": "Completed",
+      "paused": "Paused",
+      "cancelled": "Cancelled"
+    },
+    "sessionStatus": {
+      "pending": "Pending",
+      "scheduled": "Scheduled",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "no_show": "No-show"
+    }
   }
 }

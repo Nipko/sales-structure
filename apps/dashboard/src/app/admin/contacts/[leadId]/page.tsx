@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
+import { TreatmentPlansCard } from "@/components/TreatmentPlansCard";
 import { cn } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
@@ -43,6 +45,8 @@ export default function Lead360Page() {
     const params = useParams();
     const router = useRouter();
     const { activeTenantId } = useTenant();
+    const { verticalConfig } = useAuth();
+    const showTreatmentPlans = verticalConfig?.industry === 'salud';
     const t = useTranslations("contacts");
     const tc = useTranslations("common");
     const vt = useVerticalTerms();
@@ -665,6 +669,11 @@ export default function Lead360Page() {
                             </div>
                         )}
                     </div>
+
+                    {/* Treatment Plans (salud only) */}
+                    {showTreatmentPlans && activeTenantId && (
+                        <TreatmentPlansCard tenantId={activeTenantId} contactId={leadId} />
+                    )}
                 </div>
 
                 {/* === RIGHT PANEL: Timeline / Notes / Tasks === */}

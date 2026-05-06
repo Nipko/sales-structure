@@ -3430,5 +3430,42 @@
       "cancelled": "Cancelada",
       "no_show": "Não compareceu"
     }
+  },
+  "treatmentPlans": {
+    "title": "Planos de tratamento",
+    "active": "ativo",
+    "createPlan": "Criar plano de tratamento",
+    "cancelPlan": "Cancelar plano",
+    "cancelPlanConfirm": "Cancelar este plano? Esta ação não pode ser desfeita.",
+    "emptyDesc": "Ainda sem planos para este paciente. Crie um para acompanhar tratamentos de múltiplas sessões.",
+    "name": "Nome do plano",
+    "namePlaceholder": "Ex: Ortodontia 18 meses",
+    "nameRequired": "O nome é obrigatório",
+    "planType": "Tipo de tratamento",
+    "totalSessions": "Sessões totais",
+    "totalSessionsMin": "Deve ter pelo menos 1 sessão",
+    "frequencyDays": "Frequência (dias)",
+    "totalCost": "Custo total",
+    "currency": "Moeda",
+    "startedAt": "Data de início",
+    "notes": "Notas",
+    "sessionsShort": "sessões",
+    "noSessionsYet": "Ainda sem sessões agendadas",
+    "addSession": "Adicionar sessão",
+    "notScheduled": "Sem agendar",
+    "markCompleted": "Marcar como concluída",
+    "status": {
+      "active": "Ativo",
+      "completed": "Concluído",
+      "paused": "Pausado",
+      "cancelled": "Cancelado"
+    },
+    "sessionStatus": {
+      "pending": "Pendente",
+      "scheduled": "Agendada",
+      "completed": "Concluída",
+      "cancelled": "Cancelada",
+      "no_show": "Não compareceu"
+    }
   }
 }

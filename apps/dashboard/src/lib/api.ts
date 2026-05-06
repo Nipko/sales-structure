@@ -815,6 +815,24 @@ export const api = {
     cancelTourBooking: (tenantId: string, bookingId: string) =>
         apiPut(`/tours/${tenantId}/bookings/${bookingId}/cancel`, {}),
 
+    // ─── Treatment Plans (salud / dental, fisioterapia, estética) ───
+    listTreatmentPlans: (tenantId: string, contactId: string) =>
+        apiGet(`/treatment-plans/${tenantId}/contacts/${contactId}`),
+    getTreatmentPlan: (tenantId: string, planId: string) =>
+        apiGet(`/treatment-plans/${tenantId}/plans/${planId}`),
+    createTreatmentPlan: (tenantId: string, data: { contactId: string; name: string; planType?: string; totalSessions: number; frequencyDays?: number; totalCost?: number; currency?: string; startedAt?: string; notes?: string }) =>
+        apiPost(`/treatment-plans/${tenantId}/plans`, data),
+    updateTreatmentPlan: (tenantId: string, planId: string, data: any) =>
+        apiPut(`/treatment-plans/${tenantId}/plans/${planId}`, data),
+    cancelTreatmentPlan: (tenantId: string, planId: string) =>
+        apiDelete(`/treatment-plans/${tenantId}/plans/${planId}`),
+    addTreatmentSession: (tenantId: string, planId: string, data: { scheduledAt?: string; appointmentId?: string; notes?: string }) =>
+        apiPost(`/treatment-plans/${tenantId}/plans/${planId}/sessions`, data),
+    completeTreatmentSession: (tenantId: string, sessionId: string) =>
+        apiPut(`/treatment-plans/${tenantId}/sessions/${sessionId}/complete`, {}),
+    cancelTreatmentSession: (tenantId: string, sessionId: string) =>
+        apiPut(`/treatment-plans/${tenantId}/sessions/${sessionId}/cancel`, {}),
+
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),
     getMrrTrend: (months = 12) => apiGet(`/financials/mrr-trend?months=${months}`),

@@ -53,6 +53,13 @@ export class VerticalsService {
             await this.enableToursTool(schemaName);
         }
 
+        // 4c. Dental sub-type: dental-specific FAQs + activate treatments tool
+        // so the AI can answer about ongoing orthodontic / multi-session plans.
+        if (industry === 'salud' && subType === 'dental') {
+            await this.seedDentalExtras(tenantId, schemaName, l);
+            await this.enableTreatmentsTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -391,6 +398,136 @@ export class VerticalsService {
             this.logger.debug('Enabled tours tool on default agent');
         } catch (error: any) {
             this.logger.warn(`Failed to enable tours tool: ${error.message}`);
+        }
+    }
+
+    /**
+     * Dental-specific FAQs covering the operational questions patients ask
+     * before booking with a dental clinic.
+     */
+    private async seedDentalExtras(tenantId: string, schemaName: string, lang: string): Promise<void> {
+        try {
+            const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
+                {
+                    question: {
+                        es: '¿Trabajan con mi seguro / EPS / convenio?',
+                        en: 'Do you work with my insurance / health plan?',
+                        pt: 'Trabalham com meu plano de saúde?',
+                        fr: 'Travaillez-vous avec mon assurance santé?',
+                    },
+                    answer: {
+                        es: 'Trabajamos con varios convenios. Cuéntame cuál es el tuyo y la doctora confirma cobertura específica al momento de la valoración.',
+                        en: 'We work with several plans. Let me know yours and the doctor will confirm specific coverage at your assessment.',
+                        pt: 'Trabalhamos com vários planos. Me diga qual é o seu para confirmar a cobertura na avaliação.',
+                        fr: 'Nous travaillons avec plusieurs plans. Dites-moi le vôtre et la docteure confirmera à l\'évaluation.',
+                    },
+                    category: 'seguros',
+                },
+                {
+                    question: {
+                        es: '¿Cuánto cuesta una limpieza dental?',
+                        en: 'How much does a dental cleaning cost?',
+                        pt: 'Quanto custa uma limpeza dental?',
+                        fr: 'Combien coûte un détartrage?',
+                    },
+                    answer: {
+                        es: 'El costo de la limpieza varía según el tipo (rutinaria o profunda). Te lo confirmamos exactamente en la valoración previa, que es gratuita.',
+                        en: 'Cleaning cost depends on the type (routine or deep). We\'ll confirm at your free initial assessment.',
+                        pt: 'O custo varia conforme o tipo (rotina ou profunda). Confirmamos na avaliação prévia gratuita.',
+                        fr: 'Le coût varie selon le type (routine ou profond). Nous confirmons à l\'évaluation gratuite.',
+                    },
+                    category: 'costos',
+                },
+                {
+                    question: {
+                        es: '¿Cómo manejan el dolor o miedo al dentista?',
+                        en: 'How do you handle dental anxiety or pain?',
+                        pt: 'Como lidam com a dor ou medo do dentista?',
+                        fr: 'Comment gérez-vous la peur du dentiste ou la douleur?',
+                    },
+                    answer: {
+                        es: 'Trabajamos con anestesia local en todos los procedimientos. Para pacientes con ansiedad alta podemos coordinar sedación consciente con la doctora — agenda valoración para evaluarlo.',
+                        en: 'We use local anaesthesia for all procedures. For high anxiety we can coordinate conscious sedation — book an assessment to discuss.',
+                        pt: 'Usamos anestesia local em todos os procedimentos. Para alta ansiedade podemos coordenar sedação consciente.',
+                        fr: 'Nous utilisons l\'anesthésie locale. Pour l\'anxiété élevée, nous pouvons coordonner une sédation consciente.',
+                    },
+                    category: 'dolor',
+                },
+                {
+                    question: {
+                        es: '¿Cuánto tiempo dura un tratamiento de ortodoncia?',
+                        en: 'How long does orthodontic treatment take?',
+                        pt: 'Quanto tempo dura o tratamento ortodôntico?',
+                        fr: 'Combien de temps dure un traitement d\'orthodontie?',
+                    },
+                    answer: {
+                        es: 'Depende de tu caso, pero generalmente entre 12 y 24 meses con citas mensuales. Si ya tienes ortodoncia con nosotros, puedo consultarte el progreso de tu plan.',
+                        en: 'Depends on your case — typically 12-24 months with monthly visits. If you already have orthodontics with us, I can show your plan progress.',
+                        pt: 'Depende do caso — geralmente entre 12 e 24 meses com visitas mensais.',
+                        fr: 'Dépend du cas — généralement entre 12 et 24 mois avec visites mensuelles.',
+                    },
+                    category: 'ortodoncia',
+                },
+                {
+                    question: {
+                        es: '¿Atienden urgencias dentales?',
+                        en: 'Do you handle dental emergencies?',
+                        pt: 'Atendem emergências dentárias?',
+                        fr: 'Traitez-vous les urgences dentaires?',
+                    },
+                    answer: {
+                        es: 'Sí, manejamos urgencias en horario regular. Si tienes dolor intenso, traumatismo o sangrado abundante, te conecto YA con la clínica para coordinar cita inmediata.',
+                        en: 'Yes, we handle emergencies during business hours. If you have severe pain, trauma or heavy bleeding, I\'ll connect you with the clinic right away.',
+                        pt: 'Sim, atendemos emergências em horário regular. Para dor intensa, trauma ou sangramento, conecto você imediatamente.',
+                        fr: 'Oui, nous traitons les urgences pendant les heures d\'ouverture. Pour douleur intense, traumatisme ou saignement, je vous connecte immédiatement.',
+                    },
+                    category: 'urgencias',
+                },
+            ];
+
+            for (const f of faqs) {
+                const q = f.question[lang] || f.question['es'];
+                const a = f.answer[lang] || f.answer['es'];
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `INSERT INTO faqs (tenant_id, question, answer, category, is_published)
+                     VALUES ($1::uuid, $2, $3, $4, true)
+                     ON CONFLICT DO NOTHING`,
+                    [tenantId, q, a, f.category],
+                );
+            }
+            this.logger.debug(`Seeded ${faqs.length} dental-specific FAQs`);
+        } catch (error: any) {
+            this.logger.warn(`Failed to seed dental FAQs: ${error.message}`);
+        }
+    }
+
+    /**
+     * Turn on config.tools.treatments.enabled so the dental AI can read
+     * the patient's active treatment plan and upcoming sessions.
+     */
+    private async enableTreatmentsTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.treatments = { ...(tools.treatments || {}), enabled: true };
+            const newConfig = { ...config, tools };
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled treatments tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable treatments tool: ${error.message}`);
         }
     }
 }

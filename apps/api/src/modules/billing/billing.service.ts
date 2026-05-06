@@ -193,7 +193,7 @@ export class BillingService {
     // Upgrade / downgrade
     // -------------------------------------------------------------------------
 
-    async upgradeSubscription(tenantId: string, newPlanSlug: string) {
+    async upgradeSubscription(tenantId: string, newPlanSlug: string, cardTokenId?: string) {
         const sub = await this.requireSubscription(tenantId);
         const newPlan = await this.prisma.billingPlan.findUnique({ where: { slug: newPlanSlug } });
         if (!newPlan || !newPlan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: newPlanSlug });
@@ -202,33 +202,66 @@ export class BillingService {
         }
 
         const provider = this.providerFactory.getByName(sub.provider);
-        // For plan changes we need the tenant's current billing country to pick
-        // the right MP plan id. The Tenant row is authoritative here.
         const tenantForCountry = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { billingCountry: true },
+            select: { billingCountry: true, billingEmail: true },
         });
         const newProviderPlanId = this.resolveProviderPlanId(newPlan, sub.provider as PaymentProviderName, tenantForCountry?.billingCountry);
         if (!sub.providerSubscriptionId) {
             throw new BadRequestException({ error: 'missing_provider_subscription', message: 'Subscription has no provider id — cannot upgrade.' });
         }
 
-        const updated = await provider.changeSubscriptionPlan(sub.providerSubscriptionId, newProviderPlanId);
+        let updatedStatus = sub.status;
+        let currentPeriodStart = sub.currentPeriodStart;
+        let currentPeriodEnd = sub.currentPeriodEnd;
+        let newProviderSubscriptionId = sub.providerSubscriptionId;
+
+        // Mercado Pago doesn't support changing plans dynamically via PUT on existing subscriptions.
+        // We must cancel the old one and create a new one using the provided card token.
+        if (sub.provider === 'mercadopago') {
+            if (!cardTokenId) {
+                throw new BadRequestException({ error: 'card_token_required_for_upgrade', message: 'A new card token is required to upgrade a Mercado Pago subscription.' });
+            }
+            
+            // 1. Create the new subscription first to ensure the card is valid
+            const newProviderSub = await provider.createSubscription({
+                tenantId,
+                providerCustomerId: sub.providerCustomerId!, // Carry over synthetic id
+                providerPlanId: newProviderPlanId,
+                cardTokenId,
+                metadata: { email: tenantForCountry?.billingEmail || '' },
+            });
+            
+            // 2. Cancel the old subscription at Mercado Pago
+            await provider.cancelSubscription(sub.providerSubscriptionId, { immediate: true });
+            
+            updatedStatus = newProviderSub.status;
+            currentPeriodStart = newProviderSub.currentPeriodStart || null;
+            currentPeriodEnd = newProviderSub.currentPeriodEnd || null;
+            newProviderSubscriptionId = newProviderSub.providerSubscriptionId;
+        } else {
+            // Stripe or Mock
+            const updated = await provider.changeSubscriptionPlan(sub.providerSubscriptionId, newProviderPlanId);
+            updatedStatus = updated.status;
+            currentPeriodStart = updated.currentPeriodStart || null;
+            currentPeriodEnd = updated.currentPeriodEnd || null;
+        }
 
         await this.prisma.billingSubscription.update({
             where: { id: sub.id },
             data: {
                 planId: newPlan.id,
-                status: updated.status,
-                currentPeriodStart: updated.currentPeriodStart ?? sub.currentPeriodStart,
-                currentPeriodEnd: updated.currentPeriodEnd ?? sub.currentPeriodEnd,
+                status: updatedStatus,
+                currentPeriodStart: currentPeriodStart ?? sub.currentPeriodStart,
+                currentPeriodEnd: currentPeriodEnd ?? sub.currentPeriodEnd,
+                providerSubscriptionId: newProviderSubscriptionId,
             },
         });
         await this.prisma.tenant.update({
             where: { id: tenantId },
             data: {
-                subscriptionStatus: updated.status,
-                currentPeriodEnd: updated.currentPeriodEnd ?? sub.currentPeriodEnd ?? null,
+                subscriptionStatus: updatedStatus,
+                currentPeriodEnd: currentPeriodEnd ?? sub.currentPeriodEnd ?? null,
             },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);

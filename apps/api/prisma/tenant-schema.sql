@@ -1644,3 +1644,85 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."property_bookings" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_bookings_property" ON "{{SCHEMA_NAME}}"."property_bookings" ("property_id", "check_in", "check_out") WHERE "status" != 'cancelled';
+
+-- =====================================================================
+-- Tours & Travel Packages (turismo sub-types: tours, agencia_viajes)
+-- =====================================================================
+-- Unified table for both daily experiences (city tours, snorkel, parapente)
+-- and multi-day packages (Cartagena 3 days). The duration_type column
+-- distinguishes them: 'hours' for same-day tours, 'days' for packages.
+-- Inventory is optional — packages without rows in tour_inventory are
+-- treated as unlimited (e.g. "any-date" customisable trips).
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_packages" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "duration_type" VARCHAR(10) NOT NULL DEFAULT 'hours',
+    "duration_value" INTEGER NOT NULL DEFAULT 1,
+    "price" DECIMAL(15,2) DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "max_capacity" INTEGER DEFAULT 10,
+    "min_party_size" INTEGER DEFAULT 1,
+    "departure_location" TEXT,
+    "destination" VARCHAR(255),
+    "languages" JSONB DEFAULT '[]',
+    "includes" JSONB DEFAULT '[]',
+    "excludes" JSONB DEFAULT '[]',
+    "what_to_bring" TEXT,
+    "child_discount_pct" INTEGER DEFAULT 0,
+    "cancellation_policy" TEXT,
+    "images" JSONB DEFAULT '[]',
+    "tags" JSONB DEFAULT '[]',
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" INTEGER DEFAULT 0,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_tour_packages_active" ON "{{SCHEMA_NAME}}"."tour_packages" ("is_active", "sort_order") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_inventory" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "package_id" UUID NOT NULL,
+    "departure_date" DATE NOT NULL,
+    "departure_time" TIME,
+    "available_seats" INTEGER NOT NULL DEFAULT 0,
+    "total_seats" INTEGER NOT NULL DEFAULT 0,
+    "price_override" DECIMAL(15,2),
+    "is_active" BOOLEAN DEFAULT true,
+    "notes" TEXT,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_tour_inventory_unique" ON "{{SCHEMA_NAME}}"."tour_inventory" ("package_id", "departure_date", "departure_time");
+CREATE INDEX IF NOT EXISTS "idx_tour_inventory_date" ON "{{SCHEMA_NAME}}"."tour_inventory" ("package_id", "departure_date") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_bookings" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "package_id" UUID NOT NULL,
+    "inventory_id" UUID,
+    "contact_id" UUID,
+    "conversation_id" UUID,
+    "guest_name" VARCHAR(255),
+    "guest_email" VARCHAR(255),
+    "guest_phone" VARCHAR(50),
+    "departure_date" DATE NOT NULL,
+    "departure_time" TIME,
+    "party_size" INTEGER NOT NULL DEFAULT 1,
+    "adults" INTEGER NOT NULL DEFAULT 1,
+    "children" INTEGER DEFAULT 0,
+    "unit_price" DECIMAL(15,2),
+    "total_price" DECIMAL(15,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "language" VARCHAR(10),
+    "special_requests" TEXT,
+    "status" VARCHAR(50) DEFAULT 'reserved',
+    "payment_status" VARCHAR(50) DEFAULT 'pending',
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_tour_bookings_package_date" ON "{{SCHEMA_NAME}}"."tour_bookings" ("package_id", "departure_date") WHERE "status" != 'cancelled';
+CREATE INDEX IF NOT EXISTS "idx_tour_bookings_contact" ON "{{SCHEMA_NAME}}"."tour_bookings" ("contact_id") WHERE "contact_id" IS NOT NULL;

@@ -139,7 +139,8 @@ export default function BillingPage() {
         setTargetPlan(planSlug);
         try {
             const plan = plans.find((p) => p.slug === planSlug);
-            const needsCard = plan?.requiresCardForTrial && !subscription;
+            // MP no soporta cambios de plan en suscripciones activas sin recrearlas con un nuevo token.
+            const needsCard = !subscription ? plan?.requiresCardForTrial : true;
             if (needsCard && !cardTokenId) {
                 // Open the card modal; the modal's submit will call back into
                 // handleUpgrade with the token.

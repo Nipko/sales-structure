@@ -57,6 +57,7 @@ import { ExternalCrmModule } from './modules/external-crm/external-crm.module';
 import { MetaComplianceModule } from './modules/meta-compliance/meta-compliance.module';
 import { VerticalsModule } from './modules/verticals/verticals.module';
 import { VacationRentalModule } from './modules/vacation-rental/vacation-rental.module';
+import { ToursModule } from './modules/tours/tours.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -171,6 +172,7 @@ import llmConfig from './config/llm.config';
         MetaComplianceModule,
         VerticalsModule,
         VacationRentalModule,
+        ToursModule,
     ],
 })
 export class AppModule { }

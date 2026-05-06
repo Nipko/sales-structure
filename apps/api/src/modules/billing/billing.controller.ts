@@ -155,7 +155,7 @@ export class BillingController {
     @Post(':tenantId/subscription/upgrade')
     @UseGuards(AuthGuard('jwt'))
     async upgrade(@Param('tenantId') tenantId: string, @Body() body: ChangePlanDto) {
-        const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug);
+        const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug, body.cardTokenId);
         return { success: true, data: updated };
     }
 

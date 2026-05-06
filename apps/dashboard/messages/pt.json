@@ -3219,6 +3219,34 @@
       "appointments": "Agende sua primeira aula experimental",
       "broadcast": "Envie informações de cursos para seus alunos"
     },
+    "finanzas": {
+      "contacts": "Seus prospectos financeiros aparecerão quando consultarem",
+      "pipeline": "As solicitações de crédito ou apólices começarão aqui",
+      "inbox": "As consultas de seus clientes chegarão aqui",
+      "appointments": "Agende sua primeira assessoria financeira",
+      "broadcast": "Envie produtos e campanhas para seus clientes"
+    },
+    "servicios_profesionales": {
+      "contacts": "Seus clientes aparecerão quando solicitarem consulta",
+      "pipeline": "Seus casos em andamento aparecerão aqui",
+      "inbox": "As consultas de seus clientes chegarão aqui",
+      "appointments": "Agende sua primeira consulta inicial",
+      "broadcast": "Envie atualizações para seus clientes"
+    },
+    "retail": {
+      "contacts": "Seus compradores aparecerão quando entrarem em contato",
+      "pipeline": "Suas oportunidades de venda começarão aqui",
+      "inbox": "As consultas dos compradores chegarão aqui",
+      "appointments": "Agende consultorias de venda ou eventos",
+      "broadcast": "Envie promoções e catálogo para seus clientes"
+    },
+    "technology": {
+      "contacts": "Seus prospectos B2B aparecerão quando agendarem demo",
+      "pipeline": "Suas oportunidades SaaS começarão aqui",
+      "inbox": "As consultas de leads e suporte chegarão aqui",
+      "appointments": "Agende sua primeira demo personalizada",
+      "broadcast": "Envie atualizações de produto para seus usuários"
+    },
     "default": {
       "contacts": "Seus contatos aparecerão aqui quando enviarem mensagem",
       "pipeline": "Seu funil de vendas começará com seu primeiro lead",
@@ -3277,6 +3305,34 @@
       "addKnowledgeBase": "Carregue seus cursos e programas",
       "inviteTeam": "Convide sua equipe docente"
     },
+    "finanzas": {
+      "configureAgent": "Configure seu assistente financeiro",
+      "connectChannel": "Conecte o WhatsApp para receber consultas",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seus produtos e políticas",
+      "inviteTeam": "Convide seus consultores"
+    },
+    "servicios_profesionales": {
+      "configureAgent": "Configure sua recepção virtual",
+      "connectChannel": "Conecte o WhatsApp para receber consultas",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seus serviços e honorários",
+      "inviteTeam": "Convide sua equipe profissional"
+    },
+    "retail": {
+      "configureAgent": "Configure sua vendedora virtual",
+      "connectChannel": "Conecte WhatsApp e Instagram para receber compradores",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue seu catálogo de produtos",
+      "inviteTeam": "Convide sua equipe de vendas"
+    },
+    "technology": {
+      "configureAgent": "Configure seu SDR virtual",
+      "connectChannel": "Conecte WhatsApp e Messenger para captar leads",
+      "sendTestMessage": "Envie uma mensagem de teste",
+      "addKnowledgeBase": "Carregue features, preços e FAQs técnicas",
+      "inviteTeam": "Convide sua equipe de vendas e suporte"
+    },
     "default": {
       "configureAgent": "Configure seu agente IA",
       "connectChannel": "Conecte um canal de mensagens",
@@ -3293,6 +3349,10 @@
     "automotriz": "Sua concessionária virtual está pronta, {name}",
     "turismo": "Sua agência de viagens está pronta, {name}",
     "education": "Seu centro educacional está pronto, {name}",
+    "finanzas": "Seu escritório financeiro está pronto, {name}",
+    "servicios_profesionales": "Sua firma profissional está pronta, {name}",
+    "retail": "Sua loja está pronta para receber compradores, {name}",
+    "technology": "Sua plataforma SaaS está pronta, {name}",
     "default": "Bem-vindo, {name} · Visão geral da plataforma"
   },
   "help": {

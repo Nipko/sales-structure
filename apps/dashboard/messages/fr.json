@@ -3219,6 +3219,34 @@
       "appointments": "Planifiez votre premier cours d'essai",
       "broadcast": "Envoyez des informations de cours à vos étudiants"
     },
+    "finanzas": {
+      "contacts": "Vos prospects financiers apparaîtront lorsqu'ils vous contacteront",
+      "pipeline": "Les demandes de crédit ou polices commenceront ici",
+      "inbox": "Les demandes de vos clients apparaîtront ici",
+      "appointments": "Planifiez votre premier conseil financier",
+      "broadcast": "Envoyez produits et campagnes à vos clients"
+    },
+    "servicios_profesionales": {
+      "contacts": "Vos clients apparaîtront lorsqu'ils demanderont une consultation",
+      "pipeline": "Vos dossiers en cours apparaîtront ici",
+      "inbox": "Les demandes de vos clients apparaîtront ici",
+      "appointments": "Planifiez votre première consultation initiale",
+      "broadcast": "Envoyez des mises à jour à vos clients"
+    },
+    "retail": {
+      "contacts": "Vos acheteurs apparaîtront lorsqu'ils prendront contact",
+      "pipeline": "Vos opportunités de vente commenceront ici",
+      "inbox": "Les demandes des acheteurs apparaîtront ici",
+      "appointments": "Planifiez des consultations de vente ou événements",
+      "broadcast": "Envoyez promotions et catalogue à vos clients"
+    },
+    "technology": {
+      "contacts": "Vos prospects B2B apparaîtront lorsqu'ils réserveront une démo",
+      "pipeline": "Vos opportunités SaaS commenceront ici",
+      "inbox": "Les demandes de leads et support apparaîtront ici",
+      "appointments": "Planifiez votre première démo personnalisée",
+      "broadcast": "Envoyez des mises à jour de produit à vos utilisateurs"
+    },
     "default": {
       "contacts": "Vos contacts apparaîtront ici lorsqu'ils vous écriront",
       "pipeline": "Votre entonnoir de vente commencera avec votre premier prospect",
@@ -3277,6 +3305,34 @@
       "addKnowledgeBase": "Chargez vos cours et programmes",
       "inviteTeam": "Invitez votre équipe enseignante"
     },
+    "finanzas": {
+      "configureAgent": "Configurez votre assistant financier",
+      "connectChannel": "Connectez WhatsApp pour recevoir les demandes",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez vos produits et politiques",
+      "inviteTeam": "Invitez vos conseillers"
+    },
+    "servicios_profesionales": {
+      "configureAgent": "Configurez votre réception virtuelle",
+      "connectChannel": "Connectez WhatsApp pour recevoir les demandes",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez vos services et honoraires",
+      "inviteTeam": "Invitez votre équipe professionnelle"
+    },
+    "retail": {
+      "configureAgent": "Configurez votre vendeuse virtuelle",
+      "connectChannel": "Connectez WhatsApp et Instagram pour recevoir les acheteurs",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez votre catalogue de produits",
+      "inviteTeam": "Invitez votre équipe de vente"
+    },
+    "technology": {
+      "configureAgent": "Configurez votre SDR virtuel",
+      "connectChannel": "Connectez WhatsApp et Messenger pour capturer les leads",
+      "sendTestMessage": "Envoyez un message de test",
+      "addKnowledgeBase": "Chargez fonctionnalités, prix et FAQs techniques",
+      "inviteTeam": "Invitez votre équipe de vente et support"
+    },
     "default": {
       "configureAgent": "Configurez votre agent IA",
       "connectChannel": "Connectez un canal de messagerie",
@@ -3293,6 +3349,10 @@
     "automotriz": "Votre concession virtuelle est prête, {name}",
     "turismo": "Votre agence de voyages est prête, {name}",
     "education": "Votre centre éducatif est prêt, {name}",
+    "finanzas": "Votre cabinet financier est prêt, {name}",
+    "servicios_profesionales": "Votre cabinet professionnel est prêt, {name}",
+    "retail": "Votre boutique est prête à accueillir des acheteurs, {name}",
+    "technology": "Votre plateforme SaaS est prête, {name}",
     "default": "Bienvenue, {name} · Vue d'ensemble de la plateforme"
   },
   "help": {

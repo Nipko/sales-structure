@@ -3219,6 +3219,34 @@
       "appointments": "Schedule your first trial class",
       "broadcast": "Send course information to your students"
     },
+    "finanzas": {
+      "contacts": "Your financial prospects will appear when they reach out",
+      "pipeline": "Credit / insurance applications will start here",
+      "inbox": "Customer inquiries will appear here",
+      "appointments": "Schedule your first financial consultation",
+      "broadcast": "Send product offers and campaigns to your clients"
+    },
+    "servicios_profesionales": {
+      "contacts": "Your clients will appear when they request a consultation",
+      "pipeline": "Your active matters will be shown here",
+      "inbox": "Client inquiries will appear here",
+      "appointments": "Schedule your first initial consultation",
+      "broadcast": "Send updates to your clients"
+    },
+    "retail": {
+      "contacts": "Your shoppers will appear when they reach out",
+      "pipeline": "Your sales opportunities will start here",
+      "inbox": "Buyer inquiries will appear here",
+      "appointments": "Schedule sales consultations or events",
+      "broadcast": "Send promotions and catalog to your customers"
+    },
+    "technology": {
+      "contacts": "Your B2B prospects will appear when they book a demo",
+      "pipeline": "Your SaaS opportunities will start here",
+      "inbox": "Lead and support inquiries will appear here",
+      "appointments": "Schedule your first personalised demo",
+      "broadcast": "Send product updates to your users"
+    },
     "default": {
       "contacts": "Your contacts will appear here when they message you",
       "pipeline": "Your sales funnel will start with your first lead",
@@ -3277,6 +3305,34 @@
       "addKnowledgeBase": "Upload your courses and programs",
       "inviteTeam": "Invite your teaching staff"
     },
+    "finanzas": {
+      "configureAgent": "Set up your financial assistant",
+      "connectChannel": "Connect WhatsApp to receive inquiries",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your products and policies",
+      "inviteTeam": "Invite your advisors"
+    },
+    "servicios_profesionales": {
+      "configureAgent": "Set up your virtual reception",
+      "connectChannel": "Connect WhatsApp to receive inquiries",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your services and fees",
+      "inviteTeam": "Invite your professional team"
+    },
+    "retail": {
+      "configureAgent": "Set up your virtual sales assistant",
+      "connectChannel": "Connect WhatsApp & Instagram to receive shoppers",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload your product catalog",
+      "inviteTeam": "Invite your sales team"
+    },
+    "technology": {
+      "configureAgent": "Set up your virtual SDR",
+      "connectChannel": "Connect WhatsApp & Messenger to capture leads",
+      "sendTestMessage": "Send a test message",
+      "addKnowledgeBase": "Upload features, pricing and technical FAQs",
+      "inviteTeam": "Invite your sales and support team"
+    },
     "default": {
       "configureAgent": "Set up your AI agent",
       "connectChannel": "Connect a messaging channel",
@@ -3293,6 +3349,10 @@
     "automotriz": "Your virtual dealership is ready, {name}",
     "turismo": "Your travel agency is ready, {name}",
     "education": "Your education center is ready, {name}",
+    "finanzas": "Your financial office is ready, {name}",
+    "servicios_profesionales": "Your professional firm is ready, {name}",
+    "retail": "Your store is ready to receive shoppers, {name}",
+    "technology": "Your SaaS platform is ready, {name}",
     "default": "Welcome, {name} · Platform overview"
   },
   "help": {

@@ -81,18 +81,41 @@ export default function SetupWizardPage() {
     };
 
     const handleFinish = async () => {
-        if (!tenantId || !selectedTemplate) return;
+        if (!tenantId || !selectedTemplate) {
+            // Treat "finish without template" the same as skip — mark
+            // completed so the redirect loop in /admin's setup-status check
+            // releases. Otherwise the user gets bounced right back here.
+            await handleSkip();
+            return;
+        }
         setSaving(true);
-        await api.applySetupTemplate(tenantId, {
-            templateId: selectedTemplate.id,
-            customizations: { agentName, greeting, tone },
-            selectedChannels,
-        });
-        setSaving(false);
-        router.push("/admin");
+        try {
+            await api.applySetupTemplate(tenantId, {
+                templateId: selectedTemplate.id,
+                customizations: { agentName, greeting, tone },
+                selectedChannels,
+            });
+        } finally {
+            setSaving(false);
+        }
+        // Hard navigation so the next /admin mount re-runs setup-status fresh.
+        window.location.href = "/admin";
     };
 
-    const handleSkip = () => router.push("/admin");
+    const handleSkip = async () => {
+        if (!tenantId) {
+            router.push("/admin");
+            return;
+        }
+        try {
+            await api.skipSetupWizard(tenantId);
+        } catch {
+            // Even if the API call fails, push forward — better to land in
+            // /admin and have setup-wizard show again on next visit than to
+            // trap the user here. The next finish/skip will retry the flag.
+        }
+        window.location.href = "/admin";
+    };
 
     const STEPS = [
         { key: "step1Title", icon: Target },

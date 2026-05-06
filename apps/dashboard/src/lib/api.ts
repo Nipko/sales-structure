@@ -120,6 +120,8 @@ export const api = {
 
     applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[] }) =>
         apiPost(`/persona/${tenantId}/setup-wizard`, data),
+    skipSetupWizard: (tenantId: string) =>
+        apiPost(`/persona/${tenantId}/setup-wizard/skip`, {}),
 
     getSetupStatus: (tenantId: string) =>
         apiGet(`/persona/${tenantId}/setup-status`),

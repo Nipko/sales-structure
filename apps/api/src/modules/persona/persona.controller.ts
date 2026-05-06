@@ -134,6 +134,29 @@ export class PersonaController {
         return { success: true, data: saved };
     }
 
+    @Post(':tenantId/setup-wizard/skip')
+    @ApiOperation({ summary: 'Mark the setup wizard as skipped without applying a template — prevents redirect loop' })
+    async skipSetupWizard(@Param('tenantId') tenantId: string) {
+        const existing = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const settings = (existing?.settings as any) || {};
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: {
+                    ...settings,
+                    setupWizardCompleted: true,
+                    setupWizardSkipped: true,
+                    setupWizardCompletedAt: new Date().toISOString(),
+                },
+            },
+        });
+        this.logger.log(`Setup wizard skipped for tenant ${tenantId}`);
+        return { success: true };
+    }
+
     @Get(':tenantId/setup-status')
     @ApiOperation({ summary: 'Get setup wizard completion status' })
     async getSetupStatus(@Param('tenantId') tenantId: string) {

@@ -740,7 +740,7 @@ export class PersonaService {
      * Spanish is the primary language (LATAM market). English as fallback for non-es.
      * Portuguese and French get English versions (LLM adapts the tone regardless).
      */
-    private getBuiltinTemplates(lang: string = 'es'): any[] {
+    getBuiltinTemplates(lang: string = 'es'): any[] {
         if (lang !== 'es') return this.getBuiltinTemplatesEn();
         return [
             {

@@ -25,9 +25,45 @@ export class PersonaController {
     // ── Templates for Setup Wizard ──
 
     @Get('templates')
-    @ApiOperation({ summary: 'Get all pre-built persona templates' })
-    async getTemplates() {
-        return { success: true, data: PERSONA_TEMPLATES };
+    @ApiOperation({
+        summary: 'Get pre-built persona templates for the setup wizard. When ?tenantId is provided, vertical-specific templates for that tenant\'s industry are returned first.',
+    })
+    async getTemplates(@Query('tenantId') tenantId?: string) {
+        // Setup wizard backward compat: when no tenantId is supplied, return the
+        // legacy PERSONA_TEMPLATES so older clients keep working. New flow
+        // passes tenantId to get vertical templates first + generic builtins.
+        if (!tenantId) {
+            return { success: true, data: PERSONA_TEMPLATES };
+        }
+
+        // Resolve tenant industry + language. Vertical templates appear first.
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { industry: true, language: true, settings: true },
+        });
+        const lang = (tenant?.language || 'es-CO').split('-')[0];
+        const settings = (tenant?.settings as any) || {};
+        const industry = settings?.verticalConfig?.industry || tenant?.industry || undefined;
+
+        const verticals = industry ? (this.personaService.getVerticalTemplates(industry, lang) || []) : [];
+        const builtins = this.personaService.getBuiltinTemplates(lang);
+
+        // Normalise to the shape the setup-wizard expects: every entry exposes
+        // `config` so the React form can read tmpl.config.persona.* uniformly.
+        const normalize = (t: any) => ({
+            ...t,
+            config: t.config || t.config_json,
+            // Setup wizard reads nameKey/descKey for i18n; vertical templates
+            // already have plain `name`/`description` strings, so we mirror them
+            // into the same field names the wizard already renders.
+            nameKey: t.nameKey || undefined,
+            descKey: t.descKey || undefined,
+        });
+
+        return {
+            success: true,
+            data: [...verticals.map(normalize), ...builtins.map(normalize)],
+        };
     }
 
     @Post(':tenantId/setup-wizard')
@@ -37,13 +73,30 @@ export class PersonaController {
         @Body() body: { templateId: string; customizations?: any; selectedChannels?: string[] },
         @Req() req: any,
     ) {
-        const template = PERSONA_TEMPLATES.find(t => t.id === body.templateId);
-        if (!template) {
+        // Look up the template across all three sources: legacy PERSONA_TEMPLATES
+        // (older onboarding wizard), new generic builtins (tpl_sales, tpl_support…)
+        // and vertical templates (tpl_salud_*, tpl_turismo_*…). The first hit wins.
+        const tenantForLang = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { language: true, industry: true, settings: true },
+        });
+        const lang = (tenantForLang?.language || 'es-CO').split('-')[0];
+        const settings = (tenantForLang?.settings as any) || {};
+        const industry = settings?.verticalConfig?.industry || tenantForLang?.industry || undefined;
+
+        const verticalSet = industry ? (this.personaService.getVerticalTemplates(industry, lang) || []) : [];
+        const builtinSet = this.personaService.getBuiltinTemplates(lang);
+
+        const newSystemMatch = [...verticalSet, ...builtinSet].find(t => t.id === body.templateId);
+        const legacyMatch = PERSONA_TEMPLATES.find(t => t.id === body.templateId);
+        const sourceConfig = newSystemMatch?.config_json || newSystemMatch?.config || legacyMatch?.config;
+
+        if (!sourceConfig) {
             return { success: false, error: 'Template not found' };
         }
 
         // Merge template config with customizations
-        const config = JSON.parse(JSON.stringify(template.config));
+        const config = JSON.parse(JSON.stringify(sourceConfig));
         if (body.customizations) {
             if (body.customizations.agentName) config.persona.name = body.customizations.agentName;
             if (body.customizations.greeting) config.persona.greeting = body.customizations.greeting;

@@ -55,17 +55,23 @@ export default function SetupWizardPage() {
     const [selectedChannels, setSelectedChannels] = useState<string[]>(["whatsapp"]);
 
     useEffect(() => {
-        api.getPersonaTemplates().then(res => {
+        if (!tenantId) return;
+        api.getPersonaTemplates(tenantId).then(res => {
             if (res.success) setTemplates(res.data || []);
             setLoading(false);
         });
-    }, []);
+    }, [tenantId]);
 
     const handleSelectTemplate = (tmpl: any) => {
+        // New-system templates expose config_json; legacy ones expose config.
+        // The /persona/templates endpoint normalises both into `config`, but we
+        // double-check here so the wizard never crashes on a partial payload.
+        const cfg = tmpl.config || tmpl.config_json;
+        if (!cfg?.persona) return;
         setSelectedTemplate(tmpl);
-        setAgentName(tmpl.config.persona.name);
-        setGreeting(tmpl.config.persona.greeting);
-        setTone(tmpl.config.persona.personality.tone);
+        setAgentName(cfg.persona.name || "");
+        setGreeting(cfg.persona.greeting || "");
+        setTone(cfg.persona.personality?.tone || "amigable");
     };
 
     const toggleChannel = (id: string) => {
@@ -199,8 +205,8 @@ export default function SetupWizardPage() {
                                         <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-3">
                                             <Icon size={20} />
                                         </div>
-                                        <p className="text-sm font-semibold text-foreground mb-1 truncate">{t(tmpl.nameKey)}</p>
-                                        <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">{t(tmpl.descKey)}</p>
+                                        <p className="text-sm font-semibold text-foreground mb-1 truncate">{tmpl.nameKey ? t(tmpl.nameKey) : (tmpl.name || tmpl.id)}</p>
+                                        <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">{tmpl.descKey ? t(tmpl.descKey) : (tmpl.description || "")}</p>
                                     </button>
                                 );
                             })}

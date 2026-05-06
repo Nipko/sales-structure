@@ -115,8 +115,8 @@ export const api = {
     updateTenantTimezone: (timezone: string) => apiPost("/auth/tenant/timezone", { timezone }),
 
     // --- Setup Wizard ---
-    getPersonaTemplates: () =>
-        apiGet("/persona/templates"),
+    getPersonaTemplates: (tenantId?: string) =>
+        apiGet(`/persona/templates${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
 
     applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[] }) =>
         apiPost(`/persona/${tenantId}/setup-wizard`, data),

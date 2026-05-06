@@ -1726,3 +1726,59 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_bookings" (
 );
 CREATE INDEX IF NOT EXISTS "idx_tour_bookings_package_date" ON "{{SCHEMA_NAME}}"."tour_bookings" ("package_id", "departure_date") WHERE "status" != 'cancelled';
 CREATE INDEX IF NOT EXISTS "idx_tour_bookings_contact" ON "{{SCHEMA_NAME}}"."tour_bookings" ("contact_id") WHERE "contact_id" IS NOT NULL;
+
+-- =====================================================================
+-- Treatment Plans (salud sub-type: dental, fisioterapia, estética)
+-- =====================================================================
+-- Multi-session treatments where one customer pays for / commits to a series
+-- of sessions over time. Tracks total vs completed, per-session status, and
+-- next recall date so the AI can answer "how many sessions left?" / "when
+-- is my next appointment?" without asking the human team.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."treatment_plans" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID NOT NULL,
+    "name" VARCHAR(255) NOT NULL,                      -- e.g. "Ortodoncia 18 meses"
+    "plan_type" VARCHAR(100),                          -- ortodoncia, fisioterapia, blanqueamiento, etc.
+    "total_sessions" INTEGER NOT NULL DEFAULT 1,
+    "completed_sessions" INTEGER NOT NULL DEFAULT 0,
+    "frequency_days" INTEGER,                          -- nominal cadence between sessions (e.g. 30 for monthly)
+    "total_cost" DECIMAL(15,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "started_at" DATE,
+    "expected_end_at" DATE,
+    "completed_at" DATE,
+    "status" VARCHAR(50) DEFAULT 'active',             -- active | completed | paused | cancelled
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_treatment_plans_contact" ON "{{SCHEMA_NAME}}"."treatment_plans" ("contact_id") WHERE "status" = 'active';
+CREATE INDEX IF NOT EXISTS "idx_treatment_plans_status" ON "{{SCHEMA_NAME}}"."treatment_plans" ("status");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."treatment_sessions" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "plan_id" UUID NOT NULL,
+    "appointment_id" UUID,                             -- optional link to actual appointment
+    "session_number" INTEGER NOT NULL,                 -- 1, 2, 3, ...
+    "scheduled_at" TIMESTAMP,
+    "completed_at" TIMESTAMP,
+    "status" VARCHAR(50) DEFAULT 'pending',            -- pending | scheduled | completed | cancelled | no_show
+    "notes" TEXT,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_treatment_sessions_plan" ON "{{SCHEMA_NAME}}"."treatment_sessions" ("plan_id", "session_number");
+CREATE INDEX IF NOT EXISTS "idx_treatment_sessions_appt" ON "{{SCHEMA_NAME}}"."treatment_sessions" ("appointment_id") WHERE "appointment_id" IS NOT NULL;
+
+-- =====================================================================
+-- Recall: column on contacts to track "next recall date" so the
+-- time_since_last_appointment trigger can run a single indexed query
+-- across a tenant instead of computing this from appointments every time.
+-- Updated by appointment lifecycle events (created/completed).
+-- =====================================================================
+ALTER TABLE "{{SCHEMA_NAME}}"."contacts" ADD COLUMN IF NOT EXISTS "last_appointment_at" TIMESTAMP;
+ALTER TABLE "{{SCHEMA_NAME}}"."contacts" ADD COLUMN IF NOT EXISTS "next_recall_at" TIMESTAMP;
+CREATE INDEX IF NOT EXISTS "idx_contacts_recall" ON "{{SCHEMA_NAME}}"."contacts" ("next_recall_at") WHERE "next_recall_at" IS NOT NULL;

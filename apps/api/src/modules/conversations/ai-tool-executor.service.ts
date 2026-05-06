@@ -7,6 +7,7 @@ import { PoliciesService } from '../policies/policies.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { PropertiesService } from '../vacation-rental/properties.service';
 import { ToursService } from '../tours/tours.service';
+import { TreatmentPlansService } from '../treatment-plans/treatment-plans.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -26,6 +27,7 @@ export class AIToolExecutorService {
         private knowledgeService: KnowledgeService,
         private propertiesService: PropertiesService,
         private toursService: ToursService,
+        private treatmentService: TreatmentPlansService,
     ) { }
 
     /**
@@ -113,6 +115,13 @@ export class AIToolExecutorService {
 
                 case 'create_tour_booking':
                     return this.createTourBooking(schemaName, contactId, args, conversationId);
+
+                // ── Treatment Plans tools ──────────────────────────
+                case 'get_treatment_plan':
+                    return this.getTreatmentPlanForContact(schemaName, contactId);
+
+                case 'list_upcoming_sessions':
+                    return this.listUpcomingSessions(schemaName, contactId, args.limit);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1133,6 +1142,54 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             this.logger.warn(`[Tool] create_tour_booking failed: ${e.message}`);
+            return { error: e.message };
+        }
+    }
+
+    // ── Treatment Plans tool handlers ─────────────────────────────
+
+    private async getTreatmentPlanForContact(schemaName: string, contactId: string): Promise<any> {
+        try {
+            const summary = await this.treatmentService.summaryForContact(schemaName, contactId);
+            if (!summary) return { hasPlan: false };
+            const p = summary.plan;
+            return {
+                hasPlan: true,
+                plan: {
+                    id: p.id,
+                    name: p.name,
+                    planType: p.plan_type,
+                    totalSessions: p.total_sessions,
+                    completedSessions: p.completed_sessions,
+                    sessionsLeft: summary.sessionsLeft,
+                    progressPct: p.total_sessions > 0
+                        ? Math.round((p.completed_sessions / p.total_sessions) * 100)
+                        : 0,
+                    startedAt: p.started_at,
+                    expectedEndAt: p.expected_end_at,
+                    status: p.status,
+                },
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async listUpcomingSessions(schemaName: string, contactId: string, limit?: number): Promise<any> {
+        try {
+            const summary = await this.treatmentService.summaryForContact(schemaName, contactId);
+            if (!summary) return { upcomingSessions: [] };
+            const items = (summary.upcomingSessions || []).slice(0, limit || 5);
+            return {
+                upcomingSessions: items.map((s: any) => ({
+                    id: s.id,
+                    sessionNumber: s.session_number,
+                    scheduledAt: s.scheduled_at,
+                    status: s.status,
+                })),
+                sessionsLeft: summary.sessionsLeft,
+            };
+        } catch (e: any) {
             return { error: e.message };
         }
     }

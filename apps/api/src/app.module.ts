@@ -58,6 +58,7 @@ import { MetaComplianceModule } from './modules/meta-compliance/meta-compliance.
 import { VerticalsModule } from './modules/verticals/verticals.module';
 import { VacationRentalModule } from './modules/vacation-rental/vacation-rental.module';
 import { ToursModule } from './modules/tours/tours.module';
+import { TreatmentPlansModule } from './modules/treatment-plans/treatment-plans.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -173,6 +174,7 @@ import llmConfig from './config/llm.config';
         VerticalsModule,
         VacationRentalModule,
         ToursModule,
+        TreatmentPlansModule,
     ],
 })
 export class AppModule { }

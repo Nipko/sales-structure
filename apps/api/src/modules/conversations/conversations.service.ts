@@ -22,6 +22,7 @@ import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
 import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
+import { TREATMENT_TOOLS } from './tools/treatment-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -810,6 +811,9 @@ export class ConversationsService {
         }
         if (cfgTools?.tours?.enabled === true) {
             tools = [...tools, ...TOURS_TOOLS];
+        }
+        if (cfgTools?.treatments?.enabled === true) {
+            tools = [...tools, ...TREATMENT_TOOLS];
         }
 
         if (bookingState.step && bookingState.step !== 'idle') {

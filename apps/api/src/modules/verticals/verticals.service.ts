@@ -83,11 +83,41 @@ export class VerticalsService {
         // Load from DB
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true },
+            select: { settings: true, industry: true },
         });
 
         const settings = tenant?.settings as any;
-        const config = settings?.verticalConfig as TenantVerticalConfig | undefined;
+        let config = settings?.verticalConfig as TenantVerticalConfig | undefined;
+
+        // Fallback for tenants created before settings.verticalConfig was
+        // persisted: rebuild the config on the fly from tenant.industry and
+        // the static vertical definition. We also write it back to settings so
+        // future calls don't have to rebuild.
+        if (!config && tenant?.industry) {
+            const definition = getVerticalDefinition(tenant.industry);
+            config = {
+                industry: tenant.industry,
+                subType: settings?.subType ?? null,
+                terminology: definition.terminology,
+                sidebar: definition.sidebar,
+                dashboard: definition.dashboard,
+                bookingEnabled: definition.bookingEnabled,
+            };
+            try {
+                await this.prisma.tenant.update({
+                    where: { id: tenantId },
+                    data: {
+                        settings: {
+                            ...(settings || {}),
+                            verticalConfig: config,
+                        },
+                    },
+                });
+                this.logger.log(`Backfilled verticalConfig for tenant ${tenantId} (industry=${tenant.industry})`);
+            } catch (err: any) {
+                this.logger.warn(`Failed to persist backfilled verticalConfig for ${tenantId}: ${err?.message}`);
+            }
+        }
 
         if (config) {
             await this.redis.setJson(cacheKey, config, 600); // 10 min TTL

@@ -688,15 +688,28 @@ export class PersonaService {
      * When `industry` is supplied, vertical templates for that industry are prepended.
      */
     async listTemplates(tenantId: string, industry?: string): Promise<any[]> {
-        // Get tenant language to return templates in the right language
+        // Resolve language + industry from the tenant record. We fall back to
+        // tenant.industry when the caller did not pass it, so vertical templates
+        // still show up for tenants created before settings.verticalConfig was
+        // persisted (i.e. before the May 2 onboarding fix). The query param is
+        // still respected when supplied — useful for the dashboard or for super
+        // admins previewing other industries.
         let tenantLang = 'es';
+        let resolvedIndustry: string | undefined = industry;
         try {
-            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { language: true } });
-            tenantLang = (tenant?.language || 'es-CO').split('-')[0]; // es-CO → es
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true, industry: true, settings: true },
+            });
+            tenantLang = (tenant?.language || 'es-CO').split('-')[0];
+            if (!resolvedIndustry) {
+                const settings = tenant?.settings as any;
+                resolvedIndustry = settings?.verticalConfig?.industry || tenant?.industry || undefined;
+            }
         } catch {}
 
-        // Vertical templates appear first when industry is provided
-        const verticals: any[] = industry ? (this.getVerticalTemplates(industry, tenantLang) || []) : [];
+        // Vertical templates appear first when industry is resolved
+        const verticals: any[] = resolvedIndustry ? (this.getVerticalTemplates(resolvedIndustry, tenantLang) || []) : [];
         const builtins = this.getBuiltinTemplates(tenantLang);
         let userTemplates: any[] = [];
         try {

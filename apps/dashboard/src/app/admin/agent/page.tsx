@@ -130,7 +130,10 @@ export default function AgentListPage() {
 
   async function openTemplatePicker() {
     setShowTemplatePicker(true);
-    if (templates.length === 0 && activeTenantId) {
+    // Always refetch — the API resolves the tenant's industry server-side when
+    // we don't pass it, and we want the freshest list of vertical templates
+    // (the cached one might predate a vertical change).
+    if (activeTenantId) {
       setTemplatesLoading(true);
       try {
         const res = await api.listAgentTemplates(activeTenantId, verticalConfig?.industry);

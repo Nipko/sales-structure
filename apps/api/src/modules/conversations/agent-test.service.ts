@@ -131,6 +131,7 @@ export class AgentTestService {
         if (cfgTools?.orders?.enabled === true) tools.push(ORDER_TOOL);
         if (cfgTools?.crm?.enabled === true) tools.push(CUSTOMER_CONTEXT_TOOL);
         if (cfgTools?.properties?.enabled === true) tools.push(...VACATION_RENTAL_TOOLS);
+        if (cfgTools?.tours?.enabled === true) tools.push(...TOURS_TOOLS);
 
         // 5. Assemble the FULL system prompt (Layer 1 + 2 + 3).
         const systemPrompt = this.promptAssembler.assemble(config, turnContext);

@@ -6,6 +6,7 @@ import { FaqsService } from '../faqs/faqs.service';
 import { PoliciesService } from '../policies/policies.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { PropertiesService } from '../vacation-rental/properties.service';
+import { ToursService } from '../tours/tours.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -24,6 +25,7 @@ export class AIToolExecutorService {
         private policiesService: PoliciesService,
         private knowledgeService: KnowledgeService,
         private propertiesService: PropertiesService,
+        private toursService: ToursService,
     ) { }
 
     /**
@@ -98,6 +100,19 @@ export class AIToolExecutorService {
 
                 case 'create_property_booking':
                     return this.createPropertyBooking(schemaName, contactId, args as any, conversationId);
+
+                // ── Tours / Travel Packages tools ──────────────────
+                case 'search_packages':
+                    return this.searchPackages(schemaName, args);
+
+                case 'get_package_details':
+                    return this.getPackageDetails(schemaName, args.packageId);
+
+                case 'check_package_availability':
+                    return this.checkPackageAvailabilityTool(schemaName, args.packageId, args.date, args.partySize);
+
+                case 'create_tour_booking':
+                    return this.createTourBooking(schemaName, contactId, args, conversationId);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -998,6 +1013,126 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             this.logger.warn(`[Tool] create_property_booking failed: ${e.message}`);
+            return { error: e.message };
+        }
+    }
+
+    // ── Tours / Travel Packages tool handlers ─────────────────────
+
+    private async searchPackages(schemaName: string, args: any): Promise<any> {
+        try {
+            const packages = await this.toursService.searchPackages(schemaName, {
+                destination: args.destination,
+                durationType: args.durationType,
+                maxPrice: args.maxPrice,
+                date: args.date,
+                partySize: args.partySize,
+            });
+            return {
+                packages: packages.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    durationType: p.duration_type,
+                    durationValue: p.duration_value,
+                    price: Number(p.price || 0),
+                    currency: p.currency || 'COP',
+                    destination: p.destination,
+                    languages: p.languages || [],
+                    seatsLeft: p.available_seats ?? null,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getPackageDetails(schemaName: string, packageId: string): Promise<any> {
+        try {
+            const pkg = await this.toursService.getPackage(schemaName, packageId);
+            if (!pkg) return { error: 'package_not_found' };
+            const inventory = await this.toursService.listInventory(
+                schemaName,
+                packageId,
+                new Date().toISOString().split('T')[0],
+            );
+            return {
+                id: pkg.id,
+                name: pkg.name,
+                description: pkg.description,
+                durationType: pkg.duration_type,
+                durationValue: pkg.duration_value,
+                price: Number(pkg.price || 0),
+                currency: pkg.currency,
+                destination: pkg.destination,
+                departureLocation: pkg.departure_location,
+                languages: pkg.languages || [],
+                includes: pkg.includes || [],
+                excludes: pkg.excludes || [],
+                whatToBring: pkg.what_to_bring,
+                cancellationPolicy: pkg.cancellation_policy,
+                childDiscountPct: pkg.child_discount_pct || 0,
+                upcomingDepartures: (inventory || []).slice(0, 10).map((i: any) => ({
+                    date: i.departure_date,
+                    time: i.departure_time,
+                    seatsLeft: i.available_seats,
+                    priceOverride: i.price_override ? Number(i.price_override) : null,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async checkPackageAvailabilityTool(
+        schemaName: string,
+        packageId: string,
+        date: string,
+        partySize: number,
+    ): Promise<any> {
+        try {
+            return await this.toursService.checkAvailability(schemaName, packageId, date, partySize);
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async createTourBooking(
+        schemaName: string,
+        contactId: string,
+        args: any,
+        conversationId?: string,
+    ): Promise<any> {
+        try {
+            const booking = await this.toursService.createBooking(schemaName, {
+                packageId: args.packageId,
+                departureDate: args.departureDate,
+                departureTime: args.departureTime,
+                partySize: args.partySize,
+                adults: args.adults,
+                children: args.children,
+                guestName: args.guestName,
+                guestEmail: args.guestEmail,
+                guestPhone: args.guestPhone,
+                language: args.language,
+                specialRequests: args.specialRequests,
+                contactId,
+                conversationId,
+            });
+            return {
+                success: true,
+                booking: {
+                    id: booking.id,
+                    departureDate: booking.departure_date,
+                    departureTime: booking.departure_time,
+                    partySize: booking.party_size,
+                    totalPrice: Number(booking.total_price || 0),
+                    currency: booking.currency,
+                    status: booking.status,
+                },
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] create_tour_booking failed: ${e.message}`);
             return { error: e.message };
         }
     }

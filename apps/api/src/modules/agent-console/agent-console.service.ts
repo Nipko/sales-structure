@@ -88,12 +88,18 @@ export class AgentConsoleService {
     async getInbox(
         tenantId: string,
         agentId: string,
-        filter: 'all' | 'mine' | 'unassigned' | 'handoff' = 'all',
+        filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' = 'all',
     ): Promise<InboxConversation[]> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return [];
 
         let statusFilter = '';
+        // Default: hide resolved + archived (the active inbox view).
+        // 'resolved' filter inverts this so the user can browse historical
+        // conversations for support/audit purposes — they are read-only in
+        // practice (no new messages would land there because the channel
+        // would create a fresh conversation on the next inbound message).
+        let baseStatusFilter = `c.status NOT IN ('resolved', 'archived')`;
         const params: any[] = [];
 
         // tenantId is always param $1 for the channel_accounts join
@@ -111,12 +117,16 @@ export class AgentConsoleService {
             case 'handoff':
                 statusFilter = `AND c.status = 'waiting_human'`;
                 break;
+            case 'resolved':
+                baseStatusFilter = `c.status = 'resolved'`;
+                break;
         }
 
         const conversations = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT
-        c.id, c.status, c.channel_type as channel, c.created_at as started_at, c.metadata,
+        c.id, c.status, c.channel_type as channel, c.created_at as started_at,
+        c.resolved_at, c.metadata,
         c.channel_account_id,
         ct.name as contact_name, ct.phone as contact_phone, ct.email as contact_email,
         ct.avatar_url as contact_avatar, ct.tags as contact_tags,
@@ -130,10 +140,10 @@ export class AgentConsoleService {
         SELECT content_text, created_at, direction FROM messages
         WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1
       ) m ON true
-      WHERE c.status != 'resolved' AND c.status != 'archived'
+      WHERE ${baseStatusFilter}
       ${statusFilter}
-      ORDER BY m.created_at DESC NULLS LAST
-      LIMIT 100`,
+      ORDER BY ${filter === 'resolved' ? 'c.resolved_at DESC NULLS LAST' : 'm.created_at DESC NULLS LAST'}
+      LIMIT ${filter === 'resolved' ? 200 : 100}`,
             params,
         );
 
@@ -654,5 +664,23 @@ Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
             return schema;
         }
         return null;
+    }
+
+    /**
+     * Reopen a previously resolved/archived conversation. Used when a user
+     * wants to bring an auto-resolved thread back into the active inbox
+     * (e.g. the customer replied via email or the team needs to follow up
+     * on something that was prematurely resolved by the 72h cron).
+     */
+    async reopenConversation(tenantId: string, conversationId: string): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return;
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversations
+             SET status = 'active', resolved_at = NULL, updated_at = NOW()
+             WHERE id = $1::uuid`,
+            [conversationId],
+        );
     }
 }

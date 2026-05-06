@@ -136,6 +136,8 @@ export const api = {
     // --- Agent Console ---
     getInbox: (tenantId: string, filter?: string) =>
         apiGet(`/agent-console/inbox/${tenantId}${filter ? `?filter=${filter}` : ""}`),
+    reopenConversation: (tenantId: string, conversationId: string) =>
+        apiPost(`/agent-console/conversation/${tenantId}/${conversationId}/reopen`, {}),
 
     getConversation: (tenantId: string, id: string) =>
         apiGet(`/agent-console/conversation/${tenantId}/${id}`),

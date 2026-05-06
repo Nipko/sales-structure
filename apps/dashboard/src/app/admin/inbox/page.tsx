@@ -22,7 +22,7 @@ import {
 // TYPES
 // ============================================
 
-type InboxFilter = "all" | "mine" | "unassigned" | "handoff";
+type InboxFilter = "all" | "mine" | "unassigned" | "handoff" | "resolved";
 
 interface CannedResponse {
     id: string;
@@ -452,7 +452,7 @@ export default function InboxPage() {
             setLoadingConv(true);
             try {
                 const [inboxResult, cannedResult] = await Promise.all([
-                    api.getInbox(activeTenantId),
+                    api.getInbox(activeTenantId, filter),
                     api.getCannedResponses(activeTenantId),
                 ]);
 
@@ -504,7 +504,7 @@ export default function InboxPage() {
             }
         }
         load();
-    }, [activeTenantId]);
+    }, [activeTenantId, filter]);
 
     // Load messages when selecting a conversation
     useEffect(() => {
@@ -920,6 +920,7 @@ export default function InboxPage() {
                             { key: "mine" as const, label: t("filterMine") },
                             { key: "unassigned" as const, label: t("filterUnassigned") },
                             { key: "handoff" as const, label: "Handoff" },
+                            { key: "resolved" as const, label: t("filterResolved") },
                         ]).map(f => (
                             <button
                                 key={f.key}
@@ -1460,7 +1461,29 @@ export default function InboxPage() {
                             </div>
                         )}
 
-                        {/* Message Input */}
+                        {/* Resolved banner — read-only mode with reopen action */}
+                        {selectedConv && selectedConv.status === 'resolved' && (
+                            <div className="px-4 md:px-5 py-3 border-t border-border bg-neutral-100 dark:bg-neutral-800/50 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <CheckCircle size={14} className="text-emerald-500" />
+                                    <span>{t("resolvedBanner")}</span>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!activeTenantId || !selectedConv) return;
+                                        await api.reopenConversation(activeTenantId, selectedConv.id);
+                                        // Refresh inbox so it appears under "all" again
+                                        setFilter("all");
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"
+                                >
+                                    {t("reopenConversation")}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Message Input — hidden when conversation is resolved */}
+                        {selectedConv && selectedConv.status !== 'resolved' && (
                         <div className="px-4 md:px-5 py-3 border-t border-border flex gap-2.5 items-center bg-card">
                             <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1.5 hover:text-foreground rounded-lg hover:bg-muted transition-colors">
                                 <Paperclip size={18} />
@@ -1525,6 +1548,7 @@ export default function InboxPage() {
                                 <Send size={18} />
                             </button>
                         </div>
+                        )}
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">

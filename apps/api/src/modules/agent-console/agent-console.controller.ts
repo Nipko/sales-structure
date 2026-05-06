@@ -26,10 +26,19 @@ export class AgentConsoleController {
     async getInbox(
         @Param('tenantId') tenantId: string,
         @Query('agentId') agentId: string,
-        @Query('filter') filter: 'all' | 'mine' | 'unassigned' | 'handoff' = 'all',
+        @Query('filter') filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' = 'all',
     ) {
         const inbox = await this.agentConsoleService.getInbox(tenantId, agentId, filter);
         return { success: true, data: inbox };
+    }
+
+    @Post('conversation/:tenantId/:conversationId/reopen')
+    async reopenConversation(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+    ) {
+        await this.agentConsoleService.reopenConversation(tenantId, conversationId);
+        return { success: true };
     }
 
     // ---- Conversation ----

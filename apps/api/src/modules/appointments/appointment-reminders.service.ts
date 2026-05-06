@@ -106,18 +106,32 @@ export class AppointmentRemindersService {
     private async processAutoComplete(tenantId: string, schemaName: string) {
         const tz = await this.getTenantTimezone(tenantId);
         // Auto-complete confirmed appointments that ended 2+ hours ago
-        const completed = await this.prisma.executeInTenantSchema(schemaName,
+        const completed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `UPDATE appointments
              SET status = 'completed', completed_at = NOW(), completed_by = 'auto', updated_at = NOW()
              WHERE status = 'confirmed'
                AND end_at < (NOW() AT TIME ZONE '${tz}') - interval '2 hours'
-             RETURNING id, service_name`,
+             RETURNING id, contact_id, service_name`,
             [],
         );
 
-        const count = (completed as any[])?.length || 0;
+        const count = completed?.length || 0;
         if (count > 0) {
             this.logger.log(`[AutoComplete] Marked ${count} appointment(s) as completed for tenant ${tenantId}`);
+
+            // Propagate to contacts.last_appointment_at so the recall cron sees them.
+            const contactIds = completed.map(c => c.contact_id).filter(Boolean);
+            if (contactIds.length > 0) {
+                try {
+                    await this.prisma.executeInTenantSchema(schemaName,
+                        `UPDATE contacts SET last_appointment_at = NOW(), next_recall_at = NULL
+                         WHERE id = ANY($1::uuid[])`,
+                        [contactIds],
+                    );
+                } catch (e: any) {
+                    this.logger.warn(`[AutoComplete] Failed to update last_appointment_at for ${tenantId}: ${e.message}`);
+                }
+            }
         }
     }
 

@@ -169,6 +169,24 @@ export class AppointmentsService {
             `UPDATE appointments SET ${sets.join(', ')} WHERE id = $${idx}::uuid`,
             params,
         );
+
+        // When marking as completed, propagate to contacts.last_appointment_at
+        // so the recall cron can find contacts due for follow-up. We don't
+        // touch next_recall_at — that's only set by the recall cron itself
+        // after sending a recall message, to avoid hammering the same contact.
+        if (data.status === 'completed') {
+            try {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE contacts SET last_appointment_at = NOW(), next_recall_at = NULL
+                     WHERE id = (SELECT contact_id FROM appointments WHERE id = $1::uuid)
+                       AND id IS NOT NULL`,
+                    [appointmentId],
+                );
+            } catch (e: any) {
+                this.logger.warn(`Failed to update contacts.last_appointment_at: ${e.message}`);
+            }
+        }
+
         return this.getById(schemaName, appointmentId);
     }
 

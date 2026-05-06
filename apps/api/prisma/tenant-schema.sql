@@ -1782,3 +1782,61 @@ CREATE INDEX IF NOT EXISTS "idx_treatment_sessions_appt" ON "{{SCHEMA_NAME}}"."t
 ALTER TABLE "{{SCHEMA_NAME}}"."contacts" ADD COLUMN IF NOT EXISTS "last_appointment_at" TIMESTAMP;
 ALTER TABLE "{{SCHEMA_NAME}}"."contacts" ADD COLUMN IF NOT EXISTS "next_recall_at" TIMESTAMP;
 CREATE INDEX IF NOT EXISTS "idx_contacts_recall" ON "{{SCHEMA_NAME}}"."contacts" ("next_recall_at") WHERE "next_recall_at" IS NOT NULL;
+
+-- =====================================================================
+-- Real Estate Listings (inmobiliaria sub-types: venta, arriendo,
+-- comercial, construccion). Distinct from vacation-rental.properties
+-- which is for short-term stays — these are long-term sale/rent listings
+-- with the operational fields a real estate agent actually uses.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."real_estate_listings" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,                         -- internal reference / listing title
+    "transaction_type" VARCHAR(20) NOT NULL,              -- 'sale' | 'rent'
+    "property_kind" VARCHAR(50) NOT NULL DEFAULT 'apartment',  -- apartment | house | commercial | land | office
+    "price" DECIMAL(15,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "rent_period" VARCHAR(20) DEFAULT 'monthly',          -- monthly | yearly (only relevant for rent)
+    "hoa_fee" DECIMAL(15,2),                              -- administración / cuota condominio
+    "deposit" DECIMAL(15,2),                              -- security deposit (rent)
+    "min_rental_months" INTEGER,                          -- minimum lease term
+    "financing_available" BOOLEAN DEFAULT false,          -- sale: bank financing / VIS, etc.
+    "bedrooms" INTEGER DEFAULT 1,
+    "bathrooms" DECIMAL(3,1) DEFAULT 1,                   -- 1.5 = half bath
+    "area_m2" DECIMAL(10,2),
+    "parking_spots" INTEGER DEFAULT 0,
+    "stratum" INTEGER,                                    -- LatAm-specific socioeconomic stratum
+    "year_built" INTEGER,
+    "address" TEXT,
+    "neighborhood" VARCHAR(255),                          -- barrio / zona — used for routing
+    "city" VARCHAR(255),
+    "country" VARCHAR(10) DEFAULT 'CO',
+    "latitude" DECIMAL(10,7),
+    "longitude" DECIMAL(10,7),
+    "description" TEXT,
+    "amenities" JSONB DEFAULT '[]',                       -- gym, piscina, BBQ, etc.
+    "images" JSONB DEFAULT '[]',
+    "external_url" VARCHAR(500),                          -- listing on Finca Raíz, Metrocuadrado, etc.
+    "status" VARCHAR(20) DEFAULT 'available',             -- available | reserved | sold | rented | inactive
+    "assigned_agent_id" UUID,                             -- which user owns this listing
+    "is_active" BOOLEAN DEFAULT true,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_listings_search" ON "{{SCHEMA_NAME}}"."real_estate_listings" ("transaction_type", "city", "neighborhood", "status") WHERE "is_active" = true;
+CREATE INDEX IF NOT EXISTS "idx_listings_price" ON "{{SCHEMA_NAME}}"."real_estate_listings" ("transaction_type", "price") WHERE "is_active" = true AND "status" = 'available';
+CREATE INDEX IF NOT EXISTS "idx_listings_agent" ON "{{SCHEMA_NAME}}"."real_estate_listings" ("assigned_agent_id") WHERE "assigned_agent_id" IS NOT NULL;
+
+-- Zone routing: maps a neighborhood to a default agent. When a lead asks
+-- about properties in a given zone, the AI / pipeline can use this to
+-- assign the conversation to the right agent automatically.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."listing_zone_agents" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "neighborhood" VARCHAR(255) NOT NULL,
+    "city" VARCHAR(255),
+    "agent_id" UUID NOT NULL,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_zone_agents_unique" ON "{{SCHEMA_NAME}}"."listing_zone_agents" ("neighborhood", "city");

@@ -8,6 +8,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { PropertiesService } from '../vacation-rental/properties.service';
 import { ToursService } from '../tours/tours.service';
 import { TreatmentPlansService } from '../treatment-plans/treatment-plans.service';
+import { ListingsService } from '../listings/listings.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -28,6 +29,7 @@ export class AIToolExecutorService {
         private propertiesService: PropertiesService,
         private toursService: ToursService,
         private treatmentService: TreatmentPlansService,
+        private listingsService: ListingsService,
     ) { }
 
     /**
@@ -122,6 +124,13 @@ export class AIToolExecutorService {
 
                 case 'list_upcoming_sessions':
                     return this.listUpcomingSessions(schemaName, contactId, args.limit);
+
+                // ── Real Estate Listings tools ─────────────────────
+                case 'search_listings':
+                    return this.searchListings(schemaName, args);
+
+                case 'get_listing_details':
+                    return this.getListingDetails(schemaName, args.listingId);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1188,6 +1197,80 @@ export class AIToolExecutorService {
                     status: s.status,
                 })),
                 sessionsLeft: summary.sessionsLeft,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Real Estate Listings tool handlers ────────────────────────
+
+    private async searchListings(schemaName: string, args: any): Promise<any> {
+        try {
+            const listings = await this.listingsService.search(schemaName, {
+                transactionType: args.transactionType,
+                propertyKind: args.propertyKind,
+                maxPrice: args.maxPrice,
+                minBedrooms: args.minBedrooms,
+                neighborhood: args.neighborhood,
+                city: args.city,
+                minAreaM2: args.minAreaM2,
+                limit: 8,
+            });
+            return {
+                listings: (listings || []).map((l: any) => ({
+                    id: l.id,
+                    name: l.name,
+                    transactionType: l.transaction_type,
+                    propertyKind: l.property_kind,
+                    price: Number(l.price || 0),
+                    currency: l.currency,
+                    bedrooms: l.bedrooms,
+                    bathrooms: Number(l.bathrooms || 0),
+                    areaM2: Number(l.area_m2 || 0),
+                    parkingSpots: l.parking_spots,
+                    stratum: l.stratum,
+                    neighborhood: l.neighborhood,
+                    city: l.city,
+                    description: l.description,
+                    status: l.status,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getListingDetails(schemaName: string, listingId: string): Promise<any> {
+        try {
+            const l = await this.listingsService.getById(schemaName, listingId);
+            if (!l) return { error: 'listing_not_found' };
+            return {
+                id: l.id,
+                name: l.name,
+                transactionType: l.transaction_type,
+                propertyKind: l.property_kind,
+                price: Number(l.price || 0),
+                currency: l.currency,
+                rentPeriod: l.rent_period,
+                hoaFee: l.hoa_fee ? Number(l.hoa_fee) : null,
+                deposit: l.deposit ? Number(l.deposit) : null,
+                minRentalMonths: l.min_rental_months,
+                financingAvailable: l.financing_available,
+                bedrooms: l.bedrooms,
+                bathrooms: Number(l.bathrooms || 0),
+                areaM2: Number(l.area_m2 || 0),
+                parkingSpots: l.parking_spots,
+                stratum: l.stratum,
+                yearBuilt: l.year_built,
+                address: l.address,
+                neighborhood: l.neighborhood,
+                city: l.city,
+                description: l.description,
+                amenities: l.amenities || [],
+                imagesCount: (l.images || []).length,
+                externalUrl: l.external_url,
+                status: l.status,
             };
         } catch (e: any) {
             return { error: e.message };

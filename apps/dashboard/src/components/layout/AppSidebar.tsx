@@ -73,6 +73,7 @@ const sectionDefs: NavSectionDef[] = [
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
       { labelKey: "properties", href: "/admin/properties", icon: Home },
       { labelKey: "tours", href: "/admin/tours", icon: Compass },
+      { labelKey: "listings", href: "/admin/listings", icon: Building2 },
     ],
   },
   {
@@ -150,6 +151,9 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   // and `hotel` operators may also offer day experiences alongside their main
   // service, so we don't gate by sub-type.
   const showTours = verticalConfig?.industry === 'turismo';
+  // Listings (long-term sale/rent) visible only for inmobiliaria. Vacation
+  // rental shouldn't see this — they have their own /admin/properties.
+  const showListings = verticalConfig?.industry === 'inmobiliaria';
 
   const isActive = useCallback((href?: string) => {
     if (!href) return false;
@@ -190,6 +194,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           if (hiddenItems?.includes(item.labelKey)) return null;
           if (item.labelKey === 'properties' && !showProperties) return null;
           if (item.labelKey === 'tours' && !showTours) return null;
+          if (item.labelKey === 'listings' && !showListings) return null;
           if (item.labelKey === 'campaigns' && !isSupervisor) return null;
           if (item.labelKey === 'automation' && !isSupervisor) return null;
           if (item.labelKey === 'aiAgent' && !isAdmin) return null;

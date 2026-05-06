@@ -91,7 +91,8 @@
       "tenants": "Tenants",
       "financials": "Finances",
       "properties": "Proprietes",
-      "tours": "Tours et Forfaits"
+      "tours": "Tours et Forfaits",
+      "listings": "Annonces"
     }
   },
   "topbar": {
@@ -3493,6 +3494,51 @@
       "completed": "Terminée",
       "cancelled": "Annulée",
       "no_show": "Absence"
+    }
+  },
+  "listings": {
+    "title": "Annonces",
+    "subtitle": "Catalogue immobilier — vente et location",
+    "createListing": "Créer une annonce",
+    "createFirst": "Créer ma première annonce",
+    "emptyTitle": "Pas encore d'annonces",
+    "emptyDesc": "Ajoutez votre première propriété pour que l'agent IA puisse la montrer aux prospects intéressés.",
+    "filterAll": "Toutes",
+    "filterSale": "À vendre",
+    "filterRent": "À louer",
+    "transaction": {
+      "sale": "Vente",
+      "rent": "Location"
+    },
+    "name": "Nom de l'annonce",
+    "namePlaceholder": "Ex: Appt 302 · Paris 11e",
+    "nameRequired": "Le nom est obligatoire",
+    "propertyKind": "Type",
+    "price": "Prix",
+    "hoaFee": "Charges",
+    "deposit": "Dépôt de garantie",
+    "bedrooms": "Chambres",
+    "bathrooms": "Salles de bain",
+    "areaM2": "Surface (m²)",
+    "parking": "Places de parking",
+    "stratum": "Strate",
+    "yearBuilt": "Année de construction",
+    "address": "Adresse",
+    "neighborhood": "Quartier",
+    "neighborhoodPlaceholder": "Ex: Marais",
+    "city": "Ville",
+    "description": "Description",
+    "descriptionPlaceholder": "Caractéristiques, vue, quartier, ce qui la rend spéciale...",
+    "externalUrl": "URL externe (SeLoger, LeBonCoin, etc.)",
+    "openExternal": "Voir l'annonce externe",
+    "financingAvailable": "Éligible au prêt immobilier / aide au logement",
+    "status": {
+      "label": "Statut",
+      "available": "Disponible",
+      "reserved": "Réservée",
+      "sold": "Vendue",
+      "rented": "Louée",
+      "inactive": "Inactive"
     }
   },
   "treatmentPlans": {

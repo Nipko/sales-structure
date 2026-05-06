@@ -91,7 +91,8 @@
       "tenants": "Empresas",
       "financials": "Finanzas",
       "properties": "Propiedades",
-      "tours": "Tours y Paquetes"
+      "tours": "Tours y Paquetes",
+      "listings": "Inmuebles"
     }
   },
   "topbar": {
@@ -3493,6 +3494,51 @@
       "completed": "Completada",
       "cancelled": "Cancelada",
       "no_show": "No asistió"
+    }
+  },
+  "listings": {
+    "title": "Inmuebles",
+    "subtitle": "Catálogo de propiedades en venta y arriendo",
+    "createListing": "Crear inmueble",
+    "createFirst": "Crear mi primer inmueble",
+    "emptyTitle": "Aún no tienes inmuebles publicados",
+    "emptyDesc": "Carga tu primera propiedad para que el agente IA pueda mostrarla a los interesados.",
+    "filterAll": "Todos",
+    "filterSale": "En venta",
+    "filterRent": "En arriendo",
+    "transaction": {
+      "sale": "Venta",
+      "rent": "Arriendo"
+    },
+    "name": "Nombre del inmueble",
+    "namePlaceholder": "Ej: Apto 302 Cedritos · Bogotá",
+    "nameRequired": "El nombre es obligatorio",
+    "propertyKind": "Tipo",
+    "price": "Precio",
+    "hoaFee": "Administración",
+    "deposit": "Depósito",
+    "bedrooms": "Habitaciones",
+    "bathrooms": "Baños",
+    "areaM2": "Área (m²)",
+    "parking": "Parqueaderos",
+    "stratum": "Estrato",
+    "yearBuilt": "Año construcción",
+    "address": "Dirección",
+    "neighborhood": "Barrio",
+    "neighborhoodPlaceholder": "Ej: Chapinero",
+    "city": "Ciudad",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Características, vista, vecindario, qué la hace especial...",
+    "externalUrl": "URL externa (Finca Raíz, Metrocuadrado, etc.)",
+    "openExternal": "Ver publicación externa",
+    "financingAvailable": "Aplica a crédito hipotecario / VIS",
+    "status": {
+      "label": "Estado",
+      "available": "Disponible",
+      "reserved": "Reservado",
+      "sold": "Vendido",
+      "rented": "Arrendado",
+      "inactive": "Inactivo"
     }
   },
   "treatmentPlans": {

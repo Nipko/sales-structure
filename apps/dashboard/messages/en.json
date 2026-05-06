@@ -91,7 +91,8 @@
       "tenants": "Tenants",
       "financials": "Financials",
       "properties": "Properties",
-      "tours": "Tours & Packages"
+      "tours": "Tours & Packages",
+      "listings": "Listings"
     }
   },
   "topbar": {
@@ -3493,6 +3494,51 @@
       "completed": "Completed",
       "cancelled": "Cancelled",
       "no_show": "No-show"
+    }
+  },
+  "listings": {
+    "title": "Listings",
+    "subtitle": "Real estate catalog — sale and rent",
+    "createListing": "Create listing",
+    "createFirst": "Create my first listing",
+    "emptyTitle": "No listings yet",
+    "emptyDesc": "Add your first property so the AI agent can show it to interested leads.",
+    "filterAll": "All",
+    "filterSale": "For sale",
+    "filterRent": "For rent",
+    "transaction": {
+      "sale": "Sale",
+      "rent": "Rent"
+    },
+    "name": "Listing name",
+    "namePlaceholder": "E.g. Apt 302 Cedritos · Bogotá",
+    "nameRequired": "Name is required",
+    "propertyKind": "Type",
+    "price": "Price",
+    "hoaFee": "HOA fee",
+    "deposit": "Deposit",
+    "bedrooms": "Bedrooms",
+    "bathrooms": "Bathrooms",
+    "areaM2": "Area (m²)",
+    "parking": "Parking spots",
+    "stratum": "Stratum",
+    "yearBuilt": "Year built",
+    "address": "Address",
+    "neighborhood": "Neighborhood",
+    "neighborhoodPlaceholder": "E.g. Chapinero",
+    "city": "City",
+    "description": "Description",
+    "descriptionPlaceholder": "Features, views, neighborhood, what makes it special...",
+    "externalUrl": "External URL (Zillow, Idealista, etc.)",
+    "openExternal": "Open external listing",
+    "financingAvailable": "Mortgage / housing subsidy eligible",
+    "status": {
+      "label": "Status",
+      "available": "Available",
+      "reserved": "Reserved",
+      "sold": "Sold",
+      "rented": "Rented",
+      "inactive": "Inactive"
     }
   },
   "treatmentPlans": {

@@ -91,7 +91,8 @@
       "tenants": "Tenants",
       "financials": "Financeiro",
       "properties": "Propriedades",
-      "tours": "Passeios e Pacotes"
+      "tours": "Passeios e Pacotes",
+      "listings": "Imóveis"
     }
   },
   "topbar": {
@@ -3493,6 +3494,51 @@
       "completed": "Concluída",
       "cancelled": "Cancelada",
       "no_show": "Não compareceu"
+    }
+  },
+  "listings": {
+    "title": "Imóveis",
+    "subtitle": "Catálogo de imóveis para venda e aluguel",
+    "createListing": "Criar imóvel",
+    "createFirst": "Criar meu primeiro imóvel",
+    "emptyTitle": "Ainda sem imóveis publicados",
+    "emptyDesc": "Carregue seu primeiro imóvel para que o agente IA possa mostrá-lo aos interessados.",
+    "filterAll": "Todos",
+    "filterSale": "Venda",
+    "filterRent": "Aluguel",
+    "transaction": {
+      "sale": "Venda",
+      "rent": "Aluguel"
+    },
+    "name": "Nome do imóvel",
+    "namePlaceholder": "Ex: Apto 302 Centro · São Paulo",
+    "nameRequired": "O nome é obrigatório",
+    "propertyKind": "Tipo",
+    "price": "Preço",
+    "hoaFee": "Condomínio",
+    "deposit": "Depósito",
+    "bedrooms": "Quartos",
+    "bathrooms": "Banheiros",
+    "areaM2": "Área (m²)",
+    "parking": "Vagas",
+    "stratum": "Estrato",
+    "yearBuilt": "Ano de construção",
+    "address": "Endereço",
+    "neighborhood": "Bairro",
+    "neighborhoodPlaceholder": "Ex: Pinheiros",
+    "city": "Cidade",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Características, vista, vizinhança, o que torna especial...",
+    "externalUrl": "URL externa (ZAP, VivaReal, etc.)",
+    "openExternal": "Ver anúncio externo",
+    "financingAvailable": "Aceita financiamento / Minha Casa Minha Vida",
+    "status": {
+      "label": "Status",
+      "available": "Disponível",
+      "reserved": "Reservado",
+      "sold": "Vendido",
+      "rented": "Alugado",
+      "inactive": "Inativo"
     }
   },
   "treatmentPlans": {

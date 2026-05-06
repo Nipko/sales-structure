@@ -60,6 +60,13 @@ export class VerticalsService {
             await this.enableTreatmentsTool(schemaName);
         }
 
+        // 4d. Inmobiliaria: real-estate-specific FAQs + activate the listings
+        // tool so the AI can show actual catalog entries via search_listings.
+        if (industry === 'inmobiliaria') {
+            await this.seedInmobiliariaExtras(tenantId, schemaName, l);
+            await this.enableRealEstateTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -499,6 +506,134 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${faqs.length} dental-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed dental FAQs: ${error.message}`);
+        }
+    }
+
+    /**
+     * Real-estate-specific FAQs covering the operational questions buyers
+     * and renters always ask before scheduling a viewing.
+     */
+    private async seedInmobiliariaExtras(tenantId: string, schemaName: string, lang: string): Promise<void> {
+        try {
+            const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
+                {
+                    question: {
+                        es: '¿Tienen opciones con financiación / crédito hipotecario?',
+                        en: 'Do you offer financing / mortgage options?',
+                        pt: 'Têm opções com financiamento / crédito hipotecário?',
+                        fr: 'Avez-vous des options de financement / prêt hypothécaire?',
+                    },
+                    answer: {
+                        es: 'Sí, varias propiedades aplican a crédito hipotecario y/o subsidios (Mi Casa Ya, VIS). Cuéntame el rango de precio y zona, y te muestro las opciones que aplican.',
+                        en: 'Yes, several listings qualify for mortgage and/or housing subsidies. Tell me your price range and area and I\'ll show what applies.',
+                        pt: 'Sim, vários imóveis aceitam financiamento bancário e/ou subsídios habitacionais.',
+                        fr: 'Oui, plusieurs biens sont éligibles au financement bancaire et/ou aides au logement.',
+                    },
+                    category: 'financiacion',
+                },
+                {
+                    question: {
+                        es: '¿Cómo agendo una visita a la propiedad?',
+                        en: 'How do I schedule a viewing?',
+                        pt: 'Como agendo uma visita ao imóvel?',
+                        fr: 'Comment puis-je planifier une visite?',
+                    },
+                    answer: {
+                        es: 'Te muestro las propiedades disponibles según tu interés y agendamos visita con el asesor de zona. ¿Qué presupuesto manejas y en qué zona te interesa?',
+                        en: 'I\'ll show you matching properties and book the viewing with the zone agent. What\'s your budget and target area?',
+                        pt: 'Eu mostro os imóveis disponíveis conforme seu interesse e agendamos a visita.',
+                        fr: 'Je vous montre les propriétés correspondantes et organise la visite avec l\'agent de zone.',
+                    },
+                    category: 'visitas',
+                },
+                {
+                    question: {
+                        es: '¿Cuánto cobran de comisión / honorarios?',
+                        en: 'What is your commission / fee?',
+                        pt: 'Qual é a comissão / honorário?',
+                        fr: 'Quelle est votre commission / honoraires?',
+                    },
+                    answer: {
+                        es: 'Para arriendo: el equivalente al primer mes (compartido o asumido por el arrendador, depende del caso). Para venta: porcentaje sobre el cierre, te confirma el asesor al momento de la visita.',
+                        en: 'Rentals: typically equivalent to the first month (split varies). Sales: a percentage of the deal — the agent confirms at the viewing.',
+                        pt: 'Aluguel: equivalente ao primeiro mês. Venda: percentual sobre o fechamento — confirmado na visita.',
+                        fr: 'Location : équivalent au premier mois. Vente : pourcentage sur la transaction — confirmé à la visite.',
+                    },
+                    category: 'comisiones',
+                },
+                {
+                    question: {
+                        es: '¿Qué documentos necesito para arrendar / comprar?',
+                        en: 'What documents do I need to rent / buy?',
+                        pt: 'Quais documentos preciso para alugar / comprar?',
+                        fr: 'Quels documents pour louer / acheter?',
+                    },
+                    answer: {
+                        es: 'Arriendo: cédula, certificado laboral, extractos bancarios y codeudor (depende del inmueble). Compra: capacidad crediticia y separación. Te detallo cuando definamos el inmueble.',
+                        en: 'Rent: ID, employment letter, bank statements, co-signer if required. Sale: credit capacity check + earnest money. We detail once we pick the property.',
+                        pt: 'Aluguel: documento, comprovante de renda e fiador. Compra: capacidade de crédito + sinal. Detalhamos no imóvel escolhido.',
+                        fr: 'Location: pièce d\'identité, justificatifs de revenus, garant. Achat : vérification de solvabilité + acompte.',
+                    },
+                    category: 'documentos',
+                },
+                {
+                    question: {
+                        es: '¿La administración / cuota de condominio está incluida en el precio?',
+                        en: 'Is the HOA fee included in the price?',
+                        pt: 'A taxa de condomínio está incluída no preço?',
+                        fr: 'Les charges sont-elles incluses dans le prix?',
+                    },
+                    answer: {
+                        es: 'En arriendo: la administración generalmente NO está incluida y se paga aparte. En venta: el precio publicado es del inmueble; la administración mensual se informa en la visita.',
+                        en: 'Rent: HOA is usually paid separately on top of rent. Sale: listed price is property only; monthly HOA disclosed at viewing.',
+                        pt: 'Aluguel: o condomínio geralmente NÃO está incluído. Venda: preço é só do imóvel.',
+                        fr: 'Location : les charges sont en général séparées. Vente : prix du bien uniquement.',
+                    },
+                    category: 'costos',
+                },
+            ];
+
+            for (const f of faqs) {
+                const q = f.question[lang] || f.question['es'];
+                const a = f.answer[lang] || f.answer['es'];
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `INSERT INTO faqs (tenant_id, question, answer, category, is_published)
+                     VALUES ($1::uuid, $2, $3, $4, true)
+                     ON CONFLICT DO NOTHING`,
+                    [tenantId, q, a, f.category],
+                );
+            }
+            this.logger.debug(`Seeded ${faqs.length} inmobiliaria-specific FAQs`);
+        } catch (error: any) {
+            this.logger.warn(`Failed to seed inmobiliaria FAQs: ${error.message}`);
+        }
+    }
+
+    /**
+     * Turn on config.tools.realEstate.enabled so the inmobiliaria AI can
+     * call search_listings and show real catalog entries.
+     */
+    private async enableRealEstateTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.realEstate = { ...(tools.realEstate || {}), enabled: true };
+            const newConfig = { ...config, tools };
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled realEstate tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable realEstate tool: ${error.message}`);
         }
     }
 

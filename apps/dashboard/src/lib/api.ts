@@ -837,6 +837,34 @@ export const api = {
     cancelTreatmentSession: (tenantId: string, sessionId: string) =>
         apiPut(`/treatment-plans/${tenantId}/sessions/${sessionId}/cancel`, {}),
 
+    // ─── Real Estate Listings (inmobiliaria) ───
+    listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.transactionType) qs.set('transactionType', params.transactionType);
+        if (params?.status) qs.set('status', params.status);
+        const q = qs.toString();
+        return apiGet(`/listings/${tenantId}${q ? `?${q}` : ''}`);
+    },
+    getListing: (tenantId: string, listingId: string) =>
+        apiGet(`/listings/${tenantId}/listings/${listingId}`),
+    createListing: (tenantId: string, data: any) =>
+        apiPost(`/listings/${tenantId}`, data),
+    updateListing: (tenantId: string, listingId: string, data: any) =>
+        apiPut(`/listings/${tenantId}/listings/${listingId}`, data),
+    deleteListing: (tenantId: string, listingId: string) =>
+        apiDelete(`/listings/${tenantId}/listings/${listingId}`),
+    searchListings: (tenantId: string, params: any) => {
+        const qs = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); });
+        return apiGet(`/listings/${tenantId}/search?${qs.toString()}`);
+    },
+    listListingZones: (tenantId: string) =>
+        apiGet(`/listings/${tenantId}/zones`),
+    setListingZone: (tenantId: string, data: { neighborhood: string; agentId: string; city?: string }) =>
+        apiPost(`/listings/${tenantId}/zones`, data),
+    removeListingZone: (tenantId: string, mappingId: string) =>
+        apiDelete(`/listings/${tenantId}/zones/${mappingId}`),
+
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),
     getMrrTrend: (months = 12) => apiGet(`/financials/mrr-trend?months=${months}`),

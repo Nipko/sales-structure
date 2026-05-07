@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
+import { PlatformStatusController } from './platform-status.controller';
 
 @Module({
     imports: [
@@ -13,7 +14,7 @@ import { TenantsController } from './tenants.controller';
             { name: 'conversation-snooze' },
         ),
     ],
-    controllers: [TenantsController],
+    controllers: [TenantsController, PlatformStatusController],
     providers: [TenantsService],
     exports: [TenantsService],
 })

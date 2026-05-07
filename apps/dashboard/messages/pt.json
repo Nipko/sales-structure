@@ -3703,6 +3703,34 @@
     "platformLevel": "(nível plataforma)",
     "pageOf": "Página {page} de {total}"
   },
+  "tenantActivityFeed": {
+    "title": "Atividade recente",
+    "viewAll": "Ver tudo",
+    "empty": "Sem eventos registrados"
+  },
+  "maintenanceMode": {
+    "title": "Banner de manutenção",
+    "description": "Publique uma mensagem visível em todos os dashboards. Útil para anunciar deploys, incidentes ou janelas de manutenção.",
+    "enabledLabel": "Banner ativo",
+    "enabledHelp": "Quando ativo, todos os usuários verão a mensagem até fecharem manualmente ou expirar.",
+    "severityLabel": "Severidade",
+    "severityInfo": "Info",
+    "severityWarning": "Aviso",
+    "severityCritical": "Crítico",
+    "messageLabel": "Mensagem",
+    "messagePlaceholder": "Ex. Manutenção programada na sexta 22:00. A plataforma ficará em modo leitura.",
+    "messageHelp": "{count}/500 caracteres",
+    "messageRequired": "A mensagem não pode estar vazia",
+    "expiresLabel": "Expira em (opcional)",
+    "expiresHelp": "Se vazio, o banner permanece até você limpá-lo manualmente.",
+    "preview": "Pré-visualização",
+    "publish": "Publicar",
+    "save": "Salvar",
+    "clear": "Limpar banner",
+    "publishedSuccess": "Banner publicado — visível a todos os tenants",
+    "clearedSuccess": "Banner desativado",
+    "lastSet": "Última publicação: {who} — {when}"
+  },
   "tenantAdminActions": {
     "title": "Ações administrativas",
     "subtitle": "Operações reservadas ao super_admin. Ações destrutivas exigem confirmação.",

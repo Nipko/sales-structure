@@ -3703,6 +3703,34 @@
     "platformLevel": "(platform-level)",
     "pageOf": "Page {page} of {total}"
   },
+  "tenantActivityFeed": {
+    "title": "Recent activity",
+    "viewAll": "View all",
+    "empty": "No events recorded"
+  },
+  "maintenanceMode": {
+    "title": "Maintenance banner",
+    "description": "Publish a message visible on every dashboard. Use for deploys, incidents, or scheduled maintenance windows.",
+    "enabledLabel": "Banner active",
+    "enabledHelp": "When active, all users see the message until they dismiss it or it expires.",
+    "severityLabel": "Severity",
+    "severityInfo": "Info",
+    "severityWarning": "Warning",
+    "severityCritical": "Critical",
+    "messageLabel": "Message",
+    "messagePlaceholder": "E.g. Scheduled maintenance on Friday 10pm. Platform will be in read-only mode.",
+    "messageHelp": "{count}/500 characters",
+    "messageRequired": "Message cannot be empty",
+    "expiresLabel": "Expires at (optional)",
+    "expiresHelp": "If empty, the banner stays until you clear it manually.",
+    "preview": "Preview",
+    "publish": "Publish",
+    "save": "Save",
+    "clear": "Clear banner",
+    "publishedSuccess": "Banner published — visible to every tenant",
+    "clearedSuccess": "Banner cleared",
+    "lastSet": "Last published: {who} — {when}"
+  },
   "tenantAdminActions": {
     "title": "Administrative actions",
     "subtitle": "Operations reserved for super_admin. Destructive actions require confirmation.",

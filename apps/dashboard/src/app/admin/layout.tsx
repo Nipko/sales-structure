@@ -8,6 +8,7 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import SuspendedScreen from "@/components/SuspendedScreen";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import MaintenanceBanner from "@/components/MaintenanceBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import { TenantProvider } from "@/contexts/TenantContext";
@@ -100,6 +101,7 @@ export default function AdminLayout({
           onMobileClose={() => setMobileOpen(false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
+          <MaintenanceBanner />
           <ImpersonationBanner />
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
           <TrialCountdownBanner />

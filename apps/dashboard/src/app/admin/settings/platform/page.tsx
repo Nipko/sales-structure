@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Settings, Save, CheckCircle } from "lucide-react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
+import MaintenanceModeCard from "./_MaintenanceModeCard";
 
 export default function PlatformPage() {
     return (
@@ -150,6 +151,9 @@ function PlatformContent() {
                     </div>
                 ))}
             </div>
+
+            {/* Maintenance / Status banner */}
+            <MaintenanceModeCard />
         </div>
     );
 }

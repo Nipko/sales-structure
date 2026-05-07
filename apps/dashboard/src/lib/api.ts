@@ -430,6 +430,15 @@ export const api = {
         apiDelete(`/offboarding/${tenantId}/purge`),
     reactivateChannels: (tenantId: string) =>
         apiPost(`/offboarding/${tenantId}/reactivate-channels`, {}),
+    // Platform-wide maintenance banner (public read, super_admin write)
+    getPlatformMaintenance: () => apiGet("/platform-status"),
+    setPlatformMaintenance: (data: {
+        enabled: boolean;
+        message: string;
+        severity: "info" | "warning" | "critical";
+        expiresAt?: string | null;
+    }) => apiPut("/platform-status", data),
+
     getAuditLogs: (filters?: { tenantId?: string; action?: string; since?: string; limit?: number; offset?: number }) => {
         const qs = new URLSearchParams();
         if (filters?.tenantId) qs.set("tenantId", filters.tenantId);

@@ -3703,6 +3703,34 @@
     "platformLevel": "(niveau plateforme)",
     "pageOf": "Page {page} sur {total}"
   },
+  "tenantActivityFeed": {
+    "title": "Activité récente",
+    "viewAll": "Tout voir",
+    "empty": "Aucun événement enregistré"
+  },
+  "maintenanceMode": {
+    "title": "Bannière de maintenance",
+    "description": "Publiez un message visible sur tous les tableaux de bord. Utile pour annoncer des déploiements, incidents ou fenêtres de maintenance.",
+    "enabledLabel": "Bannière active",
+    "enabledHelp": "Lorsque active, tous les utilisateurs voient le message jusqu'à le fermer manuellement ou à expiration.",
+    "severityLabel": "Sévérité",
+    "severityInfo": "Info",
+    "severityWarning": "Avertissement",
+    "severityCritical": "Critique",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Ex. Maintenance programmée vendredi 22h00. La plateforme sera en lecture seule.",
+    "messageHelp": "{count}/500 caractères",
+    "messageRequired": "Le message ne peut pas être vide",
+    "expiresLabel": "Expire le (optionnel)",
+    "expiresHelp": "Si vide, la bannière reste jusqu'à effacement manuel.",
+    "preview": "Aperçu",
+    "publish": "Publier",
+    "save": "Enregistrer",
+    "clear": "Effacer la bannière",
+    "publishedSuccess": "Bannière publiée — visible par tous les tenants",
+    "clearedSuccess": "Bannière effacée",
+    "lastSet": "Dernière publication : {who} — {when}"
+  },
   "tenantAdminActions": {
     "title": "Actions administratives",
     "subtitle": "Opérations réservées au super_admin. Les actions destructrices nécessitent confirmation.",

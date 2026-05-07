@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import Link from "next/link";
 import TenantAdminActions from "../_components/TenantAdminActions";
+import TenantActivityFeed from "../_components/TenantActivityFeed";
 import {
   Building2, Info, Users, Radio, CreditCard, ChevronRight, KeyRound,
   X, CheckCircle, Edit, Activity, Cpu, MessageSquare, Headphones,
@@ -295,6 +296,9 @@ export default function TenantDetailPage() {
               if (typeof window !== "undefined") window.location.reload();
             }}
           />
+
+          {/* Last 10 admin actions for this tenant */}
+          <TenantActivityFeed tenantId={tenant.id} />
         </div>
       )}
 

@@ -147,6 +147,9 @@ export default function MessengerSetupPage() {
             setShowDisconnectModal(false);
             if (res?.providerOk === false) {
                 setMessage({ type: "warning", text: res.message || t("messenger.disconnectPartial") });
+            } else if (res?.providerExpired) {
+                // Soft success: FB session was already expired, no harm done
+                setMessage({ type: "info", text: res.message || t("messenger.disconnectSuccess") });
             } else {
                 setMessage({ type: "success", text: t("messenger.disconnectSuccess") });
             }

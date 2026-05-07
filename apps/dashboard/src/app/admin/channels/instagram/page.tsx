@@ -119,6 +119,9 @@ export default function InstagramSetupPage() {
             setShowDisconnectModal(false);
             if (res?.providerOk === false) {
                 setMessage({ type: "warning", text: res.message || t("instagram.disconnectPartial") });
+            } else if (res?.providerExpired) {
+                // Soft success: IG token was already expired, nothing to revoke
+                setMessage({ type: "info", text: res.message || t("instagram.disconnectSuccess") });
             } else {
                 setMessage({ type: "success", text: t("instagram.disconnectSuccess") });
             }

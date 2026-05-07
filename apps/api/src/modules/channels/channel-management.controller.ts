@@ -458,6 +458,7 @@ export class ChannelManagementController {
 
         let providerOk = false;
         let providerError: string | null = null;
+        let sessionExpired = false;
 
         try {
             // Messenger may have multiple Pages — we need to call unsubscribe
@@ -471,6 +472,7 @@ export class ChannelManagementController {
             } else {
                 const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
                 let okCount = 0;
+                let expiredCount = 0;
                 const errors: string[] = [];
 
                 for (const acc of accounts) {
@@ -478,6 +480,10 @@ export class ChannelManagementController {
                         const creds = await this.channelToken.getChannelToken(tenantId, 'messenger');
                         if (!creds?.accessToken) {
                             errors.push(`page ${acc.accountId}: no token`);
+                            // No-token usually means the user already cleaned
+                            // up at Meta side or never had a fresh session.
+                            // Treat as a session-expired equivalent.
+                            expiredCount++;
                             continue;
                         }
                         const res = await fetch(
@@ -489,6 +495,9 @@ export class ChannelManagementController {
                         } else {
                             const body = await res.text().catch(() => '');
                             errors.push(`page ${acc.accountId}: ${res.status} ${body.substring(0, 100)}`);
+                            if (this.isMetaSessionExpiredError(body)) {
+                                expiredCount++;
+                            }
                         }
                     } catch (e: any) {
                         errors.push(`page ${acc.accountId}: ${e?.message || 'unknown'}`);
@@ -496,9 +505,17 @@ export class ChannelManagementController {
                 }
 
                 providerOk = okCount === accounts.length && okCount > 0;
+                // Soft-success: every non-OK page failed because the FB session
+                // was already gone — the user already lost the ability to push
+                // anything via that token, so the unsubscribe is moot.
+                sessionExpired = !providerOk && (okCount + expiredCount) === accounts.length && expiredCount > 0;
                 if (errors.length > 0) {
                     providerError = errors.join(' | ');
-                    this.logger.warn(`Messenger disconnect partial for tenant ${tenantId}: ${providerError}`);
+                    if (sessionExpired) {
+                        this.logger.log(`Messenger disconnect soft-success (FB session expired) for tenant ${tenantId}`);
+                    } else {
+                        this.logger.warn(`Messenger disconnect partial for tenant ${tenantId}: ${providerError}`);
+                    }
                 } else {
                     this.logger.log(`Messenger fully unsubscribed for tenant ${tenantId} (${okCount} pages)`);
                 }
@@ -508,8 +525,12 @@ export class ChannelManagementController {
             this.logger.warn(`Messenger disconnect error for tenant ${tenantId}: ${providerError}`);
         }
 
-        await this.finalizeChannelDisconnect(tenantId, 'messenger', providerOk, providerError, req.user?.sub);
-        return this.buildDisconnectResponse('Messenger', providerOk, providerError);
+        // For audit / reactivate purposes, session-expired counts as
+        // "provider side is settled" — same as a successful unsubscribe,
+        // because the user must redo OAuth either way.
+        const finalProviderOk = providerOk || sessionExpired;
+        await this.finalizeChannelDisconnect(tenantId, 'messenger', finalProviderOk, providerError, req.user?.sub);
+        return this.buildDisconnectResponse('Messenger', providerOk, providerError, sessionExpired);
     }
 
     // ==========================================
@@ -688,11 +709,16 @@ export class ChannelManagementController {
 
         let providerOk = false;
         let providerError: string | null = null;
+        let sessionExpired = false;
 
         try {
             const creds = await this.channelToken.getChannelToken(tenantId, 'instagram');
             if (!creds?.accessToken) {
                 providerError = 'No active Instagram credentials';
+                // No token to call DELETE with — same practical outcome as
+                // an expired session: the local row gets cleaned up and
+                // nothing can flow either way.
+                sessionExpired = true;
             } else {
                 const res = await fetch(
                     `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
@@ -704,7 +730,12 @@ export class ChannelManagementController {
                 } else {
                     const body = await res.text().catch(() => '');
                     providerError = `Instagram returned ${res.status}: ${body.substring(0, 200)}`;
-                    this.logger.warn(providerError);
+                    if (this.isMetaSessionExpiredError(body)) {
+                        sessionExpired = true;
+                        this.logger.log(`Instagram disconnect soft-success (token expired) for tenant ${tenantId}`);
+                    } else {
+                        this.logger.warn(providerError);
+                    }
                 }
             }
         } catch (err: any) {
@@ -712,8 +743,9 @@ export class ChannelManagementController {
             this.logger.warn(`Instagram disconnect error for tenant ${tenantId}: ${providerError}`);
         }
 
-        await this.finalizeChannelDisconnect(tenantId, 'instagram', providerOk, providerError, req.user?.sub);
-        return this.buildDisconnectResponse('Instagram', providerOk, providerError);
+        const finalProviderOk = providerOk || sessionExpired;
+        await this.finalizeChannelDisconnect(tenantId, 'instagram', finalProviderOk, providerError, req.user?.sub);
+        return this.buildDisconnectResponse('Instagram', providerOk, providerError, sessionExpired);
     }
 
     // ==========================================
@@ -1087,9 +1119,28 @@ export class ChannelManagementController {
         return { rowsTouched: rows.length };
     }
 
-    private buildDisconnectResponse(channelLabel: string, providerOk: boolean, providerError: string | null) {
+    private buildDisconnectResponse(
+        channelLabel: string,
+        providerOk: boolean,
+        providerError: string | null,
+        sessionExpired: boolean = false,
+    ) {
         if (providerOk) {
             return { success: true, message: `${channelLabel} desconectado completamente`, providerOk: true };
+        }
+        // Session-expired: the OAuth token Meta wanted us to use was already
+        // dead, so we couldn't deliver an explicit unsubscribe — but that
+        // same dead token can't push messages to us either. From the user's
+        // POV the disconnect is final and clean; just tell them that if
+        // they want to scrub the residual app-page binding from Meta itself,
+        // they have to do it manually in Facebook settings.
+        if (sessionExpired) {
+            return {
+                success: true,
+                message: `${channelLabel} desconectado. Tu sesión de Facebook ya había caducado, así que no fue necesario notificar a Meta. Si deseas remover por completo la integración del lado de Facebook, ve a tu Página → Configuración → Integraciones de negocio.`,
+                providerOk: true,
+                providerExpired: true,
+            };
         }
         return {
             success: true,
@@ -1097,5 +1148,22 @@ export class ChannelManagementController {
             providerOk: false,
             providerError,
         };
+    }
+
+    /**
+     * Detect Meta's `OAuthException code 190` (session expired or token
+     * invalid). When the user's FB Login session has already expired by
+     * the time they hit Disconnect, the unsubscribe call is meaningless —
+     * we route those failures to the soft-success branch.
+     */
+    private isMetaSessionExpiredError(body: string): boolean {
+        if (!body) return false;
+        const lower = body.toLowerCase();
+        return (
+            lower.includes('session has expired') ||
+            lower.includes('"code":190') ||
+            lower.includes('error validating access token') ||
+            lower.includes('user has not authorized application')
+        );
     }
 }

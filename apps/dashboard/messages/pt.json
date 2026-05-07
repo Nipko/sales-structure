@@ -102,6 +102,7 @@
       "platformHealth": "Saúde do sistema",
       "platformAudit": "Auditoria",
       "llmStats": "Uso de IA",
+      "webhookTap": "Webhooks (ao vivo)",
       "aiModels": "Modelos de IA",
       "llmProviders": "Provedores LLM",
       "aiConfig": "Config IA",
@@ -3704,6 +3705,24 @@
     "platformLevel": "(nível plataforma)",
     "pageOf": "Página {page} de {total}"
   },
+  "webhookTap": {
+    "title": "Webhook live tail",
+    "subtitle": "Últimos 200 eventos webhook recebidos de todos os canais (auto-refresh a cada 5s)",
+    "allChannels": "Todos",
+    "allStatuses": "Todos",
+    "pause": "Pausar",
+    "resume": "Retomar",
+    "liveUpdated": "atualizado {time}",
+    "empty": "Sem eventos no intervalo atual",
+    "hint": "Apenas resumos são armazenados (sem payloads completos). Janela: 7 dias ou últimos 200 eventos, o que for menor.",
+    "status": {
+      "parsed": "Processados",
+      "ignored": "Ignorados",
+      "rejected": "Rejeitados",
+      "received": "Recebidos",
+      "error": "Erros"
+    }
+  },
   "llmStats": {
     "title": "Uso de IA",
     "subtitle": "Métricas de chamadas LLM agregadas por provedor, tenant e dia",
@@ -3727,6 +3746,19 @@
     "tenant": "Tenant",
     "emptyTitle": "Ainda sem dados",
     "emptyDesc": "As métricas se acumulam a partir da próxima chamada ao LLM. Se você ativou o tracking recentemente, volte em alguns minutos."
+  },
+  "featureFlags": {
+    "title": "Feature flags",
+    "subtitle": "Ativar/desativar features para este tenant específico (cache invalidado ao salvar)",
+    "saveChanges": "Salvar alterações",
+    "savedSuccess": "Flags atualizadas — efeito imediato",
+    "categoryBeta": "Beta",
+    "categoryExperimental": "Experimental",
+    "categoryKillswitch": "Killswitches (incidentes)",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
+    "overridden": "override",
+    "hint": "Killswitches desativam features para resolver incidentes sem deploy. Beta abre features a clientes específicos. Experimentais são mudanças A/B controladas."
   },
   "tenantQuota": {
     "title": "Cotas e limites",

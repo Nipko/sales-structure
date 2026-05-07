@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { NormalizedMessage, ChannelType, OutboundMessage } from '@parallext/shared';
+import { WebhookTapService } from './webhook-tap.service';
 
 /**
  * Abstract interface that all channel adapters must implement.
@@ -17,6 +18,8 @@ export interface IChannelAdapter {
 export class ChannelGatewayService {
     private readonly logger = new Logger(ChannelGatewayService.name);
     private adapters: Map<ChannelType, IChannelAdapter> = new Map();
+
+    constructor(private readonly webhookTap?: WebhookTapService) {}
 
     /**
      * Register a channel adapter
@@ -40,13 +43,31 @@ export class ChannelGatewayService {
         const adapter = this.adapters.get(channelType);
         if (!adapter) {
             this.logger.warn(`No adapter registered for channel: ${channelType}`);
+            this.webhookTap?.record({ channelType, accountId, status: 'rejected', error: 'no_adapter' }).catch(() => {});
             return null;
         }
 
         try {
-            return await adapter.handleWebhook(payload, accountId);
-        } catch (error) {
+            const normalized = await adapter.handleWebhook(payload, accountId);
+            // Build a non-PII summary for the live tail
+            const summary = normalized
+                ? `${normalized.contactId?.slice(0, 8) || '?'} → ${(normalized.content?.text || '').slice(0, 50) || `[${normalized.content?.type}]`}`
+                : 'no message extracted';
+            this.webhookTap?.record({
+                channelType,
+                accountId,
+                status: normalized ? 'parsed' : 'ignored',
+                summary,
+            }).catch(() => {});
+            return normalized;
+        } catch (error: any) {
             this.logger.error(`Error processing ${channelType} webhook: ${error}`);
+            this.webhookTap?.record({
+                channelType,
+                accountId,
+                status: 'error',
+                error: String(error?.message || error).substring(0, 200),
+            }).catch(() => {});
             return null;
         }
     }

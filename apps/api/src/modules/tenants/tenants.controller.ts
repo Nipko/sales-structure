@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { TenantsService } from './tenants.service';
 import { TenantThrottleService, QuotaOverrides } from '../throttle/tenant-throttle.service';
+import { FeatureFlagsService, FEATURE_FLAGS_REGISTRY } from '../throttle/feature-flags.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -35,6 +36,7 @@ export class TenantsController {
         private throttleService: TenantThrottleService,
         private llmRouter: LLMRouterService,
         private prisma: PrismaService,
+        private featureFlagsService: FeatureFlagsService,
     ) { }
 
     @Post()
@@ -220,6 +222,32 @@ export class TenantsController {
                 usage: { automation, outbound, broadcast },
             },
         };
+    }
+
+    @Get(':id/feature-flags')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Get tenant feature flags + registry' })
+    async getFeatureFlags(@Param('id') id: string) {
+        const flags = await this.featureFlagsService.getFlags(id);
+        return {
+            success: true,
+            data: {
+                registry: FEATURE_FLAGS_REGISTRY,
+                flags,
+            },
+        };
+    }
+
+    @Put(':id/feature-flags')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Replace tenant feature flags (bulk)' })
+    async setFeatureFlags(
+        @Param('id') id: string,
+        @Body() body: { flags: Record<string, boolean> },
+        @CurrentUser() user: any,
+    ) {
+        const result = await this.featureFlagsService.setFlags(id, body.flags || {}, user?.email || user?.sub);
+        return { success: true, data: result };
     }
 
     @Put(':id/quota-overrides')

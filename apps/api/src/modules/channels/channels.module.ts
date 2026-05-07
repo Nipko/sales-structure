@@ -12,6 +12,8 @@ import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
+import { WebhookTapService } from './webhook-tap.service';
+import { WebhookTapController } from './webhook-tap.controller';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
@@ -22,7 +24,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
     ],
-    controllers: [ChannelsController, ChannelManagementController],
+    controllers: [ChannelsController, ChannelManagementController, WebhookTapController],
     providers: [
         ChannelGatewayService,
         WhatsAppAdapter,
@@ -34,8 +36,9 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         OutboundQueueService,
         ChannelTokenService,
         InstagramTokenRefreshService,
+        WebhookTapService,
     ],
-    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, OutboundQueueService, ChannelTokenService],
+    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, OutboundQueueService, ChannelTokenService, WebhookTapService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(

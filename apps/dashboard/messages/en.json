@@ -102,6 +102,7 @@
       "platformHealth": "System health",
       "platformAudit": "Audit log",
       "llmStats": "AI usage",
+      "webhookTap": "Webhooks (live)",
       "aiModels": "AI models",
       "llmProviders": "LLM providers",
       "aiConfig": "AI config",
@@ -3704,6 +3705,24 @@
     "platformLevel": "(platform-level)",
     "pageOf": "Page {page} of {total}"
   },
+  "webhookTap": {
+    "title": "Webhook live tail",
+    "subtitle": "Last 200 inbound webhook events from every channel (auto-refresh every 5s)",
+    "allChannels": "All",
+    "allStatuses": "All",
+    "pause": "Pause",
+    "resume": "Resume",
+    "liveUpdated": "updated {time}",
+    "empty": "No events in current range",
+    "hint": "Only summaries are stored (no full payloads). Window: 7 days or the last 200 events, whichever is smaller.",
+    "status": {
+      "parsed": "Parsed",
+      "ignored": "Ignored",
+      "rejected": "Rejected",
+      "received": "Received",
+      "error": "Errors"
+    }
+  },
   "llmStats": {
     "title": "AI usage",
     "subtitle": "LLM call metrics aggregated by provider, tenant, and day",
@@ -3727,6 +3746,19 @@
     "tenant": "Tenant",
     "emptyTitle": "No data yet",
     "emptyDesc": "Metrics accumulate from the next LLM call onward. If you just enabled tracking, check back in a few minutes."
+  },
+  "featureFlags": {
+    "title": "Feature flags",
+    "subtitle": "Toggle features for this specific tenant (cache invalidated on save)",
+    "saveChanges": "Save changes",
+    "savedSuccess": "Flags updated — effective immediately",
+    "categoryBeta": "Beta",
+    "categoryExperimental": "Experimental",
+    "categoryKillswitch": "Killswitches (incidents)",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "overridden": "override",
+    "hint": "Killswitches disable features for incident response without a deploy. Beta opens features to specific clients. Experimental are controlled A/B changes."
   },
   "tenantQuota": {
     "title": "Quotas & limits",

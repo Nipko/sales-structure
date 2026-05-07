@@ -11,6 +11,7 @@ import Link from "next/link";
 import TenantAdminActions from "../_components/TenantAdminActions";
 import TenantActivityFeed from "../_components/TenantActivityFeed";
 import TenantQuotaOverrides from "../_components/TenantQuotaOverrides";
+import TenantFeatureFlags from "../_components/TenantFeatureFlags";
 import {
   Building2, Info, Users, Radio, CreditCard, ChevronRight, KeyRound,
   X, CheckCircle, Edit, Activity, Cpu, MessageSquare, Headphones,
@@ -300,6 +301,9 @@ export default function TenantDetailPage() {
 
           {/* Per-tenant quota overrides (rate limits + feature limits) */}
           <TenantQuotaOverrides tenantId={tenant.id} />
+
+          {/* Per-tenant feature flags */}
+          <TenantFeatureFlags tenantId={tenant.id} />
 
           {/* Last 10 admin actions for this tenant */}
           <TenantActivityFeed tenantId={tenant.id} />

@@ -135,6 +135,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity },
       { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
       { labelKey: "llmStats", href: "/admin/llm-stats", icon: Brain },
+      { labelKey: "webhookTap", href: "/admin/webhooks", icon: Radio },
     ],
   },
   {

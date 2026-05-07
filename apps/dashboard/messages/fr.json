@@ -102,6 +102,7 @@
       "platformHealth": "Santé du système",
       "platformAudit": "Audit",
       "llmStats": "Utilisation IA",
+      "webhookTap": "Webhooks (live)",
       "aiModels": "Modèles IA",
       "llmProviders": "Fournisseurs LLM",
       "aiConfig": "Config IA",
@@ -3704,6 +3705,24 @@
     "platformLevel": "(niveau plateforme)",
     "pageOf": "Page {page} sur {total}"
   },
+  "webhookTap": {
+    "title": "Live tail des webhooks",
+    "subtitle": "Derniers 200 événements webhook entrants de tous les canaux (auto-actualisation toutes les 5s)",
+    "allChannels": "Tous",
+    "allStatuses": "Tous",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "liveUpdated": "mis à jour {time}",
+    "empty": "Aucun événement dans la plage actuelle",
+    "hint": "Seuls les résumés sont stockés (pas de payloads complets). Fenêtre : 7 jours ou les 200 derniers événements, selon le plus court.",
+    "status": {
+      "parsed": "Traités",
+      "ignored": "Ignorés",
+      "rejected": "Rejetés",
+      "received": "Reçus",
+      "error": "Erreurs"
+    }
+  },
   "llmStats": {
     "title": "Utilisation IA",
     "subtitle": "Métriques d'appels LLM agrégées par fournisseur, tenant et jour",
@@ -3727,6 +3746,19 @@
     "tenant": "Tenant",
     "emptyTitle": "Pas encore de données",
     "emptyDesc": "Les métriques s'accumulent à partir du prochain appel LLM. Si vous venez d'activer le tracking, revenez dans quelques minutes."
+  },
+  "featureFlags": {
+    "title": "Feature flags",
+    "subtitle": "Activer/désactiver des fonctionnalités pour ce tenant spécifique (cache invalidé à la sauvegarde)",
+    "saveChanges": "Enregistrer les changements",
+    "savedSuccess": "Flags mis à jour — effet immédiat",
+    "categoryBeta": "Bêta",
+    "categoryExperimental": "Expérimental",
+    "categoryKillswitch": "Killswitches (incidents)",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "overridden": "override",
+    "hint": "Les killswitches désactivent des fonctionnalités pendant un incident sans déploiement. Bêta ouvre des fonctionnalités à des clients spécifiques. Expérimental = changements A/B contrôlés."
   },
   "tenantQuota": {
     "title": "Quotas et limites",

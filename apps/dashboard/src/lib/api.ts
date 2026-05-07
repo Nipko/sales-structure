@@ -432,12 +432,24 @@ export const api = {
         apiPost(`/offboarding/${tenantId}/reactivate-channels`, {}),
     getTenantQuotaOverrides: (tenantId: string) =>
         apiGet(`/tenants/${tenantId}/quota-overrides`),
+    getTenantFeatureFlags: (tenantId: string) =>
+        apiGet(`/tenants/${tenantId}/feature-flags`),
+    setTenantFeatureFlags: (tenantId: string, flags: Record<string, boolean>) =>
+        apiPut(`/tenants/${tenantId}/feature-flags`, { flags }),
     setTenantQuotaOverrides: (tenantId: string, data: {
         automation?: number; outbound?: number; broadcast?: number;
         maxAgents?: number; maxCalendars?: number;
         priority?: number; maxPendingJobs?: number;
         reason?: string;
     }) => apiPut(`/tenants/${tenantId}/quota-overrides`, data),
+    getWebhookTap: (params?: { channelType?: string; status?: string; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.channelType) qs.set("channelType", params.channelType);
+        if (params?.status) qs.set("status", params.status);
+        if (params?.limit) qs.set("limit", String(params.limit));
+        const q = qs.toString();
+        return apiGet(`/webhook-tap${q ? `?${q}` : ""}`);
+    },
     getLlmStats: (params?: { days?: number; tenantId?: string }) => {
         const qs = new URLSearchParams();
         if (params?.days) qs.set("days", String(params.days));

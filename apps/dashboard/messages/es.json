@@ -102,6 +102,7 @@
       "platformHealth": "Salud del sistema",
       "platformAudit": "Auditoría",
       "llmStats": "Uso de IA",
+      "webhookTap": "Webhooks (live)",
       "aiModels": "Modelos de IA",
       "llmProviders": "Proveedores LLM",
       "aiConfig": "Configuración IA",
@@ -3704,6 +3705,24 @@
     "platformLevel": "(nivel plataforma)",
     "pageOf": "Página {page} de {total}"
   },
+  "webhookTap": {
+    "title": "Live tail de webhooks",
+    "subtitle": "Últimos 200 eventos webhook entrantes de todos los canales (auto-refresh cada 5s)",
+    "allChannels": "Todos",
+    "allStatuses": "Todos",
+    "pause": "Pausar",
+    "resume": "Reanudar",
+    "liveUpdated": "actualizado {time}",
+    "empty": "Sin eventos en el rango actual",
+    "hint": "Solo se guardan resúmenes (no payloads completos). Ventana: 7 días o últimos 200 eventos, lo que sea menor.",
+    "status": {
+      "parsed": "Procesados",
+      "ignored": "Ignorados",
+      "rejected": "Rechazados",
+      "received": "Recibidos",
+      "error": "Errores"
+    }
+  },
   "llmStats": {
     "title": "Uso de IA",
     "subtitle": "Métricas de llamadas a modelos LLM agregadas por proveedor, tenant y día",
@@ -3727,6 +3746,19 @@
     "tenant": "Tenant",
     "emptyTitle": "Aún sin datos",
     "emptyDesc": "Las métricas se acumulan a partir de la próxima llamada al LLM. Si activaste el seguimiento recién, vuelve en unos minutos."
+  },
+  "featureFlags": {
+    "title": "Feature flags",
+    "subtitle": "Activar/desactivar features para este tenant en específico (cache invalidado al guardar)",
+    "saveChanges": "Guardar cambios",
+    "savedSuccess": "Flags actualizados — efecto inmediato",
+    "categoryBeta": "Beta",
+    "categoryExperimental": "Experimental",
+    "categoryKillswitch": "Killswitches (incidentes)",
+    "enabled": "Activado",
+    "disabled": "Desactivado",
+    "overridden": "override",
+    "hint": "Killswitches apagan features para resolver incidentes sin desplegar. Beta abre features a clientes específicos. Experimentales son cambios A/B controlados."
   },
   "tenantQuota": {
     "title": "Cuotas y límites",

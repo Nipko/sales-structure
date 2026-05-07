@@ -1,0 +1,120 @@
+/**
+ * Tier 3 verticals AI tools: home services dispatch, pet services
+ * (grooming/daycare/hotel) and photography. Each set is registered
+ * by a separate config flag so a tenant only sees the relevant tools.
+ */
+import { ToolDefinition } from '@parallext/shared';
+
+// ── Home services (servicios_hogar) ──────────────────────────────
+
+export const HOME_SERVICES_TOOLS: ToolDefinition[] = [
+    {
+        name: 'create_service_request',
+        description: 'Create a field-service request (plomería, electricidad, fumigación, limpieza, jardinería, otro). Use when a customer reports a problem at home/office. Captures urgency, address, and issue description so a technician can be dispatched. Always confirm address + name + phone before calling.',
+        parameters: {
+            type: 'object',
+            properties: {
+                serviceType: {
+                    type: 'string',
+                    enum: ['plomeria', 'electricidad', 'fumigacion', 'limpieza', 'jardineria', 'cerrajeria', 'pintura', 'otro'],
+                },
+                urgency: {
+                    type: 'string',
+                    enum: ['emergencia', 'alta', 'normal', 'flexible'],
+                    description: 'emergencia = water flooding / no power / safety risk. alta = same day. normal = within 2-3 days. flexible = whenever fits.',
+                },
+                customerName: { type: 'string' },
+                customerPhone: { type: 'string' },
+                address: { type: 'string', description: 'Full street address' },
+                addressNotes: { type: 'string', description: 'Apartment, building, gate code, references' },
+                city: { type: 'string' },
+                issueDescription: { type: 'string', description: 'What is the problem? Free-form description' },
+                preferredDate: { type: 'string', description: 'YYYY-MM-DD if customer mentions a date' },
+                preferredTimeWindow: { type: 'string', description: 'mañana / tarde / noche or HH:MM-HH:MM' },
+            },
+            required: ['serviceType', 'issueDescription'],
+        },
+    },
+    {
+        name: 'check_request_status',
+        description: 'Look up the status of a previously created service request. Returns current stage (pending/scheduled/dispatched/in_progress/completed) plus assigned technician name + scheduled time when available.',
+        parameters: {
+            type: 'object',
+            properties: {
+                requestId: { type: 'string', description: 'Request UUID returned by create_service_request' },
+            },
+            required: ['requestId'],
+        },
+    },
+];
+
+// ── Pet services (peluquería pet, guardería, hotel canino) ───────
+
+export const PET_SERVICES_TOOLS: ToolDefinition[] = [
+    {
+        name: 'list_pet_services',
+        description: 'List the pet services this business offers (peluquería, guardería diurna, hotel canino, paseos). Returns name + duration + price for each. Powers the menu of options the agent can offer.',
+        parameters: { type: 'object', properties: {} },
+    },
+    {
+        name: 'check_daycare_availability',
+        description: 'Check whether daycare slots are open on a specific date. For boarding (hotel canino) call with checkOut to validate the full stay window.',
+        parameters: {
+            type: 'object',
+            properties: {
+                checkIn: { type: 'string', description: 'Drop-off date YYYY-MM-DD' },
+                checkOut: { type: 'string', description: 'Pick-up date YYYY-MM-DD (boarding only)' },
+                petSize: {
+                    type: 'string',
+                    enum: ['small', 'medium', 'large', 'xlarge'],
+                    description: 'Affects which kennel size is needed',
+                },
+            },
+            required: ['checkIn'],
+        },
+    },
+];
+
+// ── Photography / wedding planners ───────────────────────────────
+
+export const PHOTOGRAPHY_TOOLS: ToolDefinition[] = [
+    {
+        name: 'list_photo_packages',
+        description: 'List photography packages this studio offers (sesión familiar, boda, evento corporativo, producto). Returns name + duration + deliverables + price.',
+        parameters: { type: 'object', properties: {} },
+    },
+    {
+        name: 'check_date_availability',
+        description: 'Check whether a specific date is open for a shoot. Returns available time windows. CRITICAL for wedding photographers — prevents double booking.',
+        parameters: {
+            type: 'object',
+            properties: {
+                date: { type: 'string', description: 'YYYY-MM-DD' },
+                duration: { type: 'number', description: 'Estimated hours of coverage' },
+                eventType: {
+                    type: 'string',
+                    enum: ['familiar', 'boda', 'corporativo', 'producto', 'retrato', 'evento_social'],
+                },
+            },
+            required: ['date'],
+        },
+    },
+    {
+        name: 'request_photo_quote',
+        description: 'Generate a quote for a specific date + package. Captures the lead even if they don\'t book immediately. Always confirm name + email + phone before calling.',
+        parameters: {
+            type: 'object',
+            properties: {
+                packageName: { type: 'string' },
+                date: { type: 'string', description: 'YYYY-MM-DD' },
+                duration: { type: 'number', description: 'Hours of coverage' },
+                location: { type: 'string', description: 'Where the shoot will happen' },
+                customerName: { type: 'string' },
+                customerEmail: { type: 'string' },
+                customerPhone: { type: 'string' },
+                specialRequests: { type: 'string' },
+            },
+            required: ['date', 'customerName'],
+        },
+    },
+];

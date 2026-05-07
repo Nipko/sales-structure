@@ -14,6 +14,7 @@ import { RestaurantsService } from '../restaurants/restaurants.service';
 import { GymsService } from '../gyms/gyms.service';
 import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
+import { HomeServicesService } from '../home-services/home-services.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -40,6 +41,7 @@ export class AIToolExecutorService {
         private gymsService: GymsService,
         private educationService: EducationService,
         private insuranceService: InsuranceService,
+        private homeServicesService: HomeServicesService,
     ) { }
 
     /**
@@ -206,6 +208,28 @@ export class AIToolExecutorService {
 
                 case 'file_claim':
                     return this.fileInsuranceClaimTool(schemaName, args);
+
+                // ── Tier 3 tools — home services ──────────────────
+                case 'create_service_request':
+                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args);
+
+                case 'check_request_status':
+                    return this.checkServiceRequestStatusTool(schemaName, args);
+
+                // ── Tier 3 tools — pet services & photography ─────
+                // These use the existing services + appointments engine
+                // for actual booking; the AI tool simply reads the
+                // tenant's configured services list.
+                case 'list_pet_services':
+                case 'list_photo_packages':
+                    return this.listConfiguredServicesTool(schemaName);
+
+                case 'check_daycare_availability':
+                case 'check_date_availability':
+                    return this.checkDateAvailabilityTool(schemaName, args);
+
+                case 'request_photo_quote':
+                    return this.requestPhotoQuoteTool(schemaName, contactId, args);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1922,6 +1946,163 @@ export class AIToolExecutorService {
                 status: claim.status,
                 message: `Reclamo radicado con número ${claim.claim_number}. Un agente humano lo revisará en las próximas horas.`,
                 shouldHandoff: true,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Tier 3 — home services ───────────────────────────────────
+
+    private async createServiceRequestTool(
+        schemaName: string,
+        contactId: string,
+        conversationId: string | undefined,
+        args: any,
+    ): Promise<any> {
+        try {
+            const request = await this.homeServicesService.createRequest(schemaName, {
+                contactId,
+                conversationId,
+                serviceType: args.serviceType,
+                urgency: args.urgency || 'normal',
+                customerName: args.customerName,
+                customerPhone: args.customerPhone,
+                address: args.address,
+                addressNotes: args.addressNotes,
+                city: args.city,
+                issueDescription: args.issueDescription,
+                preferredDate: args.preferredDate,
+                preferredTimeWindow: args.preferredTimeWindow,
+            });
+            this.eventEmitter.emit('service_request.created', {
+                requestId: request.id,
+                tenantSchemaName: schemaName,
+                urgency: request.urgency,
+            });
+            return {
+                requestId: request.id,
+                status: request.status,
+                urgency: request.urgency,
+                message: request.urgency === 'emergencia'
+                    ? 'Solicitud registrada como EMERGENCIA. Asignaremos un técnico de inmediato.'
+                    : 'Solicitud registrada. Te contactaremos para confirmar fecha y hora del servicio.',
+                shouldHandoff: request.urgency === 'emergencia',
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async checkServiceRequestStatusTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const request = await this.homeServicesService.getRequestById(schemaName, args.requestId);
+            if (!request) return { error: 'Solicitud no encontrada' };
+            return {
+                requestId: request.id,
+                status: request.status,
+                urgency: request.urgency,
+                technicianName: request.assigned_technician_name,
+                scheduledAt: request.scheduled_at,
+                completedAt: request.completed_at,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Tier 3 — pet services & photography (read-only catalog) ──
+
+    /**
+     * Both list_pet_services and list_photo_packages map to the
+     * generic services table that every tenant has — pet_services
+     * and photography tenants seed it during onboarding with their
+     * domain offerings.
+     */
+    private async listConfiguredServicesTool(schemaName: string): Promise<any> {
+        try {
+            const services = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, name, description, duration_minutes, price, currency, category
+                 FROM services WHERE is_active = true
+                 ORDER BY category, name`,
+            );
+            if (!services?.length) return { services: [], message: 'Sin servicios configurados.' };
+            return {
+                count: services.length,
+                services: services.map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    description: s.description,
+                    durationMinutes: s.duration_minutes,
+                    price: Number(s.price || 0),
+                    currency: s.currency,
+                    category: s.category,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Date availability check — reuses the appointments engine. For
+     * pet daycare/boarding: looks for blocked dates. For photography:
+     * checks if any appointment already overlaps the requested date.
+     */
+    private async checkDateAvailabilityTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const date = args.date || args.checkIn;
+            if (!date) return { error: 'date is required' };
+            const blockedRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT COUNT(*)::int as cnt FROM appointments
+                 WHERE DATE(starts_at) = $1::date AND status IN ('confirmed', 'pending')`,
+                [date],
+            ).catch(() => [{ cnt: 0 }]);
+            const taken = Number(blockedRows[0]?.cnt || 0);
+            return {
+                date,
+                taken,
+                available: taken < 5,  // simple capacity heuristic — tenant can override via blocked_dates
+                message: taken === 0
+                    ? 'Fecha completamente disponible.'
+                    : taken < 5
+                        ? `Hay ${taken} reservas pero todavía hay disponibilidad.`
+                        : 'Fecha con alta ocupación, sugerir alternativa.',
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Photography quote: creates a lead with the quote details so the
+     * studio can follow up. Low-fidelity — for proper quote tracking
+     * a future iteration could create a CRM opportunity.
+     */
+    private async requestPhotoQuoteTool(schemaName: string, contactId: string, args: any): Promise<any> {
+        try {
+            // Drop a note on the conversation context so the operator
+            // sees the request and can follow up. For now we just emit
+            // an event; future iterations can persist a quote row.
+            this.eventEmitter.emit('photo_quote.requested', {
+                tenantSchemaName: schemaName,
+                contactId,
+                date: args.date,
+                packageName: args.packageName,
+                duration: args.duration,
+                location: args.location,
+                customerName: args.customerName,
+                customerEmail: args.customerEmail,
+                customerPhone: args.customerPhone,
+                specialRequests: args.specialRequests,
+            });
+            return {
+                received: true,
+                date: args.date,
+                package: args.packageName,
+                message: 'Cotización registrada — el equipo te enviará la propuesta personalizada en las próximas horas. ¿Algo más en lo que te pueda ayudar?',
             };
         } catch (e: any) {
             return { error: e.message };

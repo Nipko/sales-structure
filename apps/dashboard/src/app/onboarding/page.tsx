@@ -21,7 +21,8 @@ type PlanSlug = typeof PLAN_SLUGS[number];
 const INDUSTRY_KEYS = [
     "turismo", "education", "salud", "veterinaria", "retail", "technology",
     "servicios_profesionales", "restaurantes", "inmobiliaria",
-    "automotriz", "finanzas", "moda_belleza", "gimnasios", "seguros", "otro",
+    "automotriz", "finanzas", "moda_belleza", "gimnasios", "seguros",
+    "servicios_hogar", "pet_services", "fotografia", "otro",
 ];
 
 const ORG_SIZE_KEYS = ["1-10", "11-20", "21-50", "51-200", "201-1000", "1000+"];

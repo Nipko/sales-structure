@@ -44,6 +44,7 @@ import {
   CalendarRange,
   GraduationCap,
   Umbrella,
+  Wrench,
   Activity,
   TrendingUp,
   ShieldCheck,
@@ -101,6 +102,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticals: ["gimnasios"] },
       { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticals: ["education"] },
       { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticals: ["seguros"] },
+      { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticals: ["servicios_hogar"] },
     ],
   },
   {

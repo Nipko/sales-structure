@@ -1094,6 +1094,18 @@ export const api = {
     },
     fileInsuranceClaim: (tenantId: string, data: any) => apiPost(`/insurance/${tenantId}/claims`, data),
 
+    // ─── Home services ───
+    listServiceRequests: (tenantId: string, params?: { status?: string; urgency?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.urgency) qs.set("urgency", params.urgency);
+        const q = qs.toString();
+        return apiGet(`/home-services/${tenantId}/requests${q ? `?${q}` : ""}`);
+    },
+    getServiceRequest: (tenantId: string, id: string) => apiGet(`/home-services/${tenantId}/requests/${id}`),
+    createServiceRequest: (tenantId: string, data: any) => apiPost(`/home-services/${tenantId}/requests`, data),
+    updateServiceRequest: (tenantId: string, id: string, data: any) => apiPut(`/home-services/${tenantId}/requests/${id}`, data),
+
     // ─── Real Estate Listings (inmobiliaria) ───
     listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
         const qs = new URLSearchParams();

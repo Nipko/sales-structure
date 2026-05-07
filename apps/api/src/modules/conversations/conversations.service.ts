@@ -29,6 +29,7 @@ import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
 import { EDUCATION_TOOLS } from './tools/education-tools';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
+import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -871,6 +872,15 @@ export class ConversationsService {
         }
         if (cfgTools?.insurance?.enabled === true) {
             tools = [...tools, ...INSURANCE_TOOLS];
+        }
+        if (cfgTools?.homeServices?.enabled === true) {
+            tools = [...tools, ...HOME_SERVICES_TOOLS];
+        }
+        if (cfgTools?.petServices?.enabled === true) {
+            tools = [...tools, ...PET_SERVICES_TOOLS];
+        }
+        if (cfgTools?.photography?.enabled === true) {
+            tools = [...tools, ...PHOTOGRAPHY_TOOLS];
         }
 
         if (bookingState.step && bookingState.step !== 'idle') {

@@ -607,6 +607,254 @@ const TECHNOLOGY = createGenericVertical('technology', {
     ],
 });
 
+// ── Tier 3 verticals ─────────────────────────────────────────────
+
+const SERVICIOS_HOGAR: VerticalDefinition = {
+    industry: 'servicios_hogar',
+    subTypes: [
+        { key: 'plomeria', label: { es: 'Plomería', en: 'Plumbing', pt: 'Encanamento', fr: 'Plomberie' } },
+        { key: 'electricidad', label: { es: 'Electricidad', en: 'Electrical', pt: 'Eletricidade', fr: 'Électricité' } },
+        { key: 'fumigacion', label: { es: 'Fumigación', en: 'Pest control', pt: 'Dedetização', fr: 'Désinsectisation' } },
+        { key: 'limpieza', label: { es: 'Limpieza', en: 'Cleaning', pt: 'Limpeza', fr: 'Nettoyage' } },
+        { key: 'jardineria', label: { es: 'Jardinería', en: 'Landscaping', pt: 'Jardinagem', fr: 'Jardinage' } },
+        { key: 'cerrajeria', label: { es: 'Cerrajería', en: 'Locksmith', pt: 'Chaveiro', fr: 'Serrurerie' } },
+        { key: 'pintura', label: { es: 'Pintura', en: 'Painting', pt: 'Pintura', fr: 'Peinture' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'cliente', en: 'customer', pt: 'cliente', fr: 'client' },
+        customerNounPlural: { es: 'clientes', en: 'customers', pt: 'clientes', fr: 'clients' },
+        transactionNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' },
+        serviceNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' },
+        pipelineNoun: { es: 'solicitudes', en: 'requests', pt: 'solicitações', fr: 'demandes' },
+    },
+    agent: {
+        name: { es: 'Diego', en: 'Diego', pt: 'Diego', fr: 'Diego' },
+        role: { es: 'Asistente de servicios al hogar', en: 'Home services assistant', pt: 'Assistente de serviços', fr: 'Assistant services à domicile' },
+        tone: 'professional',
+        formality: 'semi-formal',
+        greeting: { es: 'Hola, soy Diego del equipo de servicios. ¿Qué problema necesitas resolver hoy?', en: 'Hi, I\'m Diego from the services team. What needs fixing today?', pt: 'Olá, sou Diego.', fr: 'Bonjour, je suis Diego.' },
+        rules: {
+            es: 'SIEMPRE captura urgencia (emergencia / alta / normal / flexible) — si es emergencia escala inmediatamente. Pide dirección completa, ciudad, descripción del problema, fecha preferida. Usa create_service_request para registrar. NUNCA inventes precios sin que el técnico evalúe en sitio — di "el técnico te dará la cotización al revisar".',
+            en: 'Always capture urgency. Emergencies escalate immediately. Get full address, city, issue description, preferred date. Use create_service_request. Never invent prices without on-site assessment.',
+            pt: 'Sempre capture urgência. Emergências escalam.',
+            fr: 'Toujours capturer l\'urgence. Urgences escaladent.',
+        },
+        forbiddenTopics: {
+            es: 'Cotizaciones definitivas sin evaluación en sitio|Promesas sobre tiempos de respuesta sin confirmación',
+            en: 'Final quotes without on-site assessment|Response time promises without confirmation',
+            pt: 'Cotações finais sem avaliação',
+            fr: 'Devis fermes sans visite',
+        },
+        handoffTriggers: {
+            es: 'emergencia|fuga de gas|inundación|cortocircuito|electrocucion|peligro|queja formal',
+            en: 'emergency|gas leak|flood|short circuit|danger|formal complaint',
+            pt: 'emergência|vazamento de gás|inundação',
+            fr: 'urgence|fuite de gaz|inondation',
+        },
+    },
+    pipeline: {
+        stages: [
+            { name: { es: 'Solicitud', en: 'Request', pt: 'Solicitação', fr: 'Demande' }, slug: 'solicitud', color: '#3498db', probability: 10, isTerminal: false },
+            { name: { es: 'Cotización', en: 'Quoted', pt: 'Cotada', fr: 'Devis' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false },
+            { name: { es: 'Agendado', en: 'Scheduled', pt: 'Agendado', fr: 'Programmé' }, slug: 'agendado', color: '#e67e22', probability: 60, isTerminal: false },
+            { name: { es: 'En servicio', en: 'On site', pt: 'Em serviço', fr: 'Sur place' }, slug: 'en_servicio', color: '#9b59b6', probability: 80, isTerminal: false },
+            { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true },
+            { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#95a5a6', probability: 0, isTerminal: true },
+        ],
+    },
+    faqs: [
+        { question: { es: '¿Atienden emergencias 24/7?', en: 'Do you handle 24/7 emergencies?', pt: 'Atendem 24/7?', fr: 'Service 24/7?' }, answer: { es: 'Sí, en horario nocturno y fines de semana hay un recargo del 30-50% según el tipo. Cuéntanos qué pasa y te ayudamos rápido.', en: 'Yes — 30-50% surcharge for night/weekend depending on type.', pt: 'Sim — taxa adicional de 30-50%.', fr: 'Oui — supplément 30-50%.' }, category: 'urgencias' },
+        { question: { es: '¿Cómo obtengo una cotización?', en: 'How do I get a quote?', pt: 'Como peço cotação?', fr: 'Comment obtenir un devis?' }, answer: { es: 'Cuéntanos qué necesitas — el técnico debe evaluar en sitio para darte el precio final.', en: 'Tell us the issue — the technician must assess on-site for the final quote.', pt: 'Conte-nos o problema — avaliação no local para preço final.', fr: 'Décrivez le problème — évaluation sur place.' }, category: 'cotizacion' },
+        { question: { es: '¿Qué garantía tienen los trabajos?', en: 'Work warranty?', pt: 'Garantia dos serviços?', fr: 'Garantie?' }, answer: { es: 'Damos garantía de 90 días en mano de obra y la del fabricante en partes.', en: '90 days on labor; manufacturer warranty on parts.', pt: '90 dias na mão de obra.', fr: '90 jours main-d\'œuvre.' }, category: 'garantia' },
+        { question: { es: '¿Trabajan en mi zona?', en: 'Do you cover my area?', pt: 'Atendem minha zona?', fr: 'Couvrez-vous ma zone?' }, answer: { es: 'Cuéntanos tu dirección y te confirmo cobertura. Atendemos toda la ciudad.', en: 'Send your address — we cover the whole city.', pt: 'Mande seu endereço.', fr: 'Envoyez votre adresse.' }, category: 'cobertura' },
+        { question: { es: '¿Cuál es la forma de pago?', en: 'Payment methods?', pt: 'Formas de pagamento?', fr: 'Modes de paiement?' }, answer: { es: 'Aceptamos efectivo, tarjeta y transferencia. Pago al finalizar el servicio.', en: 'Cash, card, transfer. Payment on completion.', pt: 'Dinheiro, cartão, transferência.', fr: 'Espèces, carte, virement.' }, category: 'pagos' },
+    ],
+    services: [],
+    businessHours: {
+        schedule: { mon: '07:00-19:00', tue: '07:00-19:00', wed: '07:00-19:00', thu: '07:00-19:00', fri: '07:00-19:00', sat: '08:00-15:00' },
+        afterHoursMessage: { es: 'Estamos fuera de horario regular. Para emergencias indica "EMERGENCIA" y te contactamos.', en: 'After hours — type EMERGENCIA for urgent dispatch.', pt: 'Fora do horário.', fr: 'Hors horaires.' },
+    },
+    sidebar: {
+        labelOverrides: {
+            crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' },
+            pipeline: { es: 'Solicitudes', en: 'Requests', pt: 'Solicitações', fr: 'Demandes' },
+        },
+        hiddenItems: [],
+    },
+    dashboard: {
+        kpis: [
+            { key: 'leadsToday', label: { es: 'Solicitudes Hoy', en: 'Requests Today', pt: 'Solicitações Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Wrench', color: '#3498db' },
+            { key: 'leadsHot', label: { es: 'Emergencias', en: 'Emergencies', pt: 'Emergências', fr: 'Urgences' }, icon: 'AlertTriangle', color: '#e74c3c' },
+            { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
+            { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#27ae60' },
+        ],
+    },
+    bookingEnabled: true,
+};
+
+const PET_SERVICES: VerticalDefinition = {
+    industry: 'pet_services',
+    subTypes: [
+        { key: 'peluqueria', label: { es: 'Peluquería canina/felina', en: 'Pet grooming', pt: 'Banho e tosa', fr: 'Toilettage' } },
+        { key: 'guarderia', label: { es: 'Guardería diurna', en: 'Day care', pt: 'Creche para pets', fr: 'Garderie' } },
+        { key: 'hotel', label: { es: 'Hotel canino', en: 'Pet hotel', pt: 'Hotel para pets', fr: 'Hôtel pour animaux' } },
+        { key: 'paseos', label: { es: 'Paseos', en: 'Dog walking', pt: 'Passeios', fr: 'Promenades' } },
+        { key: 'adiestramiento', label: { es: 'Adiestramiento', en: 'Training', pt: 'Adestramento', fr: 'Dressage' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'tutor', en: 'pet parent', pt: 'tutor', fr: 'tuteur' },
+        customerNounPlural: { es: 'tutores', en: 'pet parents', pt: 'tutores', fr: 'tuteurs' },
+        transactionNoun: { es: 'reserva', en: 'booking', pt: 'reserva', fr: 'réservation' },
+        serviceNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' },
+        pipelineNoun: { es: 'reservas', en: 'bookings', pt: 'reservas', fr: 'réservations' },
+    },
+    agent: {
+        name: { es: 'Toby', en: 'Toby', pt: 'Toby', fr: 'Toby' },
+        role: { es: 'Asistente del salón de mascotas', en: 'Pet salon assistant', pt: 'Assistente pet', fr: 'Assistant animalier' },
+        tone: 'warm',
+        formality: 'casual',
+        greeting: { es: '¡Hola! Soy Toby, asistente del salón. ¿Qué peludito necesita atención hoy?', en: 'Hi! I\'m Toby, salon assistant. Which furry one needs care?', pt: 'Oi! Sou Toby.', fr: 'Salut! Je suis Toby.' },
+        rules: {
+            es: 'Pregunta nombre, raza y tamaño de la mascota antes de cotizar — el precio cambia. Para guardería pide días de inicio y fin. Para baño/peluquería verifica vacunas si es primera vez. Lista los servicios con list_pet_services antes de proponer.',
+            en: 'Ask pet name, breed and size before quoting. Verify vaccines for first-time grooming. Use list_pet_services to show offerings.',
+            pt: 'Pergunte nome, raça e porte antes de cotar.',
+            fr: 'Demandez nom, race et taille avant le devis.',
+        },
+        forbiddenTopics: {
+            es: 'Diagnósticos veterinarios|Recomendaciones médicas|Aceptación sin verificación de vacunas',
+            en: 'Veterinary diagnoses|Medical recommendations|Accepting without vaccine check',
+            pt: 'Diagnósticos|Aceitação sem vacinas',
+            fr: 'Diagnostics|Acceptation sans vaccins',
+        },
+        handoffTriggers: {
+            es: 'lesión|herida|enfermedad|emergencia|queja',
+            en: 'injury|wound|illness|emergency|complaint',
+            pt: 'lesão|emergência',
+            fr: 'blessure|urgence',
+        },
+    },
+    pipeline: {
+        stages: [
+            { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#3498db', probability: 10, isTerminal: false },
+            { name: { es: 'Reserva', en: 'Booked', pt: 'Reservada', fr: 'Réservée' }, slug: 'reserva', color: '#f39c12', probability: 50, isTerminal: false },
+            { name: { es: 'Servicio', en: 'In progress', pt: 'Em serviço', fr: 'En cours' }, slug: 'servicio', color: '#e67e22', probability: 80, isTerminal: false },
+            { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true },
+            { name: { es: 'Cliente recurrente', en: 'Repeat client', pt: 'Cliente recorrente', fr: 'Client fidèle' }, slug: 'recurrente', color: '#27ae60', probability: 95, isTerminal: false },
+        ],
+    },
+    faqs: [
+        { question: { es: '¿Necesito el carnet de vacunas?', en: 'Do I need vaccine record?', pt: 'Preciso do carnê de vacinas?', fr: 'Carnet de vaccination?' }, answer: { es: 'Sí — para guardería y hotel es obligatorio (rabia, parvovirus, moquillo). Tráelo o envíalo por foto.', en: 'Yes — required for daycare/hotel.', pt: 'Sim — obrigatório para creche/hotel.', fr: 'Oui — requis pour garderie/hôtel.' }, category: 'requisitos' },
+        { question: { es: '¿Manejan razas grandes?', en: 'Do you accept large breeds?', pt: 'Aceitam raças grandes?', fr: 'Acceptez-vous les grandes races?' }, answer: { es: 'Sí — ten en cuenta que el precio aumenta con el tamaño y peso.', en: 'Yes — price scales with size.', pt: 'Sim — preço varia.', fr: 'Oui — prix selon taille.' }, category: 'tamano' },
+        { question: { es: '¿Puedo dejar al pet con sus juguetes?', en: 'Can I leave pet toys?', pt: 'Posso deixar brinquedos?', fr: 'Puis-je laisser des jouets?' }, answer: { es: 'Si, recomendamos su manta o juguete favorito para reducir estrés.', en: 'Yes — favorite toy/blanket recommended.', pt: 'Sim — manta ou brinquedo recomendado.', fr: 'Oui — couverture/jouet recommandés.' }, category: 'general' },
+        { question: { es: '¿Cuánto dura la peluquería?', en: 'How long does grooming take?', pt: 'Duração do banho e tosa?', fr: 'Durée du toilettage?' }, answer: { es: 'Entre 1.5 y 3 horas según raza y servicio.', en: '1.5-3 hours depending on breed.', pt: '1,5-3 horas.', fr: '1h30-3h selon race.' }, category: 'duracion' },
+        { question: { es: '¿Hacen pickup y delivery?', en: 'Pickup & delivery?', pt: 'Coleta e entrega?', fr: 'Collecte et livraison?' }, answer: { es: 'Sí, dentro de la ciudad por costo adicional.', en: 'Yes, in-city for extra fee.', pt: 'Sim, na cidade.', fr: 'Oui, en ville.' }, category: 'logistica' },
+    ],
+    services: [
+        { name: { es: 'Baño + corte (perro pequeño)', en: 'Bath + cut (small dog)', pt: 'Banho + tosa (pequeno)', fr: 'Bain + coupe (petit)' }, description: { es: 'Baño completo + corte de raza', en: 'Full bath + breed cut', pt: 'Banho completo', fr: 'Bain complet' }, durationMinutes: 90, price: 60000, currency: 'COP', category: 'peluqueria' },
+        { name: { es: 'Guardería diurna', en: 'Day care', pt: 'Creche diária', fr: 'Garderie journée' }, description: { es: 'Estancia 8-10h con socialización', en: '8-10h stay with socialization', pt: 'Permanência 8-10h', fr: 'Séjour 8-10h' }, durationMinutes: 480, price: 50000, currency: 'COP', category: 'guarderia' },
+        { name: { es: 'Hotel — noche', en: 'Hotel — overnight', pt: 'Hotel — diária', fr: 'Hôtel — nuit' }, description: { es: 'Pernocta con alimentación incluida', en: 'Overnight stay with food', pt: 'Pernoite com alimentação', fr: 'Nuit avec nourriture' }, durationMinutes: 1440, price: 80000, currency: 'COP', category: 'hotel' },
+    ],
+    businessHours: {
+        schedule: { mon: '08:00-18:00', tue: '08:00-18:00', wed: '08:00-18:00', thu: '08:00-18:00', fri: '08:00-18:00', sat: '08:00-16:00' },
+        afterHoursMessage: { es: 'Estamos cerrados. Te respondo al iniciar jornada.', en: 'We are closed.', pt: 'Estamos fechados.', fr: 'Nous sommes fermés.' },
+    },
+    sidebar: {
+        labelOverrides: {
+            crm: { es: 'Tutores', en: 'Pet parents', pt: 'Tutores', fr: 'Tuteurs' },
+            appointments: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' },
+        },
+        hiddenItems: [],
+    },
+    dashboard: {
+        kpis: [
+            { key: 'leadsToday', label: { es: 'Tutores Hoy', en: 'Pet Parents Today', pt: 'Tutores Hoje', fr: 'Tuteurs Aujourd\'hui' }, icon: 'PawPrint', color: '#3498db' },
+            { key: 'appointmentsToday', label: { es: 'Reservas Hoy', en: 'Bookings Today', pt: 'Reservas Hoje', fr: 'Réservations Aujourd\'hui' }, icon: 'Calendar', color: '#2ecc71' },
+            { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
+            { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#e67e22' },
+        ],
+    },
+    bookingEnabled: true,
+};
+
+const FOTOGRAFIA: VerticalDefinition = {
+    industry: 'fotografia',
+    subTypes: [
+        { key: 'estudio', label: { es: 'Estudio fotográfico', en: 'Photo studio', pt: 'Estúdio fotográfico', fr: 'Studio photo' } },
+        { key: 'bodas', label: { es: 'Wedding photography', en: 'Wedding photography', pt: 'Casamentos', fr: 'Mariages' } },
+        { key: 'eventos', label: { es: 'Eventos sociales y corporativos', en: 'Social & corporate events', pt: 'Eventos', fr: 'Événements' } },
+        { key: 'producto', label: { es: 'Fotografía de producto', en: 'Product photography', pt: 'Produto', fr: 'Produit' } },
+        { key: 'wedding_planner', label: { es: 'Wedding planner', en: 'Wedding planner', pt: 'Wedding planner', fr: 'Wedding planner' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'cliente', en: 'client', pt: 'cliente', fr: 'client' },
+        customerNounPlural: { es: 'clientes', en: 'clients', pt: 'clientes', fr: 'clients' },
+        transactionNoun: { es: 'sesión', en: 'shoot', pt: 'sessão', fr: 'séance' },
+        serviceNoun: { es: 'paquete', en: 'package', pt: 'pacote', fr: 'forfait' },
+        pipelineNoun: { es: 'cotizaciones', en: 'quotes', pt: 'cotações', fr: 'devis' },
+    },
+    agent: {
+        name: { es: 'Camila', en: 'Camille', pt: 'Camila', fr: 'Camille' },
+        role: { es: 'Asistente del estudio fotográfico', en: 'Photo studio assistant', pt: 'Assistente do estúdio', fr: 'Assistante studio' },
+        tone: 'warm',
+        formality: 'semi-formal',
+        greeting: { es: '¡Hola! Soy Camila, asistente del estudio. ¿Qué tipo de sesión estás planeando?', en: 'Hi! I\'m Camille. What kind of shoot are you planning?', pt: 'Oi! Sou Camila.', fr: 'Bonjour! Je suis Camille.' },
+        rules: {
+            es: 'Para cualquier consulta de fechas SIEMPRE usa check_date_availability — el doble booking es catastrófico en wedding photography. Pregunta tipo de evento, número de horas, ubicación. El anticipo típico es 50% al confirmar fecha. Los entregables (cantidad de fotos editadas, álbumes, video) son lo que diferencia los paquetes — list_photo_packages para mostrarlos.',
+            en: 'For dates ALWAYS use check_date_availability — double booking is catastrophic. Ask event type, hours, location. Typical deposit 50% on date confirmation.',
+            pt: 'Para datas SEMPRE use check_date_availability.',
+            fr: 'Pour les dates utilisez TOUJOURS check_date_availability.',
+        },
+        forbiddenTopics: {
+            es: 'Compromisos de fechas sin verificar disponibilidad|Promesas de fotos no incluidas en el paquete',
+            en: 'Date commitments without availability check|Promises beyond package scope',
+            pt: 'Compromissos sem checar disponibilidade',
+            fr: 'Engagements sans vérifier disponibilité',
+        },
+        handoffTriggers: {
+            es: 'cancelación|reembolso|queja|problema con fotos entregadas',
+            en: 'cancellation|refund|complaint|delivered photos issue',
+            pt: 'cancelamento|reembolso|reclamação',
+            fr: 'annulation|remboursement|plainte',
+        },
+    },
+    pipeline: {
+        stages: [
+            { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#3498db', probability: 10, isTerminal: false },
+            { name: { es: 'Cotización', en: 'Quote sent', pt: 'Cotação', fr: 'Devis envoyé' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false },
+            { name: { es: 'Anticipo', en: 'Deposit paid', pt: 'Sinal pago', fr: 'Acompte versé' }, slug: 'anticipo', color: '#e67e22', probability: 70, isTerminal: false },
+            { name: { es: 'Sesión agendada', en: 'Shoot booked', pt: 'Sessão agendada', fr: 'Séance réservée' }, slug: 'agendada', color: '#9b59b6', probability: 90, isTerminal: false },
+            { name: { es: 'Entregada', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregada', color: '#2ecc71', probability: 100, isTerminal: true },
+            { name: { es: 'Reseña', en: 'Reviewed', pt: 'Avaliada', fr: 'Avis donné' }, slug: 'resena', color: '#27ae60', probability: 95, isTerminal: false },
+        ],
+    },
+    faqs: [
+        { question: { es: '¿Cuánto cuesta una sesión?', en: 'How much for a shoot?', pt: 'Quanto custa uma sessão?', fr: 'Prix d\'une séance?' }, answer: { es: 'Depende del tipo (familiar, boda, corporativo) y horas. Cuéntame qué planeas y te muestro paquetes.', en: 'Depends on type and hours.', pt: 'Depende do tipo.', fr: 'Selon type et durée.' }, category: 'precios' },
+        { question: { es: '¿Cuántas fotos editadas entregan?', en: 'How many edited photos?', pt: 'Quantas fotos editadas?', fr: 'Combien de photos éditées?' }, answer: { es: 'Varía según paquete: sesión familiar 30-50, boda 300-500, corporativo 50-80.', en: 'Family 30-50, wedding 300-500, corporate 50-80.', pt: 'Familiar 30-50, casamento 300-500.', fr: 'Famille 30-50, mariage 300-500.' }, category: 'entregables' },
+        { question: { es: '¿Cuánto tiempo tardan en entregar?', en: 'Delivery time?', pt: 'Prazo de entrega?', fr: 'Délai de livraison?' }, answer: { es: 'Sesión familiar: 1-2 semanas. Boda: 4-6 semanas. Express disponible con recargo.', en: 'Family 1-2w. Wedding 4-6w.', pt: 'Familiar 1-2 sem. Casamento 4-6 sem.', fr: 'Famille 1-2 sem. Mariage 4-6 sem.' }, category: 'entrega' },
+        { question: { es: '¿Hacen video?', en: 'Do you offer video?', pt: 'Fazem vídeo?', fr: 'Vidéo aussi?' }, answer: { es: 'Sí, como add-on. Para bodas el video y fotografía van juntos en paquete combinado con descuento.', en: 'Yes — add-on or wedding combo.', pt: 'Sim — add-on ou combo.', fr: 'Oui — option ou combo.' }, category: 'video' },
+        { question: { es: '¿Cuál es el anticipo para reservar?', en: 'What\'s the deposit?', pt: 'Qual o sinal?', fr: 'Quel acompte?' }, answer: { es: 'El 50% al confirmar fecha. El saldo se paga el día de la sesión o entrega según paquete.', en: '50% to confirm date.', pt: '50% para confirmar data.', fr: '50% pour confirmer.' }, category: 'pago' },
+    ],
+    services: [
+        { name: { es: 'Sesión familiar', en: 'Family session', pt: 'Sessão familiar', fr: 'Séance famille' }, description: { es: '2 horas + 30 fotos editadas', en: '2h + 30 edited photos', pt: '2h + 30 fotos', fr: '2h + 30 photos' }, durationMinutes: 120, price: 350000, currency: 'COP', category: 'familiar' },
+        { name: { es: 'Boda completa', en: 'Full wedding', pt: 'Casamento completo', fr: 'Mariage complet' }, description: { es: '8 horas + 400 fotos + álbum', en: '8h + 400 photos + album', pt: '8h + 400 fotos', fr: '8h + 400 photos' }, durationMinutes: 480, price: 3500000, currency: 'COP', category: 'boda' },
+        { name: { es: 'Producto e-commerce', en: 'Product e-commerce', pt: 'Produto e-commerce', fr: 'Produit e-commerce' }, description: { es: 'Hasta 20 productos', en: 'Up to 20 products', pt: 'Até 20 produtos', fr: 'Jusqu\'à 20 produits' }, durationMinutes: 240, price: 800000, currency: 'COP', category: 'producto' },
+    ],
+    businessHours: {
+        schedule: { mon: '09:00-18:00', tue: '09:00-18:00', wed: '09:00-18:00', thu: '09:00-18:00', fri: '09:00-18:00', sat: '09:00-15:00' },
+        afterHoursMessage: { es: 'Fuera de horario, te respondo pronto.', en: 'After hours, will respond soon.', pt: 'Fora do horário.', fr: 'Hors horaires.' },
+    },
+    sidebar: { labelOverrides: { pipeline: { es: 'Cotizaciones', en: 'Quotes', pt: 'Cotações', fr: 'Devis' } }, hiddenItems: [] },
+    dashboard: {
+        kpis: [
+            { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Camera', color: '#3498db' },
+            { key: 'leadsHot', label: { es: 'Cotizaciones', en: 'Quotes', pt: 'Cotações', fr: 'Devis' }, icon: 'FileSignature', color: '#e67e22' },
+            { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
+            { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#27ae60' },
+        ],
+    },
+    bookingEnabled: true,
+};
+
 const SEGUROS: VerticalDefinition = {
     industry: 'seguros',
     subTypes: [
@@ -882,6 +1130,9 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     veterinaria: VETERINARIA,
     gimnasios: GIMNASIOS,
     seguros: SEGUROS,
+    servicios_hogar: SERVICIOS_HOGAR,
+    pet_services: PET_SERVICES,
+    fotografia: FOTOGRAFIA,
     otro: OTRO,
 };
 

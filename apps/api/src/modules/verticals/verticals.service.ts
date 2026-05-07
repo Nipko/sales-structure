@@ -97,6 +97,20 @@ export class VerticalsService {
             await this.enableInsuranceTool(schemaName);
         }
 
+        // 4j. Tier 3 verticals — light bootstrap: each just flips the
+        // appropriate tool flag on the default agent. Pet services and
+        // photography reuse the existing services + appointments engine
+        // so no per-vertical schema is needed.
+        if (industry === 'servicios_hogar') {
+            await this.enableSimpleTool(schemaName, 'homeServices');
+        }
+        if (industry === 'pet_services') {
+            await this.enableSimpleTool(schemaName, 'petServices');
+        }
+        if (industry === 'fotografia') {
+            await this.enableSimpleTool(schemaName, 'photography');
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -777,6 +791,35 @@ export class VerticalsService {
             this.logger.debug('Enabled gyms tool on default agent');
         } catch (error: any) {
             this.logger.warn(`Failed to enable gyms tool: ${error.message}`);
+        }
+    }
+
+    /**
+     * Generic tool-enabler for Tier 3 verticals. Each just flips a
+     * config.tools.* flag on the default agent — no domain-specific
+     * extras needed since these verticals reuse the existing services
+     * + appointments + service_requests infrastructure.
+     */
+    private async enableSimpleTool(schemaName: string, toolKey: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools[toolKey] = { ...(tools[toolKey] || {}), enabled: true };
+            const newConfig = { ...config, tools };
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug(`Enabled ${toolKey} tool on default agent`);
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable ${toolKey} tool: ${error.message}`);
         }
     }
 

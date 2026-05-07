@@ -19,6 +19,7 @@ import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
 import { WhatsappMessagingService } from './services/whatsapp-messaging.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -36,6 +37,7 @@ export class WhatsappController {
     private readonly templateService: WhatsappTemplateService,
     private readonly messagingService: WhatsappMessagingService,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
   ) {}
 
   private async resolveSchema(req: any): Promise<string | null> {
@@ -130,18 +132,102 @@ export class WhatsappController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('super_admin', 'tenant_admin')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Disconnect WhatsApp channel' })
+  @ApiOperation({ summary: 'Disconnect WhatsApp channel — calls Meta to unsubscribe the app from the WABA, then marks BD inactive' })
   async disconnect(@Request() req: any) {
     const tenantId = req.user?.tenantId;
     if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-    await this.prisma.channelAccount.updateMany({
-      where: { tenantId, channelType: 'whatsapp' },
-      data: { isActive: false },
+    // Resolve tenant schema to read whatsapp_channels (waba_id lives there).
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { schemaName: true },
     });
 
-    this.logger.log(`WhatsApp disconnected for tenant ${tenantId}`);
-    return { success: true, message: 'WhatsApp disconnected' };
+    let metaUnsubscribed = false;
+    let metaError: string | null = null;
+
+    if (tenant?.schemaName) {
+      try {
+        // Get the access token + waba_id from the tenant's WhatsApp channel.
+        const creds = await this.connectionService.getValidAccessToken(tenant.schemaName);
+        const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
+
+        // Tell Meta to remove our app's webhook subscription on this WABA.
+        // After this, Meta stops sending webhooks for this account to us.
+        const res = await fetch(
+          `https://graph.facebook.com/${graphVersion}/${creds.wabaId}/subscribed_apps?access_token=${creds.accessToken}`,
+          { method: 'DELETE' },
+        );
+
+        if (res.ok) {
+          metaUnsubscribed = true;
+          this.logger.log(`Meta WABA ${creds.wabaId} unsubscribed for tenant ${tenantId}`);
+        } else {
+          const body = await res.text().catch(() => '');
+          metaError = `Meta returned ${res.status}: ${body.substring(0, 200)}`;
+          this.logger.warn(`Failed to unsubscribe WABA for tenant ${tenantId}: ${metaError}`);
+        }
+      } catch (err: any) {
+        // No credentials, no waba_id, or fetch threw. We still proceed with
+        // the BD-level disconnect — but flag this to the user so they know
+        // Meta might still be sending webhooks until a manual cleanup.
+        metaError = err?.message || 'unknown error resolving WhatsApp credentials';
+        this.logger.warn(`Could not call Meta unsubscribe for tenant ${tenantId}: ${metaError}`);
+      }
+    }
+
+    // Mark every WhatsApp channel_account inactive AND record what happened
+    // in metadata so a future "reactivate" knows whether Meta needs to be
+    // re-linked or the local toggle is enough.
+    await this.prisma.$queryRawUnsafe(
+      `UPDATE channel_accounts
+         SET is_active = false,
+             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                 'disconnected_at', NOW()::text,
+                 'disconnected_at_provider', $2::boolean,
+                 'disconnect_error', $3::text
+             ),
+             updated_at = NOW()
+         WHERE tenant_id = $1::uuid AND channel_type = 'whatsapp'`,
+      tenantId,
+      metaUnsubscribed,
+      metaError,
+    );
+
+    // Revoke the credentials so a stale token can't accidentally be reused.
+    if (metaUnsubscribed) {
+      await this.prisma.$queryRawUnsafe(
+        `UPDATE whatsapp_credentials SET rotation_state = 'revoked', updated_at = NOW()
+           WHERE tenant_id = $1::uuid AND rotation_state = 'active'`,
+        tenantId,
+      );
+    }
+
+    // Audit row so this disconnect is traceable later.
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId,
+          action: 'channel_disconnected',
+          resource: 'whatsapp',
+          details: {
+            metaUnsubscribed,
+            metaError,
+            triggeredBy: req.user?.sub || 'unknown',
+          },
+        },
+      });
+    } catch { /* non-blocking */ }
+
+    this.logger.log(`WhatsApp disconnected for tenant ${tenantId} (meta=${metaUnsubscribed})`);
+    return {
+      success: true,
+      message: metaUnsubscribed
+        ? 'WhatsApp desconectado de Meta y de la plataforma'
+        : 'WhatsApp marcado como desconectado en la plataforma. ATENCIÓN: la app sigue suscrita en Meta — revisar manualmente.',
+      metaUnsubscribed,
+      metaError,
+    };
   }
 
   // ======================== TEMPLATES ========================

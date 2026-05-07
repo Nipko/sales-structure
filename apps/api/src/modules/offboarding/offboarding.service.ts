@@ -206,12 +206,35 @@ export class OffboardingService {
             return;
         }
 
+        // Resolve schema_name once for the WhatsApp lookup below
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { schemaName: true },
+        });
+
+        // Track which channels we successfully detached at the provider so the
+        // reactivate path knows whether bringing is_active=true is enough or
+        // whether the user has to reconnect through OAuth again.
+        const providerDisconnected: Record<string, boolean> = {};
+
         // Best-effort: unsubscribe WhatsApp WABAs
         for (const account of accounts) {
             if (account.channelType === 'whatsapp') {
+                let unsubscribed = false;
                 try {
-                    const metadata = account.metadata as any;
-                    const wabaId = metadata?.wabaId || metadata?.meta_waba_id;
+                    // The WABA id lives in the tenant schema's whatsapp_channels
+                    // table, NOT in channel_accounts.metadata (the previous
+                    // implementation looked there and silently no-op'd).
+                    let wabaId: string | undefined;
+                    if (tenant?.schemaName) {
+                        const rows = await this.prisma.executeInTenantSchema<any[]>(
+                            tenant.schemaName,
+                            `SELECT meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+                            [account.accountId],
+                        );
+                        wabaId = rows?.[0]?.meta_waba_id;
+                    }
+
                     if (wabaId) {
                         const cred = await this.prisma.whatsappCredential.findFirst({
                             where: { tenantId, credentialType: 'system_user_token' },
@@ -219,16 +242,21 @@ export class OffboardingService {
                         });
                         if (cred?.encryptedValue) {
                             const accessToken = this.decryptToken(cred.encryptedValue);
-                            await fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
-                                method: 'DELETE',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ access_token: accessToken }),
-                            }).catch(() => { /* best effort */ });
+                            // Meta wants access_token as query param, not body
+                            const res = await fetch(
+                                `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps?access_token=${accessToken}`,
+                                { method: 'DELETE' },
+                            ).catch(() => null);
+                            if (res?.ok) {
+                                unsubscribed = true;
+                                this.logger.log(`[Offboarding ${tenantId}] Meta WABA ${wabaId} unsubscribed`);
+                            }
                         }
                     }
                 } catch (error) {
                     this.logger.warn(`Failed to unsubscribe WhatsApp WABA for tenant ${tenantId}: ${error}`);
                 }
+                providerDisconnected[account.id] = unsubscribed;
             }
 
             if (account.channelType === 'telegram') {
@@ -249,11 +277,25 @@ export class OffboardingService {
             }
         }
 
-        // Bulk deactivate all channel accounts
-        await this.prisma.channelAccount.updateMany({
-            where: { tenantId },
-            data: { isActive: false },
-        });
+        // Per-account update so we can stamp metadata.disconnected_at_provider
+        // — used by reactivate() to decide whether the channel can come back
+        // online with just a flag flip or needs a full OAuth reconnect.
+        for (const account of accounts) {
+            const flagged = providerDisconnected[account.id] === true;
+            await this.prisma.$queryRawUnsafe(
+                `UPDATE channel_accounts
+                   SET is_active = false,
+                       metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                           'disconnected_at', NOW()::text,
+                           'disconnected_by', 'offboarding',
+                           'disconnected_at_provider', $2::boolean
+                       ),
+                       updated_at = NOW()
+                   WHERE id = $1::uuid`,
+                account.id,
+                flagged,
+            );
+        }
 
         // Bulk revoke credentials
         await this.prisma.$queryRawUnsafe(
@@ -400,6 +442,38 @@ export class OffboardingService {
             data: { isActive: true },
         });
 
+        // Re-enable channel_accounts that were turned off during offboarding,
+        // BUT skip the ones we actually unsubscribed at the provider (Meta /
+        // Telegram). Those need a fresh OAuth reconnect; flipping is_active
+        // back to true would leave the dashboard saying "connected" while
+        // Meta has already detached the webhook subscription.
+        const channelsRestored = await this.prisma.$queryRawUnsafe<any[]>(
+            `UPDATE channel_accounts
+               SET is_active = true,
+                   metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                       'reactivated_at', NOW()::text
+                   ),
+                   updated_at = NOW()
+             WHERE tenant_id = $1::uuid
+               AND is_active = false
+               AND COALESCE((metadata->>'disconnected_at_provider')::boolean, false) = false
+             RETURNING id, channel_type, account_id`,
+            tenantId,
+        );
+        const skippedChannels = await this.prisma.channelAccount.count({
+            where: {
+                tenantId,
+                isActive: false,
+                metadata: { path: ['disconnected_at_provider'], equals: true },
+            },
+        }).catch(() => 0);
+        if (channelsRestored.length > 0) {
+            this.logger.log(`[Reactivate ${tenantId}] Restored ${channelsRestored.length} channel_account(s)`);
+        }
+        if (skippedChannels > 0) {
+            this.logger.warn(`[Reactivate ${tenantId}] ${skippedChannels} channel(s) need OAuth reconnect (provider unsubscribed) — left inactive`);
+        }
+
         // Update billing subscription if exists
         try {
             const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
@@ -542,5 +616,54 @@ export class OffboardingService {
         decrypted += decipher.final('utf8');
 
         return decrypted;
+    }
+
+    /**
+     * Force-reactivate channel_accounts for a tenant that was previously
+     * offboarded. Used to repair tenants that lost their channels during a
+     * cron run (e.g. tenant got past_due then was rescued by hand without
+     * also flipping channel_accounts). This does NOT re-link the channel at
+     * the provider — channels marked disconnected_at_provider=true still
+     * require a fresh OAuth reconnect.
+     */
+    async reactivateChannels(tenantId: string): Promise<{ restored: number; needsReconnect: number }> {
+        const restored = await this.prisma.$queryRawUnsafe<any[]>(
+            `UPDATE channel_accounts
+               SET is_active = true,
+                   metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                       'reactivated_at', NOW()::text,
+                       'reactivated_by', 'admin_force'
+                   ),
+                   updated_at = NOW()
+             WHERE tenant_id = $1::uuid
+               AND is_active = false
+               AND COALESCE((metadata->>'disconnected_at_provider')::boolean, false) = false
+             RETURNING id, channel_type, account_id`,
+            tenantId,
+        );
+        const needsReconnect = await this.prisma.channelAccount.count({
+            where: {
+                tenantId,
+                isActive: false,
+                metadata: { path: ['disconnected_at_provider'], equals: true },
+            },
+        }).catch(() => 0);
+
+        // Invalidate cache so the webhook starts seeing the channel again on the next message.
+        await this.redis.del(`tenant:${tenantId}:schema`);
+
+        try {
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'channels_force_reactivated',
+                    resource: 'offboarding',
+                    details: { restored: restored.length, needsReconnect },
+                },
+            });
+        } catch { /* non-blocking */ }
+
+        this.logger.log(`[reactivateChannels ${tenantId}] restored=${restored.length} needsReconnect=${needsReconnect}`);
+        return { restored: restored.length, needsReconnect };
     }
 }

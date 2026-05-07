@@ -52,6 +52,14 @@ export class OffboardingController {
         return { success: true, data: result };
     }
 
+    @Post(':tenantId/reactivate-channels')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Force-reactivate channel_accounts for a tenant whose channels were turned off but never re-linked' })
+    async reactivateChannels(@Param('tenantId') tenantId: string) {
+        const result = await this.offboardingService.reactivateChannels(tenantId);
+        return { success: true, data: result };
+    }
+
     @Post(':tenantId/extend-trial')
     @Roles('super_admin')
     @ApiOperation({ summary: 'Extend trial period for a tenant' })

@@ -30,6 +30,7 @@ import { VacationRentalModule } from '../vacation-rental/vacation-rental.module'
 import { ToursModule } from '../tours/tours.module';
 import { TreatmentPlansModule } from '../treatment-plans/treatment-plans.module';
 import { ListingsModule } from '../listings/listings.module';
+import { PetsModule } from '../pets/pets.module';
 
 @Module({
     imports: [
@@ -52,6 +53,7 @@ import { ListingsModule } from '../listings/listings.module';
         ToursModule,
         TreatmentPlansModule,
         ListingsModule,
+        PetsModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => ({

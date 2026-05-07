@@ -1840,3 +1840,52 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."listing_zone_agents" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_zone_agents_unique" ON "{{SCHEMA_NAME}}"."listing_zone_agents" ("neighborhood", "city");
+
+-- =====================================================================
+-- Pets (veterinaria vertical)
+-- =====================================================================
+-- A contact (the tutor / pet owner) can have multiple pets. The "patient"
+-- in vet workflows is the pet, NOT the contact — appointments and notes
+-- often need to specify which pet they apply to. Vaccination calendar
+-- lives in pet_vaccinations and is queried by the AI to remind tutors
+-- when a vaccine is due.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pets" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID NOT NULL,                            -- the tutor / owner
+    "name" VARCHAR(255) NOT NULL,
+    "species" VARCHAR(50) NOT NULL DEFAULT 'dog',          -- dog | cat | bird | rabbit | reptile | rodent | fish | other
+    "breed" VARCHAR(255),
+    "sex" VARCHAR(20),                                     -- male | female | unknown
+    "is_neutered" BOOLEAN,
+    "birth_date" DATE,
+    "weight_kg" DECIMAL(6,2),
+    "color" VARCHAR(100),
+    "microchip_id" VARCHAR(100),
+    "allergies" TEXT,
+    "chronic_conditions" TEXT,                             -- diabetes, heart, kidney, etc.
+    "current_medications" TEXT,
+    "photo_url" VARCHAR(500),
+    "is_active" BOOLEAN DEFAULT true,                      -- false = deceased / lost / soft-deleted
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_pets_contact" ON "{{SCHEMA_NAME}}"."pets" ("contact_id") WHERE "is_active" = true;
+CREATE INDEX IF NOT EXISTS "idx_pets_microchip" ON "{{SCHEMA_NAME}}"."pets" ("microchip_id") WHERE "microchip_id" IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pet_vaccinations" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "pet_id" UUID NOT NULL,
+    "vaccine_name" VARCHAR(255) NOT NULL,                  -- e.g. Rabia, Sextuple, Triple felina
+    "applied_at" DATE NOT NULL,
+    "next_due_at" DATE,                                    -- next dose / booster
+    "lot_number" VARCHAR(100),
+    "vet_name" VARCHAR(255),
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_pet_vaccinations_pet" ON "{{SCHEMA_NAME}}"."pet_vaccinations" ("pet_id", "applied_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_pet_vaccinations_due" ON "{{SCHEMA_NAME}}"."pet_vaccinations" ("next_due_at") WHERE "next_due_at" IS NOT NULL;

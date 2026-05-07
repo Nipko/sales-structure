@@ -24,6 +24,7 @@ import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
 import { LISTINGS_TOOLS } from './tools/listings-tools';
+import { PETS_TOOLS } from './tools/pets-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -841,6 +842,9 @@ export class ConversationsService {
         }
         if (cfgTools?.realEstate?.enabled === true) {
             tools = [...tools, ...LISTINGS_TOOLS];
+        }
+        if (cfgTools?.pets?.enabled === true) {
+            tools = [...tools, ...PETS_TOOLS];
         }
 
         if (bookingState.step && bookingState.step !== 'idle') {

@@ -67,6 +67,12 @@ export class VerticalsService {
             await this.enableRealEstateTool(schemaName);
         }
 
+        // 4e. Veterinaria: turn on the pets tool so the AI can register
+        // pets, look up vaccination calendars, and triage emergencies.
+        if (industry === 'veterinaria') {
+            await this.enablePetsTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -663,6 +669,35 @@ export class VerticalsService {
             this.logger.debug('Enabled treatments tool on default agent');
         } catch (error: any) {
             this.logger.warn(`Failed to enable treatments tool: ${error.message}`);
+        }
+    }
+
+    /**
+     * Turn on config.tools.pets.enabled so the veterinaria AI can manage
+     * the tutor's pets, look up vaccination calendars, and triage emergencies.
+     */
+    private async enablePetsTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.pets = { ...(tools.pets || {}), enabled: true };
+            const newConfig = { ...config, tools };
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled pets tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable pets tool: ${error.message}`);
         }
     }
 }

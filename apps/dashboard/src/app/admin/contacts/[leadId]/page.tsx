@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { TreatmentPlansCard } from "@/components/TreatmentPlansCard";
+import { PetsCard } from "@/components/PetsCard";
 import { cn } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
@@ -47,6 +48,7 @@ export default function Lead360Page() {
     const { activeTenantId } = useTenant();
     const { verticalConfig } = useAuth();
     const showTreatmentPlans = verticalConfig?.industry === 'salud';
+    const showPets = verticalConfig?.industry === 'veterinaria';
     const t = useTranslations("contacts");
     const tc = useTranslations("common");
     const vt = useVerticalTerms();
@@ -673,6 +675,11 @@ export default function Lead360Page() {
                     {/* Treatment Plans (salud only) */}
                     {showTreatmentPlans && activeTenantId && (
                         <TreatmentPlansCard tenantId={activeTenantId} contactId={leadId} />
+                    )}
+
+                    {/* Pets (veterinaria only — the contact is the tutor) */}
+                    {showPets && activeTenantId && (
+                        <PetsCard tenantId={activeTenantId} contactId={leadId} />
                     )}
                 </div>
 

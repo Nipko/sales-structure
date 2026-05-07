@@ -9,6 +9,7 @@ import { PropertiesService } from '../vacation-rental/properties.service';
 import { ToursService } from '../tours/tours.service';
 import { TreatmentPlansService } from '../treatment-plans/treatment-plans.service';
 import { ListingsService } from '../listings/listings.service';
+import { PetsService } from '../pets/pets.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -30,6 +31,7 @@ export class AIToolExecutorService {
         private toursService: ToursService,
         private treatmentService: TreatmentPlansService,
         private listingsService: ListingsService,
+        private petsService: PetsService,
     ) { }
 
     /**
@@ -131,6 +133,19 @@ export class AIToolExecutorService {
 
                 case 'get_listing_details':
                     return this.getListingDetails(schemaName, args.listingId);
+
+                // ── Veterinaria / Pets tools ──────────────────────
+                case 'list_pets_for_contact':
+                    return this.listPetsForContact(schemaName, contactId);
+
+                case 'register_pet':
+                    return this.registerPet(schemaName, contactId, args);
+
+                case 'get_vaccination_status':
+                    return this.getVaccinationStatus(schemaName, args.petId);
+
+                case 'triage_pet_emergency':
+                    return this.triagePetEmergency({ symptoms: args.symptoms || '' });
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1275,5 +1290,130 @@ export class AIToolExecutorService {
         } catch (e: any) {
             return { error: e.message };
         }
+    }
+
+    // ── Pets / Veterinaria tools ──────────────────────────────────
+
+    private async listPetsForContact(schemaName: string, contactId: string): Promise<any> {
+        try {
+            const summary = await this.petsService.summaryForContact(schemaName, contactId);
+            if (!summary.totalPets) {
+                return {
+                    pets: [],
+                    message: 'El contacto aún no tiene mascotas registradas. Usa register_pet para agregar una.',
+                };
+            }
+            return summary;
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async registerPet(schemaName: string, contactId: string, args: any): Promise<any> {
+        try {
+            const pet = await this.petsService.create(schemaName, {
+                contactId,
+                name: args.name,
+                species: args.species,
+                breed: args.breed,
+                sex: args.sex,
+                isNeutered: args.isNeutered,
+                birthDate: args.birthDate,
+                weightKg: args.weightKg,
+                color: args.color,
+                allergies: args.allergies,
+                chronicConditions: args.chronicConditions,
+            });
+            return {
+                petId: pet.id,
+                name: pet.name,
+                species: pet.species,
+                breed: pet.breed,
+                message: `Mascota ${pet.name} registrada correctamente.`,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getVaccinationStatus(schemaName: string, petId: string): Promise<any> {
+        try {
+            const pet = await this.petsService.getById(schemaName, petId);
+            if (!pet) return { error: 'Pet not found' };
+            const vaccinations = await this.petsService.listVaccinations(schemaName, petId);
+            const lastByVaccine: Record<string, any> = {};
+            for (const v of vaccinations) {
+                if (!lastByVaccine[v.vaccine_name] ||
+                    new Date(v.applied_at) > new Date(lastByVaccine[v.vaccine_name].applied_at)) {
+                    lastByVaccine[v.vaccine_name] = v;
+                }
+            }
+            const today = new Date();
+            const upcoming: any[] = [];
+            const overdue: any[] = [];
+            for (const v of Object.values(lastByVaccine) as any[]) {
+                if (!v.next_due_at) continue;
+                const due = new Date(v.next_due_at);
+                if (due < today) {
+                    overdue.push({ vaccineName: v.vaccine_name, dueDate: v.next_due_at, lastApplied: v.applied_at });
+                } else {
+                    upcoming.push({ vaccineName: v.vaccine_name, dueDate: v.next_due_at, lastApplied: v.applied_at });
+                }
+            }
+            return {
+                petName: pet.name,
+                totalVaccinations: vaccinations.length,
+                upcoming: upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
+                overdue,
+                isUpToDate: overdue.length === 0,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Local heuristic triage — returns "urgent" / "non_urgent" / "unclear"
+     * with a recommendation. Does NOT diagnose. Keyword-based on purpose:
+     * we want a deterministic, audit-friendly classifier and fallback to
+     * the LLM rules for borderline cases.
+     */
+    private triagePetEmergency(args: { symptoms: string }): any {
+        const text = (args.symptoms || '').toLowerCase();
+        const urgentSignals = [
+            'sangre', 'sangrado', 'hemorragia', 'no respira', 'sin respirar',
+            'inconsciente', 'desmayo', 'desmayado', 'convulsion', 'convulsión',
+            'envenena', 'veneno', 'tóxico', 'toxico', 'comió chocolate', 'comió uvas',
+            'ingirió', 'ingiri', 'vomito sangre', 'vómito con sangre',
+            'atropell', 'caída', 'caida grave', 'no se mueve', 'paralisis', 'parálisis',
+            'no come hace dias', 'no toma agua hace', 'fiebre alta',
+            'distocia', 'parto complicado', 'pari hace', 'no puede orinar',
+            'pupilas dilatadas', 'mucosas pálidas', 'pálid', 'pálidas',
+            'shock', 'colaps',
+        ];
+        const moderateSignals = [
+            'vomita', 'vomito', 'vómito', 'diarrea', 'no come', 'no quiere comer',
+            'cojea', 'cojeando', 'rasca mucho', 'pelo se cae', 'caspa',
+            'tos', 'estornud', 'mocos', 'rojo', 'inflamad', 'hinchad',
+        ];
+        if (urgentSignals.some(s => text.includes(s))) {
+            return {
+                severity: 'urgent',
+                recommendation: 'Atención inmediata — escalando con un médico veterinario.',
+                shouldHandoff: true,
+            };
+        }
+        if (moderateSignals.some(s => text.includes(s))) {
+            return {
+                severity: 'non_urgent',
+                recommendation: 'Síntomas que requieren consulta. Ofrecer agendar cita en las próximas 24-48h.',
+                shouldHandoff: false,
+            };
+        }
+        return {
+            severity: 'unclear',
+            recommendation: 'Pedir más detalles sobre los síntomas (cuándo empezó, frecuencia, otros signos) antes de decidir.',
+            shouldHandoff: false,
+        };
     }
 }

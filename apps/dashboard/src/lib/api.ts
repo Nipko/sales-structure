@@ -847,6 +847,28 @@ export const api = {
     cancelTreatmentSession: (tenantId: string, sessionId: string) =>
         apiPut(`/treatment-plans/${tenantId}/sessions/${sessionId}/cancel`, {}),
 
+    // ─── Pets (veterinaria) ───
+    listPetsForContact: (tenantId: string, contactId: string) =>
+        apiGet(`/pets/${tenantId}/contacts/${contactId}`),
+    getPet: (tenantId: string, petId: string) =>
+        apiGet(`/pets/${tenantId}/pets/${petId}`),
+    createPet: (tenantId: string, data: {
+        contactId: string; name: string; species?: string; breed?: string;
+        sex?: string; isNeutered?: boolean; birthDate?: string; weightKg?: number;
+        color?: string; microchipId?: string; allergies?: string;
+        chronicConditions?: string; currentMedications?: string; photoUrl?: string;
+    }) => apiPost(`/pets/${tenantId}/pets`, data),
+    updatePet: (tenantId: string, petId: string, data: any) =>
+        apiPut(`/pets/${tenantId}/pets/${petId}`, data),
+    deletePet: (tenantId: string, petId: string) =>
+        apiDelete(`/pets/${tenantId}/pets/${petId}`),
+    addPetVaccination: (tenantId: string, petId: string, data: {
+        vaccineName: string; appliedAt: string; nextDueAt?: string;
+        lotNumber?: string; vetName?: string; notes?: string;
+    }) => apiPost(`/pets/${tenantId}/pets/${petId}/vaccinations`, data),
+    deletePetVaccination: (tenantId: string, vaccinationId: string) =>
+        apiDelete(`/pets/${tenantId}/vaccinations/${vaccinationId}`),
+
     // ─── Real Estate Listings (inmobiliaria) ───
     listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
         const qs = new URLSearchParams();

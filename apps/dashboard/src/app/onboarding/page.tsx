@@ -19,7 +19,7 @@ const PLAN_SLUGS = ["starter", "pro", "enterprise"] as const;
 type PlanSlug = typeof PLAN_SLUGS[number];
 
 const INDUSTRY_KEYS = [
-    "turismo", "education", "salud", "retail", "technology",
+    "turismo", "education", "salud", "veterinaria", "retail", "technology",
     "servicios_profesionales", "restaurantes", "inmobiliaria",
     "automotriz", "finanzas", "moda_belleza", "otro",
 ];
@@ -45,6 +45,12 @@ const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
         { key: 'estetica', label: 'Estética y dermatología' },
         { key: 'psicologia', label: 'Psicología y terapia' },
         { key: 'farmacia', label: 'Farmacia' },
+    ],
+    veterinaria: [
+        { key: 'clinica_general', label: 'Clínica de pequeñas especies' },
+        { key: 'hospital_24h', label: 'Hospital veterinario 24h' },
+        { key: 'exoticos', label: 'Animales exóticos' },
+        { key: 'peluqueria_canina', label: 'Peluquería canina / felina' },
     ],
     education: [
         { key: 'idiomas', label: 'Escuela de idiomas' },
@@ -114,6 +120,12 @@ const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: st
         { key: 'support', label: 'Atención y seguimiento post-consulta', icon: '💊' },
         { key: 'reminders', label: 'Recordatorios de citas y tratamientos', icon: '🔔' },
     ],
+    veterinaria: [
+        { key: 'appointments', label: 'Agendar consultas y vacunaciones', icon: '🐾' },
+        { key: 'reminders', label: 'Recordatorios de vacunación', icon: '💉' },
+        { key: 'faq', label: 'Responder preguntas de tutores', icon: '❓' },
+        { key: 'support', label: 'Triage de emergencias', icon: '🚨' },
+    ],
     moda_belleza: [
         { key: 'appointments', label: 'Reservar citas de servicios', icon: '💇' },
         { key: 'faq', label: 'Informar sobre servicios y precios', icon: '💅' },
@@ -166,6 +178,7 @@ const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: st
 
 const VERTICAL_AGENT_NAMES: Record<string, string> = {
     salud: 'Sofía',
+    veterinaria: 'Dra. Ana',
     moda_belleza: 'Luna',
     inmobiliaria: 'Carlos',
     restaurantes: 'Luca',
@@ -181,6 +194,11 @@ const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = 
         { key: 'b2c', label: 'Pacientes particulares' },
         { key: 'b2b', label: 'Empresas y convenios' },
         { key: 'insurance', label: 'Pacientes con seguro médico' },
+    ],
+    veterinaria: [
+        { key: 'b2c', label: 'Tutores particulares' },
+        { key: 'breeders', label: 'Criaderos / refugios' },
+        { key: 'b2b', label: 'Convenios corporativos' },
     ],
     moda_belleza: [
         { key: 'b2c', label: 'Clientes individuales' },
@@ -226,6 +244,7 @@ const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = 
 
 const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
     salud: 'pacientes',
+    veterinaria: 'tutores',
     moda_belleza: 'clientes',
     inmobiliaria: 'prospectos',
     restaurantes: 'comensales',

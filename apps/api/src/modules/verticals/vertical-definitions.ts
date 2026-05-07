@@ -607,6 +607,92 @@ const TECHNOLOGY = createGenericVertical('technology', {
     ],
 });
 
+const VETERINARIA: VerticalDefinition = {
+    industry: 'veterinaria',
+    subTypes: [
+        { key: 'clinica_general', label: { es: 'Clinica de pequeñas especies', en: 'Small animal clinic', pt: 'Clinica de pequenos animais', fr: 'Clinique petits animaux' } },
+        { key: 'hospital_24h', label: { es: 'Hospital veterinario 24h', en: '24h veterinary hospital', pt: 'Hospital veterinario 24h', fr: 'Hopital veterinaire 24h' } },
+        { key: 'exoticos', label: { es: 'Animales exoticos', en: 'Exotic animals', pt: 'Animais exoticos', fr: 'Animaux exotiques' } },
+        { key: 'peluqueria_canina', label: { es: 'Peluqueria canina / felina', en: 'Pet grooming', pt: 'Banho e tosa', fr: 'Toilettage' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'tutor', en: 'pet parent', pt: 'tutor', fr: 'tuteur' },
+        customerNounPlural: { es: 'tutores', en: 'pet parents', pt: 'tutores', fr: 'tuteurs' },
+        transactionNoun: { es: 'consulta', en: 'consultation', pt: 'consulta', fr: 'consultation' },
+        serviceNoun: { es: 'servicio veterinario', en: 'veterinary service', pt: 'servico veterinario', fr: 'service veterinaire' },
+        pipelineNoun: { es: 'seguimiento', en: 'patient journey', pt: 'acompanhamento', fr: 'suivi' },
+    },
+    agent: {
+        name: { es: 'Dra. Ana', en: 'Dr. Ana', pt: 'Dra. Ana', fr: 'Dr. Ana' },
+        role: { es: 'Asistente de la clinica veterinaria', en: 'Veterinary clinic assistant', pt: 'Assistente da clinica veterinaria', fr: 'Assistante de la clinique veterinaire' },
+        tone: 'warm',
+        formality: 'semi-formal',
+        greeting: { es: '¡Hola! Soy Ana, asistente de la clinica veterinaria. ¿Como puedo ayudarte con tu mascota hoy?', en: 'Hi! I am Ana, the veterinary clinic assistant. How can I help your pet today?', pt: 'Ola! Sou Ana, assistente da clinica veterinaria. Como posso ajudar seu pet?', fr: 'Bonjour! Je suis Ana, assistante de la clinique veterinaire. Comment puis-je aider votre animal?' },
+        rules: {
+            es: 'Llama "tutor" al dueño y "paciente" a la mascota. Siempre verifica cual mascota antes de agendar. Nunca des diagnosticos ni nombres de medicamentos. Para urgencias escala inmediatamente.',
+            en: 'Call the owner "pet parent" and the animal "patient". Always verify which pet before scheduling. Never provide diagnoses or medication names. Escalate emergencies immediately.',
+            pt: 'Chame o dono de "tutor" e o animal de "paciente". Sempre verifique qual pet antes de agendar. Nunca forneca diagnosticos.',
+            fr: 'Appelez le proprietaire "tuteur" et l\'animal "patient". Verifiez toujours quel animal avant de planifier. Ne jamais fournir de diagnostics.',
+        },
+        forbiddenTopics: {
+            es: 'Diagnosticos veterinarios|Prescripcion de medicamentos|Dosis|Eutanasia|Pronostico de enfermedad|Interpretacion de examenes|Datos de otras mascotas',
+            en: 'Veterinary diagnoses|Medication prescription|Dosing|Euthanasia|Disease prognosis|Test interpretation|Other patients data',
+            pt: 'Diagnosticos veterinarios|Prescricao de medicamentos|Doses|Eutanasia|Prognosticos|Interpretacao de exames',
+            fr: 'Diagnostics veterinaires|Prescription de medicaments|Doses|Euthanasie|Pronostics|Interpretation d\'examens',
+        },
+        handoffTriggers: {
+            es: 'sangrado|no respira|inconsciente|envenenamiento|atropellado|parto complicado|convulsion|eutanasia|queja formal',
+            en: 'bleeding|not breathing|unconscious|poisoning|hit by car|complicated birth|seizure|euthanasia|formal complaint',
+            pt: 'sangrando|nao respira|inconsciente|envenenamento|atropelado|parto complicado|convulsao|eutanasia',
+            fr: 'saignement|ne respire pas|inconscient|empoisonnement|renverse|accouchement complique|convulsion|euthanasie',
+        },
+    },
+    pipeline: {
+        stages: [
+            { name: { es: 'Consulta inicial', en: 'Initial inquiry', pt: 'Consulta inicial', fr: 'Demande initiale' }, slug: 'consulta_inicial', color: '#3498db', probability: 10, isTerminal: false },
+            { name: { es: 'Cita agendada', en: 'Appointment scheduled', pt: 'Consulta agendada', fr: 'Rendez-vous planifie' }, slug: 'cita_agendada', color: '#f39c12', probability: 30, isTerminal: false },
+            { name: { es: 'Primera visita', en: 'First visit', pt: 'Primeira visita', fr: 'Premiere visite' }, slug: 'primera_visita', color: '#e67e22', probability: 50, isTerminal: false },
+            { name: { es: 'Paciente activo', en: 'Active patient', pt: 'Paciente ativo', fr: 'Patient actif' }, slug: 'paciente_activo', color: '#2ecc71', probability: 80, isTerminal: false },
+            { name: { es: 'Plan de vacunacion', en: 'Vaccination plan', pt: 'Plano de vacinacao', fr: 'Plan de vaccination' }, slug: 'plan_vacunacion', color: '#27ae60', probability: 90, isTerminal: false },
+            { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true },
+        ],
+    },
+    faqs: [
+        { question: { es: '¿Atienden urgencias?', en: 'Do you handle emergencies?', pt: 'Atendem urgencias?', fr: 'Gerez-vous les urgences?' }, answer: { es: 'En horario de atencion atendemos urgencias con prioridad. Fuera de horario, dirigete al hospital veterinario 24h mas cercano.', en: 'During business hours we prioritize emergencies. After hours, go to the nearest 24h veterinary hospital.', pt: 'Em horario de atendimento atendemos urgencias com prioridade. Fora do horario, va ao hospital veterinario 24h mais proximo.', fr: 'Pendant les heures d\'ouverture nous priorisons les urgences. En dehors, allez a l\'hopital veterinaire 24h le plus proche.' }, category: 'urgencias' },
+        { question: { es: '¿Que vacunas necesita mi mascota?', en: 'What vaccines does my pet need?', pt: 'Que vacinas meu pet precisa?', fr: 'Quels vaccins pour mon animal?' }, answer: { es: 'Depende de la especie, edad y estilo de vida. Agenda una consulta y el medico te indicara el plan de vacunacion adecuado.', en: 'It depends on the species, age and lifestyle. Schedule a consultation and the vet will recommend the right vaccination plan.', pt: 'Depende da especie, idade e estilo de vida. Agende uma consulta para o plano correto.', fr: 'Cela depend de l\'espece, l\'age et le mode de vie. Prenez rendez-vous pour un plan adapte.' }, category: 'vacunas' },
+        { question: { es: '¿Hacen esterilizacion?', en: 'Do you perform spay/neuter surgery?', pt: 'Fazem castracao?', fr: 'Faites-vous la sterilisation?' }, answer: { es: 'Si, ofrecemos esterilizacion. Es un procedimiento ambulatorio. Tu mascota necesita ayuno previo y revision general.', en: 'Yes, we offer spay/neuter. It is outpatient. Your pet will need pre-op fasting and a general check-up.', pt: 'Sim, fazemos castracao ambulatorial. O pet precisa de jejum e check-up.', fr: 'Oui, nous proposons la sterilisation ambulatoire. Jeun prealable et bilan general requis.' }, category: 'cirugias' },
+        { question: { es: '¿Atienden mascotas exoticas?', en: 'Do you treat exotic pets?', pt: 'Atendem pets exoticos?', fr: 'Soignez-vous les NAC?' }, answer: { es: 'Cuentanos que especie es y te confirmamos. Tenemos veterinarios especializados en algunas especies.', en: 'Tell us the species and we will confirm. We have specialists for several species.', pt: 'Conte-nos a especie e confirmaremos. Temos veterinarios especialistas.', fr: 'Dites-nous l\'espece et nous confirmerons. Nous avons des specialistes.' }, category: 'general' },
+        { question: { es: '¿Como funciona el plan integral / preventivo?', en: 'How does the wellness plan work?', pt: 'Como funciona o plano preventivo?', fr: 'Comment fonctionne le plan de bien-etre?' }, answer: { es: 'Es un plan anual que incluye consultas, vacunas y desparasitacion. Pregunta por planes en tu primera visita.', en: 'It is an annual plan covering visits, vaccines and deworming. Ask about plans on your first visit.', pt: 'Plano anual com consultas, vacinas e vermifugos.', fr: 'Plan annuel avec visites, vaccins et vermifuges.' }, category: 'planes' },
+    ],
+    services: [
+        { name: { es: 'Consulta general', en: 'General consultation', pt: 'Consulta geral', fr: 'Consultation generale' }, description: { es: 'Consulta veterinaria general', en: 'General veterinary consultation', pt: 'Consulta veterinaria geral', fr: 'Consultation veterinaire generale' }, durationMinutes: 30, price: 60000, currency: 'COP', category: 'consulta' },
+        { name: { es: 'Vacunacion', en: 'Vaccination', pt: 'Vacinacao', fr: 'Vaccination' }, description: { es: 'Aplicacion de vacuna', en: 'Vaccine application', pt: 'Aplicacao de vacina', fr: 'Application de vaccin' }, durationMinutes: 20, price: 50000, currency: 'COP', category: 'preventiva' },
+        { name: { es: 'Desparasitacion', en: 'Deworming', pt: 'Vermifugacao', fr: 'Vermifugation' }, description: { es: 'Desparasitacion interna y externa', en: 'Internal and external deworming', pt: 'Vermifugacao interna e externa', fr: 'Vermifugation' }, durationMinutes: 15, price: 35000, currency: 'COP', category: 'preventiva' },
+        { name: { es: 'Bañado y peluqueria', en: 'Bathing and grooming', pt: 'Banho e tosa', fr: 'Bain et toilettage' }, description: { es: 'Servicio de peluqueria', en: 'Grooming service', pt: 'Servico de banho e tosa', fr: 'Service de toilettage' }, durationMinutes: 60, price: 80000, currency: 'COP', category: 'estetica' },
+    ],
+    businessHours: {
+        schedule: { mon: '08:00-18:00', tue: '08:00-18:00', wed: '08:00-18:00', thu: '08:00-18:00', fri: '08:00-18:00', sat: '08:00-13:00' },
+        afterHoursMessage: { es: 'Estamos fuera de horario. En caso de urgencia veterinaria dirigete al hospital 24h mas cercano. Para consultas no urgentes te responderemos al iniciar jornada.', en: 'We are closed. For emergencies go to the nearest 24h vet hospital. For non-urgent inquiries we will reply when we open.', pt: 'Estamos fora do horario. Para urgencias va ao hospital 24h mais proximo.', fr: 'Nous sommes fermes. Pour les urgences allez a l\'hopital veterinaire 24h le plus proche.' },
+    },
+    sidebar: {
+        labelOverrides: {
+            crm: { es: 'Tutores', en: 'Pet Parents', pt: 'Tutores', fr: 'Tuteurs' },
+            pipeline: { es: 'Seguimiento', en: 'Patient Journey', pt: 'Acompanhamento', fr: 'Suivi' },
+            appointments: { es: 'Agenda', en: 'Schedule', pt: 'Agenda', fr: 'Agenda' },
+        },
+        hiddenItems: [],
+    },
+    dashboard: {
+        kpis: [
+            { key: 'leadsToday', label: { es: 'Tutores Hoy', en: 'Pet Parents Today', pt: 'Tutores Hoje', fr: 'Tuteurs Aujourd\'hui' }, icon: 'PawPrint', color: '#3498db' },
+            { key: 'appointmentsToday', label: { es: 'Citas Hoy', en: 'Appointments Today', pt: 'Consultas Hoje', fr: 'RDV Aujourd\'hui' }, icon: 'Calendar', color: '#2ecc71' },
+            { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
+            { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Cout IA' }, icon: 'DollarSign', color: '#e67e22' },
+        ],
+    },
+    bookingEnabled: true,
+};
+
 const OTRO = createGenericVertical('otro', {});
 
 // ─────────────────────────────────────────────────────────
@@ -625,6 +711,7 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     servicios_profesionales: SERVICIOS_PROFESIONALES,
     retail: RETAIL,
     technology: TECHNOLOGY,
+    veterinaria: VETERINARIA,
     otro: OTRO,
 };
 

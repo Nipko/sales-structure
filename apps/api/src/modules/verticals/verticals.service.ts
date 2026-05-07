@@ -91,6 +91,12 @@ export class VerticalsService {
             await this.enableEducationTool(schemaName);
         }
 
+        // 4i. Seguros: enable the insurance tool so Roberto can show
+        // plans, calculate quotes, look up policies and file claims.
+        if (industry === 'seguros') {
+            await this.enableInsuranceTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -771,6 +777,32 @@ export class VerticalsService {
             this.logger.debug('Enabled gyms tool on default agent');
         } catch (error: any) {
             this.logger.warn(`Failed to enable gyms tool: ${error.message}`);
+        }
+    }
+
+    /** Enable insurance tool on default agent for industry='seguros'. */
+    private async enableInsuranceTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.insurance = { ...(tools.insurance || {}), enabled: true };
+            const newConfig = { ...config, tools };
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled insurance tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable insurance tool: ${error.message}`);
         }
     }
 

@@ -607,6 +607,88 @@ const TECHNOLOGY = createGenericVertical('technology', {
     ],
 });
 
+const SEGUROS: VerticalDefinition = {
+    industry: 'seguros',
+    subTypes: [
+        { key: 'broker', label: { es: 'Broker / Corredor', en: 'Broker', pt: 'Corretor', fr: 'Courtier' } },
+        { key: 'aseguradora', label: { es: 'Aseguradora', en: 'Insurance carrier', pt: 'Seguradora', fr: 'Compagnie d\'assurance' } },
+        { key: 'vida', label: { es: 'Especialista en vida', en: 'Life insurance specialist', pt: 'Especialista em vida', fr: 'Spécialiste vie' } },
+        { key: 'auto', label: { es: 'Especialista en auto', en: 'Auto insurance specialist', pt: 'Especialista em auto', fr: 'Spécialiste auto' } },
+        { key: 'salud', label: { es: 'Especialista en salud', en: 'Health insurance specialist', pt: 'Especialista em saúde', fr: 'Spécialiste santé' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'asegurado', en: 'policyholder', pt: 'segurado', fr: 'assuré' },
+        customerNounPlural: { es: 'asegurados', en: 'policyholders', pt: 'segurados', fr: 'assurés' },
+        transactionNoun: { es: 'póliza', en: 'policy', pt: 'apólice', fr: 'police' },
+        serviceNoun: { es: 'plan', en: 'plan', pt: 'plano', fr: 'plan' },
+        pipelineNoun: { es: 'cotizaciones', en: 'quotes', pt: 'cotações', fr: 'devis' },
+    },
+    agent: {
+        name: { es: 'Roberto', en: 'Robert', pt: 'Roberto', fr: 'Robert' },
+        role: { es: 'Asesor de seguros', en: 'Insurance advisor', pt: 'Consultor de seguros', fr: 'Conseiller assurances' },
+        tone: 'professional',
+        formality: 'semi-formal',
+        greeting: { es: 'Hola, soy Roberto, asesor de seguros. ¿En qué tipo de protección estás interesado?', en: 'Hello, I\'m Robert, insurance advisor. What type of coverage are you interested in?', pt: 'Olá, sou Roberto, consultor de seguros.', fr: 'Bonjour, je suis Robert, conseiller en assurances.' },
+        rules: {
+            es: 'Para cotizaciones siempre usa calculate_quote — no inventes primas. Aclara que las cotizaciones son preliminares y sujetas a suscripción. Para reclamos usa file_claim y escala al humano. Pide número de póliza para consultas existentes (check_policy_status). Recopila edad, email y teléfono antes de cotizar.',
+            en: 'Use calculate_quote for quotes — never improvise premiums. State quotes are preliminary subject to underwriting. For claims, use file_claim and escalate to human. Ask for policy_number for existing inquiries.',
+            pt: 'Para cotações use calculate_quote — não invente prêmios. Esclareça que cotações são preliminares.',
+            fr: 'Pour les devis utilisez calculate_quote — n\'improvisez pas les primes.',
+        },
+        forbiddenTopics: {
+            es: 'Asesoría legal sobre disputas|Consejos de inversión específicos|Detalles de pólizas de otros clientes|Promesas de aprobación de reclamos',
+            en: 'Legal advice on disputes|Specific investment advice|Other clients policy details|Promises of claim approval',
+            pt: 'Aconselhamento jurídico|Detalhes de outros clientes|Promessa de aprovação',
+            fr: 'Conseils juridiques|Détails d\'autres clients|Promesses d\'approbation',
+        },
+        handoffTriggers: {
+            es: 'reclamo|siniestro|cancelación|fraude|disputa|emergencia médica|denuncia',
+            en: 'claim|incident|cancellation|fraud|dispute|emergency|formal complaint',
+            pt: 'sinistro|cancelamento|fraude|disputa|emergência|reclamação',
+            fr: 'sinistre|annulation|fraude|litige|urgence|plainte',
+        },
+    },
+    pipeline: {
+        stages: [
+            { name: { es: 'Lead', en: 'Lead', pt: 'Lead', fr: 'Lead' }, slug: 'lead', color: '#3498db', probability: 10, isTerminal: false },
+            { name: { es: 'Calificado', en: 'Qualified', pt: 'Qualificado', fr: 'Qualifié' }, slug: 'calificado', color: '#f39c12', probability: 25, isTerminal: false },
+            { name: { es: 'Cotizado', en: 'Quoted', pt: 'Cotado', fr: 'Devis envoyé' }, slug: 'cotizado', color: '#e67e22', probability: 50, isTerminal: false },
+            { name: { es: 'Propuesta enviada', en: 'Proposal sent', pt: 'Proposta enviada', fr: 'Proposition envoyée' }, slug: 'propuesta', color: '#9b59b6', probability: 70, isTerminal: false },
+            { name: { es: 'Póliza emitida', en: 'Policy issued', pt: 'Apólice emitida', fr: 'Police émise' }, slug: 'poliza_emitida', color: '#2ecc71', probability: 100, isTerminal: true },
+            { name: { es: 'Renovación', en: 'Renewal', pt: 'Renovação', fr: 'Renouvellement' }, slug: 'renovacion', color: '#27ae60', probability: 95, isTerminal: false },
+            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true },
+        ],
+    },
+    faqs: [
+        { question: { es: '¿Qué tipos de seguros manejan?', en: 'What insurance types do you offer?', pt: 'Que tipos de seguro vocês têm?', fr: 'Quels types d\'assurance proposez-vous?' }, answer: { es: 'Manejamos seguros de vida, salud, auto, hogar, empresarial y de viaje. Cuéntame qué te interesa proteger.', en: 'We handle life, health, auto, home, business and travel insurance.', pt: 'Manejamos seguros de vida, saúde, auto, residencial, empresarial e viagem.', fr: 'Nous proposons assurance vie, santé, auto, habitation, entreprise et voyage.' }, category: 'productos' },
+        { question: { es: '¿Cuánto tarda la emisión de una póliza?', en: 'How long until a policy is issued?', pt: 'Quanto tempo para emitir uma apólice?', fr: 'Combien de temps pour émettre une police?' }, answer: { es: 'Una vez aprobada la suscripción, la póliza se emite en 2-5 días hábiles.', en: 'Once underwriting approves, the policy issues in 2-5 business days.', pt: 'Após aprovação da subscrição, a apólice sai em 2-5 dias úteis.', fr: 'Après approbation de la souscription, la police est émise en 2-5 jours ouvrés.' }, category: 'proceso' },
+        { question: { es: '¿Cómo funciona un reclamo?', en: 'How does a claim work?', pt: 'Como funciona um sinistro?', fr: 'Comment fonctionne un sinistre?' }, answer: { es: 'Reportas el siniestro por chat, te asignamos un asesor que te acompaña en la documentación. Tiempos típicos: 7-30 días según complejidad.', en: 'Report it via chat — an advisor guides you through docs. Typical times: 7-30 days.', pt: 'Reporta pelo chat — um consultor te acompanha. Tempos: 7-30 dias.', fr: 'Déclarez par chat — un conseiller vous accompagne. Délais : 7-30 jours.' }, category: 'reclamos' },
+        { question: { es: '¿Qué pasa si dejo de pagar?', en: 'What if I stop paying?', pt: 'E se eu parar de pagar?', fr: 'Que se passe-t-il si j\'arrête de payer?' }, answer: { es: 'Hay un período de gracia de 30 días. Después la cobertura se suspende. Pasados 60 días sin pago, la póliza se cancela.', en: '30-day grace, then suspended; cancelled after 60 days unpaid.', pt: 'Período de carência de 30 dias, depois suspensa, cancelada após 60 dias.', fr: 'Délai de grâce 30 jours, puis suspension, résiliée après 60 jours.' }, category: 'pagos' },
+        { question: { es: '¿Tienen descuentos por bundle?', en: 'Do you offer bundle discounts?', pt: 'Tem desconto em pacote?', fr: 'Avez-vous des réductions multi-contrats?' }, answer: { es: 'Si — combinando dos pólizas o más obtienes 5-15% de descuento. Pregúntame por opciones para tu caso.', en: 'Yes — bundling two+ policies gets 5-15% off.', pt: 'Sim — combinando duas+ apólices fica 5-15% mais barato.', fr: 'Oui — combiner deux+ polices = 5-15% de réduction.' }, category: 'descuentos' },
+    ],
+    services: [],
+    businessHours: {
+        schedule: { mon: '08:00-18:00', tue: '08:00-18:00', wed: '08:00-18:00', thu: '08:00-18:00', fri: '08:00-18:00', sat: '09:00-13:00' },
+        afterHoursMessage: { es: 'Estamos fuera de horario. Para emergencias 24/7 llama al número en tu póliza.', en: 'After hours — for 24/7 emergencies call the number on your policy.', pt: 'Fora do horário.', fr: 'Hors horaires.' },
+    },
+    sidebar: {
+        labelOverrides: {
+            crm: { es: 'Asegurados', en: 'Policyholders', pt: 'Segurados', fr: 'Assurés' },
+            pipeline: { es: 'Cotizaciones', en: 'Quotes', pt: 'Cotações', fr: 'Devis' },
+        },
+        hiddenItems: [],
+    },
+    dashboard: {
+        kpis: [
+            { key: 'leadsToday', label: { es: 'Leads Hoy', en: 'Leads Today', pt: 'Leads Hoje', fr: 'Leads Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
+            { key: 'leadsHot', label: { es: 'Cotizaciones', en: 'Quotes', pt: 'Cotações', fr: 'Devis' }, icon: 'FileSignature', color: '#e67e22' },
+            { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
+            { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#27ae60' },
+        ],
+    },
+    bookingEnabled: false,
+};
+
 const GIMNASIOS: VerticalDefinition = {
     industry: 'gimnasios',
     subTypes: [
@@ -799,6 +881,7 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     technology: TECHNOLOGY,
     veterinaria: VETERINARIA,
     gimnasios: GIMNASIOS,
+    seguros: SEGUROS,
     otro: OTRO,
 };
 

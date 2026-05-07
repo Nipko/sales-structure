@@ -43,6 +43,7 @@ import {
   Dumbbell,
   CalendarRange,
   GraduationCap,
+  Umbrella,
   Activity,
   TrendingUp,
   ShieldCheck,
@@ -99,6 +100,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticals: ["gimnasios"] },
       { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticals: ["gimnasios"] },
       { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticals: ["education"] },
+      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticals: ["seguros"] },
     ],
   },
   {

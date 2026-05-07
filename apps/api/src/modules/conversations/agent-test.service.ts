@@ -27,6 +27,7 @@ import { PETS_TOOLS } from './tools/pets-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
 import { EDUCATION_TOOLS } from './tools/education-tools';
+import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { TenantsService } from '../tenants/tenants.service';
 
 const TEST_CONTACT_ID = 'test-agent-contact';
@@ -144,6 +145,7 @@ export class AgentTestService {
         if (cfgTools?.restaurants?.enabled === true) tools.push(...RESTAURANTS_TOOLS);
         if (cfgTools?.gyms?.enabled === true) tools.push(...GYMS_TOOLS);
         if (cfgTools?.education?.enabled === true) tools.push(...EDUCATION_TOOLS);
+        if (cfgTools?.insurance?.enabled === true) tools.push(...INSURANCE_TOOLS);
 
         // 5. Assemble the FULL system prompt (Layer 1 + 2 + 3).
         const systemPrompt = this.promptAssembler.assemble(config, turnContext);

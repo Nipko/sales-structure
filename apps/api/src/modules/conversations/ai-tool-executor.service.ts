@@ -13,6 +13,7 @@ import { PetsService } from '../pets/pets.service';
 import { RestaurantsService } from '../restaurants/restaurants.service';
 import { GymsService } from '../gyms/gyms.service';
 import { EducationService } from '../education/education.service';
+import { InsuranceService } from '../insurance/insurance.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -38,6 +39,7 @@ export class AIToolExecutorService {
         private restaurantsService: RestaurantsService,
         private gymsService: GymsService,
         private educationService: EducationService,
+        private insuranceService: InsuranceService,
     ) { }
 
     /**
@@ -191,6 +193,19 @@ export class AIToolExecutorService {
 
                 case 'get_placement_test_link':
                     return this.getPlacementTestLinkTool(schemaName, contactId, args);
+
+                // ── Insurance tools ───────────────────────────────
+                case 'get_insurance_plans':
+                    return this.getInsurancePlansTool(schemaName, args);
+
+                case 'calculate_quote':
+                    return this.calculateInsuranceQuoteTool(schemaName, contactId, args);
+
+                case 'check_policy_status':
+                    return this.checkPolicyStatusTool(schemaName, args);
+
+                case 'file_claim':
+                    return this.fileInsuranceClaimTool(schemaName, args);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1787,7 +1802,6 @@ export class AIToolExecutorService {
 
     private async getPlacementTestLinkTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
-            // Look up existing test for the contact first
             let test = await this.educationService.getPlacementTestForContact(schemaName, contactId);
             if (!test) {
                 test = await this.educationService.createPlacementTest(schemaName, {
@@ -1803,6 +1817,111 @@ export class AIToolExecutorService {
                 message: test.test_url
                     ? `Toma el test aquí: ${test.test_url}`
                     : 'Test pendiente de asignación de URL — pídele al equipo académico que la cargue.',
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Insurance tools ───────────────────────────────────────────
+
+    private async getInsurancePlansTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const plans = await this.insuranceService.listPlans(schemaName, {
+                type: args.type,
+                coverageLevel: args.coverageLevel,
+            });
+            if (!plans.length) return { plans: [], message: 'Sin planes que coincidan con los criterios.' };
+            return {
+                count: plans.length,
+                plans: plans.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    insuranceType: p.insurance_type,
+                    coverageLevel: p.coverage_level,
+                    monthlyPremiumMin: p.monthly_premium_min ? Number(p.monthly_premium_min) : null,
+                    monthlyPremiumMax: p.monthly_premium_max ? Number(p.monthly_premium_max) : null,
+                    deductible: p.deductible ? Number(p.deductible) : null,
+                    maxCoverage: p.max_coverage ? Number(p.max_coverage) : null,
+                    currency: p.currency,
+                    covers: p.covers || [],
+                    excludes: p.excludes || [],
+                    minAge: p.min_age,
+                    maxAge: p.max_age,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async calculateInsuranceQuoteTool(schemaName: string, contactId: string, args: any): Promise<any> {
+        try {
+            const quote = await this.insuranceService.createQuote(schemaName, {
+                contactId,
+                planId: args.planId,
+                applicantName: args.applicantName,
+                applicantAge: args.applicantAge,
+                applicantEmail: args.applicantEmail,
+                applicantPhone: args.applicantPhone,
+                applicantData: args.applicantData,
+            });
+            return {
+                quoteId: quote.id,
+                planName: quote.plan_name,
+                insuranceType: quote.plan_type,
+                monthlyPremium: Number(quote.monthly_premium),
+                annualPremium: Number(quote.annual_premium),
+                currency: quote.currency,
+                validUntil: quote.valid_until,
+                disclaimer: 'Esta cotización es una estimación preliminar. La prima final está sujeta a revisión del área de suscripción.',
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async checkPolicyStatusTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const policy = await this.insuranceService.getPolicyByNumber(schemaName, args.policyNumber);
+            if (!policy) return { error: 'Póliza no encontrada con ese número' };
+            return {
+                policyId: policy.id,
+                policyNumber: policy.policy_number,
+                policyholderName: policy.policyholder_name,
+                status: policy.status,
+                monthlyPremium: Number(policy.monthly_premium),
+                currency: policy.currency,
+                startsAt: policy.starts_at,
+                endsAt: policy.ends_at,
+                nextPaymentAt: policy.next_payment_at,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async fileInsuranceClaimTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const policy = await this.insuranceService.getPolicyByNumber(schemaName, args.policyNumber);
+            if (!policy) return { error: 'Póliza no encontrada' };
+            if (policy.status !== 'active') {
+                return { error: `La póliza está en estado ${policy.status}. No se puede radicar un reclamo.` };
+            }
+            const claim = await this.insuranceService.fileClaim(schemaName, {
+                policyId: policy.id,
+                incidentType: args.incidentType,
+                incidentAt: args.incidentAt,
+                description: args.description,
+                claimedAmount: args.claimedAmount,
+            });
+            return {
+                claimId: claim.id,
+                claimNumber: claim.claim_number,
+                status: claim.status,
+                message: `Reclamo radicado con número ${claim.claim_number}. Un agente humano lo revisará en las próximas horas.`,
+                shouldHandoff: true,
             };
         } catch (e: any) {
             return { error: e.message };

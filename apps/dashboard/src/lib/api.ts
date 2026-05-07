@@ -1057,6 +1057,43 @@ export const api = {
     updateEnrollment: (tenantId: string, id: string, data: any) =>
         apiPut(`/education/${tenantId}/enrollments/${id}`, data),
 
+    // ─── Insurance ───
+    listInsurancePlans: (tenantId: string, params?: { type?: string; coverageLevel?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.type) qs.set("type", params.type);
+        if (params?.coverageLevel) qs.set("coverageLevel", params.coverageLevel);
+        const q = qs.toString();
+        return apiGet(`/insurance/${tenantId}/plans${q ? `?${q}` : ""}`);
+    },
+    createInsurancePlan: (tenantId: string, data: any) => apiPost(`/insurance/${tenantId}/plans`, data),
+    updateInsurancePlan: (tenantId: string, id: string, data: any) => apiPut(`/insurance/${tenantId}/plans/${id}`, data),
+    deleteInsurancePlan: (tenantId: string, id: string) => apiDelete(`/insurance/${tenantId}/plans/${id}`),
+    listInsuranceQuotes: (tenantId: string, params?: { contactId?: string; status?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.contactId) qs.set("contactId", params.contactId);
+        if (params?.status) qs.set("status", params.status);
+        const q = qs.toString();
+        return apiGet(`/insurance/${tenantId}/quotes${q ? `?${q}` : ""}`);
+    },
+    createInsuranceQuote: (tenantId: string, data: any) => apiPost(`/insurance/${tenantId}/quotes`, data),
+    updateInsuranceQuoteStatus: (tenantId: string, id: string, status: string) =>
+        apiPut(`/insurance/${tenantId}/quotes/${id}/status`, { status }),
+    listInsurancePolicies: (tenantId: string, params?: { status?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        const q = qs.toString();
+        return apiGet(`/insurance/${tenantId}/policies${q ? `?${q}` : ""}`);
+    },
+    createInsurancePolicy: (tenantId: string, data: any) => apiPost(`/insurance/${tenantId}/policies`, data),
+    listInsuranceClaims: (tenantId: string, params?: { policyId?: string; status?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.policyId) qs.set("policyId", params.policyId);
+        if (params?.status) qs.set("status", params.status);
+        const q = qs.toString();
+        return apiGet(`/insurance/${tenantId}/claims${q ? `?${q}` : ""}`);
+    },
+    fileInsuranceClaim: (tenantId: string, data: any) => apiPost(`/insurance/${tenantId}/claims`, data),
+
     // ─── Real Estate Listings (inmobiliaria) ───
     listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
         const qs = new URLSearchParams();

@@ -81,6 +81,16 @@ export class TenantsController {
         return { success: true, data };
     }
 
+    @Get('onboarding-funnel')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Acquisition funnel — signups → onboarding → first message → first paying' })
+    async getOnboardingFunnel(@Query('days') days = 30) {
+        const since = new Date();
+        since.setDate(since.getDate() - Number(days));
+        const data = await this.tenantsService.getOnboardingFunnel(since);
+        return { success: true, data };
+    }
+
     @Get('llm-stats')
     @Roles('super_admin')
     @ApiOperation({ summary: 'LLM usage stats — by provider, by tenant, by day' })

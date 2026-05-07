@@ -859,6 +859,9 @@ export class AuthService {
                         chatReasons,
                         referralSource,
                     },
+                    // Funnel stage stamp — onboarding complete = step 2 of the funnel
+                    onboardingCompletedAt: new Date(),
+                    signupSource: data.signupSource || referralSource || null,
                 },
             });
 

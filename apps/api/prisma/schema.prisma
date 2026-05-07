@@ -43,6 +43,11 @@ model Tenant {
   paymentProvider           String?   @map("payment_provider")           // mercadopago|stripe|mock
   paymentProviderCustomerId String?   @map("payment_provider_customer_id")
 
+  // Onboarding funnel tracking — used by /admin/funnel cohort analysis
+  onboardingCompletedAt     DateTime? @map("onboarding_completed_at")
+  firstMessageAt            DateTime? @map("first_message_at")
+  signupSource              String?   @map("signup_source")  // landing_page|api|partner|...
+
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

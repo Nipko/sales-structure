@@ -442,6 +442,10 @@ export const api = {
         priority?: number; maxPendingJobs?: number;
         reason?: string;
     }) => apiPut(`/tenants/${tenantId}/quota-overrides`, data),
+    getComplianceAdminOverview: () => apiGet("/compliance/admin/overview"),
+    getOnboardingFunnel: (days = 30) => apiGet(`/tenants/onboarding-funnel?days=${days}`),
+    exportContactData: (tenantId: string, contactId: string) =>
+        apiPost(`/compliance/admin/export-contact-data/${tenantId}/${contactId}`, {}),
     getWebhookTap: (params?: { channelType?: string; status?: string; limit?: number }) => {
         const qs = new URLSearchParams();
         if (params?.channelType) qs.set("channelType", params.channelType);

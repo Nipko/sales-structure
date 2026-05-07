@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ComplianceService } from './compliance.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
@@ -124,5 +125,27 @@ export class ComplianceController {
     @ApiOperation({ summary: 'Process a deletion request' })
     async processDeletionRequest(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         return this.complianceService.processDeletionRequest(await this.schemaFor(tenantId), id);
+    }
+
+    // ─── Super_admin compliance center (cross-tenant) ─────────────────────
+
+    @Get('admin/overview')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Cross-tenant pending deletions + recent opt-outs' })
+    async getAdminOverview() {
+        const data = await this.complianceService.getAdminOverview();
+        return { success: true, data };
+    }
+
+    @Post('admin/export-contact-data/:tenantId/:contactId')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'GDPR/LGPD Article 15 — full data export for one contact' })
+    async exportContactData(
+        @Param('tenantId') tenantId: string,
+        @Param('contactId') contactId: string,
+    ) {
+        const schema = await this.schemaFor(tenantId);
+        const data = await this.complianceService.exportContactData(schema, contactId);
+        return { success: true, data };
     }
 }

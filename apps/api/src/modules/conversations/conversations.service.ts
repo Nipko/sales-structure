@@ -537,6 +537,15 @@ export class ConversationsService {
              VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
             [conversationId, msg.content.type, msg.content.text, metadataJson],
         );
+
+        // Funnel stage 3: stamp first inbound message arrival on the tenant
+        // exactly once. The conditional UPDATE is idempotent so subsequent
+        // messages skip the write at the row level (no extra read).
+        this.prisma.$executeRawUnsafe(
+            `UPDATE public.tenants SET first_message_at = NOW()
+             WHERE id = $1::uuid AND first_message_at IS NULL`,
+            tenantId,
+        ).catch(() => { /* non-blocking */ });
         // Update conversation timestamp so new-session detection works correctly
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,

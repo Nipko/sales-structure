@@ -664,6 +664,64 @@ export class TenantsService {
     }
 
     /**
+     * Acquisition funnel: signups → onboarding done → first message
+     * → first paying. Counts tenants created within the window plus
+     * step-to-step conversion rates and a signup-source breakdown.
+     */
+    async getOnboardingFunnel(since: Date) {
+        const tenants = await this.prisma.tenant.findMany({
+            where: { createdAt: { gte: since } },
+            select: {
+                id: true,
+                createdAt: true,
+                onboardingCompletedAt: true,
+                firstMessageAt: true,
+                signupSource: true,
+                subscriptionStatus: true,
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        const totalSignups = tenants.length;
+        const onboardingDone = tenants.filter((t: any) => t.onboardingCompletedAt).length;
+        const firstMessage = tenants.filter((t: any) => t.firstMessageAt).length;
+        const paying = tenants.filter((t: any) =>
+            t.subscriptionStatus === 'active' || t.subscriptionStatus === 'past_due'
+        ).length;
+
+        const bySource = new Map<string, { source: string; signups: number; onboarded: number; activated: number; paying: number }>();
+        for (const t of tenants as any[]) {
+            const key = (t.signupSource || 'unknown').slice(0, 40);
+            const row = bySource.get(key) || { source: key, signups: 0, onboarded: 0, activated: 0, paying: 0 };
+            row.signups += 1;
+            if (t.onboardingCompletedAt) row.onboarded += 1;
+            if (t.firstMessageAt) row.activated += 1;
+            if (t.subscriptionStatus === 'active' || t.subscriptionStatus === 'past_due') row.paying += 1;
+            bySource.set(key, row);
+        }
+
+        const ttfm = (tenants as any[])
+            .filter(t => t.firstMessageAt && t.createdAt)
+            .map(t => (t.firstMessageAt.getTime() - t.createdAt.getTime()) / 3_600_000);
+        ttfm.sort((a, b) => a - b);
+        const medianTtfmHours = ttfm.length > 0 ? ttfm[Math.floor(ttfm.length / 2)] : null;
+        const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 1000) / 10 : 0;
+
+        return {
+            window: { since: since.toISOString(), until: new Date().toISOString() },
+            stages: [
+                { key: 'signups',    label: 'Signups',                count: totalSignups,    conversionFromPrev: 100 },
+                { key: 'onboarded',  label: 'Onboarding completado',  count: onboardingDone,  conversionFromPrev: pct(onboardingDone, totalSignups) },
+                { key: 'activated',  label: 'Primer mensaje',         count: firstMessage,    conversionFromPrev: pct(firstMessage, onboardingDone) },
+                { key: 'paying',     label: 'Pagando',                count: paying,          conversionFromPrev: pct(paying, firstMessage) },
+            ],
+            overallConversion: pct(paying, totalSignups),
+            medianTimeToFirstMessageHours: medianTtfmHours,
+            bySource: Array.from(bySource.values()).sort((a, b) => b.signups - a.signups),
+        };
+    }
+
+    /**
      * Cross-tenant audit log viewer for super_admin. Filters are
      * additive — pass nothing to get the most recent 100 across the
      * platform; supply tenantId to scope to one tenant; supply action

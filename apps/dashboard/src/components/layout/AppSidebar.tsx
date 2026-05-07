@@ -42,6 +42,8 @@ import {
   TrendingUp,
   ShieldCheck,
   Brain,
+  Scale,
+  Filter as FunnelIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -136,6 +138,8 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
       { labelKey: "llmStats", href: "/admin/llm-stats", icon: Brain },
       { labelKey: "webhookTap", href: "/admin/webhooks", icon: Radio },
+      { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
+      { labelKey: "funnel", href: "/admin/funnel", icon: FunnelIcon },
     ],
   },
   {

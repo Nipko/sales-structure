@@ -692,18 +692,18 @@ export class TenantsService {
         ]);
 
         // Hydrate tenantId → tenant.name in a single round-trip
-        const tenantIds = Array.from(new Set(rows.map(r => r.tenantId).filter(Boolean))) as string[];
+        const tenantIds = Array.from(new Set(rows.map((r: any) => r.tenantId).filter(Boolean))) as string[];
         const tenants = tenantIds.length > 0
             ? await this.prisma.tenant.findMany({
                 where: { id: { in: tenantIds } },
                 select: { id: true, name: true, slug: true },
             })
             : [];
-        const tenantMap = new Map(tenants.map(t => [t.id, t]));
+        const tenantMap = new Map<string, any>(tenants.map((t: any) => [t.id, t]));
 
         return {
             total,
-            rows: rows.map(r => ({
+            rows: rows.map((r: any) => ({
                 id: r.id,
                 action: r.action,
                 resource: r.resource,

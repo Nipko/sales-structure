@@ -196,11 +196,18 @@ export class WhatsappController {
 
     // Revoke the credentials so a stale token can't accidentally be reused.
     if (metaUnsubscribed) {
-      await this.prisma.$queryRawUnsafe(
-        `UPDATE whatsapp_credentials SET rotation_state = 'revoked', updated_at = NOW()
-           WHERE tenant_id = $1::uuid AND rotation_state = 'active'`,
-        tenantId,
-      );
+      // Use the typed client — whatsapp_credentials.tenant_id may be text in
+      // some Prisma deployments and the raw ::uuid cast crashes there with
+      // "operator does not exist: text = uuid". Prisma's updateMany handles
+      // the column type transparently.
+      try {
+        await this.prisma.whatsappCredential.updateMany({
+          where: { tenantId, rotationState: 'active' },
+          data: { rotationState: 'revoked' },
+        });
+      } catch (e: any) {
+        this.logger.warn(`Failed to revoke whatsapp_credentials for tenant ${tenantId}: ${e?.message}`);
+      }
     }
 
     // Audit row so this disconnect is traceable later.

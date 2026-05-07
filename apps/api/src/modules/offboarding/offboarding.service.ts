@@ -343,11 +343,18 @@ export class OffboardingService {
             );
         }
 
-        // Bulk revoke credentials
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE whatsapp_credentials SET rotation_state = 'revoked' WHERE tenant_id = $1::uuid`,
-            tenantId,
-        );
+        // Bulk revoke credentials. Using the typed client because
+        // whatsapp_credentials.tenant_id may be text (not uuid) in some
+        // deployments and a raw `tenant_id = $1::uuid` crashes with
+        // "operator does not exist: text = uuid".
+        try {
+            await this.prisma.whatsappCredential.updateMany({
+                where: { tenantId },
+                data: { rotationState: 'revoked' },
+            });
+        } catch (e: any) {
+            this.logger.warn(`Failed to revoke whatsapp_credentials during offboarding for tenant ${tenantId}: ${e?.message}`);
+        }
 
         // Deactivate calendar integrations in tenant schema
         try {

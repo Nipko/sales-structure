@@ -179,7 +179,7 @@ export class ConversationsService {
                             this.logger.log(`[Attendance] Client confirmed attendance for appointment ${apptId}`);
                             const thankYou = `¡Excelente! Gracias por confirmar tu asistencia a *${pendingAppt[0].service_name}*. ¿Hay algo más en lo que pueda ayudarte?`;
                             await this.sendResponse(tenantId, thankYou, normalizedMsg);
-                            await this.saveAiMessage(tenantId, conversation.id, thankYou);
+                            await this.saveAiMessage(tenantId, conversation.id, thankYou, normalizedMsg.channelType);
                         } else {
                             await this.prisma.executeInTenantSchema(schemaName,
                                 `UPDATE appointments SET status = 'no_show', updated_at = NOW() WHERE id = $1::uuid`,
@@ -188,7 +188,7 @@ export class ConversationsService {
                             this.logger.log(`[Attendance] Client confirmed no-show for appointment ${apptId}`);
                             const noShowMsg = `Entendido. Lamentamos que no hayas podido asistir a *${pendingAppt[0].service_name}*. ¿Te gustaría agendar una nueva cita?`;
                             await this.sendResponse(tenantId, noShowMsg, normalizedMsg);
-                            await this.saveAiMessage(tenantId, conversation.id, noShowMsg);
+                            await this.saveAiMessage(tenantId, conversation.id, noShowMsg, normalizedMsg.channelType);
                         }
                         return; // Don't process through AI — attendance handled
                     }
@@ -238,7 +238,7 @@ export class ConversationsService {
                     : `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${position} en cola. Un agente te atenderá lo antes posible. 🙋`;
             }
             await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
-            await this.saveAiMessage(tenantId, conversation.id, handoffMsg);
+            await this.saveAiMessage(tenantId, conversation.id, handoffMsg, normalizedMsg.channelType);
             return;
         }
 
@@ -276,7 +276,7 @@ export class ConversationsService {
         if (response) {
             this.logger.log(`[Pipeline] Sending response via outbound queue...`);
             await this.sendResponse(tenantId, response, normalizedMsg);
-            await this.saveAiMessage(tenantId, conversation.id, response);
+            await this.saveAiMessage(tenantId, conversation.id, response, normalizedMsg.channelType);
             this.logger.log(`[Pipeline] Response sent and saved`);
         } else {
             this.logger.warn(`[Pipeline] No response generated — customer gets no reply`);
@@ -540,10 +540,18 @@ export class ConversationsService {
             `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
             [conversationId],
         );
-        this.gateway.emitNewMessage(tenantId, result[0], conversationId);
+        // Enrich payload so the dashboard can render the right channel icon /
+        // contact label even when the conversation is not yet in its list.
+        // The messages table has no channel_type column — that lives on
+        // conversations — so the frontend was defaulting to 'whatsapp' for
+        // first-message-of-an-unknown-conversation events.
+        this.gateway.emitNewMessage(tenantId, {
+            ...result[0],
+            channel_type: msg.channelType,
+        }, conversationId);
     }
 
-    private async saveAiMessage(tenantId: string, conversationId: string, text: string) {
+    private async saveAiMessage(tenantId: string, conversationId: string, text: string, channelType?: string) {
         const schemaName = await this.tenantSchema(tenantId);
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -555,7 +563,22 @@ export class ConversationsService {
             `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
             [conversationId],
         );
-        this.gateway.emitNewMessage(tenantId, result[0], conversationId);
+        // If the caller didn't supply channelType (legacy path), fall back to
+        // looking it up on the conversation row so the WS payload is honest.
+        let resolvedChannel = channelType;
+        if (!resolvedChannel) {
+            try {
+                const conv = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT channel_type FROM conversations WHERE id = $1::uuid`,
+                    [conversationId],
+                );
+                resolvedChannel = conv?.[0]?.channel_type;
+            } catch {}
+        }
+        this.gateway.emitNewMessage(tenantId, {
+            ...result[0],
+            channel_type: resolvedChannel,
+        }, conversationId);
     }
 
     private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage) {

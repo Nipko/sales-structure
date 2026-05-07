@@ -222,6 +222,10 @@ export default function InboxPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [isLive, setIsLive] = useState(false);
     const [loadingConv, setLoadingConv] = useState(true);
+    // Tracks conversations whose contactAvatar URL failed to load (typical for
+    // expired Instagram/Messenger CDN signatures). UI falls back to the
+    // gradient-with-initial avatar when the id is in this set.
+    const [brokenAvatars, setBrokenAvatars] = useState<Set<string>>(new Set());
 
     // --- Mobile responsive state ---
     // On mobile (<md), show either the conversation list or the chat view
@@ -445,50 +449,74 @@ export default function InboxPage() {
         scrollToBottom();
     }, [messages.length, scrollToBottom]);
 
-    // Load conversations and canned responses from API
-    useEffect(() => {
-        async function load() {
-            if (!activeTenantId) return;
-            setLoadingConv(true);
-            try {
-                const [inboxResult, cannedResult] = await Promise.all([
-                    api.getInbox(activeTenantId, filter),
-                    api.getCannedResponses(activeTenantId),
-                ]);
-
-                if (inboxResult.success && Array.isArray(inboxResult.data) && inboxResult.data.length > 0) {
-                    const convs = inboxResult.data.map((c: any) => ({
-                        id: c.id,
-                        contactName: c.contact_name || c.contactName || t('unknown'),
-                        contactPhone: c.contact_phone || c.contactPhone || '',
-                        contactEmail: c.contact_email || c.contactEmail || '',
-                        contactAvatar: c.contact_avatar || c.contactAvatar || '',
-                        lastMessage: c.last_message || c.lastMessage || '',
-                        lastMessageAt: c.last_message_at ? formatTime(c.last_message_at) : c.lastMessageAt || '',
-                        lastMessageAtRaw: c.last_message_at || '',
-                        status: c.status || 'open',
-                        channel: c.channel_type || c.channel || 'whatsapp',
-                        channelAccountName: c.channel_account_name || c.channelAccountName || '',
-                        channelAccountPicture: c.channel_account_picture || c.channelAccountPicture || '',
-                        unreadCount: c.unread_count || c.unreadCount || 0,
-                        priority: c.priority || 'normal',
-                        tags: c.tags || [],
-                        isAiHandled: c.is_ai_handled ?? c.isAiHandled ?? false,
-                        assignedAgentId: c.assigned_agent_id || c.assignedAgentId || '',
-                        assignedAgentName: c.assigned_agent_name || c.assignedAgentName || '',
-                        contactId: c.contact_id || c.contactId,
-                        estimatedValue: c.estimated_ticket_value || 0,
-                    }));
-                    // Sort by most recent message first so the order matches
-                    // what the user expects (freshest conversation on top).
-                    convs.sort((a: any, b: any) =>
-                        new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
-                    );
+    // Load conversations and canned responses from API.
+    // Extracted so it can be re-invoked from the WebSocket handler when a
+    // message arrives for a conversation we don't yet have in the list
+    // (e.g. one that just transitioned from resolved → active).
+    const loadInbox = useCallback(async (opts?: { silent?: boolean; selectFirst?: boolean }) => {
+        if (!activeTenantId) return;
+        const silent = opts?.silent ?? false;
+        const selectFirst = opts?.selectFirst ?? false;
+        if (!silent) setLoadingConv(true);
+        try {
+            const inboxResult = await api.getInbox(activeTenantId, filter);
+            if (inboxResult.success && Array.isArray(inboxResult.data)) {
+                const convs = inboxResult.data.map((c: any) => ({
+                    id: c.id,
+                    contactName: c.contact_name || c.contactName || t('unknown'),
+                    contactPhone: c.contact_phone || c.contactPhone || '',
+                    contactEmail: c.contact_email || c.contactEmail || '',
+                    contactAvatar: c.contact_avatar || c.contactAvatar || '',
+                    lastMessage: c.last_message || c.lastMessage || '',
+                    lastMessageAt: c.last_message_at ? formatTime(c.last_message_at) : c.lastMessageAt || '',
+                    lastMessageAtRaw: c.last_message_at || '',
+                    status: c.status || 'open',
+                    channel: c.channel_type || c.channel || 'whatsapp',
+                    channelAccountName: c.channel_account_name || c.channelAccountName || '',
+                    channelAccountPicture: c.channel_account_picture || c.channelAccountPicture || '',
+                    unreadCount: c.unread_count || c.unreadCount || 0,
+                    priority: c.priority || 'normal',
+                    tags: c.tags || [],
+                    isAiHandled: c.is_ai_handled ?? c.isAiHandled ?? false,
+                    assignedAgentId: c.assigned_agent_id || c.assignedAgentId || '',
+                    assignedAgentName: c.assigned_agent_name || c.assignedAgentName || '',
+                    contactId: c.contact_id || c.contactId,
+                    estimatedValue: c.estimated_ticket_value || 0,
+                }));
+                convs.sort((a: any, b: any) =>
+                    new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
+                );
+                if (silent) {
+                    // Merge: keep optimistic unreadCount where it's higher than
+                    // server-side (server lags one message behind on socket flush)
+                    setConversations((prev: any[]) => {
+                        const prevById = new Map(prev.map(c => [c.id, c]));
+                        return convs.map((c: any) => {
+                            const old = prevById.get(c.id);
+                            if (!old) return c;
+                            return { ...c, unreadCount: Math.max(c.unreadCount || 0, old.unreadCount || 0) };
+                        });
+                    });
+                } else {
                     setConversations(convs);
-                    setSelectedConv(convs[0]);
-                    setIsLive(true);
+                    if (selectFirst && convs.length > 0) setSelectedConv(convs[0]);
                 }
+                setIsLive(true);
+            }
+        } catch (err) {
+            console.error('Failed to load inbox:', err);
+        } finally {
+            if (!silent) setLoadingConv(false);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTenantId, filter]);
 
+    useEffect(() => {
+        async function loadAll() {
+            if (!activeTenantId) return;
+            await loadInbox({ selectFirst: true });
+            try {
+                const cannedResult = await api.getCannedResponses(activeTenantId);
                 if (cannedResult.success && Array.isArray(cannedResult.data)) {
                     setCannedResponses(cannedResult.data.map((r: any) => ({
                         id: r.id,
@@ -498,13 +526,11 @@ export default function InboxPage() {
                     })));
                 }
             } catch (err) {
-                console.error('Failed to load inbox:', err);
-            } finally {
-                setLoadingConv(false);
+                console.error('Failed to load canned responses:', err);
             }
         }
-        load();
-    }, [activeTenantId, filter]);
+        loadAll();
+    }, [activeTenantId, filter, loadInbox]);
 
     // Load messages when selecting a conversation
     useEffect(() => {
@@ -619,7 +645,12 @@ export default function InboxPage() {
                         return c;
                     });
                 } else {
-                    // New conversation — add to list (will be populated fully on next load)
+                    // New conversation — add an optimistic placeholder using
+                    // whatever the WS payload gave us. The real channel,
+                    // contact name, avatar, etc. land via the silent refetch
+                    // below. Don't trust message.channel_type → fall back to
+                    // empty so we render a neutral icon, NOT a wrong one.
+                    const wsChannel = message.channel_type || message.channelType || '';
                     updated = [...prev, {
                         id: conversationId,
                         contactName: message.contact_name || message.contactName || t('unknown'),
@@ -629,7 +660,7 @@ export default function InboxPage() {
                         lastMessageAt: formatTime(uiMsg.rawDate),
                         lastMessageAtRaw: uiMsg.rawDate,
                         status: 'active',
-                        channel: message.channel_type || message.channelType || 'whatsapp',
+                        channel: wsChannel,
                         channelAccountName: '',
                         channelAccountPicture: '',
                         unreadCount: 1,
@@ -641,6 +672,8 @@ export default function InboxPage() {
                         contactId: '',
                         estimatedValue: 0,
                     }];
+                    // Silent refetch fills in avatar / channelAccountName / etc.
+                    setTimeout(() => { loadInbox({ silent: true }); }, 250);
                 }
                 return updated.sort((a: any, b: any) =>
                     new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
@@ -665,7 +698,7 @@ export default function InboxPage() {
         return () => {
             socket.disconnect();
         };
-    }, [activeTenantId]);
+    }, [activeTenantId, loadInbox]);
 
     // --- Fetch AI Suggestion when conversation changes ---
     const fetchAiSuggestion = useCallback(async (convId?: string) => {
@@ -1569,11 +1602,21 @@ export default function InboxPage() {
                     <div className="p-5">
                         {/* Contact Avatar & Name */}
                         <div className="text-center mb-6">
-                            {selectedConv.contactAvatar ? (
+                            {selectedConv.contactAvatar && !brokenAvatars.has(selectedConv.id) ? (
                                 <img
                                     src={selectedConv.contactAvatar}
                                     alt={selectedConv.contactName}
                                     className="w-[72px] h-[72px] rounded-xl mx-auto mb-3 object-cover shadow-lg"
+                                    onError={() => {
+                                        // Instagram CDN URLs (scontent.cdninstagram.com)
+                                        // are signed with a TTL and start returning 403
+                                        // after ~24-48h. Fall back to the gradient.
+                                        setBrokenAvatars(prev => {
+                                            const next = new Set(prev);
+                                            next.add(selectedConv.id);
+                                            return next;
+                                        });
+                                    }}
                                 />
                             ) : (
                                 <div className="w-[72px] h-[72px] rounded-xl mx-auto mb-3 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-semibold text-white shadow-lg shadow-indigo-500/20">

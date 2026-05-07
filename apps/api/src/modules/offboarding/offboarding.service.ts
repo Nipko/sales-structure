@@ -768,7 +768,7 @@ export class OffboardingService {
             where: { tenantId },
             select: { id: true },
         });
-        const userIds = users.map(u => u.id);
+        const userIds = users.map((u: { id: string }) => u.id);
 
         // 3. Drain queues so nothing inflight touches the schema after drop
         try {
@@ -794,7 +794,7 @@ export class OffboardingService {
             const subs = await this.prisma.billingSubscription.findMany({
                 where: { tenantId }, select: { id: true },
             });
-            const subIds = subs.map(s => s.id);
+            const subIds = subs.map((s: { id: string }) => s.id);
             if (subIds.length > 0) {
                 const r = await this.prisma.billingEvent.deleteMany({ where: { subscriptionId: { in: subIds } } });
                 publicRowsDeleted['billing_events'] = r.count;

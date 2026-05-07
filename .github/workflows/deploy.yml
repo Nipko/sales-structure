@@ -436,7 +436,7 @@ jobs:
 
             echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
             for schema in $(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
-              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$'); do
+              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true); do
               docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
                 psql -U parallext -d parallext_engine -c "
                   DROP INDEX IF EXISTS ${schema}.ci_user_idx;
@@ -446,7 +446,7 @@ jobs:
 
             echo "===> Applying tenant-schema.sql to all existing tenants..."
             TENANTS=$(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
-              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$')
+              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true)
             for schema in $TENANTS; do
               echo "  Migrating tenant: $schema"
               cat apps/api/prisma/tenant-schema.sql | sed "s/{{SCHEMA_NAME}}/$schema/g" | \

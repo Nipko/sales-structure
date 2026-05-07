@@ -41,6 +41,13 @@ if [ "$CONFIRM" != "yes" ]; then
 fi
 
 echo ""
+echo "→ Capturando user_ids del tenant (para limpiar sus refresh tokens en Redis)..."
+USER_IDS=$(docker exec "${DB_CONTAINER}" psql -U "${DB_USER}" -d "${DB_NAME}" -t -A -c \
+    "SELECT id FROM users WHERE tenant_id = '${TID}'" 2>/dev/null | tr -d ' ' || true)
+USER_COUNT=$(echo "$USER_IDS" | grep -c . || true)
+echo "   ${USER_COUNT} usuario(s) asociados al tenant."
+
+echo ""
 echo "→ Ejecutando script SQL..."
 # Replace the placeholder UUID at runtime by piping a SET command first.
 # Easiest: sed-substitute and stream into psql.
@@ -56,6 +63,21 @@ docker exec "${REDIS_CONTAINER}" redis-cli --scan --pattern "tenant:${TID}:*" 2>
     done
 docker exec "${REDIS_CONTAINER}" redis-cli DEL "vertical:${TID}" > /dev/null 2>&1 || true
 docker exec "${REDIS_CONTAINER}" redis-cli DEL "tenant_plan:${TID}" > /dev/null 2>&1 || true
+
+# Refresh tokens: refresh:<userId>:<tokenId>. Delete every active session
+# for the users that belonged to this tenant.
+if [ -n "$USER_IDS" ]; then
+    REVOKED=0
+    while IFS= read -r uid; do
+        [ -z "$uid" ] && continue
+        # SCAN finds all token entries for this user across all sessions
+        docker exec "${REDIS_CONTAINER}" redis-cli --scan --pattern "refresh:${uid}:*" 2>/dev/null | \
+            while read -r k; do
+                [ -n "$k" ] && docker exec "${REDIS_CONTAINER}" redis-cli DEL "$k" > /dev/null
+            done
+    done <<< "$USER_IDS"
+    echo "   Refresh tokens de ${USER_COUNT} usuario(s) revocados."
+fi
 echo "   Cache limpiado."
 
 echo ""

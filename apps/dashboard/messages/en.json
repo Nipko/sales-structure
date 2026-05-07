@@ -3677,7 +3677,11 @@
     "delayed": "Delayed",
     "failed": "Failed",
     "queueUnavailable": "Unavailable",
-    "autoRefresh": "This page auto-refreshes every 15s"
+    "autoRefresh": "This page auto-refreshes every 15s. Click a counter to inspect the jobs.",
+    "inspectorSubtitle": "{count, plural, =0 {No jobs} one {# job} other {# jobs}}",
+    "inspectorEmpty": "No jobs in this state",
+    "inspectorHint": "Only the first 50 jobs are shown. Full payloads are not exposed — for deep inspection use redis-cli or BullMQ Dashboard.",
+    "attempts": "attempts"
   },
   "platformUsage": {
     "title": "Tenant usage",

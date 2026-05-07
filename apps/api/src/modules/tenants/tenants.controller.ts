@@ -121,6 +121,18 @@ export class TenantsController {
         };
     }
 
+    @Get('queue-jobs/:queueName/:state')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Inspect actual jobs in a BullMQ queue (super_admin debug)' })
+    async getQueueJobs(
+        @Param('queueName') queueName: string,
+        @Param('state') state: string,
+        @Query('limit') limit = 50,
+    ) {
+        const jobs = await this.tenantsService.getQueueJobs(queueName, state, Number(limit));
+        return { success: true, data: jobs };
+    }
+
     @Get('audit-logs')
     @Roles('super_admin')
     @ApiOperation({ summary: 'Cross-tenant audit log viewer' })

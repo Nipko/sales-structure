@@ -3677,7 +3677,11 @@
     "delayed": "Adiados",
     "failed": "Falharam",
     "queueUnavailable": "Indisponível",
-    "autoRefresh": "Esta página se atualiza automaticamente a cada 15s"
+    "autoRefresh": "Esta página se atualiza automaticamente a cada 15s. Clique em um contador para inspecionar os jobs.",
+    "inspectorSubtitle": "{count, plural, =0 {Sem jobs} one {# job} other {# jobs}}",
+    "inspectorEmpty": "Sem jobs neste estado",
+    "inspectorHint": "Apenas os primeiros 50 jobs são mostrados. Payloads completos não são expostos — para inspeção profunda use redis-cli ou BullMQ Dashboard.",
+    "attempts": "tentativas"
   },
   "platformUsage": {
     "title": "Uso por tenant",

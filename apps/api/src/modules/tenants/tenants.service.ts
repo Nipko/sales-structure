@@ -664,6 +664,63 @@ export class TenantsService {
     }
 
     /**
+     * Inspect actual jobs in one of the BullMQ queues. Used by the
+     * super_admin queue inspector: click a row in /admin/health to
+     * see what's actually queued (especially useful when "waiting" is
+     * non-zero and you want to know if it's one tenant flooding or
+     * something stuck).
+     *
+     * `state` is the BullMQ job state: waiting | active | delayed |
+     * failed | completed. Limit caps results at 100.
+     */
+    async getQueueJobs(queueName: string, state: string, limit = 50): Promise<any[]> {
+        const queueMap: Record<string, any> = {
+            'outbound-messages': this.outboundQueue,
+            'broadcast-messages': this.broadcastQueue,
+            'automation-jobs': this.automationQueue,
+            'nurturing': this.nurturingQueue,
+            'conversation-snooze': this.snoozeQueue,
+        };
+        const queue = queueMap[queueName];
+        if (!queue) return [];
+
+        const validStates = ['waiting', 'active', 'delayed', 'failed', 'completed'];
+        if (!validStates.includes(state)) return [];
+
+        const cap = Math.min(limit, 100);
+        try {
+            const jobs = await queue.getJobs([state], 0, cap - 1, true);
+            return jobs.map((j: any) => {
+                const data = j.data || {};
+                // Extract tenant + summary fields without leaking sensitive payloads
+                const summary = data.tenantId
+                    ? `tenant=${String(data.tenantId).slice(0, 8)}…`
+                    : data.to
+                        ? `to=${String(data.to).slice(0, 12)}…`
+                        : data.contactId
+                            ? `contact=${String(data.contactId).slice(0, 8)}…`
+                            : '';
+                return {
+                    id: j.id,
+                    name: j.name,
+                    summary,
+                    tenantId: data.tenantId || null,
+                    channelType: data.channelType || data.channel || null,
+                    timestamp: j.timestamp ? new Date(j.timestamp).toISOString() : null,
+                    delay: j.delay || 0,
+                    attemptsMade: j.attemptsMade || 0,
+                    failedReason: j.failedReason || null,
+                    processedOn: j.processedOn ? new Date(j.processedOn).toISOString() : null,
+                    finishedOn: j.finishedOn ? new Date(j.finishedOn).toISOString() : null,
+                };
+            });
+        } catch (e: any) {
+            this.logger.warn(`Failed to fetch jobs from ${queueName}/${state}: ${e.message}`);
+            return [];
+        }
+    }
+
+    /**
      * Acquisition funnel: signups → onboarding done → first message
      * → first paying. Counts tenants created within the window plus
      * step-to-step conversion rates and a signup-source breakdown.

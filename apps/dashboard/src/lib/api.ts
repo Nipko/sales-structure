@@ -444,6 +444,8 @@ export const api = {
     }) => apiPut(`/tenants/${tenantId}/quota-overrides`, data),
     getComplianceAdminOverview: () => apiGet("/compliance/admin/overview"),
     getOnboardingFunnel: (days = 30) => apiGet(`/tenants/onboarding-funnel?days=${days}`),
+    getQueueJobs: (queueName: string, state: string, limit = 50) =>
+        apiGet(`/tenants/queue-jobs/${queueName}/${state}?limit=${limit}`),
     exportContactData: (tenantId: string, contactId: string) =>
         apiPost(`/compliance/admin/export-contact-data/${tenantId}/${contactId}`, {}),
     getWebhookTap: (params?: { channelType?: string; status?: string; limit?: number }) => {

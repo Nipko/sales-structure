@@ -4,6 +4,112 @@
 
 ---
 
+## v5.2.0 — May 6, 2026 (Tier 1 Verticals Sprint + Channels Hardening)
+
+### Sprint Tier 1 — Three new operational verticals
+
+**Sprint #1 — Tours & Travel Packages** (`turismo` sub-types: `tours`, `agencia_viajes`)
+- New schema: `tour_packages` (unified hours-based experiences + days-based packages), `tour_inventory` (per-departure capacity, optional), `tour_bookings` (status: reserved/confirmed/completed/cancelled/no_show)
+- New `ToursModule` with 12 REST endpoints under `/tours/:tenantId/...`
+- 4 AI tools (gated by `config.tools.tours.enabled`): `search_packages`, `get_package_details`, `check_package_availability`, `create_tour_booking`
+- Dashboard: `/admin/tours` (list with sale/rent filter pills + create modal) and `/admin/tours/[id]` (Info/Cupos por fecha/Reservas tabs)
+- Bootstrap: 5 ops-focused FAQs (transfer, child discount, languages, cancellation, meeting point) seeded automatically on `tours` / `agencia_viajes` sub-types; `config.tools.tours.enabled = true` flipped on default agent
+- 2 vertical agent templates: `tpl_turismo_tours` (Maya — Tours del Día), `tpl_turismo_agencia` (Maya — Agencia de Viajes)
+
+**Sprint #2 — Salud / Dental + transversal recall** (`salud` sub-type: `dental`)
+- New schema: `treatment_plans` (multi-session treatments — orthodontics, physiotherapy, aesthetic series, etc.), `treatment_sessions` (per-session tracking, status pending/scheduled/completed/cancelled/no_show), plus `contacts.last_appointment_at` + `contacts.next_recall_at` columns with index
+- New `TreatmentPlansModule` with 8 REST endpoints
+- 2 AI tools (gated by `config.tools.treatments.enabled`): `get_treatment_plan`, `list_upcoming_sessions`
+- Dashboard: `TreatmentPlansCard` collapsible component on lead detail (visible only when vertical=salud)
+- New cron 9 AM daily: `RecallService.processRecalls` — re-engages contacts with `last_appointment_at` older than configured threshold via WhatsApp template (transversal: dental 6-month, gym lapse, aesthetic series)
+- Recall config endpoints: `GET/PUT /recall/:tenantId/config`, `POST /recall/:tenantId/run-now`
+- Hooks added to `appointments.update` and auto-complete cron to keep `contacts.last_appointment_at` fresh
+- Vertical agent template: `tpl_salud_dental` (Sofía dental with urgency triggers + treatment plan integration)
+- Bootstrap: 5 dental-specific FAQs (insurance, cost, pain management, orthodontics duration, emergencies) on sub-type `dental`
+
+**Sprint #3 — Real Estate Listings** (`inmobiliaria` sub-types: `venta`, `arriendo`, `comercial`, `construccion`)
+- New schema: `real_estate_listings` (transaction_type sale/rent + property_kind + price/HOA/deposit + bedrooms/bathrooms/m²/parking/stratum + lat/lon + amenities/images + status), `listing_zone_agents` (neighborhood → agent mapping for routing)
+- New `ListingsModule` with 11 REST endpoints (CRUD, search, zone CRUD)
+- 2 AI tools (gated by `config.tools.realEstate.enabled`): `search_listings`, `get_listing_details`
+- Dashboard: `/admin/listings` (card grid with sale/rent filter) and `/admin/listings/[id]` (full editor with sale-only / rent-only fields)
+- Sidebar visible only when vertical=inmobiliaria
+- Vertical agent template: `tpl_inmobiliaria_listings` (Carlos with explicit search_listings rules + viewing booking flow)
+- Bootstrap: 5 inmobiliaria FAQs (financing, viewings, commissions, documents, HOA)
+
+### Vertical agent templates — 4 industries that had ZERO
+
+Added 8 new templates so finanzas, servicios_profesionales, retail, and technology stop falling through to the generic builtins:
+- **finanzas**: Roberto (calificador credit/insurance + renovaciones)
+- **servicios_profesionales**: Elena (consulta inicial + seguimiento de casos)
+- **retail**: Sofía (ventas + postventa)
+- **technology**: Diego (BANT calificador B2B + soporte L1)
+
+Each template ships with industry-tuned tools enabled, behavior rules, forbidden topics, and handoff triggers (e.g. finanzas blocks giving exact rates, servicios_profesionales escalates substantive case questions, retail captures preferences, technology refuses enterprise pricing).
+
+`VERTICAL_PREFIXES` extended on the dashboard with `tpl_finanzas_`, `tpl_legal_`, `tpl_retail_`, `tpl_technology_` so they group under "Recomendados para tu negocio".
+
+### Channels hardening — disconnect actually disconnects
+
+- **Real provider unsubscribe on every channel**: WhatsApp now calls `DELETE /<waba>/subscribed_apps` (was no-op), Telegram captures `deleteWebhook` HTTP status (was best-effort `.catch`), Messenger iterates ALL Pages (was only first), Instagram captures status code, SMS clears `SmsUrl` on every IncomingPhoneNumber via Twilio API
+- **`metadata.disconnected_at_provider`** flag stamped per channel — used by reactivate path to decide whether is_active flip is enough or full OAuth reconnect required
+- **`audit_logs` row** for every disconnect (manual or via offboarding cron) with `triggeredBy`, `providerOk`, `providerError`
+- **Honest UX**: dashboard shows green banner if provider OK, **amber banner** with concrete instruction if provider call failed ("revisar la integración manualmente"). Red banner only for network errors
+- **Refresh tokens revoked** on disconnect when provider call succeeded
+- **Frontend banners**: 3-state messaging (success/warning/error) on whatsapp/messenger/instagram/telegram/sms. New i18n key `disconnectPartial` × 4 languages
+- **Reactivate path**: `OffboardingService.reactivate` now restores channel_accounts that the cron turned off, EXCEPT those marked `disconnected_at_provider=true` (those need fresh OAuth — flipping the flag back on would lie to the user)
+
+### Tenant lifecycle — full purge with provider unsubscribe + media wipe
+
+- **`OffboardingService.purgeTenant(tenantId)`** — 9-step orchestration: providers → queue drain → user IDs captured → public-schema rows (FK-safe order) → DROP SCHEMA CASCADE → `/data/media/{tenantId}/` wipe → tenants row → Redis (incl. refresh tokens per user) → emit `tenant.purged` event
+- **`DELETE /offboarding/:tenantId/purge`** super_admin endpoint — irreversible, returns summary `{ channelsDisconnected, publicRowsDeleted, schemaDropped, mediaFilesRemoved, usersRevoked }`
+- **`MediaService.deleteAllTenantFiles(tenantId)`** — recursive wipe of `/data/media/{tenantId}/` (logos, product photos, property photos, tour photos, attachments). Path traversal protection
+- **New cron 5 AM daily**: `purgeStaleInactiveChannels` — hard-deletes `channel_accounts` rows with `is_active=false` and `disconnected_at >90 days` ago. Patrón Shopify/HubSpot: grace window for reconnect, automatic cleanup after. One audit_log batch per run with the list of purged channels
+- **`infra/scripts/delete-tenant.sh`** — dual-mode: with `--api-token` (or `PARALLLY_SUPER_ADMIN_TOKEN` env) calls the purge endpoint (preferred). Without a token, falls back to direct SQL + Redis + filesystem wipe. Also revokes user refresh tokens via `refresh:<userId>:*` Redis keys
+- **`infra/scripts/delete-tenant.sql`** — auto-resolves `schema_name` from the `tenants` row (was using display name and silently skipping `DROP SCHEMA`). Per-table `ROW_COUNT` logging. Adds missing `feature_request_subscribers`
+
+### Inbox — recover auto-resolved conversations
+
+`NurturingService` cron auto-marks conversations as `resolved` after 72h of inactivity, but the inbox query hid them with no way to find them. Added:
+- New filter `'resolved'` in `getInbox` — inverts the base status filter, orders by `resolved_at DESC`, cap 200 rows
+- Endpoint `POST /agent-console/conversation/:tenantId/:id/reopen` — flips status back to `'active'`, clears `resolved_at`
+- Frontend: new "Resueltas" pill in the inbox toolbar; when viewing a resolved thread the message input hides and is replaced by a banner with check icon + "Reabrir conversación" button. After reopen, the filter switches to "all" automatically so the thread reappears
+- 3 new i18n keys: `filterResolved`, `resolvedBanner`, `reopenConversation` (× 4 languages)
+
+### Onboarding & setup-wizard fixes
+
+- Setup wizard infinite-redirect bug: "Skip" only navigated to `/admin`, but the dashboard checked `setupWizardCompleted` and redirected back. New `POST /persona/:tenantId/setup-wizard/skip` flips the flag; "Finish" without a template now falls through to skip
+- Setup wizard now serves vertical-specific templates: `GET /persona/templates?tenantId=...` resolves industry server-side, returns `getVerticalTemplates(industry) + getBuiltinTemplates()` normalised so the existing form code doesn't branch
+- `POST /persona/:tenantId/setup-wizard` now resolves the templateId across all 3 sources (legacy, builtins, verticals)
+
+### Vertical onboarding fixes (May 2 backlog)
+
+- i18n industry keys aligned: `educación → education`, `tecnología → technology` in 4 languages (mismatch made dropdowns show empty labels)
+- `completeOnboarding` response now includes `verticalConfig`; saved to localStorage so dashboard adapts immediately on first load
+- `verticals.service.getVerticalConfig` rebuilds + persists config from `tenant.industry` for tenants created before the persistence fix
+- `persona.service.listTemplates` resolves industry server-side from `tenant.settings.verticalConfig.industry || tenant.industry` when not passed by client
+- Empty-state strings for finanzas / servicios_profesionales / retail / technology added to `verticalEmptyStates`, `verticalChecklist`, `verticalWelcome` (× 4 languages)
+- Sidebar `nav.items.tours` was missing in 4 languages — caused literal "nav.items.tours" rendering
+
+### Properties UX overhaul
+
+- `iCal feed`: payload mapping fix (snake_case → camelCase) — was returning 400 silently. URL validation client-side. How-to panel with 3-step instructions in 4 languages
+- `Photos tab` (new dedicated tab): drag-and-drop multi-upload, per-file size + type validation (max 5 photos × 2 MB each), progress bar `n of total`, set-as-cover action, reorder, sticky save bar appears only when dirty. Endpoint corrected (`/media/upload/{tenantId}` not `/media/upload`) and accessToken read from the right localStorage key
+- `Calendar tab`: range block (click start → click end → modal with optional note), per-cell source label (Manual / Airbnb / Booking / Vrbo), tooltip with summary, unblock confirmation modal
+- `Form numbers`: new `NumberField` component (`type=text` + `inputMode=numeric`) — fixes the "phantom 0 you can't delete" bug. Save now sends camelCase (was silently dropped by backend)
+- `Property updateProperty`: response field mapping fixed
+- `iCal sync`: auto-trigger sync on feed creation, surface error in UI, correct field names (`feed_name`, `last_sync_at`, `last_sync_status`, `last_sync_error`)
+- `IcalExportPublicController` (new): public endpoint `GET /vacation-rental/:tenantId/properties/:propertyId/ical` — what the dashboard tells users to paste into Airbnb/Booking. Resolved 404 that broke external sync
+- Media URL resolution: `<img src>` paths now resolve against API origin (`api.parallly-chat.cloud`) not dashboard origin
+
+### Documentation reorganisation
+
+- `CLAUDE.md` reduced 762 → 134 lines; full content moved to:
+  - `docs/architecture-detail.md` (prompt layers, 5-tier knowledge, auth, OAuth flows, calendar, observability, BullMQ, pipeline)
+  - `docs/modules-reference.md` (40 modules, key files, dashboard pages, cron jobs)
+  - `docs/analytics-billing-reference.md` (analytics endpoints, Redis keys, schemas, billing, offboarding, financials, super admin, vertical, vacation rental, CRM, handoff)
+
+---
+
 ## v5.1.1 — May 2, 2026
 
 ### Navigation Redesign (Definitive)

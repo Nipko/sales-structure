@@ -1883,6 +1883,225 @@ Para documentar visualmente la plataforma, estas son las pantallas clave donde t
 
 ---
 
+---
+
+## 21. Verticales operativas — Sprint Tier 1 (mayo 2026)
+
+Parallly ahora opera 3 verticales de manera completa, con tablas, herramientas IA y pantallas dedicadas. Si tu industria es una de estas, vas a ver la sección correspondiente en el sidebar y el agente IA podrá operar sobre tu catálogo real.
+
+### 21.1 Turismo — Tours y Paquetes
+
+**Para quién:** agencias de viajes, operadores de tours, hoteles que ofrecen experiencias.
+
+**Cómo activarlo:**
+1. Onboarding → Industria = "Turismo" → sub-tipo `tours` o `agencia_viajes`
+2. El agente IA "Maya" se configura automáticamente con plantilla vertical
+3. Aparece "Tours y Paquetes" en el sidebar
+
+**Cómo crear paquetes:**
+1. Sidebar → **Tours y Paquetes** → "Crear paquete"
+2. Elige tipo: **Tour del día** (city tour, snorkel, parapente — duración en horas) o **Paquete** (multi-día, ej: Cartagena 3D2N)
+3. Completa nombre, destino, precio, capacidad máxima, idiomas ofrecidos
+4. Guarda → entra al detalle del paquete
+
+**Cómo gestionar cupos por fecha:**
+1. Detalle del paquete → tab **Cupos por fecha**
+2. "Agregar salida" → fecha + hora (opcional) + cupos totales + precio especial (opcional)
+3. La barra de ocupación se actualiza visualmente
+4. Si dejas un paquete sin fechas, el agente lo ofrecerá como "personalizable" (cualquier fecha, cupo ilimitado)
+
+**Cómo el agente IA usa esto:**
+Cliente pregunta "¿qué tours tienen el sábado para 2 personas?" → el agente llama `search_packages` con tu catálogo real → muestra opciones con precio y disponibilidad → cuando confirma, llama `create_tour_booking` y la reserva aparece en el tab **Reservas** del paquete.
+
+**Reservas:**
+- Estados: `reservada` → `confirmada` → `completada` (o `cancelada`/`no asistió`)
+- Cancelar libera el cupo automáticamente
+
+---
+
+### 21.2 Salud — Planes de tratamiento (Sub-tipo Dental)
+
+**Para quién:** clínicas dentales, fisioterapia, estética, psicología (cualquier salud con tratamientos multi-sesión).
+
+**Cómo activarlo:**
+1. Onboarding → Industria = "Salud" → sub-tipo `dental`
+2. Sofía dental se configura como agente automáticamente
+3. La opción "Planes de tratamiento" aparece dentro del detalle de cada lead/paciente
+
+**Cómo crear un plan de tratamiento:**
+1. CRM → entra al lead/paciente
+2. En el panel izquierdo busca la tarjeta **"Planes de tratamiento"** (collapsible)
+3. Expandir → "Crear plan de tratamiento"
+4. Tipo (Ortodoncia, Blanqueamiento, Serie de limpiezas, Fisioterapia...) + sesiones totales (ej: 18) + frecuencia (ej: cada 30 días) + costo total + fecha de inicio
+5. Guarda → aparece la barra de progreso "0/18 sesiones"
+
+**Marcar sesiones como completadas:**
+- Expande el plan → ves cada sesión con su estado
+- Botón ✓ para marcar como completada → el progreso se actualiza
+- Al llegar al total de sesiones, el plan se marca automáticamente como `completed`
+
+**Cómo el agente IA usa esto:**
+Paciente pregunta "¿cuántas sesiones me faltan?" → el agente llama `get_treatment_plan` → responde con datos reales: "Te quedan 5 sesiones de tu ortodoncia. La próxima está agendada el 15 de mayo."
+
+**FAQs dentales pre-cargadas:**
+Al activar el sub-tipo dental se cargan automáticamente 5 FAQs (seguros, costos, dolor/sedación, ortodoncia, urgencias) que el agente puede responder.
+
+---
+
+### 21.3 Inmobiliaria — Listings de venta y arriendo
+
+**Para quién:** inmobiliarias, asesores independientes, constructores con catálogo propio. NO para alquiler vacacional (eso es Propiedades).
+
+**Cómo activarlo:**
+1. Onboarding → Industria = "Inmobiliaria" → cualquier sub-tipo
+2. Carlos asesor se configura como agente automáticamente
+3. "Inmuebles" aparece en el sidebar
+
+**Cómo cargar inmuebles:**
+1. Sidebar → **Inmuebles** → "Crear inmueble"
+2. Elige tipo: **Venta** o **Arriendo**
+3. Completa: tipo de propiedad (apartamento, casa, comercial, oficina, lote), precio, habitaciones, baños, m², parqueaderos, estrato, año de construcción
+4. Dirección, barrio, ciudad
+5. Para venta: marca si aplica a crédito hipotecario / VIS
+6. Para arriendo: completa administración (HOA), depósito, mínimo de meses
+7. Guarda
+
+**Cómo el agente IA usa esto:**
+Cliente: "Busco apto en Chapinero menos de 800 millones, 3 habitaciones" → agente llama `search_listings(transactionType: 'sale', maxPrice: 800000000, minBedrooms: 3, neighborhood: 'Chapinero')` → muestra 3-5 opciones reales de tu catálogo. Cuando muestra interés en una específica, llama `get_listing_details` para datos completos.
+
+**Filtros de búsqueda del agente:**
+- transactionType (sale | rent)
+- propertyKind (apartment, house, commercial, office, land)
+- maxPrice / minPrice
+- minBedrooms / minAreaM2
+- neighborhood (búsqueda parcial: "Chapinero" matchea "Chapinero Alto")
+- city
+
+**Estados del inmueble:**
+`disponible` → `reservado` → `vendido` / `arrendado` / `inactivo`
+
+---
+
+## 22. Sistema de Recall (recordatorios automáticos)
+
+**Para quién:** clínicas dentales (recall semestral), gimnasios (inactividad), estética (series), cualquier negocio con visitas recurrentes.
+
+**Cómo configurar:**
+Hoy se configura por API hasta que se haga la UI. Endpoints:
+
+```bash
+# Ver config actual
+GET /api/v1/recall/{tenantId}/config
+
+# Actualizar
+PUT /api/v1/recall/{tenantId}/config
+{
+  "enabled": true,
+  "daysThreshold": 180,        // ej: 6 meses para dental
+  "cooldownDays": 90,           // no re-disparar a la misma persona en 3 meses
+  "channelType": "whatsapp",
+  "message": "Hola {name}, ya pasaron {months} meses desde tu última visita. ¿Quieres agendar tu cita de control?"
+}
+
+# Disparar manualmente para probar
+POST /api/v1/recall/{tenantId}/run-now
+```
+
+**Placeholders soportados en el mensaje:**
+- `{name}` — primer nombre del contacto
+- `{months}` — meses transcurridos desde la última cita
+
+**Cuándo se ejecuta:**
+- Cron diario a las 9 AM (hora del servidor)
+- Busca contactos con `last_appointment_at` más viejo que `daysThreshold`
+- Envía template via WhatsApp (respeta los límites de plan)
+- Marca `next_recall_at` con cooldown para no spammear
+
+**Para que `last_appointment_at` se actualice:** marca las citas como `completed` desde la pantalla de Citas o deja que el cron auto-complete las confirmadas que terminaron hace 2+ horas.
+
+---
+
+## 23. Conversaciones resueltas — historial y reabrir
+
+Las conversaciones inactivas por 72+ horas se marcan automáticamente como `resolved` para limpiar el inbox. Esto puede pasar desapercibido y dar la impresión de que "se perdieron mensajes".
+
+**Cómo verlas y consultarlas:**
+1. Conversaciones (Inbox) → barra de filtros arriba → click en pill **"Resueltas"**
+2. Aparecen ordenadas por fecha de resolución (más reciente arriba)
+3. Click en una para ver el historial completo en modo solo-lectura
+
+**Cómo reabrir una conversación:**
+- Dentro de la conversación resuelta vas a ver un banner gris con check verde + botón **"Reabrir conversación"**
+- Click → la conversación vuelve al inbox activo
+- El filtro automáticamente cambia a "Todos" para que la veas de inmediato
+
+**Cuándo conviene reabrir:**
+- El cliente respondió por otro canal (email, llamada) y querés continuar el hilo en chat
+- Necesitas hacer follow-up manual
+- Te equivocaste al cerrarla
+
+---
+
+## 24. Desconectar canales correctamente
+
+Cuando le das **"Desconectar"** a un canal, ahora la plataforma:
+1. Llama al proveedor (Meta, Telegram, Twilio) para cortar la suscripción
+2. Marca el canal como inactivo en BD
+3. Revoca las credenciales (cuando aplica)
+4. Te muestra un banner con el resultado real
+
+**Banner verde** ✅ "Desconectado completamente": el proveedor confirmó la desuscripción. No vas a recibir más mensajes ni webhooks.
+
+**Banner amarillo** ⚠️ "Desconectado en plataforma — revisar el proveedor": tu BD se actualizó pero el proveedor (Meta/Twilio) podría seguir enviando. Causas típicas: token expirado, permisos cambiados, error de red. Tienes que entrar a Meta Business Suite (o el proveedor correspondiente) y desactivar manualmente.
+
+**Banner rojo** ❌: error de red, no se pudo procesar. Reintenta.
+
+**Si tras desconectar el canal sigue apareciendo activo en Meta:** entra a Meta Business Suite → WhatsApp Business → Suscripciones de la WABA → quita la app de Parallly manualmente. Esto pasa cuando el banner fue amarillo.
+
+---
+
+## 25. Tours iCal sync — feeds entrantes y salientes
+
+**Para alquiler vacacional (sub-tipo `alquiler_vacacional`):**
+
+### Importar bloqueos desde Airbnb / Booking
+1. Propiedades → entra a la propiedad → tab **Calendario iCal**
+2. "Agregar feed" → nombre + plataforma + URL pública del calendario `.ics` que te dio Airbnb
+3. Pega la URL → Guardar
+4. **Sync inmediato**: la plataforma intenta importar inmediatamente y muestra el resultado:
+   - ✅ Pill verde "OK" + número de eventos importados → calendario actualizado
+   - ❌ Pill rojo "Error" + mensaje del fallo (URL inválida, 403 de Cloudflare, etc.)
+5. Cron cada 30 minutos sincroniza automáticamente todos los feeds activos
+
+### Exportar tu calendario a Airbnb / Booking
+1. Misma pestaña → bloque "URL de exportación"
+2. Click "Copiar" → pega esa URL en Airbnb → "Sincronizar calendario" → "Importar calendario"
+3. Airbnb va a leer tu calendario de Parallly cada hora aprox
+4. La URL es pública (protegida por UUIDs largos, mismo modelo que Airbnb usa)
+
+### Bloqueos manuales de fechas
+1. Tab **Calendario** → click en un día disponible (verde)
+2. Click en otro día → modal "Bloquear del X al Y" con campo de nota opcional
+3. Confirmar → el rango aparece en amber con etiqueta "Manual"
+4. Para desbloquear: click en una fecha bloqueada manual → confirmación → vuelve a verde
+
+---
+
+## 26. Subir fotos a propiedades / inmuebles / tours
+
+Todas las pantallas de catálogo (Propiedades, Inmuebles, Tours) tienen una pestaña dedicada de **Fotos**:
+
+1. **Drag & drop** o click para seleccionar — soporta múltiples archivos a la vez
+2. **Límites**: máximo 5 fotos por anuncio, 2 MB por foto. Solo formatos imagen
+3. **Barra de progreso** muestra "Subiendo 3 de 5..."
+4. **Reordenar**: hover sobre cualquier foto → botones ← → para mover, ✓ para "usar como portada"
+5. **Foto portada**: la primera foto es la que aparece en la card del listado
+6. **Cambios pendientes**: si reordenaste o eliminaste, aparece una barra sticky abajo "Tienes cambios sin guardar" → click "Guardar"
+
+Si una foto se rechaza (>2 MB o no es imagen), aparece el mensaje específico con el nombre del archivo. Las que sí pasaron se suben sin bloquear.
+
+---
+
 <p align="center">
   <strong>¿No encontraste lo que buscabas?</strong><br/>
   Contáctanos en <a href="mailto:soporte@parallly-chat.cloud">soporte@parallly-chat.cloud</a>

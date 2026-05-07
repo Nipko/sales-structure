@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -57,6 +57,14 @@ export class OffboardingController {
     @ApiOperation({ summary: 'Force-reactivate channel_accounts for a tenant whose channels were turned off but never re-linked' })
     async reactivateChannels(@Param('tenantId') tenantId: string) {
         const result = await this.offboardingService.reactivateChannels(tenantId);
+        return { success: true, data: result };
+    }
+
+    @Delete(':tenantId/purge')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Hard-delete a tenant: detaches providers, drops schema, wipes media, revokes sessions. Irreversible.' })
+    async purgeTenant(@Param('tenantId') tenantId: string) {
+        const result = await this.offboardingService.purgeTenant(tenantId);
         return { success: true, data: result };
     }
 

@@ -144,6 +144,70 @@ export class OffboardingCronService {
         }
     }
 
+    /**
+     * Runs at 5 AM daily — purges channel_accounts that have been inactive
+     * for more than 90 days. The row is kept that long so support requests
+     * and "reactivate channel" use cases still work; after that it's pure
+     * dead weight (HubSpot / Slack pattern).
+     *
+     * audit_logs row stays — that table is the historical truth and we
+     * don't sweep it as part of this job.
+     */
+    @Cron('0 5 * * *')
+    async purgeStaleInactiveChannels(): Promise<void> {
+        this.logger.log('Running stale-channel purge...');
+
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 90);
+        const cutoffIso = cutoff.toISOString();
+
+        try {
+            // Match on metadata.disconnected_at (set by every disconnect path
+            // we own) — falls back to updated_at for legacy rows that pre-date
+            // the metadata stamp.
+            const result = (await this.prisma.$queryRawUnsafe(
+                `DELETE FROM channel_accounts
+                 WHERE is_active = false
+                   AND COALESCE(
+                       (metadata->>'disconnected_at')::timestamp,
+                       updated_at
+                   ) < $1::timestamp
+                 RETURNING id, tenant_id, channel_type, account_id`,
+                cutoffIso,
+            )) as any[];
+
+            const purged = result?.length || 0;
+            if (purged > 0) {
+                this.logger.log(`Purged ${purged} stale channel_account row(s) (>90d inactive)`);
+
+                // One audit row per purge run summarises the batch — saves
+                // writing 1 audit row per purged channel
+                try {
+                    await this.prisma.auditLog.create({
+                        data: {
+                            tenantId: null,
+                            action: 'stale_channels_purged',
+                            resource: 'channel_accounts',
+                            details: {
+                                purged,
+                                cutoff: cutoffIso,
+                                channels: result.map(r => ({
+                                    tenantId: r.tenant_id,
+                                    channelType: r.channel_type,
+                                    accountId: r.account_id,
+                                })),
+                            },
+                        },
+                    });
+                } catch (err: any) {
+                    this.logger.warn(`Failed to write audit_log for stale-channel purge: ${err.message}`);
+                }
+            }
+        } catch (error: any) {
+            this.logger.error(`Stale-channel purge failed: ${error.message}`);
+        }
+    }
+
     // ── Billing event listeners ──────────────────────────────────
 
     @OnEvent('billing.payment.failed')

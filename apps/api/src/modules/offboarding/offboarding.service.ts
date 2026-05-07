@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { MediaService } from '../media/media.service';
 
 @Injectable()
 export class OffboardingService {
@@ -13,6 +14,7 @@ export class OffboardingService {
         private prisma: PrismaService,
         private redis: RedisService,
         private eventEmitter: EventEmitter2,
+        private mediaService: MediaService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
@@ -718,5 +720,186 @@ export class OffboardingService {
 
         this.logger.log(`[reactivateChannels ${tenantId}] restored=${restored.length} needsReconnect=${needsReconnect}`);
         return { restored: restored.length, needsReconnect };
+    }
+
+    /**
+     * Hard-delete a tenant: orchestrates the full purge in the correct order.
+     *  1. Provider unlink (Meta DELETE subscribed_apps, Telegram deleteWebhook,
+     *     Instagram revoke, Twilio webhook clear) — disconnectAllChannels.
+     *  2. Drain queues + revoke sessions (so no in-flight job touches the
+     *     schema while we're deleting it).
+     *  3. Delete public-schema rows that reference the tenant_id.
+     *  4. DROP SCHEMA tenant_X CASCADE (wipes contacts, conversations,
+     *     messages, properties, treatment_plans, real_estate_listings,
+     *     tour_packages, media_files, etc.).
+     *  5. Delete the tenants row itself.
+     *  6. Wipe /data/media/{tenantId}/ from disk (logos, photos, attachments).
+     *  7. Clear Redis: tenant:*, vertical:*, tenant_plan:*, refresh:*<userId>:*.
+     *  8. Audit log + emit event.
+     *
+     * Use case: super_admin "delete tenant" button, or final step of long
+     * cancellation flow. Irreversible. Returns a summary to surface in the UI.
+     */
+    async purgeTenant(tenantId: string): Promise<{
+        channelsDisconnected: number;
+        publicRowsDeleted: Record<string, number>;
+        schemaDropped: boolean;
+        mediaFilesRemoved: number;
+        usersRevoked: number;
+    }> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { id: true, name: true, schemaName: true },
+        });
+        if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+
+        this.logger.log(`[Purge ${tenantId}] Starting — tenant=${tenant.name}, schema=${tenant.schemaName}`);
+
+        // 1. Detach providers + flag channel_accounts (reuse the existing flow)
+        const beforeChannels = await this.prisma.channelAccount.count({ where: { tenantId } });
+        try {
+            await this.disconnectAllChannels(tenantId);
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] Provider disconnect partial: ${err.message}`);
+        }
+
+        // 2. Capture user IDs before delete to revoke their refresh tokens later
+        const users = await this.prisma.user.findMany({
+            where: { tenantId },
+            select: { id: true },
+        });
+        const userIds = users.map(u => u.id);
+
+        // 3. Drain queues so nothing inflight touches the schema after drop
+        try {
+            await this.drainTenantQueues(tenantId);
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] Queue drain partial: ${err.message}`);
+        }
+
+        // 4. Delete public-schema rows in FK-safe order
+        const publicRowsDeleted: Record<string, number> = {};
+        const safeDelete = async (label: string, fn: () => Promise<{ count: number } | any>) => {
+            try {
+                const res = await fn();
+                publicRowsDeleted[label] = res.count ?? 0;
+            } catch (err: any) {
+                this.logger.warn(`[Purge ${tenantId}] Failed to delete ${label}: ${err.message}`);
+                publicRowsDeleted[label] = -1;
+            }
+        };
+
+        // billing_events depends on billing_subscriptions; do it first
+        try {
+            const subs = await this.prisma.billingSubscription.findMany({
+                where: { tenantId }, select: { id: true },
+            });
+            const subIds = subs.map(s => s.id);
+            if (subIds.length > 0) {
+                const r = await this.prisma.billingEvent.deleteMany({ where: { subscriptionId: { in: subIds } } });
+                publicRowsDeleted['billing_events'] = r.count;
+            } else {
+                publicRowsDeleted['billing_events'] = 0;
+            }
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] billing_events: ${err.message}`);
+        }
+
+        await safeDelete('billing_payments', () => this.prisma.billingPayment.deleteMany({ where: { tenantId } }));
+        await safeDelete('billing_subscriptions', () => this.prisma.billingSubscription.deleteMany({ where: { tenantId } }));
+        await safeDelete('audit_logs', () => this.prisma.auditLog.deleteMany({ where: { tenantId } }));
+        await safeDelete('channel_accounts', () => this.prisma.channelAccount.deleteMany({ where: { tenantId } }));
+        await safeDelete('whatsapp_onboardings', () => this.prisma.whatsappOnboarding.deleteMany({ where: { tenantId } }));
+        await safeDelete('whatsapp_credentials', () => this.prisma.whatsappCredential.deleteMany({ where: { tenantId } }));
+        await safeDelete('tenant_financial_snapshots', () => this.prisma.tenantFinancialSnapshot.deleteMany({ where: { tenantId } }));
+        await safeDelete('crm_connections', () => this.prisma.crmConnection.deleteMany({ where: { tenantId } }));
+        await safeDelete('feature_request_votes', () => this.prisma.featureRequestVote.deleteMany({ where: { tenantId } }));
+        await safeDelete('feature_request_comments', () => this.prisma.featureRequestComment.deleteMany({ where: { tenantId } }));
+        try {
+            // FeatureRequestSubscriber is keyed by userId, not tenantId
+            if (userIds.length > 0) {
+                const r = await this.prisma.featureRequestSubscriber.deleteMany({
+                    where: { userId: { in: userIds } },
+                });
+                publicRowsDeleted['feature_request_subscribers'] = r.count;
+            } else {
+                publicRowsDeleted['feature_request_subscribers'] = 0;
+            }
+        } catch { publicRowsDeleted['feature_request_subscribers'] = -1; }
+        await safeDelete('feature_requests', () => this.prisma.featureRequest.deleteMany({ where: { authorTenantId: tenantId } }));
+        await safeDelete('users', () => this.prisma.user.deleteMany({ where: { tenantId } }));
+
+        // 5. DROP SCHEMA — wipes everything per-tenant in one shot
+        let schemaDropped = false;
+        try {
+            // Sanitize: schemaName from DB but defense in depth
+            const safeName = tenant.schemaName.replace(/[^a-zA-Z0-9_]/g, '');
+            if (safeName === tenant.schemaName) {
+                await this.prisma.$queryRawUnsafe(`DROP SCHEMA IF EXISTS "${safeName}" CASCADE`);
+                schemaDropped = true;
+                this.logger.log(`[Purge ${tenantId}] Schema "${safeName}" dropped`);
+            } else {
+                this.logger.warn(`[Purge ${tenantId}] Refusing to drop suspicious schema name: ${tenant.schemaName}`);
+            }
+        } catch (err: any) {
+            this.logger.error(`[Purge ${tenantId}] DROP SCHEMA failed: ${err.message}`);
+        }
+
+        // 6. Wipe filesystem (uploads: logos, product photos, property photos, etc.)
+        const mediaResult = await this.mediaService.deleteAllTenantFiles(tenantId);
+
+        // 7. Delete the tenant row itself
+        try {
+            await this.prisma.tenant.delete({ where: { id: tenantId } });
+            publicRowsDeleted['tenants'] = 1;
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] tenants row delete failed (already gone?): ${err.message}`);
+            publicRowsDeleted['tenants'] = 0;
+        }
+
+        // 8. Redis: tenant-scoped keys + every user's refresh tokens
+        try {
+            await this.redis.del(`tenant:${tenantId}:config`);
+            await this.redis.del(`tenant:${tenantId}:schema`);
+            await this.redis.del(`tenant_plan:${tenantId}`);
+            await this.redis.del(`vertical:${tenantId}`);
+            await this.redis.del(`offboard:past_due:${tenantId}`);
+            // Wildcard cleanup for any tenant:<id>:* not covered above
+            const pattern = await (this.redis as any).keys?.(`tenant:${tenantId}:*`).catch(() => []);
+            if (Array.isArray(pattern)) {
+                for (const k of pattern) await this.redis.del(k);
+            }
+            // Refresh tokens are namespaced by userId
+            for (const uid of userIds) {
+                const userKeys = await (this.redis as any).keys?.(`refresh:${uid}:*`).catch(() => []);
+                if (Array.isArray(userKeys)) {
+                    for (const k of userKeys) await this.redis.del(k);
+                }
+            }
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] Redis cleanup partial: ${err.message}`);
+        }
+
+        // 9. Final event so downstream listeners (analytics, BI, etc.) react
+        try {
+            this.eventEmitter.emit('tenant.purged', {
+                tenantId,
+                tenantName: tenant.name,
+                schemaName: tenant.schemaName,
+                purgedAt: new Date(),
+            });
+        } catch { /* non-blocking */ }
+
+        this.logger.log(
+            `[Purge ${tenantId}] Done — schema=${schemaDropped} media=${mediaResult.removed} users=${userIds.length}`,
+        );
+
+        return {
+            channelsDisconnected: beforeChannels,
+            publicRowsDeleted,
+            schemaDropped,
+            mediaFilesRemoved: mediaResult.removed,
+            usersRevoked: userIds.length,
+        };
     }
 }

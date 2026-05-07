@@ -3,9 +3,11 @@ import { BullModule } from '@nestjs/bullmq';
 import { OffboardingService } from './offboarding.service';
 import { OffboardingCronService } from './offboarding-cron.service';
 import { OffboardingController } from './offboarding.controller';
+import { MediaModule } from '../media/media.module';
 
 @Module({
     imports: [
+        MediaModule,
         BullModule.registerQueue(
             { name: 'outbound-messages' },
             { name: 'broadcast-messages' },

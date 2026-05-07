@@ -933,6 +933,49 @@ export const api = {
     deletePetVaccination: (tenantId: string, vaccinationId: string) =>
         apiDelete(`/pets/${tenantId}/vaccinations/${vaccinationId}`),
 
+    // ─── Restaurants ───
+    listMenuCategories: (tenantId: string, includeInactive = false) =>
+        apiGet(`/restaurants/${tenantId}/categories?includeInactive=${includeInactive}`),
+    createMenuCategory: (tenantId: string, data: { name: string; description?: string; sortOrder?: number }) =>
+        apiPost(`/restaurants/${tenantId}/categories`, data),
+    updateMenuCategory: (tenantId: string, id: string, data: any) =>
+        apiPut(`/restaurants/${tenantId}/categories/${id}`, data),
+    deleteMenuCategory: (tenantId: string, id: string) =>
+        apiDelete(`/restaurants/${tenantId}/categories/${id}`),
+    listMenuItems: (tenantId: string, params?: { categoryId?: string; availableOnly?: boolean; includeInactive?: boolean }) => {
+        const qs = new URLSearchParams();
+        if (params?.categoryId) qs.set("categoryId", params.categoryId);
+        if (params?.availableOnly) qs.set("availableOnly", "true");
+        if (params?.includeInactive) qs.set("includeInactive", "true");
+        const q = qs.toString();
+        return apiGet(`/restaurants/${tenantId}/items${q ? `?${q}` : ""}`);
+    },
+    getMenuItem: (tenantId: string, id: string) =>
+        apiGet(`/restaurants/${tenantId}/items/${id}`),
+    createMenuItem: (tenantId: string, data: any) =>
+        apiPost(`/restaurants/${tenantId}/items`, data),
+    updateMenuItem: (tenantId: string, id: string, data: any) =>
+        apiPut(`/restaurants/${tenantId}/items/${id}`, data),
+    deleteMenuItem: (tenantId: string, id: string) =>
+        apiDelete(`/restaurants/${tenantId}/items/${id}`),
+    listFoodOrders: (tenantId: string, params?: { status?: string; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.limit) qs.set("limit", String(params.limit));
+        const q = qs.toString();
+        return apiGet(`/restaurants/${tenantId}/orders${q ? `?${q}` : ""}`);
+    },
+    getFoodOrder: (tenantId: string, id: string) =>
+        apiGet(`/restaurants/${tenantId}/orders/${id}`),
+    updateFoodOrderStatus: (tenantId: string, id: string, status: string) =>
+        apiPut(`/restaurants/${tenantId}/orders/${id}/status`, { status }),
+    listMenuPromotions: (tenantId: string, activeOnly = true) =>
+        apiGet(`/restaurants/${tenantId}/promotions?activeOnly=${activeOnly}`),
+    createMenuPromotion: (tenantId: string, data: any) =>
+        apiPost(`/restaurants/${tenantId}/promotions`, data),
+    deleteMenuPromotion: (tenantId: string, id: string) =>
+        apiDelete(`/restaurants/${tenantId}/promotions/${id}`),
+
     // ─── Real Estate Listings (inmobiliaria) ───
     listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
         const qs = new URLSearchParams();

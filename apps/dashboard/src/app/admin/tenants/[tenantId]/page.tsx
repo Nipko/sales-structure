@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import Link from "next/link";
+import TenantAdminActions from "../_components/TenantAdminActions";
 import {
   Building2, Info, Users, Radio, CreditCard, ChevronRight, KeyRound,
   X, CheckCircle, Edit, Activity, Cpu, MessageSquare, Headphones,
@@ -279,6 +280,21 @@ export default function TenantDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* Super-admin actions: extend trial / suspend / reactivate / purge */}
+          <TenantAdminActions
+            tenant={{
+              id: tenant.id,
+              name: tenant.name,
+              slug: tenant.slug,
+              isActive: tenant.isActive,
+              subscriptionStatus: tenant.subscriptionStatus,
+            }}
+            onChange={() => {
+              // Refetch tenant detail after status change
+              if (typeof window !== "undefined") window.location.reload();
+            }}
+          />
         </div>
       )}
 

@@ -71,6 +71,26 @@ export class TenantsController {
         return { success: true, data };
     }
 
+    @Get('audit-logs')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Cross-tenant audit log viewer' })
+    async getAuditLogs(
+        @Query('tenantId') tenantId?: string,
+        @Query('action') action?: string,
+        @Query('since') since?: string,
+        @Query('limit') limit = 100,
+        @Query('offset') offset = 0,
+    ) {
+        const data = await this.tenantsService.getAuditLogs({
+            tenantId,
+            action,
+            since,
+            limit: Number(limit),
+            offset: Number(offset),
+        });
+        return { success: true, data };
+    }
+
     // ── Standard CRUD ────────────────────────────────────────────────
 
     @Get()

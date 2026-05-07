@@ -426,6 +426,20 @@ export const api = {
         apiPost(`/offboarding/${tenantId}/extend-trial`, { days }),
     impersonateTenant: (tenantId: string) =>
         apiPost(`/auth/impersonate/${tenantId}`, {}),
+    purgeTenant: (tenantId: string) =>
+        apiDelete(`/offboarding/${tenantId}/purge`),
+    reactivateChannels: (tenantId: string) =>
+        apiPost(`/offboarding/${tenantId}/reactivate-channels`, {}),
+    getAuditLogs: (filters?: { tenantId?: string; action?: string; since?: string; limit?: number; offset?: number }) => {
+        const qs = new URLSearchParams();
+        if (filters?.tenantId) qs.set("tenantId", filters.tenantId);
+        if (filters?.action) qs.set("action", filters.action);
+        if (filters?.since) qs.set("since", filters.since);
+        if (filters?.limit) qs.set("limit", String(filters.limit));
+        if (filters?.offset) qs.set("offset", String(filters.offset));
+        const q = qs.toString();
+        return apiGet(`/tenants/audit-logs${q ? `?${q}` : ""}`);
+    },
 
     // --- Copilot ---
     copilotChat: (data: {

@@ -662,4 +662,57 @@ export class TenantsService {
             queues,
         };
     }
+
+    /**
+     * Cross-tenant audit log viewer for super_admin. Filters are
+     * additive — pass nothing to get the most recent 100 across the
+     * platform; supply tenantId to scope to one tenant; supply action
+     * (substring) to filter by event type. since=ISO date.
+     */
+    async getAuditLogs(filters: {
+        tenantId?: string;
+        action?: string;
+        since?: string;
+        limit?: number;
+        offset?: number;
+    }) {
+        const where: any = {};
+        if (filters.tenantId) where.tenantId = filters.tenantId;
+        if (filters.action) where.action = { contains: filters.action };
+        if (filters.since) where.createdAt = { gte: new Date(filters.since) };
+
+        const [rows, total] = await Promise.all([
+            this.prisma.auditLog.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: Math.min(filters.limit || 100, 500),
+                skip: filters.offset || 0,
+            }),
+            this.prisma.auditLog.count({ where }),
+        ]);
+
+        // Hydrate tenantId → tenant.name in a single round-trip
+        const tenantIds = Array.from(new Set(rows.map(r => r.tenantId).filter(Boolean))) as string[];
+        const tenants = tenantIds.length > 0
+            ? await this.prisma.tenant.findMany({
+                where: { id: { in: tenantIds } },
+                select: { id: true, name: true, slug: true },
+            })
+            : [];
+        const tenantMap = new Map(tenants.map(t => [t.id, t]));
+
+        return {
+            total,
+            rows: rows.map(r => ({
+                id: r.id,
+                action: r.action,
+                resource: r.resource,
+                details: r.details,
+                tenantId: r.tenantId,
+                tenantName: r.tenantId ? tenantMap.get(r.tenantId)?.name : null,
+                tenantSlug: r.tenantId ? tenantMap.get(r.tenantId)?.slug : null,
+                createdAt: r.createdAt,
+            })),
+        };
+    }
 }

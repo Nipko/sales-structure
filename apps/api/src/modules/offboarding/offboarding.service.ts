@@ -260,6 +260,7 @@ export class OffboardingService {
             }
 
             if (account.channelType === 'telegram') {
+                let unsubscribed = false;
                 try {
                     const cred = await this.prisma.whatsappCredential.findFirst({
                         where: { tenantId, credentialType: 'telegram_token' },
@@ -267,13 +268,58 @@ export class OffboardingService {
                     });
                     if (cred?.encryptedValue) {
                         const botToken = this.decryptToken(cred.encryptedValue);
-                        await fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`, {
-                            method: 'POST',
-                        }).catch(() => { /* best effort */ });
+                        const res = await fetch(
+                            `https://api.telegram.org/bot${botToken}/deleteWebhook?drop_pending_updates=true`,
+                            { method: 'POST' },
+                        ).catch(() => null);
+                        if (res?.ok) unsubscribed = true;
                     }
                 } catch (error) {
                     this.logger.warn(`Failed to delete Telegram webhook for tenant ${tenantId}: ${error}`);
                 }
+                providerDisconnected[account.id] = unsubscribed;
+            }
+
+            if (account.channelType === 'messenger') {
+                let unsubscribed = false;
+                try {
+                    const cred = await this.prisma.whatsappCredential.findFirst({
+                        where: { tenantId, credentialType: 'messenger_page_token' },
+                        orderBy: { createdAt: 'desc' },
+                    });
+                    if (cred?.encryptedValue) {
+                        const pageToken = this.decryptToken(cred.encryptedValue);
+                        const res = await fetch(
+                            `https://graph.facebook.com/v21.0/${account.accountId}/subscribed_apps?access_token=${pageToken}`,
+                            { method: 'DELETE' },
+                        ).catch(() => null);
+                        if (res?.ok) unsubscribed = true;
+                    }
+                } catch (error) {
+                    this.logger.warn(`Failed to unsubscribe Messenger app for tenant ${tenantId}: ${error}`);
+                }
+                providerDisconnected[account.id] = unsubscribed;
+            }
+
+            if (account.channelType === 'instagram') {
+                let unsubscribed = false;
+                try {
+                    const cred = await this.prisma.whatsappCredential.findFirst({
+                        where: { tenantId, credentialType: 'instagram_token' },
+                        orderBy: { createdAt: 'desc' },
+                    });
+                    if (cred?.encryptedValue) {
+                        const igToken = this.decryptToken(cred.encryptedValue);
+                        const res = await fetch(
+                            `https://graph.instagram.com/me/permissions?access_token=${igToken}`,
+                            { method: 'DELETE' },
+                        ).catch(() => null);
+                        if (res?.ok) unsubscribed = true;
+                    }
+                } catch (error) {
+                    this.logger.warn(`Failed to revoke Instagram permissions for tenant ${tenantId}: ${error}`);
+                }
+                providerDisconnected[account.id] = unsubscribed;
             }
         }
 

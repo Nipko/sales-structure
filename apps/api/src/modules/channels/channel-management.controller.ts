@@ -248,38 +248,39 @@ export class ChannelManagementController {
     }
 
     @Delete('telegram/disconnect')
-    @ApiOperation({ summary: 'Disconnect Telegram bot — removes webhook and deactivates channel' })
+    @ApiOperation({ summary: 'Disconnect Telegram bot — removes webhook from Telegram and deactivates channel' })
     async disconnectTelegram(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        // Get current token to call deleteWebhook
+        let providerOk = false;
+        let providerError: string | null = null;
+
         try {
             const creds = await this.channelToken.getChannelToken(tenantId, 'telegram');
-            if (creds?.accessToken) {
-                // Remove webhook from Telegram
-                await fetch(`https://api.telegram.org/bot${creds.accessToken}/deleteWebhook`, {
-                    method: 'POST',
-                }).catch(() => { /* best effort */ });
+            if (!creds?.accessToken) {
+                providerError = 'No active Telegram credentials';
+            } else {
+                const res = await fetch(
+                    `https://api.telegram.org/bot${creds.accessToken}/deleteWebhook?drop_pending_updates=true`,
+                    { method: 'POST' },
+                );
+                if (res.ok) {
+                    providerOk = true;
+                    this.logger.log(`Telegram webhook deleted for tenant ${tenantId}`);
+                } else {
+                    const body = await res.text().catch(() => '');
+                    providerError = `Telegram returned ${res.status}: ${body.substring(0, 200)}`;
+                    this.logger.warn(providerError);
+                }
             }
-        } catch {
-            // No credentials found — continue with deactivation
+        } catch (err: any) {
+            providerError = err?.message || 'unknown error calling Telegram';
+            this.logger.warn(`Telegram disconnect error for tenant ${tenantId}: ${providerError}`);
         }
 
-        // Deactivate channel account
-        const account = await this.prisma.channelAccount.findFirst({
-            where: { tenantId, channelType: 'telegram', isActive: true },
-        });
-
-        if (account) {
-            await this.prisma.channelAccount.update({
-                where: { id: account.id },
-                data: { isActive: false },
-            });
-        }
-
-        this.logger.log(`Telegram disconnected for tenant ${tenantId}`);
-        return { success: true, message: 'Bot de Telegram desconectado' };
+        await this.finalizeChannelDisconnect(tenantId, 'telegram', providerOk, providerError, req.user?.sub);
+        return this.buildDisconnectResponse('Bot de Telegram', providerOk, providerError);
     }
 
     // ==========================================
@@ -450,32 +451,65 @@ export class ChannelManagementController {
     }
 
     @Delete('messenger/disconnect')
-    @ApiOperation({ summary: 'Disconnect Messenger — unsubscribe webhooks and deactivate channel' })
+    @ApiOperation({ summary: 'Disconnect Messenger — unsubscribes the app from each FB Page and deactivates channel' })
     async disconnectMessenger(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        // Try to unsubscribe webhook (best effort)
+        let providerOk = false;
+        let providerError: string | null = null;
+
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, 'messenger');
-            if (creds?.accessToken) {
+            // Messenger may have multiple Pages — we need to call unsubscribe
+            // for each one, not just the first that getChannelToken returns.
+            const accounts = await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'messenger', isActive: true },
+            });
+
+            if (accounts.length === 0) {
+                providerError = 'No active Messenger pages';
+            } else {
                 const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
-                await fetch(
-                    `https://graph.facebook.com/${graphVersion}/${creds.accountId}/subscribed_apps?access_token=${creds.accessToken}`,
-                    { method: 'DELETE' },
-                ).catch(() => { /* best effort */ });
+                let okCount = 0;
+                const errors: string[] = [];
+
+                for (const acc of accounts) {
+                    try {
+                        const creds = await this.channelToken.getChannelToken(tenantId, 'messenger');
+                        if (!creds?.accessToken) {
+                            errors.push(`page ${acc.accountId}: no token`);
+                            continue;
+                        }
+                        const res = await fetch(
+                            `https://graph.facebook.com/${graphVersion}/${acc.accountId}/subscribed_apps?access_token=${creds.accessToken}`,
+                            { method: 'DELETE' },
+                        );
+                        if (res.ok) {
+                            okCount++;
+                        } else {
+                            const body = await res.text().catch(() => '');
+                            errors.push(`page ${acc.accountId}: ${res.status} ${body.substring(0, 100)}`);
+                        }
+                    } catch (e: any) {
+                        errors.push(`page ${acc.accountId}: ${e?.message || 'unknown'}`);
+                    }
+                }
+
+                providerOk = okCount === accounts.length && okCount > 0;
+                if (errors.length > 0) {
+                    providerError = errors.join(' | ');
+                    this.logger.warn(`Messenger disconnect partial for tenant ${tenantId}: ${providerError}`);
+                } else {
+                    this.logger.log(`Messenger fully unsubscribed for tenant ${tenantId} (${okCount} pages)`);
+                }
             }
-        } catch {
-            // No credentials — continue with deactivation
+        } catch (err: any) {
+            providerError = err?.message || 'unknown error calling Meta';
+            this.logger.warn(`Messenger disconnect error for tenant ${tenantId}: ${providerError}`);
         }
 
-        await this.prisma.channelAccount.updateMany({
-            where: { tenantId, channelType: 'messenger' },
-            data: { isActive: false },
-        });
-
-        this.logger.log(`Messenger disconnected for tenant ${tenantId}`);
-        return { success: true, message: 'Messenger disconnected' };
+        await this.finalizeChannelDisconnect(tenantId, 'messenger', providerOk, providerError, req.user?.sub);
+        return this.buildDisconnectResponse('Messenger', providerOk, providerError);
     }
 
     // ==========================================
@@ -647,31 +681,39 @@ export class ChannelManagementController {
     }
 
     @Delete('instagram/disconnect')
-    @ApiOperation({ summary: 'Disconnect Instagram — revoke permissions and deactivate channel' })
+    @ApiOperation({ summary: 'Disconnect Instagram — revokes app permissions on the IG account and deactivates channel' })
     async disconnectInstagram(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        // Try to revoke permissions (best effort)
+        let providerOk = false;
+        let providerError: string | null = null;
+
         try {
             const creds = await this.channelToken.getChannelToken(tenantId, 'instagram');
-            if (creds?.accessToken) {
-                await fetch(
+            if (!creds?.accessToken) {
+                providerError = 'No active Instagram credentials';
+            } else {
+                const res = await fetch(
                     `https://graph.instagram.com/me/permissions?access_token=${creds.accessToken}`,
                     { method: 'DELETE' },
-                ).catch(() => { /* best effort */ });
+                );
+                if (res.ok) {
+                    providerOk = true;
+                    this.logger.log(`Instagram permissions revoked for tenant ${tenantId}`);
+                } else {
+                    const body = await res.text().catch(() => '');
+                    providerError = `Instagram returned ${res.status}: ${body.substring(0, 200)}`;
+                    this.logger.warn(providerError);
+                }
             }
-        } catch {
-            // No credentials — continue with deactivation
+        } catch (err: any) {
+            providerError = err?.message || 'unknown error calling Instagram';
+            this.logger.warn(`Instagram disconnect error for tenant ${tenantId}: ${providerError}`);
         }
 
-        await this.prisma.channelAccount.updateMany({
-            where: { tenantId, channelType: 'instagram' },
-            data: { isActive: false },
-        });
-
-        this.logger.log(`Instagram disconnected for tenant ${tenantId}`);
-        return { success: true, message: 'Instagram disconnected' };
+        await this.finalizeChannelDisconnect(tenantId, 'instagram', providerOk, providerError, req.user?.sub);
+        return this.buildDisconnectResponse('Instagram', providerOk, providerError);
     }
 
     // ==========================================
@@ -788,18 +830,79 @@ export class ChannelManagementController {
     }
 
     @Delete('sms/disconnect')
-    @ApiOperation({ summary: 'Disconnect Twilio SMS' })
+    @ApiOperation({ summary: 'Disconnect Twilio SMS — clears the webhook URL on the Twilio phone number and deactivates channel' })
     async disconnectSms(@Req() req: any) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        await this.prisma.channelAccount.updateMany({
-            where: { tenantId, channelType: 'sms' },
-            data: { isActive: false },
-        });
+        let providerOk = false;
+        let providerError: string | null = null;
 
-        this.logger.log(`SMS disconnected for tenant ${tenantId}`);
-        return { success: true, message: 'SMS disconnected' };
+        try {
+            // Twilio doesn't have an "unsubscribe app" concept — credentials are
+            // pull-style, the user pasted them in. The closest equivalent is
+            // clearing the webhook URLs on the IncomingPhoneNumber so Twilio
+            // stops POSTing to our endpoint when the carrier delivers an SMS.
+            const accounts = await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'sms', isActive: true },
+            });
+
+            if (accounts.length === 0) {
+                providerError = 'No active SMS phone numbers';
+            } else {
+                let okCount = 0;
+                const errors: string[] = [];
+                for (const acc of accounts) {
+                    try {
+                        const meta = (acc.metadata as any) || {};
+                        const accountSid = meta.accountSid as string | undefined;
+                        const phoneNumberSid = meta.phoneNumberSid as string | undefined;
+                        const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
+                        const authToken = creds?.accessToken;
+                        if (!accountSid || !phoneNumberSid || !authToken) {
+                            errors.push(`${acc.accountId}: incomplete twilio credentials`);
+                            continue;
+                        }
+                        // Twilio API: POST /2010-04-01/Accounts/{Sid}/IncomingPhoneNumbers/{PnSid}.json
+                        // Setting the URL to empty string clears the webhook.
+                        const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+                        const formBody = new URLSearchParams({ SmsUrl: '', SmsFallbackUrl: '' });
+                        const res = await fetch(
+                            `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers/${phoneNumberSid}.json`,
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': `Basic ${auth}`,
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                },
+                                body: formBody.toString(),
+                            },
+                        );
+                        if (res.ok) {
+                            okCount++;
+                        } else {
+                            const body = await res.text().catch(() => '');
+                            errors.push(`${acc.accountId}: ${res.status} ${body.substring(0, 100)}`);
+                        }
+                    } catch (e: any) {
+                        errors.push(`${acc.accountId}: ${e?.message || 'unknown'}`);
+                    }
+                }
+                providerOk = okCount === accounts.length && okCount > 0;
+                if (errors.length > 0) {
+                    providerError = errors.join(' | ');
+                    this.logger.warn(`Twilio webhook clear partial for tenant ${tenantId}: ${providerError}`);
+                } else {
+                    this.logger.log(`Twilio webhooks cleared for tenant ${tenantId} (${okCount} numbers)`);
+                }
+            }
+        } catch (err: any) {
+            providerError = err?.message || 'unknown error calling Twilio';
+            this.logger.warn(`SMS disconnect error for tenant ${tenantId}: ${providerError}`);
+        }
+
+        await this.finalizeChannelDisconnect(tenantId, 'sms', providerOk, providerError, req.user?.sub);
+        return this.buildDisconnectResponse('SMS / Twilio', providerOk, providerError);
     }
 
     @Post('sms/test')
@@ -927,5 +1030,72 @@ export class ChannelManagementController {
             default:
                 return 'Configura el webhook en la plataforma del canal con la URL y Verify Token indicados.';
         }
+    }
+
+    /**
+     * Shared finalization for every channel disconnect endpoint:
+     * - Per-account update so we can stamp metadata.disconnected_at_provider
+     *   (used by reactivate to know if a flag flip is enough or OAuth has to
+     *   be redone)
+     * - audit_logs row with the actor + provider outcome
+     * - cache invalidation so the webhook resolver stops seeing the channel
+     *   on the next message
+     */
+    private async finalizeChannelDisconnect(
+        tenantId: string,
+        channelType: string,
+        providerOk: boolean,
+        providerError: string | null,
+        userId?: string,
+    ): Promise<{ rowsTouched: number }> {
+        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+            `UPDATE channel_accounts
+               SET is_active = false,
+                   metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                       'disconnected_at', NOW()::text,
+                       'disconnected_at_provider', $3::boolean,
+                       'disconnect_error', $4::text
+                   ),
+                   updated_at = NOW()
+             WHERE tenant_id = $1::uuid AND channel_type = $2 AND is_active = true
+             RETURNING id`,
+            tenantId, channelType, providerOk, providerError,
+        );
+
+        try {
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'channel_disconnected',
+                    resource: channelType,
+                    details: {
+                        providerOk,
+                        providerError,
+                        triggeredBy: userId || 'unknown',
+                        rowsTouched: rows.length,
+                    },
+                },
+            });
+        } catch { /* non-blocking */ }
+
+        // Invalidate the channel-token cache so subsequent webhooks miss
+        // promptly (these caches live in Redis with 5 min TTL).
+        try {
+            await this.channelToken.invalidateCache(channelType, tenantId);
+        } catch { /* non-blocking */ }
+
+        return { rowsTouched: rows.length };
+    }
+
+    private buildDisconnectResponse(channelLabel: string, providerOk: boolean, providerError: string | null) {
+        if (providerOk) {
+            return { success: true, message: `${channelLabel} desconectado completamente`, providerOk: true };
+        }
+        return {
+            success: true,
+            message: `${channelLabel} marcado como desconectado en la plataforma. ATENCIÓN: el proveedor podría seguir intentando enviar webhooks (${providerError ?? 'sin detalle del error'}) — revisar la integración manualmente.`,
+            providerOk: false,
+            providerError,
+        };
     }
 }

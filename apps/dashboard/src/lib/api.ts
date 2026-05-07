@@ -446,6 +446,14 @@ export const api = {
     getOnboardingFunnel: (days = 30) => apiGet(`/tenants/onboarding-funnel?days=${days}`),
     getQueueJobs: (queueName: string, state: string, limit = 50) =>
         apiGet(`/tenants/queue-jobs/${queueName}/${state}?limit=${limit}`),
+    getQueueJobDetail: (queueName: string, jobId: string) =>
+        apiGet(`/tenants/queue-jobs/${queueName}/job/${jobId}`),
+    removeQueueJob: (queueName: string, jobId: string) =>
+        apiDelete(`/tenants/queue-jobs/${queueName}/job/${jobId}`),
+    retryQueueJob: (queueName: string, jobId: string) =>
+        apiPost(`/tenants/queue-jobs/${queueName}/job/${jobId}/retry`, {}),
+    cleanQueue: (queueName: string, data: { state: string; olderThanMs?: number; limit?: number }) =>
+        apiPost(`/tenants/queue-jobs/${queueName}/clean`, data),
     exportContactData: (tenantId: string, contactId: string) =>
         apiPost(`/compliance/admin/export-contact-data/${tenantId}/${contactId}`, {}),
     getWebhookTap: (params?: { channelType?: string; status?: string; limit?: number }) => {

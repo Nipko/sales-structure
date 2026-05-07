@@ -673,7 +673,7 @@ export class TenantsService {
      * `state` is the BullMQ job state: waiting | active | delayed |
      * failed | completed. Limit caps results at 100.
      */
-    async getQueueJobs(queueName: string, state: string, limit = 50): Promise<any[]> {
+    private getQueueByName(queueName: string): any | null {
         const queueMap: Record<string, any> = {
             'outbound-messages': this.outboundQueue,
             'broadcast-messages': this.broadcastQueue,
@@ -681,7 +681,11 @@ export class TenantsService {
             'nurturing': this.nurturingQueue,
             'conversation-snooze': this.snoozeQueue,
         };
-        const queue = queueMap[queueName];
+        return queueMap[queueName] || null;
+    }
+
+    async getQueueJobs(queueName: string, state: string, limit = 50): Promise<any[]> {
+        const queue = this.getQueueByName(queueName);
         if (!queue) return [];
 
         const validStates = ['waiting', 'active', 'delayed', 'failed', 'completed'];
@@ -692,7 +696,6 @@ export class TenantsService {
             const jobs = await queue.getJobs([state], 0, cap - 1, true);
             return jobs.map((j: any) => {
                 const data = j.data || {};
-                // Extract tenant + summary fields without leaking sensitive payloads
                 const summary = data.tenantId
                     ? `tenant=${String(data.tenantId).slice(0, 8)}…`
                     : data.to
@@ -717,6 +720,162 @@ export class TenantsService {
         } catch (e: any) {
             this.logger.warn(`Failed to fetch jobs from ${queueName}/${state}: ${e.message}`);
             return [];
+        }
+    }
+
+    /**
+     * Full job detail with payload + opts + stack trace. Sensitive
+     * fields are redacted: accessToken, refresh_token, password, secret
+     * are replaced with '[REDACTED]'. Used by the inspector's expanded
+     * row view.
+     */
+    async getQueueJobDetail(queueName: string, jobId: string): Promise<any | null> {
+        const queue = this.getQueueByName(queueName);
+        if (!queue) return null;
+        try {
+            const job = await queue.getJob(jobId);
+            if (!job) return null;
+
+            const REDACT = (obj: any): any => {
+                if (!obj || typeof obj !== 'object') return obj;
+                if (Array.isArray(obj)) return obj.map(REDACT);
+                const SENSITIVE = /(accesstoken|refreshtoken|refresh_token|password|secret|api[_-]?key|apikey|authorization|token)/i;
+                const out: any = {};
+                for (const [k, v] of Object.entries(obj)) {
+                    if (SENSITIVE.test(k) && typeof v === 'string') {
+                        out[k] = `[REDACTED ${v.length}ch]`;
+                    } else if (v && typeof v === 'object') {
+                        out[k] = REDACT(v);
+                    } else {
+                        out[k] = v;
+                    }
+                }
+                return out;
+            };
+
+            const state = await job.getState().catch(() => 'unknown');
+            return {
+                id: job.id,
+                name: job.name,
+                state,
+                data: REDACT(job.data),
+                opts: {
+                    priority: job.opts?.priority,
+                    attempts: job.opts?.attempts,
+                    backoff: job.opts?.backoff,
+                    delay: job.opts?.delay,
+                    removeOnComplete: job.opts?.removeOnComplete,
+                    removeOnFail: job.opts?.removeOnFail,
+                },
+                returnvalue: REDACT(job.returnvalue),
+                stacktrace: job.stacktrace || [],
+                failedReason: job.failedReason || null,
+                attemptsMade: job.attemptsMade || 0,
+                timestamp: job.timestamp ? new Date(job.timestamp).toISOString() : null,
+                processedOn: job.processedOn ? new Date(job.processedOn).toISOString() : null,
+                finishedOn: job.finishedOn ? new Date(job.finishedOn).toISOString() : null,
+                progress: job.progress,
+            };
+        } catch (e: any) {
+            this.logger.warn(`Failed to fetch job detail ${queueName}/${jobId}: ${e.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Remove a single job from a queue. Works for any state — BullMQ
+     * also kills the job's lock if it's currently active. Returns true
+     * when the job existed and was removed.
+     */
+    async removeQueueJob(queueName: string, jobId: string, actor?: string): Promise<boolean> {
+        const queue = this.getQueueByName(queueName);
+        if (!queue) return false;
+        try {
+            const job = await queue.getJob(jobId);
+            if (!job) return false;
+            const state = await job.getState().catch(() => 'unknown');
+            const tenantId = job.data?.tenantId || null;
+            await job.remove();
+            // Audit trail — surfaced in /admin/audit
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'queue_job_removed',
+                    resource: queueName,
+                    details: { jobId, state, name: job.name, removedBy: actor || 'super_admin' },
+                },
+            }).catch(() => {});
+            return true;
+        } catch (e: any) {
+            this.logger.warn(`Failed to remove job ${queueName}/${jobId}: ${e.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Retry a failed job. BullMQ moves it back to 'waiting' and resets
+     * the attempts counter. Returns false when the job isn't in a
+     * retryable state.
+     */
+    async retryQueueJob(queueName: string, jobId: string, actor?: string): Promise<boolean> {
+        const queue = this.getQueueByName(queueName);
+        if (!queue) return false;
+        try {
+            const job = await queue.getJob(jobId);
+            if (!job) return false;
+            await job.retry();
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId: job.data?.tenantId || null,
+                    action: 'queue_job_retried',
+                    resource: queueName,
+                    details: { jobId, name: job.name, retriedBy: actor || 'super_admin' },
+                },
+            }).catch(() => {});
+            return true;
+        } catch (e: any) {
+            this.logger.warn(`Failed to retry job ${queueName}/${jobId}: ${e.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Bulk-clean jobs in a given state. olderThanMs is a grace window
+     * (e.g. 86400000 = only clean jobs older than 24h). Returns the
+     * count of removed jobs. Use cautiously — 'waiting' clean drops
+     * pending work that hasn't been processed yet.
+     */
+    async cleanQueue(
+        queueName: string,
+        state: 'completed' | 'wait' | 'waiting' | 'active' | 'delayed' | 'failed',
+        olderThanMs = 0,
+        limit = 1000,
+        actor?: string,
+    ): Promise<number> {
+        const queue = this.getQueueByName(queueName);
+        if (!queue) return 0;
+
+        // BullMQ uses 'wait' (not 'waiting') for the clean() type param
+        const bullmqState = state === 'waiting' ? 'wait' : state;
+        const validStates = ['completed', 'wait', 'active', 'delayed', 'failed'];
+        if (!validStates.includes(bullmqState)) return 0;
+
+        try {
+            const removed = await queue.clean(olderThanMs, Math.min(limit, 1000), bullmqState as any);
+            const count = Array.isArray(removed) ? removed.length : Number(removed) || 0;
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId: null,
+                    action: 'queue_cleaned',
+                    resource: queueName,
+                    details: { state, olderThanMs, limit, removed: count, cleanedBy: actor || 'super_admin' },
+                },
+            }).catch(() => {});
+            this.logger.log(`[Queue] Cleaned ${count} ${state} jobs from ${queueName}`);
+            return count;
+        } catch (e: any) {
+            this.logger.warn(`Failed to clean ${queueName}/${state}: ${e.message}`);
+            return 0;
         }
     }
 

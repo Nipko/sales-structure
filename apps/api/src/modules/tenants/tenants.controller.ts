@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Delete, Param, Body, Query, UseGuards, ForbiddenException, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { TenantsService } from './tenants.service';
@@ -131,6 +131,64 @@ export class TenantsController {
     ) {
         const jobs = await this.tenantsService.getQueueJobs(queueName, state, Number(limit));
         return { success: true, data: jobs };
+    }
+
+    @Get('queue-jobs/:queueName/job/:jobId')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Full job detail with redacted payload + opts + stack trace' })
+    async getQueueJobDetail(
+        @Param('queueName') queueName: string,
+        @Param('jobId') jobId: string,
+    ) {
+        const data = await this.tenantsService.getQueueJobDetail(queueName, jobId);
+        return data
+            ? { success: true, data }
+            : { success: false, error: 'Job not found' };
+    }
+
+    @Delete('queue-jobs/:queueName/job/:jobId')
+    @Roles('super_admin')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Remove a single job from the queue' })
+    async removeQueueJob(
+        @Param('queueName') queueName: string,
+        @Param('jobId') jobId: string,
+        @CurrentUser() user: any,
+    ) {
+        const removed = await this.tenantsService.removeQueueJob(queueName, jobId, user?.email || user?.sub);
+        return { success: removed, removed };
+    }
+
+    @Post('queue-jobs/:queueName/job/:jobId/retry')
+    @Roles('super_admin')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Retry a failed job (moves back to waiting)' })
+    async retryQueueJob(
+        @Param('queueName') queueName: string,
+        @Param('jobId') jobId: string,
+        @CurrentUser() user: any,
+    ) {
+        const retried = await this.tenantsService.retryQueueJob(queueName, jobId, user?.email || user?.sub);
+        return { success: retried, retried };
+    }
+
+    @Post('queue-jobs/:queueName/clean')
+    @Roles('super_admin')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Bulk clean jobs in a given state (destructive — use with caution)' })
+    async cleanQueue(
+        @Param('queueName') queueName: string,
+        @Body() body: { state: string; olderThanMs?: number; limit?: number },
+        @CurrentUser() user: any,
+    ) {
+        const count = await this.tenantsService.cleanQueue(
+            queueName,
+            body.state as any,
+            body.olderThanMs || 0,
+            body.limit || 1000,
+            user?.email || user?.sub,
+        );
+        return { success: true, removed: count };
     }
 
     @Get('audit-logs')

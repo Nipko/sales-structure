@@ -1889,3 +1889,109 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pet_vaccinations" (
 );
 CREATE INDEX IF NOT EXISTS "idx_pet_vaccinations_pet" ON "{{SCHEMA_NAME}}"."pet_vaccinations" ("pet_id", "applied_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_pet_vaccinations_due" ON "{{SCHEMA_NAME}}"."pet_vaccinations" ("next_due_at") WHERE "next_due_at" IS NOT NULL;
+
+-- =====================================================================
+-- Restaurantes vertical
+-- =====================================================================
+-- The menu is the catalog. Categories group items (entradas, platos
+-- fuertes, postres, bebidas). Items have price, description, image,
+-- allergens, prep time, and visibility flag. Reservations reuse the
+-- generic appointments table — orders are their own thing because the
+-- semantics are different (line items + delivery vs in-place + status
+-- transitions: received → preparing → ready → delivered).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."menu_categories" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "sort_order" INTEGER DEFAULT 0,
+    "is_active" BOOLEAN DEFAULT true,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_menu_categories_active" ON "{{SCHEMA_NAME}}"."menu_categories" ("is_active", "sort_order") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."menu_items" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "category_id" UUID,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "price" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "image_url" VARCHAR(500),
+    "allergens" JSONB DEFAULT '[]',                        -- ['gluten', 'lactosa', 'mariscos', 'mani']
+    "tags" JSONB DEFAULT '[]',                             -- ['vegetariano', 'vegano', 'sin_gluten', 'picante']
+    "prep_time_minutes" INTEGER,
+    "calories" INTEGER,
+    "is_available" BOOLEAN DEFAULT true,                   -- runtime sold-out flag
+    "is_active" BOOLEAN DEFAULT true,                      -- catalog soft delete
+    "sort_order" INTEGER DEFAULT 0,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_menu_items_category" ON "{{SCHEMA_NAME}}"."menu_items" ("category_id", "sort_order") WHERE "is_active" = true;
+CREATE INDEX IF NOT EXISTS "idx_menu_items_search" ON "{{SCHEMA_NAME}}"."menu_items" ("is_active", "is_available") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."food_orders" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID,
+    "conversation_id" UUID,
+    "order_type" VARCHAR(20) NOT NULL DEFAULT 'delivery', -- delivery | pickup | dine_in
+    "customer_name" VARCHAR(255),
+    "customer_phone" VARCHAR(50),
+    "delivery_address" TEXT,
+    "delivery_notes" TEXT,
+    "table_number" VARCHAR(50),                            -- for dine_in
+    "subtotal" DECIMAL(10,2) DEFAULT 0,
+    "delivery_fee" DECIMAL(10,2) DEFAULT 0,
+    "discount" DECIMAL(10,2) DEFAULT 0,
+    "total" DECIMAL(10,2) DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "payment_method" VARCHAR(50),                          -- cash | card | mp | pse | transfer
+    "payment_status" VARCHAR(20) DEFAULT 'pending',        -- pending | paid | refunded
+    "status" VARCHAR(20) DEFAULT 'received',               -- received | preparing | ready | delivered | cancelled
+    "estimated_delivery_at" TIMESTAMP,
+    "notes" TEXT,                                          -- staff-facing notes
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_food_orders_status" ON "{{SCHEMA_NAME}}"."food_orders" ("status", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_food_orders_contact" ON "{{SCHEMA_NAME}}"."food_orders" ("contact_id", "created_at" DESC) WHERE "contact_id" IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."food_order_items" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "order_id" UUID NOT NULL,
+    "menu_item_id" UUID,
+    "name_snapshot" VARCHAR(255) NOT NULL,                 -- copy at order time so renames don't rewrite history
+    "quantity" INTEGER NOT NULL DEFAULT 1,
+    "unit_price" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "modifiers" JSONB DEFAULT '[]',                        -- [{name: 'sin cebolla', delta: 0}, ...]
+    "special_instructions" TEXT,
+    "subtotal" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_food_order_items_order" ON "{{SCHEMA_NAME}}"."food_order_items" ("order_id");
+
+-- Promotions runtime catalog — used by the AI tool get_promotions and
+-- can be displayed on the public menu. Distinct from the generic
+-- offers module so restaurants get a domain-specific surface.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."menu_promotions" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "title" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "discount_type" VARCHAR(20) DEFAULT 'percent',         -- percent | flat
+    "discount_value" DECIMAL(10,2) DEFAULT 0,
+    "valid_from" TIMESTAMP,
+    "valid_to" TIMESTAMP,
+    "applicable_days" JSONB DEFAULT '[]',                  -- ['mon','tue',...] empty = all days
+    "applicable_hours" VARCHAR(50),                        -- '11:00-14:00' for happy hour etc.
+    "min_order_amount" DECIMAL(10,2),
+    "is_active" BOOLEAN DEFAULT true,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_menu_promotions_active" ON "{{SCHEMA_NAME}}"."menu_promotions" ("is_active", "valid_to") WHERE "is_active" = true;

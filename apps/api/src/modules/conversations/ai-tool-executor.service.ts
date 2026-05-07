@@ -10,6 +10,7 @@ import { ToursService } from '../tours/tours.service';
 import { TreatmentPlansService } from '../treatment-plans/treatment-plans.service';
 import { ListingsService } from '../listings/listings.service';
 import { PetsService } from '../pets/pets.service';
+import { RestaurantsService } from '../restaurants/restaurants.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -32,6 +33,7 @@ export class AIToolExecutorService {
         private treatmentService: TreatmentPlansService,
         private listingsService: ListingsService,
         private petsService: PetsService,
+        private restaurantsService: RestaurantsService,
     ) { }
 
     /**
@@ -146,6 +148,16 @@ export class AIToolExecutorService {
 
                 case 'triage_pet_emergency':
                     return this.triagePetEmergency({ symptoms: args.symptoms || '' });
+
+                // ── Restaurants tools ─────────────────────────────
+                case 'get_menu':
+                    return this.getMenu(schemaName, args);
+
+                case 'get_promotions':
+                    return this.getPromotions(schemaName);
+
+                case 'place_order':
+                    return this.placeOrder(schemaName, contactId, conversationId, args);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1415,5 +1427,133 @@ export class AIToolExecutorService {
             recommendation: 'Pedir más detalles sobre los síntomas (cuándo empezó, frecuencia, otros signos) antes de decidir.',
             shouldHandoff: false,
         };
+    }
+
+    // ── Restaurants tools ─────────────────────────────────────────
+
+    private async getMenu(schemaName: string, args: any): Promise<any> {
+        try {
+            const items = await this.restaurantsService.searchMenu(schemaName, {
+                query: args.query,
+                category: args.category,
+                tag: args.tag,
+                excludeAllergens: args.excludeAllergens,
+                maxPrice: args.maxPrice,
+                limit: 30,
+            });
+            if (!items.length) {
+                return { items: [], message: 'No hay platos que coincidan con esos criterios. Sugiere ampliar la búsqueda.' };
+            }
+            return {
+                count: items.length,
+                items: items.map(i => ({
+                    id: i.id,
+                    name: i.name,
+                    description: i.description,
+                    price: Number(i.price || 0),
+                    currency: i.currency,
+                    category: i.category_name,
+                    tags: i.tags || [],
+                    allergens: i.allergens || [],
+                    prepTimeMinutes: i.prep_time_minutes,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getPromotions(schemaName: string): Promise<any> {
+        try {
+            const all = await this.restaurantsService.listPromotions(schemaName, true);
+            // Filter by day of week + hour window if specified
+            const now = new Date();
+            const dayCodes = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+            const today = dayCodes[now.getDay()];
+            const currentMin = now.getHours() * 60 + now.getMinutes();
+            const eligible = all.filter((p: any) => {
+                const days = p.applicable_days || [];
+                if (Array.isArray(days) && days.length > 0 && !days.includes(today)) return false;
+                if (p.applicable_hours) {
+                    const [start, end] = String(p.applicable_hours).split('-');
+                    if (start && end) {
+                        const [sh, sm] = start.split(':').map(Number);
+                        const [eh, em] = end.split(':').map(Number);
+                        const startMin = sh * 60 + (sm || 0);
+                        const endMin = eh * 60 + (em || 0);
+                        if (currentMin < startMin || currentMin > endMin) return false;
+                    }
+                }
+                return true;
+            });
+            if (!eligible.length) {
+                return { promotions: [], message: 'Sin promociones activas en este momento.' };
+            }
+            return {
+                promotions: eligible.map((p: any) => ({
+                    title: p.title,
+                    description: p.description,
+                    discountType: p.discount_type,
+                    discountValue: Number(p.discount_value || 0),
+                    minOrderAmount: p.min_order_amount ? Number(p.min_order_amount) : null,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async placeOrder(
+        schemaName: string,
+        contactId: string,
+        conversationId: string | undefined,
+        args: any,
+    ): Promise<any> {
+        try {
+            if (!Array.isArray(args.items) || args.items.length === 0) {
+                return { error: 'items array is required' };
+            }
+            if (args.orderType === 'delivery' && !args.deliveryAddress) {
+                return { error: 'deliveryAddress is required for delivery orders' };
+            }
+
+            const order = await this.restaurantsService.createOrder(schemaName, {
+                contactId,
+                conversationId,
+                orderType: args.orderType || 'delivery',
+                customerName: args.customerName,
+                customerPhone: args.customerPhone,
+                deliveryAddress: args.deliveryAddress,
+                deliveryNotes: args.deliveryNotes,
+                tableNumber: args.tableNumber,
+                items: args.items.map((it: any) => ({
+                    menuItemId: it.menuItemId,
+                    name: it.name,
+                    quantity: it.quantity,
+                    unitPrice: it.unitPrice,
+                    specialInstructions: it.specialInstructions,
+                })),
+                paymentMethod: args.paymentMethod,
+                notes: args.notes,
+            });
+
+            this.eventEmitter.emit('food_order.created', {
+                orderId: order.id,
+                tenantSchemaName: schemaName,
+                contactId,
+            });
+
+            return {
+                orderId: order.id,
+                status: order.status,
+                total: Number(order.total || 0),
+                currency: order.currency,
+                itemsCount: (order.items || []).length,
+                estimatedDelivery: order.order_type === 'delivery' ? '30-45 minutos' : '15-25 minutos',
+                message: `Pedido creado correctamente. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
     }
 }

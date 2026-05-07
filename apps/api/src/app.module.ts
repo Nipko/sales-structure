@@ -62,6 +62,7 @@ import { TreatmentPlansModule } from './modules/treatment-plans/treatment-plans.
 import { RecallModule } from './modules/recall/recall.module';
 import { ListingsModule } from './modules/listings/listings.module';
 import { PetsModule } from './modules/pets/pets.module';
+import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -181,6 +182,7 @@ import llmConfig from './config/llm.config';
         RecallModule,
         ListingsModule,
         PetsModule,
+        RestaurantsModule,
     ],
 })
 export class AppModule { }

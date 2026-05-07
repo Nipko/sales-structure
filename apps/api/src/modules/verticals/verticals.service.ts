@@ -73,6 +73,12 @@ export class VerticalsService {
             await this.enablePetsTool(schemaName);
         }
 
+        // 4f. Restaurantes: enable the restaurants tool so Luca can
+        // look up the menu, list active promotions, and place orders.
+        if (industry === 'restaurantes') {
+            await this.enableRestaurantsTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -698,6 +704,35 @@ export class VerticalsService {
             this.logger.debug('Enabled pets tool on default agent');
         } catch (error: any) {
             this.logger.warn(`Failed to enable pets tool: ${error.message}`);
+        }
+    }
+
+    /**
+     * Turn on config.tools.restaurants.enabled so Luca can use get_menu,
+     * get_promotions, and place_order on restaurant tenants.
+     */
+    private async enableRestaurantsTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.restaurants = { ...(tools.restaurants || {}), enabled: true };
+            const newConfig = { ...config, tools };
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled restaurants tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable restaurants tool: ${error.message}`);
         }
     }
 }

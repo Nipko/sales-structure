@@ -23,6 +23,7 @@ import {
     ArrowRight,
     Info,
     Scale,
+    RotateCcw,
     type LucideIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -101,6 +102,7 @@ export default function SettingsHub() {
             title: t("monitoring"), description: t("monitoringDesc"), adminOnly: true,
             cards: [
                 { label: t("alertsCard"), description: t("alertsCardDesc"), href: "/admin/settings/alerts", icon: Bell, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
+                { label: t("recallCard"), description: t("recallCardDesc"), href: "/admin/settings/recall", icon: RotateCcw, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
             ],
         },
         {

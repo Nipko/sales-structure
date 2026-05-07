@@ -640,6 +640,16 @@ export const api = {
     upsertReportConfig: (tenantId: string, data: any) =>
         apiPost(`/analytics-config/reports/${tenantId}`, data),
 
+    // --- Recall (time-since-last-appointment campaign) ---
+    getRecallConfig: (tenantId: string) =>
+        apiGet(`/recall/${tenantId}/config`),
+    updateRecallConfig: (tenantId: string, data: {
+        enabled: boolean; daysThreshold: number; cooldownDays: number;
+        channelType: string; message: string;
+    }) => apiPut(`/recall/${tenantId}/config`, data),
+    runRecallNow: (tenantId: string) =>
+        apiPost(`/recall/${tenantId}/run-now`, {}),
+
     // --- Phase 3: Anomalies, Cohorts ---
     getDashboardAnomalies: (tenantId: string) =>
         apiGet(`/dashboard-analytics/anomalies/${tenantId}`),

@@ -9,9 +9,11 @@ import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import SuspendedScreen from "@/components/SuspendedScreen";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { canAccessPath, defaultLandingForRole } from "@/lib/roles";
 
 export default function AdminLayout({
   children,
@@ -20,6 +22,8 @@ export default function AdminLayout({
 }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const { role, impersonating } = useRole();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
 
@@ -30,6 +34,20 @@ export default function AdminLayout({
       router.push("/login");
     }
   }, [isLoading, isAuthenticated, router]);
+
+  // URL-level role guard. Each role only has access to a curated set of
+  // pages (see PAGE_RULES in lib/roles.ts). super_admin without
+  // impersonation gets bounced to /admin/tenants when they hit a
+  // tenant-operational URL; agents bounced to /admin/inbox when they
+  // try /admin/users, /admin/agent, etc. Prevents URL bookmarking
+  // around the redesigned sidebar.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !role) return;
+    if (!pathname || !pathname.startsWith("/admin")) return;
+    if (canAccessPath(pathname, role, impersonating)) return;
+    const landing = defaultLandingForRole(role, impersonating);
+    if (pathname !== landing) router.replace(landing);
+  }, [pathname, role, impersonating, isLoading, isAuthenticated, router]);
 
   // Check if tenant account is suspended
   useEffect(() => {

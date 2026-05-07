@@ -4,6 +4,7 @@ import { useState, useCallback, Fragment, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -21,12 +22,10 @@ import {
 import {
   Inbox,
   Contact,
-  TrendingUp,
   CalendarDays,
   Home,
   Megaphone,
   Zap,
-  Bot,
   BookOpen,
   BarChart3,
   Radio,
@@ -39,6 +38,10 @@ import {
   ChevronDown,
   ChevronRight,
   Compass,
+  Activity,
+  TrendingUp,
+  ShieldCheck,
+  Brain,
   type LucideIcon,
 } from "lucide-react";
 
@@ -47,7 +50,11 @@ interface NavItemDef {
   href?: string;
   icon: LucideIcon;
   shortcut?: string;
-  children?: { labelKey: string; href: string }[];
+  children?: { labelKey: string; href: string; capability?: keyof ReturnType<typeof useRole> }[];
+  /** Capability flag from useRole that gates visibility. Omit = always visible. */
+  capability?: keyof ReturnType<typeof useRole>;
+  /** Vertical industries that show this item. Omit = visible for all verticals. */
+  verticals?: string[];
 }
 
 interface NavSectionDef {
@@ -55,38 +62,45 @@ interface NavSectionDef {
   items: NavItemDef[];
 }
 
-// Keys map to nav.sections.* and nav.items.* in translation files
-const sectionDefs: NavSectionDef[] = [
+// ────────────────────────────────────────────────────────────────
+// TENANT MODE — what tenant_admin / supervisor / agent see, plus
+// super_admin during impersonation. This matches the role matrix:
+// agent gets a slim operational view, supervisor/admin progressively
+// unlock growth & management features.
+// ────────────────────────────────────────────────────────────────
+const tenantSections: NavSectionDef[] = [
   {
     titleKey: "operation",
     items: [
-      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox, shortcut: "⌘ 1" },
-      { 
-        labelKey: "crm", 
-        icon: Contact, 
+      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox, shortcut: "⌘ 1", capability: "canHandleConversations" },
+      {
+        labelKey: "crm",
+        icon: Contact,
         shortcut: "⌘ 2",
+        capability: "canViewContacts",
         children: [
           { labelKey: "crm", href: "/admin/contacts" },
           { labelKey: "pipeline", href: "/admin/pipeline" }
         ]
       },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays },
-      { labelKey: "properties", href: "/admin/properties", icon: Home },
-      { labelKey: "tours", href: "/admin/tours", icon: Compass },
-      { labelKey: "listings", href: "/admin/listings", icon: Building2 },
+      { labelKey: "properties", href: "/admin/properties", icon: Home, verticals: ["turismo"] },
+      { labelKey: "tours", href: "/admin/tours", icon: Compass, verticals: ["turismo"] },
+      { labelKey: "listings", href: "/admin/listings", icon: Building2, verticals: ["inmobiliaria"] },
     ],
   },
   {
     titleKey: "growth",
     items: [
-      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone },
-      { 
-        labelKey: "automation", 
-        icon: Zap, 
+      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone, capability: "canSendBroadcast" },
+      {
+        labelKey: "automation",
+        icon: Zap,
+        capability: "canEditAutomation",
         children: [
-          { labelKey: "automation", href: "/admin/automation" },
-          { labelKey: "aiAgent", href: "/admin/agent" },
-          { labelKey: "knowledgeBase", href: "/admin/knowledge" },
+          { labelKey: "automation", href: "/admin/automation", capability: "canEditAutomation" },
+          { labelKey: "aiAgent", href: "/admin/agent", capability: "canEditAgent" },
+          { labelKey: "knowledgeBase", href: "/admin/knowledge", capability: "canViewKnowledge" },
         ]
       },
     ],
@@ -94,15 +108,53 @@ const sectionDefs: NavSectionDef[] = [
   {
     titleKey: "management",
     items: [
-      { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3 },
-      { labelKey: "channels", href: "/admin/channels", icon: Radio },
-      { labelKey: "users", href: "/admin/users", icon: Users },
+      { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3, capability: "canSeeGlobalAnalytics" },
+      { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels" },
+      { labelKey: "users", href: "/admin/users", icon: Users, capability: "canManageUsers" },
     ],
   },
   {
     titleKey: "config",
     items: [
       { labelKey: "settings", href: "/admin/settings", icon: Settings },
+    ],
+  },
+];
+
+// ────────────────────────────────────────────────────────────────
+// PLATFORM MODE — what super_admin sees when NOT impersonating.
+// Stripped to platform-management surfaces only.
+// ────────────────────────────────────────────────────────────────
+const platformSections: NavSectionDef[] = [
+  {
+    titleKey: "platform",
+    items: [
+      { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1" },
+      { labelKey: "financials", href: "/admin/financials", icon: DollarSign },
+      { labelKey: "platformUsage", href: "/admin/usage", icon: TrendingUp },
+      { labelKey: "platformHealth", href: "/admin/health", icon: Activity },
+      { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
+    ],
+  },
+  {
+    titleKey: "platformConfig",
+    items: [
+      {
+        labelKey: "aiModels",
+        icon: Brain,
+        children: [
+          { labelKey: "llmProviders", href: "/admin/settings/ai-providers" },
+          { labelKey: "aiConfig", href: "/admin/settings/ai-config" },
+        ]
+      },
+      { labelKey: "channelsPhone", href: "/admin/settings/channels", icon: Radio },
+      { labelKey: "platformAdvanced", href: "/admin/settings/platform", icon: Settings },
+    ],
+  },
+  {
+    titleKey: "config",
+    items: [
+      { labelKey: "personalSettings", href: "/admin/settings", icon: Settings },
     ],
   },
 ];
@@ -118,42 +170,43 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>({
     crm: true,
     automation: true,
+    aiModels: true,
   });
-  
+
   const pathname = usePathname();
   const { user, verticalConfig } = useAuth();
+  const roleCtx = useRole();
   const tNav = useTranslations('nav');
   const tRoles = useTranslations('roles');
   const locale = useLocale();
 
-  // Role helpers
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'tenant_admin';
-  const isSupervisor = isAdmin || user?.role === 'tenant_supervisor';
+  // Decide which navigation tree to render. super_admin without
+  // impersonation gets the platform tree; everyone else (including
+  // super_admin while impersonating) gets the tenant tree.
+  const useTenantTree = !roleCtx.isSuperAdmin || roleCtx.impersonating;
+  const sectionDefs = useTenantTree ? tenantSections : platformSections;
 
   const roleLabel = (() => {
     switch (user?.role) {
       case "super_admin": return tRoles("superAdmin");
       case "tenant_admin": return tRoles("admin");
+      case "tenant_supervisor": return tRoles("supervisor");
       case "tenant_agent": return tRoles("agent");
       case "tenant_viewer": return tRoles("viewer");
       default: return user?.role?.replace(/_/g, " ") ?? "";
     }
   })();
 
-  // Vertical overrides
-  const hiddenItems = verticalConfig?.sidebar?.hiddenItems as string[] | undefined;
-  const labelOverrides = verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined;
-  const itemOrder = verticalConfig?.sidebar?.itemOrder as string[] | undefined;
-
-  const showProperties = verticalConfig?.industry === 'turismo';
-  // Tours visible for all turismo tenants — sub-types `tours` and
-  // `agencia_viajes` get them as their primary surface, but `alquiler_vacacional`
-  // and `hotel` operators may also offer day experiences alongside their main
-  // service, so we don't gate by sub-type.
-  const showTours = verticalConfig?.industry === 'turismo';
-  // Listings (long-term sale/rent) visible only for inmobiliaria. Vacation
-  // rental shouldn't see this — they have their own /admin/properties.
-  const showListings = verticalConfig?.industry === 'inmobiliaria';
+  // Vertical overrides only apply in tenant mode
+  const hiddenItems = useTenantTree
+    ? (verticalConfig?.sidebar?.hiddenItems as string[] | undefined)
+    : undefined;
+  const labelOverrides = useTenantTree
+    ? (verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined)
+    : undefined;
+  const itemOrder = useTenantTree
+    ? (verticalConfig?.sidebar?.itemOrder as string[] | undefined)
+    : undefined;
 
   const isActive = useCallback((href?: string) => {
     if (!href) return false;
@@ -169,37 +222,36 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     setExpandedAccordions(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const checkCapability = (cap?: keyof ReturnType<typeof useRole>): boolean => {
+    if (!cap) return true;
+    return Boolean(roleCtx[cap]);
+  };
+
+  const checkVertical = (verticals?: string[]): boolean => {
+    if (!verticals || verticals.length === 0) return true;
+    return verticals.includes(verticalConfig?.industry || "");
+  };
+
   const sections = sectionDefs.map(s => {
     const filteredItems = s.items
       .map(item => {
-        // Filter children if exist
+        // Filter children
         const children = item.children
           ?.filter(child => !hiddenItems?.includes(child.labelKey))
-          ?.filter(child => child.labelKey !== 'properties' || showProperties)
-          ?.filter(child => {
-            if (child.labelKey === 'campaigns') return isSupervisor;
-            if (child.labelKey === 'automation') return isSupervisor;
-            if (child.labelKey === 'aiAgent') return isAdmin;
-            if (child.labelKey === 'users') return isAdmin;
-            if (child.labelKey === 'knowledgeBase') return isSupervisor;
-            return true;
-          });
+          ?.filter(child => checkCapability(child.capability));
 
         if (children && children.length === 0) {
-           return null; // hide parent if all children are hidden
+          return null; // hide parent if all children hidden
         }
 
-        // Check parent visibility if no children
+        // Parent visibility checks
         if (!children) {
           if (hiddenItems?.includes(item.labelKey)) return null;
-          if (item.labelKey === 'properties' && !showProperties) return null;
-          if (item.labelKey === 'tours' && !showTours) return null;
-          if (item.labelKey === 'listings' && !showListings) return null;
-          if (item.labelKey === 'campaigns' && !isSupervisor) return null;
-          if (item.labelKey === 'automation' && !isSupervisor) return null;
-          if (item.labelKey === 'aiAgent' && !isAdmin) return null;
-          if (item.labelKey === 'users' && !isAdmin) return null;
-          if (item.labelKey === 'knowledgeBase' && !isSupervisor) return null;
+          if (!checkVertical(item.verticals)) return null;
+          if (!checkCapability(item.capability)) return null;
+        } else {
+          // Items with children also need their own capability check
+          if (!checkCapability(item.capability)) return null;
         }
 
         const isItemOrChildActive = isActive(item.href) || children?.some(c => isActive(c.href));
@@ -234,14 +286,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     };
   });
 
-  // Whether sidebar visually shows full width (labels visible)
   const showExpanded = !collapsed || hovered;
 
   const handleNavClick = useCallback(() => {
     if (onMobileClose) onMobileClose();
   }, [onMobileClose]);
 
-  // Handle auto-expand accordion if child is active
   useEffect(() => {
     sections.forEach(sec => {
       sec.items.forEach((item: any) => {
@@ -276,19 +326,30 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         </button>
       </div>
 
-      {/* Tenant header */}
+      {/* Workspace / platform header — adapts to mode */}
       {showExpanded && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-3 py-3 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 flex items-center justify-center shrink-0">
-              <Building2 size={16} className="text-indigo-600 dark:text-indigo-400" />
+            <div className={cn(
+              "w-8 h-8 rounded-lg border flex items-center justify-center shrink-0",
+              useTenantTree
+                ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20"
+                : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
+            )}>
+              <Building2 size={16} className={useTenantTree
+                ? "text-indigo-600 dark:text-indigo-400"
+                : "text-amber-600 dark:text-amber-400"} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-bold text-foreground truncate">
-                {user?.tenantName || user?.firstName || 'Parallly'}
+                {useTenantTree
+                  ? (user?.tenantName || user?.firstName || 'Parallly')
+                  : tNav('platformConsole')}
               </p>
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium uppercase tracking-wider">
-                {(user as any)?.plan || 'starter'}
+                {useTenantTree
+                  ? ((user as any)?.plan || 'starter')
+                  : tNav('superAdminMode')}
               </p>
             </div>
           </div>
@@ -298,7 +359,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 custom-scrollbar">
         <TooltipProvider delayDuration={200}>
-          {sections.map((section, sectionIdx) => (
+          {sections.map((section) => (
             <Fragment key={section.titleKey}>
               {section.titleKey === "config" ? (
                 <div className="my-3 mx-2 border-t border-border/40" />
@@ -314,7 +375,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const isExpanded = expandedAccordions[item.labelKey];
-                  
+
                   const NavItemContent = (
                     <div
                       className={cn(
@@ -342,7 +403,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                           <span className="truncate">{item.label}</span>
                         )}
                       </div>
-                      
+
                       {showExpanded && (
                         <div className="flex items-center gap-1.5 shrink-0">
                           {item.shortcut && (
@@ -358,7 +419,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                     </div>
                   );
 
-                  const wrapWithLink = (node: React.ReactNode) => 
+                  const wrapWithLink = (node: React.ReactNode) =>
                     item.href ? <Link href={item.href}>{node}</Link> : node;
 
                   const content = wrapWithLink(NavItemContent);
@@ -379,7 +440,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                         content
                       )}
 
-                      {/* Submenu Accordion */}
+                      {/* Submenu */}
                       {item.children && (
                         <AnimatePresence initial={false}>
                           {(isExpanded && showExpanded) && (
@@ -414,53 +475,6 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                   );
                 })}
               </ul>
-
-              {/* Plataforma section for super_admin */}
-              {sectionIdx === 2 && user?.role === "super_admin" && (
-                <div className="mt-2">
-                  {showExpanded && (
-                    <p className="px-2 mb-1.5 mt-4 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 select-none">
-                      Plataforma
-                    </p>
-                  )}
-                  <ul className="space-y-0.5">
-                    {[
-                      { href: "/admin/tenants", label: "Tenants", icon: Building2 },
-                      { href: "/admin/financials", label: tNav('items.financials'), icon: DollarSign }
-                    ].map(item => {
-                      const active = isActive(item.href);
-                      const Icon = item.icon;
-                      const linkContent = (
-                        <Link
-                          href={item.href}
-                          onClick={handleNavClick}
-                          className={cn(
-                            "flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] rounded-md transition-all duration-150",
-                            !showExpanded && "justify-center",
-                            active
-                              ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 font-semibold"
-                              : "text-neutral-600 dark:text-neutral-400 hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800/80 font-medium"
-                          )}
-                        >
-                          <Icon size={16} className={cn("shrink-0", active ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-400 dark:text-neutral-500")} />
-                          {showExpanded && <span className="truncate">{item.label}</span>}
-                        </Link>
-                      );
-
-                      return (
-                        <li key={item.href}>
-                          {!showExpanded ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                              <TooltipContent side="right" className="font-semibold">{item.label}</TooltipContent>
-                            </Tooltip>
-                          ) : linkContent}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
             </Fragment>
           ))}
         </TooltipProvider>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { cn } from "@/lib/utils";
 import {
     User,
@@ -36,26 +36,26 @@ interface SettingsCard {
     icon: LucideIcon;
     iconColor: string;
     iconBg: string;
-    superAdminOnly?: boolean;
+    /** Visibility predicate against useRole(). Returns true → card visible. */
+    visible?: (r: ReturnType<typeof useRole>) => boolean;
 }
 
 interface SettingsSection {
     title: string;
     description: string;
     cards: SettingsCard[];
-    adminOnly?: boolean;
-    superAdminOnly?: boolean;
+    /** If provided, hide section when predicate returns false */
+    visible?: (r: ReturnType<typeof useRole>) => boolean;
 }
 
 export default function SettingsHub() {
     const router = useRouter();
-    const { user } = useAuth();
+    const role = useRole();
     const t = useTranslations("settings");
     const tHelp = useTranslations("help");
-    const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
-    const isSuperAdmin = user?.role === "super_admin";
 
     const sections: SettingsSection[] = [
+        // Account — visible to everyone (their own profile / security / etc.)
         {
             title: t("account"), description: t("accountDesc"),
             cards: [
@@ -65,18 +65,22 @@ export default function SettingsHub() {
                 { label: t("appearance"), description: t("appearanceDesc"), href: "/admin/settings/appearance", icon: Palette, iconColor: "text-purple-500", iconBg: "bg-purple-500/10" },
             ],
         },
+        // Company — tenant_admin only (settings that affect the whole tenant)
         {
-            title: t("company"), description: t("companyDesc"), adminOnly: true,
+            title: t("company"), description: t("companyDesc"),
+            visible: (r) => r.canManageBilling || r.isSupervisor,  // admin or super_admin impersonating
             cards: [
-                { label: t("general"), description: t("generalDesc"), href: "/admin/settings/company", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
-                { label: t("businessInfoCard"), description: t("businessInfoCardDesc"), href: "/admin/settings/business-info", icon: Info, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
-                { label: t("policiesCard"), description: t("policiesCardDesc"), href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
-                { label: t("localization"), description: t("localizationDesc"), href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
-                { label: t("businessHours"), description: t("businessHoursDesc"), href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10" },
+                { label: t("general"), description: t("generalDesc"), href: "/admin/settings/company", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10", visible: (r) => r.canManageBilling },
+                { label: t("businessInfoCard"), description: t("businessInfoCardDesc"), href: "/admin/settings/business-info", icon: Info, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10", visible: (r) => r.canManageBilling },
+                { label: t("policiesCard"), description: t("policiesCardDesc"), href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10", visible: (r) => r.canManageBilling },
+                { label: t("localization"), description: t("localizationDesc"), href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10", visible: (r) => r.isSupervisor },
+                { label: t("businessHours"), description: t("businessHoursDesc"), href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10", visible: (r) => r.isSupervisor },
             ],
         },
+        // Tools — supervisor+ (most workflows like macros, templates, prechat)
         {
-            title: t("tools"), description: t("toolsDesc"), adminOnly: true,
+            title: t("tools"), description: t("toolsDesc"),
+            visible: (r) => r.isSupervisor,
             cards: [
                 { label: t("customAttributes"), description: t("customAttributesDesc"), href: "/admin/settings/custom-attributes", icon: Database, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
                 { label: t("macros"), description: t("macrosDesc"), href: "/admin/settings/macros", icon: Zap, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
@@ -85,33 +89,50 @@ export default function SettingsHub() {
                 { label: t("mediaBank"), description: t("mediaBankDesc"), href: "/admin/settings/media", icon: Image, iconColor: "text-pink-500", iconBg: "bg-pink-500/10" },
             ],
         },
+        // Monitoring — admin and supervisor see alerts; recall is admin-only
         {
-            title: t("channelsSection"), description: t("channelsSectionDesc"), adminOnly: true, superAdminOnly: true,
-            cards: [
-                { label: t("channelConfig"), description: t("channelConfigDesc"), href: "/admin/settings/channels", icon: Phone, iconColor: "text-green-500", iconBg: "bg-green-500/10", superAdminOnly: true },
-            ],
-        },
-        {
-            title: t("aiModels"), description: t("aiModelsDesc"), adminOnly: true, superAdminOnly: true,
-            cards: [
-                { label: t("llmProviders"), description: t("llmProvidersDesc"), href: "/admin/settings/ai-providers", icon: Brain, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10", superAdminOnly: true },
-                { label: t("aiConfig"), description: t("aiConfigDesc"), href: "/admin/settings/ai-config", icon: SlidersHorizontal, iconColor: "text-violet-500", iconBg: "bg-violet-500/10", superAdminOnly: true },
-            ],
-        },
-        {
-            title: t("monitoring"), description: t("monitoringDesc"), adminOnly: true,
+            title: t("monitoring"), description: t("monitoringDesc"),
+            visible: (r) => r.isSupervisor,
             cards: [
                 { label: t("alertsCard"), description: t("alertsCardDesc"), href: "/admin/settings/alerts", icon: Bell, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
-                { label: t("recallCard"), description: t("recallCardDesc"), href: "/admin/settings/recall", icon: RotateCcw, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
+                { label: t("recallCard"), description: t("recallCardDesc"), href: "/admin/settings/recall", icon: RotateCcw, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10", visible: (r) => r.canManageBilling },
             ],
         },
+        // Channels phone setup — super_admin only
         {
-            title: t("platformSection"), description: t("platformSectionDesc"), adminOnly: true, superAdminOnly: true,
+            title: t("channelsSection"), description: t("channelsSectionDesc"),
+            visible: (r) => r.canManagePlatform,
             cards: [
-                { label: t("advanced"), description: t("advancedDesc"), href: "/admin/settings/platform", icon: Settings, iconColor: "text-neutral-500", iconBg: "bg-neutral-500/10", superAdminOnly: true },
+                { label: t("channelConfig"), description: t("channelConfigDesc"), href: "/admin/settings/channels", icon: Phone, iconColor: "text-green-500", iconBg: "bg-green-500/10" },
+            ],
+        },
+        // AI Models — super_admin only
+        {
+            title: t("aiModels"), description: t("aiModelsDesc"),
+            visible: (r) => r.canManagePlatform,
+            cards: [
+                { label: t("llmProviders"), description: t("llmProvidersDesc"), href: "/admin/settings/ai-providers", icon: Brain, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+                { label: t("aiConfig"), description: t("aiConfigDesc"), href: "/admin/settings/ai-config", icon: SlidersHorizontal, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
+            ],
+        },
+        // Platform — super_admin only
+        {
+            title: t("platformSection"), description: t("platformSectionDesc"),
+            visible: (r) => r.canManagePlatform,
+            cards: [
+                { label: t("advanced"), description: t("advancedDesc"), href: "/admin/settings/platform", icon: Settings, iconColor: "text-neutral-500", iconBg: "bg-neutral-500/10" },
             ],
         },
     ];
+
+    // Apply visibility filters
+    const visibleSections = sections
+        .filter(s => !s.visible || s.visible(role))
+        .map(s => ({
+            ...s,
+            cards: s.cards.filter(c => !c.visible || c.visible(role)),
+        }))
+        .filter(s => s.cards.length > 0);
 
     return (
         <div className="space-y-8 max-w-5xl">
@@ -127,53 +148,56 @@ export default function SettingsHub() {
             <HelpPanel
                 title={tHelp("settings.title")}
                 description={tHelp("settings.description")}
-                tips={tHelp.raw("settings.tips") as string[]}
+                videoUrl={tHelp("settings.videoUrl")}
             />
 
-            {/* Sections */}
-            {sections.map((section) => {
-                if (section.adminOnly && !isAdmin) return null;
-                if (section.superAdminOnly && !isSuperAdmin) return null;
-                const visibleCards = section.cards.filter(c => !(c.superAdminOnly && !isSuperAdmin));
-                if (visibleCards.length === 0) return null;
-                return (
-                    <div key={section.title}>
-                        <div className="mb-3">
-                            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-                                {section.title}
-                            </h2>
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {section.description}
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                            {visibleCards.map((card) => {
-                                const Icon = card.icon;
-                                return (
-                                    <button
-                                        key={card.href}
-                                        onClick={() => router.push(card.href)}
-                                        className="group flex items-center gap-3.5 rounded-xl border border-neutral-200 bg-white px-5 py-4 text-left hover-lift hover:border-indigo-400 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-indigo-500"
-                                    >
-                                        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", card.iconBg)}>
-                                            <Icon size={20} className={card.iconColor} />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                                {card.label}
-                                            </div>
-                                            <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1">
-                                                {card.description}
-                                            </div>
-                                        </div>
-                                        <ArrowRight size={16} className="shrink-0 text-neutral-300 dark:text-neutral-600 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-500" />
-                                    </button>
-                                );
-                            })}
-                        </div>
+            {visibleSections.map((section, idx) => (
+                <div key={idx} className="space-y-3">
+                    <div>
+                        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                            {section.title}
+                        </h2>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                            {section.description}
+                        </p>
                     </div>
-                );
-            })}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {section.cards.map((card, i) => {
+                            const Icon = card.icon;
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => router.push(card.href)}
+                                    className={cn(
+                                        "group bg-card border border-border rounded-xl p-4 text-left",
+                                        "hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md transition-all",
+                                        "flex items-start gap-3",
+                                    )}
+                                >
+                                    <div className={cn(
+                                        "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
+                                        card.iconBg,
+                                    )}>
+                                        <Icon className={cn("h-5 w-5", card.iconColor)} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-sm text-neutral-900 dark:text-neutral-100">
+                                                {card.label}
+                                            </span>
+                                            <ArrowRight className="h-3.5 w-3.5 text-neutral-400 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
+                                        </div>
+                                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                            {card.description}
+                                        </p>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }

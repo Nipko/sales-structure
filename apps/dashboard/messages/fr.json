@@ -56,6 +56,8 @@
     }
   },
   "nav": {
+    "platformConsole": "Console plateforme",
+    "superAdminMode": "Super Admin",
     "sections": {
       "main": "Principal",
       "operations": "Opérations",
@@ -63,7 +65,9 @@
       "config": "Configuration",
       "operation": "Opérations",
       "growth": "Croissance",
-      "management": "Gestion"
+      "management": "Gestion",
+      "platform": "Plateforme",
+      "platformConfig": "Config globale"
     },
     "items": {
       "conversations": "Conversations",
@@ -92,7 +96,16 @@
       "financials": "Finances",
       "properties": "Proprietes",
       "tours": "Tours et Forfaits",
-      "listings": "Annonces"
+      "listings": "Annonces",
+      "platformUsage": "Utilisation par tenant",
+      "platformHealth": "Santé du système",
+      "platformAudit": "Audit",
+      "aiModels": "Modèles IA",
+      "llmProviders": "Fournisseurs LLM",
+      "aiConfig": "Config IA",
+      "channelsPhone": "Canaux (téléphones)",
+      "platformAdvanced": "Avancé",
+      "personalSettings": "Mes paramètres"
     }
   },
   "topbar": {
@@ -2824,6 +2837,7 @@
   "roles": {
     "superAdmin": "Super Admin",
     "admin": "Administrateur",
+    "supervisor": "Superviseur",
     "agent": "Agent",
     "viewer": "Observateur"
   },

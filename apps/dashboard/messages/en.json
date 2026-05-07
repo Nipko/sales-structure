@@ -56,6 +56,8 @@
     }
   },
   "nav": {
+    "platformConsole": "Platform console",
+    "superAdminMode": "Super Admin",
     "sections": {
       "main": "Main",
       "operations": "Operations",
@@ -63,7 +65,9 @@
       "config": "Settings",
       "operation": "Operations",
       "growth": "Growth",
-      "management": "Management"
+      "management": "Management",
+      "platform": "Platform",
+      "platformConfig": "Global config"
     },
     "items": {
       "conversations": "Conversations",
@@ -92,7 +96,16 @@
       "financials": "Financials",
       "properties": "Properties",
       "tours": "Tours & Packages",
-      "listings": "Listings"
+      "listings": "Listings",
+      "platformUsage": "Tenant usage",
+      "platformHealth": "System health",
+      "platformAudit": "Audit log",
+      "aiModels": "AI models",
+      "llmProviders": "LLM providers",
+      "aiConfig": "AI config",
+      "channelsPhone": "Channels (phone)",
+      "platformAdvanced": "Advanced",
+      "personalSettings": "My settings"
     }
   },
   "topbar": {
@@ -2824,6 +2837,7 @@
   "roles": {
     "superAdmin": "Super Admin",
     "admin": "Administrator",
+    "supervisor": "Supervisor",
     "agent": "Agent",
     "viewer": "Viewer"
   },

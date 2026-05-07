@@ -493,7 +493,7 @@ export class OffboardingService {
         // Telegram). Those need a fresh OAuth reconnect; flipping is_active
         // back to true would leave the dashboard saying "connected" while
         // Meta has already detached the webhook subscription.
-        const channelsRestored = await this.prisma.$queryRawUnsafe<any[]>(
+        const channelsRestored = (await this.prisma.$queryRawUnsafe(
             `UPDATE channel_accounts
                SET is_active = true,
                    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
@@ -505,7 +505,7 @@ export class OffboardingService {
                AND COALESCE((metadata->>'disconnected_at_provider')::boolean, false) = false
              RETURNING id, channel_type, account_id`,
             tenantId,
-        );
+        )) as any[];
         const skippedChannels = await this.prisma.channelAccount.count({
             where: {
                 tenantId,
@@ -673,7 +673,7 @@ export class OffboardingService {
      * require a fresh OAuth reconnect.
      */
     async reactivateChannels(tenantId: string): Promise<{ restored: number; needsReconnect: number }> {
-        const restored = await this.prisma.$queryRawUnsafe<any[]>(
+        const restored = (await this.prisma.$queryRawUnsafe(
             `UPDATE channel_accounts
                SET is_active = true,
                    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
@@ -686,7 +686,7 @@ export class OffboardingService {
                AND COALESCE((metadata->>'disconnected_at_provider')::boolean, false) = false
              RETURNING id, channel_type, account_id`,
             tenantId,
-        );
+        )) as any[];
         const needsReconnect = await this.prisma.channelAccount.count({
             where: {
                 tenantId,

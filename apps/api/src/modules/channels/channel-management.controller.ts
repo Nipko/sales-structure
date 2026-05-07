@@ -1048,7 +1048,7 @@ export class ChannelManagementController {
         providerError: string | null,
         userId?: string,
     ): Promise<{ rowsTouched: number }> {
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows = (await this.prisma.$queryRawUnsafe(
             `UPDATE channel_accounts
                SET is_active = false,
                    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
@@ -1060,7 +1060,7 @@ export class ChannelManagementController {
              WHERE tenant_id = $1::uuid AND channel_type = $2 AND is_active = true
              RETURNING id`,
             tenantId, channelType, providerOk, providerError,
-        );
+        )) as any[];
 
         try {
             await this.prisma.auditLog.create({

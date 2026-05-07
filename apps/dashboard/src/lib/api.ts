@@ -976,6 +976,48 @@ export const api = {
     deleteMenuPromotion: (tenantId: string, id: string) =>
         apiDelete(`/restaurants/${tenantId}/promotions/${id}`),
 
+    // ─── Gyms ───
+    listMembershipPlans: (tenantId: string, includeInactive = false) =>
+        apiGet(`/gyms/${tenantId}/plans?includeInactive=${includeInactive}`),
+    createMembershipPlan: (tenantId: string, data: any) =>
+        apiPost(`/gyms/${tenantId}/plans`, data),
+    updateMembershipPlan: (tenantId: string, id: string, data: any) =>
+        apiPut(`/gyms/${tenantId}/plans/${id}`, data),
+    deleteMembershipPlan: (tenantId: string, id: string) =>
+        apiDelete(`/gyms/${tenantId}/plans/${id}`),
+    listGymMembers: (tenantId: string, params?: { status?: string; search?: string; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.search) qs.set("search", params.search);
+        if (params?.limit) qs.set("limit", String(params.limit));
+        const q = qs.toString();
+        return apiGet(`/gyms/${tenantId}/members${q ? `?${q}` : ""}`);
+    },
+    getGymMember: (tenantId: string, id: string) =>
+        apiGet(`/gyms/${tenantId}/members/${id}`),
+    createGymMember: (tenantId: string, data: any) =>
+        apiPost(`/gyms/${tenantId}/members`, data),
+    freezeGymMember: (tenantId: string, id: string, days: number) =>
+        apiPost(`/gyms/${tenantId}/members/${id}/freeze`, { days }),
+    unfreezeGymMember: (tenantId: string, id: string) =>
+        apiPost(`/gyms/${tenantId}/members/${id}/unfreeze`, {}),
+    checkInGymMember: (tenantId: string, id: string, classId?: string) =>
+        apiPost(`/gyms/${tenantId}/members/${id}/check-in`, { classId }),
+    listFitnessClasses: (tenantId: string, params?: { from?: string; to?: string; classType?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.from) qs.set("from", params.from);
+        if (params?.to) qs.set("to", params.to);
+        if (params?.classType) qs.set("classType", params.classType);
+        const q = qs.toString();
+        return apiGet(`/gyms/${tenantId}/classes${q ? `?${q}` : ""}`);
+    },
+    createFitnessClass: (tenantId: string, data: any) =>
+        apiPost(`/gyms/${tenantId}/classes`, data),
+    cancelFitnessClass: (tenantId: string, id: string, reason?: string) =>
+        apiPost(`/gyms/${tenantId}/classes/${id}/cancel`, { reason }),
+    bookFitnessClass: (tenantId: string, classId: string, memberId: string) =>
+        apiPost(`/gyms/${tenantId}/classes/${classId}/book`, { memberId }),
+
     // ─── Real Estate Listings (inmobiliaria) ───
     listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
         const qs = new URLSearchParams();

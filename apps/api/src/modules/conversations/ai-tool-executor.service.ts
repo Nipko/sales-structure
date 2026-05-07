@@ -11,6 +11,7 @@ import { TreatmentPlansService } from '../treatment-plans/treatment-plans.servic
 import { ListingsService } from '../listings/listings.service';
 import { PetsService } from '../pets/pets.service';
 import { RestaurantsService } from '../restaurants/restaurants.service';
+import { GymsService } from '../gyms/gyms.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -34,6 +35,7 @@ export class AIToolExecutorService {
         private listingsService: ListingsService,
         private petsService: PetsService,
         private restaurantsService: RestaurantsService,
+        private gymsService: GymsService,
     ) { }
 
     /**
@@ -158,6 +160,22 @@ export class AIToolExecutorService {
 
                 case 'place_order':
                     return this.placeOrder(schemaName, contactId, conversationId, args);
+
+                // ── Gyms tools ────────────────────────────────────
+                case 'get_membership_plans':
+                    return this.getMembershipPlans(schemaName);
+
+                case 'get_class_schedule':
+                    return this.getClassSchedule(schemaName, args);
+
+                case 'get_my_membership':
+                    return this.getMyMembership(schemaName, contactId);
+
+                case 'book_class':
+                    return this.bookClassTool(schemaName, args);
+
+                case 'freeze_membership':
+                    return this.freezeMembershipTool(schemaName, args);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1551,6 +1569,112 @@ export class AIToolExecutorService {
                 itemsCount: (order.items || []).length,
                 estimatedDelivery: order.order_type === 'delivery' ? '30-45 minutos' : '15-25 minutos',
                 message: `Pedido creado correctamente. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Gyms tools ────────────────────────────────────────────────
+
+    private async getMembershipPlans(schemaName: string): Promise<any> {
+        try {
+            const plans = await this.gymsService.listPlans(schemaName, false);
+            if (!plans.length) return { plans: [], message: 'Sin planes disponibles.' };
+            return {
+                plans: plans.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    durationDays: p.duration_days,
+                    price: Number(p.price),
+                    currency: p.currency,
+                    classCredits: p.class_credits_per_period,
+                    personalTrainingCredits: p.personal_training_credits,
+                    guestPasses: p.guest_passes,
+                    freezeAllowanceDays: p.freeze_allowance_days,
+                    perks: p.perks || [],
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getClassSchedule(schemaName: string, args: any): Promise<any> {
+        try {
+            const days = Math.min(Math.max(args.daysAhead || 7, 1), 30);
+            const classes = await this.gymsService.upcomingClasses(schemaName, days, args.classType);
+            if (!classes.length) {
+                return { classes: [], message: 'No hay clases programadas en el rango solicitado.' };
+            }
+            return {
+                count: classes.length,
+                classes: classes.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    classType: c.class_type,
+                    instructor: c.instructor_name,
+                    scheduledAt: c.scheduled_at,
+                    durationMinutes: c.duration_minutes,
+                    availableSpots: c.available_spots,
+                    maxCapacity: c.max_capacity,
+                    room: c.room,
+                    level: c.level,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getMyMembership(schemaName: string, contactId: string): Promise<any> {
+        try {
+            const member = await this.gymsService.getMemberByContact(schemaName, contactId);
+            if (!member) {
+                return { isMember: false, message: 'El contacto no tiene una membresía activa. Ofrecer get_membership_plans para que se inscriba.' };
+            }
+            return {
+                isMember: true,
+                memberId: member.id,
+                planName: member.plan_name,
+                status: member.status,
+                periodStart: member.current_period_start,
+                periodEnd: member.current_period_end,
+                classCreditsRemaining: member.class_credits_remaining,
+                personalTrainingRemaining: member.personal_training_remaining,
+                guestPassesRemaining: member.guest_passes_remaining,
+                frozenFrom: member.frozen_from,
+                frozenUntil: member.frozen_until,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async bookClassTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const booking = await this.gymsService.bookClass(schemaName, args.classId, args.memberId);
+            return {
+                bookingId: booking.id,
+                status: booking.status,
+                creditsUsed: booking.credits_used,
+                message: 'Reserva confirmada.',
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async freezeMembershipTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const member = await this.gymsService.freezeMember(schemaName, args.memberId, args.days);
+            return {
+                memberId: member.id,
+                status: member.status,
+                frozenFrom: member.frozen_from,
+                frozenUntil: member.frozen_until,
+                message: `Membresía congelada por ${args.days} días.`,
             };
         } catch (e: any) {
             return { error: e.message };

@@ -607,6 +607,92 @@ const TECHNOLOGY = createGenericVertical('technology', {
     ],
 });
 
+const GIMNASIOS: VerticalDefinition = {
+    industry: 'gimnasios',
+    subTypes: [
+        { key: 'gimnasio_general', label: { es: 'Gimnasio tradicional', en: 'Traditional gym', pt: 'Academia tradicional', fr: 'Salle de sport classique' } },
+        { key: 'crossfit', label: { es: 'Box CrossFit', en: 'CrossFit box', pt: 'Box CrossFit', fr: 'Box CrossFit' } },
+        { key: 'yoga_pilates', label: { es: 'Estudio de yoga / pilates', en: 'Yoga / pilates studio', pt: 'Estudio de yoga / pilates', fr: 'Studio yoga / pilates' } },
+        { key: 'cycling', label: { es: 'Cycling / spinning', en: 'Cycling / spinning', pt: 'Cycling / spinning', fr: 'Cycling / spinning' } },
+        { key: 'martial_arts', label: { es: 'Artes marciales', en: 'Martial arts', pt: 'Artes marciais', fr: 'Arts martiaux' } },
+    ],
+    terminology: {
+        customerNoun: { es: 'miembro', en: 'member', pt: 'aluno', fr: 'membre' },
+        customerNounPlural: { es: 'miembros', en: 'members', pt: 'alunos', fr: 'membres' },
+        transactionNoun: { es: 'inscripcion', en: 'membership', pt: 'matricula', fr: 'adhesion' },
+        serviceNoun: { es: 'plan', en: 'plan', pt: 'plano', fr: 'plan' },
+        pipelineNoun: { es: 'inscripciones', en: 'memberships', pt: 'matriculas', fr: 'adhesions' },
+    },
+    agent: {
+        name: { es: 'Alex', en: 'Alex', pt: 'Alex', fr: 'Alex' },
+        role: { es: 'Asistente del gimnasio', en: 'Gym assistant', pt: 'Assistente da academia', fr: 'Assistant du club' },
+        tone: 'energetic',
+        formality: 'casual',
+        greeting: { es: '¡Hey! Soy Alex, asistente del gym. ¿Quieres conocer planes, agendar una clase o info de horarios?', en: 'Hey! I\'m Alex, your gym assistant. Want to check plans, book a class, or know our schedule?', pt: 'Oi! Sou Alex, assistente da academia. Quer conhecer planos, marcar uma aula ou saber horarios?', fr: 'Salut! Je suis Alex, assistant du club. Vous voulez decouvrir les forfaits, reserver un cours, ou connaitre les horaires?' },
+        rules: {
+            es: 'Llama "miembro" al cliente activo y "interesado" al lead. Antes de reservar una clase usa get_my_membership para verificar credito. Para precios y planes usa get_membership_plans — no improvises montos. Promueve cross-selling de personal training cuando aplique.',
+            en: 'Call active customers "members" and leads "prospects". Before booking a class, call get_my_membership to verify credit. Use get_membership_plans for prices — never improvise amounts. Cross-sell personal training when relevant.',
+            pt: 'Chame os clientes ativos de "membros" e leads de "interessados". Antes de marcar uma aula use get_my_membership.',
+            fr: 'Appelez les clients actifs "membres" et les leads "prospects". Verifiez le credit avant la reservation.',
+        },
+        forbiddenTopics: {
+            es: 'Diagnosticos medicos|Recomendaciones de suplementos|Planes nutricionales detallados|Datos de otros miembros',
+            en: 'Medical diagnoses|Supplement recommendations|Detailed nutrition plans|Other members data',
+            pt: 'Diagnosticos medicos|Recomendacoes de suplementos|Planos de nutricao',
+            fr: 'Diagnostics medicaux|Recommandations de complements|Plans nutritionnels',
+        },
+        handoffTriggers: {
+            es: 'lesion|emergencia medica|reembolso|queja formal|cancelacion definitiva',
+            en: 'injury|medical emergency|refund|formal complaint|cancellation',
+            pt: 'lesao|emergencia|reembolso|reclamacao|cancelamento',
+            fr: 'blessure|urgence|remboursement|plainte|annulation',
+        },
+    },
+    pipeline: {
+        stages: [
+            { name: { es: 'Interesado', en: 'Prospect', pt: 'Interessado', fr: 'Prospect' }, slug: 'interesado', color: '#3498db', probability: 10, isTerminal: false },
+            { name: { es: 'Trial / Pase invitado', en: 'Trial / Guest pass', pt: 'Trial / Convidado', fr: 'Essai / Invite' }, slug: 'trial', color: '#f39c12', probability: 30, isTerminal: false },
+            { name: { es: 'Inscrito', en: 'Enrolled', pt: 'Matriculado', fr: 'Inscrit' }, slug: 'inscrito', color: '#e67e22', probability: 60, isTerminal: false },
+            { name: { es: 'Activo', en: 'Active member', pt: 'Membro ativo', fr: 'Membre actif' }, slug: 'activo', color: '#2ecc71', probability: 90, isTerminal: false },
+            { name: { es: 'Renovacion', en: 'Renewal', pt: 'Renovacao', fr: 'Renouvellement' }, slug: 'renovacion', color: '#27ae60', probability: 95, isTerminal: false },
+            { name: { es: 'Inactivo', en: 'Lapsed', pt: 'Inativo', fr: 'Inactif' }, slug: 'inactivo', color: '#95a5a6', probability: 0, isTerminal: true },
+        ],
+    },
+    faqs: [
+        { question: { es: '¿Qué planes tienen?', en: 'What plans do you offer?', pt: 'Quais planos tem?', fr: 'Quels forfaits proposez-vous?' }, answer: { es: 'Ofrecemos planes mensuales, trimestrales y anuales con distintos beneficios. Pregunta por tu objetivo y te recomiendo el ideal.', en: 'We offer monthly, quarterly and yearly plans with different perks.', pt: 'Oferecemos planos mensais, trimestrais e anuais com beneficios diversos.', fr: 'Nous proposons des forfaits mensuels, trimestriels et annuels.' }, category: 'planes' },
+        { question: { es: '¿Puedo congelar mi membresía si viajo?', en: 'Can I freeze my membership if I travel?', pt: 'Posso congelar a matricula em viagem?', fr: 'Puis-je geler mon adhesion?' }, answer: { es: 'Si — segun tu plan tienes un cupo de congelamiento. Si te vas de viaje o tienes una lesion, lo activamos por los dias que necesites.', en: 'Yes — your plan includes a freeze allowance for travel or injury.', pt: 'Sim, dependendo do plano voce tem dias de congelamento.', fr: 'Oui, selon votre forfait vous avez des jours de gel.' }, category: 'membresia' },
+        { question: { es: '¿Tienen clases grupales?', en: 'Do you offer group classes?', pt: 'Tem aulas em grupo?', fr: 'Avez-vous des cours collectifs?' }, answer: { es: 'Si, tenemos clases de yoga, spinning, crossfit, hiit y mas. Reserva tu cupo via chat.', en: 'Yes — yoga, spinning, crossfit, HIIT and more.', pt: 'Sim — yoga, spinning, crossfit, HIIT e mais.', fr: 'Oui — yoga, spinning, crossfit, HIIT et plus.' }, category: 'clases' },
+        { question: { es: '¿Tienen sesiones de personal training?', en: 'Do you offer personal training?', pt: 'Tem personal training?', fr: 'Avez-vous des seances de coaching personnel?' }, answer: { es: 'Si, podemos asignarte un entrenador personal. Algunos planes incluyen sesiones; otros se pagan aparte.', en: 'Yes, some plans include sessions, others are pay-per-session.', pt: 'Sim, alguns planos incluem sessoes, outros sao avulsos.', fr: 'Oui, certains forfaits incluent des seances.' }, category: 'personal_training' },
+        { question: { es: '¿Cuál es el horario?', en: 'What are your hours?', pt: 'Qual o horario?', fr: 'Quels sont vos horaires?' }, answer: { es: 'Atendemos de lunes a viernes de 5:00 AM a 11:00 PM y fines de semana de 7:00 AM a 8:00 PM.', en: 'Mon-Fri 5 AM-11 PM, weekends 7 AM-8 PM.', pt: 'Seg-sex 5h-23h, fim de semana 7h-20h.', fr: 'Lun-ven 5h-23h, week-end 7h-20h.' }, category: 'horarios' },
+    ],
+    services: [
+        { name: { es: 'Plan Mensual', en: 'Monthly plan', pt: 'Plano mensal', fr: 'Forfait mensuel' }, description: { es: 'Acceso ilimitado al gym + 8 clases grupales/mes', en: 'Unlimited gym + 8 group classes/month', pt: 'Acesso ilimitado + 8 aulas/mes', fr: 'Acces illimite + 8 cours/mois' }, durationMinutes: 30, price: 150000, currency: 'COP', category: 'plan' },
+        { name: { es: 'Trial 1 día', en: '1-day trial', pt: 'Trial 1 dia', fr: 'Essai 1 jour' }, description: { es: 'Prueba el gym por un día sin compromiso', en: 'Try the gym for one day, no commitment', pt: 'Experimente por um dia', fr: 'Essai sans engagement' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'trial' },
+        { name: { es: 'Personal Training (sesión)', en: 'Personal training (session)', pt: 'Personal training (sessao)', fr: 'Coaching personnel (seance)' }, description: { es: 'Sesion individual con entrenador certificado', en: 'One-on-one session with certified trainer', pt: 'Sessao individual', fr: 'Seance individuelle' }, durationMinutes: 60, price: 80000, currency: 'COP', category: 'personal_training' },
+    ],
+    businessHours: {
+        schedule: { mon: '05:00-23:00', tue: '05:00-23:00', wed: '05:00-23:00', thu: '05:00-23:00', fri: '05:00-23:00', sat: '07:00-20:00', sun: '07:00-20:00' },
+        afterHoursMessage: { es: 'Estamos cerrados. Te respondo en cuanto abramos.', en: 'We are closed. We will respond when we open.', pt: 'Estamos fechados.', fr: 'Nous sommes fermes.' },
+    },
+    sidebar: {
+        labelOverrides: {
+            crm: { es: 'Miembros', en: 'Members', pt: 'Alunos', fr: 'Membres' },
+            pipeline: { es: 'Inscripciones', en: 'Enrollments', pt: 'Matriculas', fr: 'Inscriptions' },
+            appointments: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Reservations' },
+        },
+        hiddenItems: [],
+    },
+    dashboard: {
+        kpis: [
+            { key: 'leadsToday', label: { es: 'Interesados Hoy', en: 'Prospects Today', pt: 'Interessados Hoje', fr: 'Prospects Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
+            { key: 'appointmentsToday', label: { es: 'Reservas Clases', en: 'Class Bookings', pt: 'Reservas Aulas', fr: 'Reservations Cours' }, icon: 'Dumbbell', color: '#2ecc71' },
+            { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
+            { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Cout IA' }, icon: 'DollarSign', color: '#e67e22' },
+        ],
+    },
+    bookingEnabled: true,
+};
+
 const VETERINARIA: VerticalDefinition = {
     industry: 'veterinaria',
     subTypes: [
@@ -712,6 +798,7 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     retail: RETAIL,
     technology: TECHNOLOGY,
     veterinaria: VETERINARIA,
+    gimnasios: GIMNASIOS,
     otro: OTRO,
 };
 

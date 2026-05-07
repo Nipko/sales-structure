@@ -21,7 +21,7 @@ type PlanSlug = typeof PLAN_SLUGS[number];
 const INDUSTRY_KEYS = [
     "turismo", "education", "salud", "veterinaria", "retail", "technology",
     "servicios_profesionales", "restaurantes", "inmobiliaria",
-    "automotriz", "finanzas", "moda_belleza", "otro",
+    "automotriz", "finanzas", "moda_belleza", "gimnasios", "otro",
 ];
 
 const ORG_SIZE_KEYS = ["1-10", "11-20", "21-50", "51-200", "201-1000", "1000+"];
@@ -51,6 +51,13 @@ const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
         { key: 'hospital_24h', label: 'Hospital veterinario 24h' },
         { key: 'exoticos', label: 'Animales exóticos' },
         { key: 'peluqueria_canina', label: 'Peluquería canina / felina' },
+    ],
+    gimnasios: [
+        { key: 'gimnasio_general', label: 'Gimnasio tradicional' },
+        { key: 'crossfit', label: 'Box CrossFit' },
+        { key: 'yoga_pilates', label: 'Estudio de yoga / pilates' },
+        { key: 'cycling', label: 'Cycling / spinning' },
+        { key: 'martial_arts', label: 'Artes marciales' },
     ],
     education: [
         { key: 'idiomas', label: 'Escuela de idiomas' },
@@ -126,6 +133,12 @@ const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: st
         { key: 'faq', label: 'Responder preguntas de tutores', icon: '❓' },
         { key: 'support', label: 'Triage de emergencias', icon: '🚨' },
     ],
+    gimnasios: [
+        { key: 'sales', label: 'Vender membresías', icon: '💪' },
+        { key: 'appointments', label: 'Reservar clases grupales', icon: '🧘' },
+        { key: 'faq', label: 'Información de planes y horarios', icon: '❓' },
+        { key: 'reminders', label: 'Recordatorios de renovación', icon: '🔔' },
+    ],
     moda_belleza: [
         { key: 'appointments', label: 'Reservar citas de servicios', icon: '💇' },
         { key: 'faq', label: 'Informar sobre servicios y precios', icon: '💅' },
@@ -179,6 +192,7 @@ const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: st
 const VERTICAL_AGENT_NAMES: Record<string, string> = {
     salud: 'Sofía',
     veterinaria: 'Dra. Ana',
+    gimnasios: 'Alex',
     moda_belleza: 'Luna',
     inmobiliaria: 'Carlos',
     restaurantes: 'Luca',
@@ -199,6 +213,11 @@ const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = 
         { key: 'b2c', label: 'Tutores particulares' },
         { key: 'breeders', label: 'Criaderos / refugios' },
         { key: 'b2b', label: 'Convenios corporativos' },
+    ],
+    gimnasios: [
+        { key: 'b2c', label: 'Miembros individuales' },
+        { key: 'corporate', label: 'Convenios corporativos' },
+        { key: 'fit_groups', label: 'Grupos / equipos deportivos' },
     ],
     moda_belleza: [
         { key: 'b2c', label: 'Clientes individuales' },
@@ -245,6 +264,7 @@ const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = 
 const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
     salud: 'pacientes',
     veterinaria: 'tutores',
+    gimnasios: 'miembros',
     moda_belleza: 'clientes',
     inmobiliaria: 'prospectos',
     restaurantes: 'comensales',

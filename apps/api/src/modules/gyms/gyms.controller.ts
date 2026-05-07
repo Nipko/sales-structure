@@ -1,0 +1,163 @@
+import {
+    Controller, Get, Post, Put, Delete, Param, Body, Query,
+    UseGuards, HttpCode, HttpStatus, BadRequestException,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
+import { GymsService } from './gyms.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+@ApiTags('gyms')
+@Controller('gyms')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
+export class GymsController {
+    constructor(
+        private readonly service: GymsService,
+        private readonly prisma: PrismaService,
+    ) {}
+
+    // Plans
+    @Get(':tenantId/plans')
+    async listPlans(@Param('tenantId') tenantId: string, @Query('includeInactive') incl?: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.listPlans(schemaName, incl === 'true');
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/plans')
+    async createPlan(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.createPlan(schemaName, body);
+        return { success: true, data };
+    }
+
+    @Put(':tenantId/plans/:id')
+    async updatePlan(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.updatePlan(schemaName, id, body);
+        return { success: true, data };
+    }
+
+    @Delete(':tenantId/plans/:id')
+    @HttpCode(HttpStatus.OK)
+    async deletePlan(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.service.deletePlan(schemaName, id);
+        return { success: true };
+    }
+
+    // Members
+    @Get(':tenantId/members')
+    async listMembers(
+        @Param('tenantId') tenantId: string,
+        @Query('status') status?: string,
+        @Query('search') search?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.listMembers(schemaName, {
+            status, search, limit: limit ? Number(limit) : undefined,
+        });
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/members/:id')
+    async getMember(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.getMemberById(schemaName, id);
+        if (!data) throw new BadRequestException('Member not found');
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/members')
+    async createMember(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.createMember(schemaName, body);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/members/:id/freeze')
+    async freezeMember(
+        @Param('tenantId') tenantId: string,
+        @Param('id') id: string,
+        @Body() body: { days: number },
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.freezeMember(schemaName, id, body.days);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/members/:id/unfreeze')
+    async unfreezeMember(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.unfreezeMember(schemaName, id);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/members/:id/check-in')
+    async checkIn(
+        @Param('tenantId') tenantId: string,
+        @Param('id') id: string,
+        @Body() body: { classId?: string },
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.checkInMember(schemaName, id, body.classId);
+        return { success: true, data };
+    }
+
+    // Classes
+    @Get(':tenantId/classes')
+    async listClasses(
+        @Param('tenantId') tenantId: string,
+        @Query('from') from?: string,
+        @Query('to') to?: string,
+        @Query('classType') classType?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.listClasses(schemaName, {
+            from, to, classType, limit: limit ? Number(limit) : undefined,
+        });
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/classes')
+    async createClass(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.createClass(schemaName, body);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/classes/:id/cancel')
+    async cancelClass(
+        @Param('tenantId') tenantId: string,
+        @Param('id') id: string,
+        @Body() body: { reason?: string },
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.cancelClass(schemaName, id, body.reason);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/classes/:classId/book')
+    async bookClass(
+        @Param('tenantId') tenantId: string,
+        @Param('classId') classId: string,
+        @Body() body: { memberId: string },
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.bookClass(schemaName, classId, body.memberId);
+        return { success: true, data };
+    }
+
+    @Delete(':tenantId/bookings/:bookingId')
+    @HttpCode(HttpStatus.OK)
+    async cancelBooking(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.service.cancelBooking(schemaName, bookingId);
+        return { success: true };
+    }
+}

@@ -141,6 +141,8 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/listings", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/menu", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/food-orders", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
+    { prefix: "/admin/memberships", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
+    { prefix: "/admin/classes", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/inventory", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/orders", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/catalog", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },

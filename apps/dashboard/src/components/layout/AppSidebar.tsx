@@ -40,6 +40,8 @@ import {
   Compass,
   UtensilsCrossed,
   ChefHat,
+  Dumbbell,
+  CalendarRange,
   Activity,
   TrendingUp,
   ShieldCheck,
@@ -93,6 +95,8 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "listings", href: "/admin/listings", icon: Building2, verticals: ["inmobiliaria"] },
       { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticals: ["restaurantes"] },
       { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticals: ["restaurantes"] },
+      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticals: ["gimnasios"] },
+      { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticals: ["gimnasios"] },
     ],
   },
   {

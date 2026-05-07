@@ -79,6 +79,12 @@ export class VerticalsService {
             await this.enableRestaurantsTool(schemaName);
         }
 
+        // 4g. Gimnasios: enable the gyms tool so Alex can show plans,
+        // class schedule, and let members book / freeze.
+        if (industry === 'gimnasios') {
+            await this.enableGymsTool(schemaName);
+        }
+
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
             industry,
@@ -733,6 +739,32 @@ export class VerticalsService {
             this.logger.debug('Enabled restaurants tool on default agent');
         } catch (error: any) {
             this.logger.warn(`Failed to enable restaurants tool: ${error.message}`);
+        }
+    }
+
+    /** Enable gyms tool on default agent for industry='gimnasios'. */
+    private async enableGymsTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const tools = { ...(config.tools || {}) };
+            tools.gyms = { ...(tools.gyms || {}), enabled: true };
+            const newConfig = { ...config, tools };
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+            this.logger.debug('Enabled gyms tool on default agent');
+        } catch (error: any) {
+            this.logger.warn(`Failed to enable gyms tool: ${error.message}`);
         }
     }
 }

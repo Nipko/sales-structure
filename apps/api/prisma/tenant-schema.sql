@@ -1995,3 +1995,106 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."menu_promotions" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_menu_promotions_active" ON "{{SCHEMA_NAME}}"."menu_promotions" ("is_active", "valid_to") WHERE "is_active" = true;
+
+-- =====================================================================
+-- Gimnasios vertical
+-- =====================================================================
+-- Membership plans are the catalog of what a gym sells (mensual,
+-- trimestral, anual, drop-in). Members link to a contact + an active
+-- plan with a frozen window. Fitness classes are the schedule;
+-- class_bookings tracks who reserved which class. Check-ins record
+-- physical visits for retention analytics.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."membership_plans" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "duration_days" INTEGER NOT NULL,                       -- 30, 90, 365 — used for renewal calculations
+    "price" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "class_credits_per_period" INTEGER,                     -- NULL = unlimited
+    "personal_training_credits" INTEGER DEFAULT 0,
+    "guest_passes" INTEGER DEFAULT 0,
+    "freeze_allowance_days" INTEGER DEFAULT 0,              -- max days the member can freeze per period
+    "perks" JSONB DEFAULT '[]',                             -- ['locker', 'spa', 'wifi', 'parking']
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" INTEGER DEFAULT 0,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_membership_plans_active" ON "{{SCHEMA_NAME}}"."membership_plans" ("is_active", "sort_order") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."members" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID NOT NULL,
+    "plan_id" UUID,
+    "member_number" VARCHAR(50),                            -- gym-internal ID printed on the card
+    "joined_at" DATE,
+    "current_period_start" DATE,
+    "current_period_end" DATE,
+    "frozen_from" DATE,                                     -- when frozen, period_end shifts forward
+    "frozen_until" DATE,
+    "frozen_days_used" INTEGER DEFAULT 0,
+    "class_credits_remaining" INTEGER,
+    "personal_training_remaining" INTEGER DEFAULT 0,
+    "guest_passes_remaining" INTEGER DEFAULT 0,
+    "auto_renew" BOOLEAN DEFAULT false,
+    "status" VARCHAR(20) DEFAULT 'active',                  -- active | frozen | expired | cancelled
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_members_contact" ON "{{SCHEMA_NAME}}"."members" ("contact_id");
+CREATE INDEX IF NOT EXISTS "idx_members_status" ON "{{SCHEMA_NAME}}"."members" ("status", "current_period_end") WHERE "status" IN ('active', 'frozen');
+CREATE INDEX IF NOT EXISTS "idx_members_number" ON "{{SCHEMA_NAME}}"."members" ("member_number") WHERE "member_number" IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."fitness_classes" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "class_type" VARCHAR(100),                              -- yoga, crossfit, spinning, pilates, hiit
+    "instructor_name" VARCHAR(255),
+    "instructor_user_id" UUID,
+    "scheduled_at" TIMESTAMP NOT NULL,
+    "duration_minutes" INTEGER NOT NULL DEFAULT 60,
+    "max_capacity" INTEGER NOT NULL DEFAULT 20,
+    "available_spots" INTEGER NOT NULL DEFAULT 20,
+    "room" VARCHAR(100),
+    "level" VARCHAR(50),                                    -- principiante | intermedio | avanzado
+    "credits_required" INTEGER DEFAULT 1,
+    "is_cancelled" BOOLEAN DEFAULT false,
+    "cancellation_reason" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_fitness_classes_schedule" ON "{{SCHEMA_NAME}}"."fitness_classes" ("scheduled_at" DESC) WHERE "is_cancelled" = false;
+CREATE INDEX IF NOT EXISTS "idx_fitness_classes_type" ON "{{SCHEMA_NAME}}"."fitness_classes" ("class_type", "scheduled_at") WHERE "is_cancelled" = false;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."class_bookings" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "class_id" UUID NOT NULL,
+    "member_id" UUID NOT NULL,
+    "contact_id" UUID,
+    "status" VARCHAR(20) DEFAULT 'confirmed',               -- confirmed | waitlist | cancelled | attended | no_show
+    "booked_at" TIMESTAMP DEFAULT NOW(),
+    "cancelled_at" TIMESTAMP,
+    "credits_used" INTEGER DEFAULT 1,
+    "metadata" JSONB DEFAULT '{}'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_class_bookings_unique" ON "{{SCHEMA_NAME}}"."class_bookings" ("class_id", "member_id") WHERE "status" IN ('confirmed', 'waitlist', 'attended');
+CREATE INDEX IF NOT EXISTS "idx_class_bookings_member" ON "{{SCHEMA_NAME}}"."class_bookings" ("member_id", "booked_at" DESC);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."member_check_ins" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "member_id" UUID NOT NULL,
+    "checked_in_at" TIMESTAMP DEFAULT NOW(),
+    "method" VARCHAR(20) DEFAULT 'manual',                  -- manual | qr | rfid | facial
+    "class_id" UUID,
+    "metadata" JSONB DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS "idx_member_check_ins_member" ON "{{SCHEMA_NAME}}"."member_check_ins" ("member_id", "checked_in_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_member_check_ins_date" ON "{{SCHEMA_NAME}}"."member_check_ins" ("checked_in_at" DESC);

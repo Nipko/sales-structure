@@ -42,6 +42,7 @@ import {
   ChefHat,
   Dumbbell,
   CalendarRange,
+  GraduationCap,
   Activity,
   TrendingUp,
   ShieldCheck,
@@ -97,6 +98,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticals: ["restaurantes"] },
       { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticals: ["gimnasios"] },
       { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticals: ["gimnasios"] },
+      { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticals: ["education"] },
     ],
   },
   {

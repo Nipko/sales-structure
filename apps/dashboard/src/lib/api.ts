@@ -1018,6 +1018,45 @@ export const api = {
     bookFitnessClass: (tenantId: string, classId: string, memberId: string) =>
         apiPost(`/gyms/${tenantId}/classes/${classId}/book`, { memberId }),
 
+    // ─── Education ───
+    listCourses: (tenantId: string, params?: { subject?: string; level?: string; modality?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.subject) qs.set("subject", params.subject);
+        if (params?.level) qs.set("level", params.level);
+        if (params?.modality) qs.set("modality", params.modality);
+        const q = qs.toString();
+        return apiGet(`/education/${tenantId}/courses${q ? `?${q}` : ""}`);
+    },
+    createCourse: (tenantId: string, data: any) =>
+        apiPost(`/education/${tenantId}/courses`, data),
+    updateCourse: (tenantId: string, id: string, data: any) =>
+        apiPut(`/education/${tenantId}/courses/${id}`, data),
+    deleteCourse: (tenantId: string, id: string) =>
+        apiDelete(`/education/${tenantId}/courses/${id}`),
+    listCourseCohorts: (tenantId: string, params?: { courseId?: string; status?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.courseId) qs.set("courseId", params.courseId);
+        if (params?.status) qs.set("status", params.status);
+        const q = qs.toString();
+        return apiGet(`/education/${tenantId}/cohorts${q ? `?${q}` : ""}`);
+    },
+    createCohort: (tenantId: string, data: any) =>
+        apiPost(`/education/${tenantId}/cohorts`, data),
+    cancelCohort: (tenantId: string, id: string) =>
+        apiPost(`/education/${tenantId}/cohorts/${id}/cancel`, {}),
+    listEnrollments: (tenantId: string, params?: { cohortId?: string; contactId?: string; status?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.cohortId) qs.set("cohortId", params.cohortId);
+        if (params?.contactId) qs.set("contactId", params.contactId);
+        if (params?.status) qs.set("status", params.status);
+        const q = qs.toString();
+        return apiGet(`/education/${tenantId}/enrollments${q ? `?${q}` : ""}`);
+    },
+    createEnrollment: (tenantId: string, data: any) =>
+        apiPost(`/education/${tenantId}/enrollments`, data),
+    updateEnrollment: (tenantId: string, id: string, data: any) =>
+        apiPut(`/education/${tenantId}/enrollments/${id}`, data),
+
     // ─── Real Estate Listings (inmobiliaria) ───
     listListings: (tenantId: string, params?: { transactionType?: string; status?: string }) => {
         const qs = new URLSearchParams();

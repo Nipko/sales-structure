@@ -2098,3 +2098,219 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."member_check_ins" (
 );
 CREATE INDEX IF NOT EXISTS "idx_member_check_ins_member" ON "{{SCHEMA_NAME}}"."member_check_ins" ("member_id", "checked_in_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_member_check_ins_date" ON "{{SCHEMA_NAME}}"."member_check_ins" ("checked_in_at" DESC);
+
+-- =====================================================================
+-- Education vertical (escuelas de idiomas / cursos / capacitación)
+-- =====================================================================
+-- Courses are the catalog. course_cohorts are scheduled instances of
+-- a course (specific dates + instructor + capacity). Enrollments link
+-- a contact to a cohort. placement_tests is a slim record of the
+-- nivelación stage that often precedes enrollment.
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."courses" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "subject" VARCHAR(100),                                -- ingles, frances, programacion, contabilidad
+    "level" VARCHAR(50),                                   -- A1, A2, B1, B2, principiante, intermedio, avanzado
+    "modality" VARCHAR(20) DEFAULT 'presencial',           -- presencial | online | hybrid
+    "duration_hours" INTEGER,                              -- total course hours (e.g. 60h for an A2 module)
+    "duration_weeks" INTEGER,
+    "price" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "certification" VARCHAR(255),                          -- e.g. 'Cambridge Preliminary', 'Internal certificate'
+    "prerequisites" TEXT,
+    "syllabus_url" VARCHAR(500),
+    "image_url" VARCHAR(500),
+    "is_active" BOOLEAN DEFAULT true,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_courses_subject" ON "{{SCHEMA_NAME}}"."courses" ("subject", "level") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."course_cohorts" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "course_id" UUID NOT NULL,
+    "cohort_code" VARCHAR(100),                            -- e.g. '2026-A2-MORN' for Morning batch
+    "instructor_name" VARCHAR(255),
+    "instructor_user_id" UUID,
+    "starts_at" DATE NOT NULL,
+    "ends_at" DATE,
+    "schedule" VARCHAR(255),                               -- 'Lun-Mie 18:00-20:00' free-text
+    "max_capacity" INTEGER NOT NULL DEFAULT 20,
+    "available_seats" INTEGER NOT NULL DEFAULT 20,
+    "room" VARCHAR(100),
+    "meeting_url" VARCHAR(500),                            -- for online cohorts
+    "status" VARCHAR(20) DEFAULT 'open',                   -- open | full | cancelled | finished
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_course_cohorts_course" ON "{{SCHEMA_NAME}}"."course_cohorts" ("course_id", "starts_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_course_cohorts_open" ON "{{SCHEMA_NAME}}"."course_cohorts" ("status", "starts_at") WHERE "status" = 'open';
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."enrollments" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "cohort_id" UUID NOT NULL,
+    "course_id" UUID NOT NULL,
+    "contact_id" UUID,
+    "student_name" VARCHAR(255) NOT NULL,
+    "student_email" VARCHAR(255),
+    "student_phone" VARCHAR(50),
+    "enrolled_at" TIMESTAMP DEFAULT NOW(),
+    "status" VARCHAR(20) DEFAULT 'enrolled',               -- enrolled | active | completed | dropped | refunded
+    "payment_status" VARCHAR(20) DEFAULT 'pending',        -- pending | partial | paid | refunded
+    "amount_paid" DECIMAL(10,2) DEFAULT 0,
+    "completion_percent" INTEGER DEFAULT 0,
+    "final_grade" VARCHAR(20),
+    "completed_at" DATE,
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_enrollments_cohort" ON "{{SCHEMA_NAME}}"."enrollments" ("cohort_id", "status");
+CREATE INDEX IF NOT EXISTS "idx_enrollments_contact" ON "{{SCHEMA_NAME}}"."enrollments" ("contact_id") WHERE "contact_id" IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."placement_tests" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID,
+    "subject" VARCHAR(100),
+    "scheduled_at" TIMESTAMP,
+    "completed_at" TIMESTAMP,
+    "result_level" VARCHAR(50),
+    "score" DECIMAL(5,2),
+    "test_url" VARCHAR(500),
+    "status" VARCHAR(20) DEFAULT 'pending',                -- pending | scheduled | completed | expired
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_placement_tests_contact" ON "{{SCHEMA_NAME}}"."placement_tests" ("contact_id", "created_at" DESC) WHERE "contact_id" IS NOT NULL;
+
+-- =====================================================================
+-- Seguros vertical
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."insurance_plans" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "insurance_type" VARCHAR(50) NOT NULL,                  -- vida | salud | auto | hogar | empresarial | viaje
+    "coverage_level" VARCHAR(50),                           -- basico | medio | premium
+    "monthly_premium_min" DECIMAL(10,2),                    -- starting price; final depends on quote
+    "monthly_premium_max" DECIMAL(10,2),
+    "deductible" DECIMAL(10,2),
+    "max_coverage" DECIMAL(15,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "covers" JSONB DEFAULT '[]',                            -- list of covered events / items
+    "excludes" JSONB DEFAULT '[]',
+    "min_age" INTEGER,
+    "max_age" INTEGER,
+    "is_active" BOOLEAN DEFAULT true,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_insurance_plans_type" ON "{{SCHEMA_NAME}}"."insurance_plans" ("insurance_type", "coverage_level") WHERE "is_active" = true;
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."insurance_quotes" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID,
+    "plan_id" UUID,
+    "applicant_name" VARCHAR(255),
+    "applicant_age" INTEGER,
+    "applicant_email" VARCHAR(255),
+    "applicant_phone" VARCHAR(50),
+    "applicant_data" JSONB DEFAULT '{}',                    -- type-specific: vehicle data, dependents, etc.
+    "monthly_premium" DECIMAL(10,2),
+    "annual_premium" DECIMAL(10,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "valid_until" DATE,
+    "status" VARCHAR(20) DEFAULT 'draft',                   -- draft | sent | accepted | rejected | expired
+    "agent_user_id" UUID,
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_insurance_quotes_contact" ON "{{SCHEMA_NAME}}"."insurance_quotes" ("contact_id", "status", "created_at" DESC) WHERE "contact_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_insurance_quotes_status" ON "{{SCHEMA_NAME}}"."insurance_quotes" ("status", "created_at" DESC);
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."insurance_policies" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "policy_number" VARCHAR(100) NOT NULL UNIQUE,
+    "contact_id" UUID,
+    "plan_id" UUID,
+    "quote_id" UUID,
+    "policyholder_name" VARCHAR(255) NOT NULL,
+    "monthly_premium" DECIMAL(10,2) NOT NULL,
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "starts_at" DATE NOT NULL,
+    "ends_at" DATE,
+    "status" VARCHAR(20) DEFAULT 'active',                  -- active | suspended | expired | cancelled
+    "next_payment_at" DATE,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_insurance_policies_status" ON "{{SCHEMA_NAME}}"."insurance_policies" ("status", "next_payment_at");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."insurance_claims" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "policy_id" UUID NOT NULL,
+    "claim_number" VARCHAR(100),
+    "incident_type" VARCHAR(100),
+    "incident_at" DATE,
+    "description" TEXT,
+    "claimed_amount" DECIMAL(15,2),
+    "approved_amount" DECIMAL(15,2),
+    "status" VARCHAR(30) DEFAULT 'submitted',               -- submitted | reviewing | approved | paid | rejected
+    "filed_via" VARCHAR(20) DEFAULT 'whatsapp',
+    "documents" JSONB DEFAULT '[]',
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_insurance_claims_policy" ON "{{SCHEMA_NAME}}"."insurance_claims" ("policy_id", "created_at" DESC);
+
+-- =====================================================================
+-- Tier 3 — Home services dispatch
+-- =====================================================================
+-- Generic service request table for home-services tenants (plomería,
+-- electricidad, fumigación, limpieza). Other Tier 3 verticals (pet
+-- services, photography) reuse the existing services + appointments
+-- engine — no new tables for those.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_requests" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID,
+    "conversation_id" UUID,
+    "service_type" VARCHAR(100) NOT NULL,                   -- plomeria | electricidad | fumigacion | limpieza | jardineria | other
+    "urgency" VARCHAR(20) DEFAULT 'normal',                 -- emergencia | alta | normal | flexible
+    "customer_name" VARCHAR(255),
+    "customer_phone" VARCHAR(50),
+    "address" TEXT,
+    "address_notes" TEXT,
+    "city" VARCHAR(100),
+    "issue_description" TEXT,
+    "preferred_date" DATE,
+    "preferred_time_window" VARCHAR(50),                    -- 'mañana', 'tarde', '14:00-16:00'
+    "estimated_duration_minutes" INTEGER,
+    "estimated_cost" DECIMAL(10,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "assigned_technician_id" UUID,
+    "assigned_technician_name" VARCHAR(255),
+    "scheduled_at" TIMESTAMP,
+    "completed_at" TIMESTAMP,
+    "status" VARCHAR(30) DEFAULT 'pending',                 -- pending | quoted | scheduled | dispatched | in_progress | completed | cancelled
+    "photos" JSONB DEFAULT '[]',
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_service_requests_status" ON "{{SCHEMA_NAME}}"."service_requests" ("status", "scheduled_at");
+CREATE INDEX IF NOT EXISTS "idx_service_requests_contact" ON "{{SCHEMA_NAME}}"."service_requests" ("contact_id", "created_at" DESC) WHERE "contact_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_service_requests_urgency" ON "{{SCHEMA_NAME}}"."service_requests" ("urgency", "scheduled_at") WHERE "status" IN ('pending', 'scheduled', 'dispatched');

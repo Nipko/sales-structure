@@ -102,6 +102,7 @@
       "foodOrders": "Commandes",
       "memberships": "Adhésions",
       "classes": "Cours",
+      "courses": "Programmes",
       "platformUsage": "Utilisation par tenant",
       "platformHealth": "Santé du système",
       "platformAudit": "Audit",
@@ -3927,6 +3928,29 @@
     "purgeTypePrompt": "Pour confirmer, tapez le slug du tenant : {slug}",
     "purgeConfirm": "Supprimer définitivement",
     "purgeSuccess": "Tenant supprimé : {channels} canaux déconnectés, {files} fichiers supprimés"
+  },
+  "courses": {
+    "title": "Programmes et sessions",
+    "subtitle": "Catalogue de programmes, sessions programmées et inscriptions des étudiants.",
+    "addCourse": "Créer un programme", "addCohort": "Session",
+    "coursesTab": "Programmes", "cohortsTab": "Sessions", "enrollmentsTab": "Inscriptions",
+    "noCourses": "Aucun programme au catalogue", "noCohorts": "Aucune session programmée", "noEnrollments": "Aucune inscription enregistrée",
+    "deleteCourseConfirm": "Supprimer ce programme ? Les sessions existantes ne sont pas affectées.",
+    "cancelCohortConfirm": "Annuler cette session ? Les inscriptions restent ouvertes au remboursement.",
+    "weeks": "semaines", "hours": "heures",
+    "course": "Programme", "instructor": "Instructeur", "schedule": "Horaire", "starts": "Début", "seats": "Places", "status": "Statut",
+    "student": "Étudiant", "payment": "Paiement", "progress": "Progrès", "enrolledAt": "Inscrit",
+    "newCourse": "Nouveau programme", "editCourse": "Modifier le programme",
+    "courseName": "Nom du programme", "description": "Description",
+    "subject": "Matière", "level": "Niveau",
+    "durationHoursPlaceholder": "Heures", "durationWeeksPlaceholder": "Semaines",
+    "price": "Prix", "certificationPlaceholder": "Certification",
+    "newCohort": "Nouvelle session", "cohortCodePlaceholder": "Code (ex. 2026-A2-MATIN)",
+    "instructorPlaceholder": "Instructeur", "schedulePlaceholder": "Horaire (ex. Lun-Mer 18h-20h)",
+    "startsAt": "Début", "endsAt": "Fin", "capacity": "Capacité", "room": "Salle",
+    "cohortStatus": {
+      "open": "Ouverte", "full": "Complète", "cancelled": "Annulée", "finished": "Terminée"
+    }
   },
   "memberships": {
     "title": "Adhésions",

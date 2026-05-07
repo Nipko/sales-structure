@@ -64,6 +64,7 @@ import { ListingsModule } from './modules/listings/listings.module';
 import { PetsModule } from './modules/pets/pets.module';
 import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 import { GymsModule } from './modules/gyms/gyms.module';
+import { EducationModule } from './modules/education/education.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -185,6 +186,7 @@ import llmConfig from './config/llm.config';
         PetsModule,
         RestaurantsModule,
         GymsModule,
+        EducationModule,
     ],
 })
 export class AppModule { }

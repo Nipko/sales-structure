@@ -102,6 +102,7 @@
       "foodOrders": "Pedidos",
       "memberships": "Matrículas",
       "classes": "Aulas",
+      "courses": "Cursos",
       "platformUsage": "Uso por tenant",
       "platformHealth": "Saúde do sistema",
       "platformAudit": "Auditoria",
@@ -3927,6 +3928,29 @@
     "purgeTypePrompt": "Para confirmar, digite o slug do tenant: {slug}",
     "purgeConfirm": "Excluir permanentemente",
     "purgeSuccess": "Tenant excluído: {channels} canais desconectados, {files} arquivos removidos"
+  },
+  "courses": {
+    "title": "Cursos e turmas",
+    "subtitle": "Catálogo de cursos, turmas programadas e matrículas de estudantes.",
+    "addCourse": "Criar curso", "addCohort": "Turma",
+    "coursesTab": "Cursos", "cohortsTab": "Turmas", "enrollmentsTab": "Matrículas",
+    "noCourses": "Sem cursos no catálogo", "noCohorts": "Sem turmas programadas", "noEnrollments": "Sem matrículas registradas",
+    "deleteCourseConfirm": "Remover este curso? Turmas existentes não são afetadas.",
+    "cancelCohortConfirm": "Cancelar esta turma? Matrículas ficam abertas para reembolso.",
+    "weeks": "semanas", "hours": "horas",
+    "course": "Curso", "instructor": "Instrutor", "schedule": "Horário", "starts": "Início", "seats": "Vagas", "status": "Status",
+    "student": "Aluno", "payment": "Pagamento", "progress": "Progresso", "enrolledAt": "Matriculado",
+    "newCourse": "Novo curso", "editCourse": "Editar curso",
+    "courseName": "Nome do curso", "description": "Descrição",
+    "subject": "Matéria", "level": "Nível",
+    "durationHoursPlaceholder": "Horas", "durationWeeksPlaceholder": "Semanas",
+    "price": "Preço", "certificationPlaceholder": "Certificação",
+    "newCohort": "Nova turma", "cohortCodePlaceholder": "Código (ex. 2026-A2-MANHÃ)",
+    "instructorPlaceholder": "Instrutor", "schedulePlaceholder": "Horário (ex. Seg-Qua 18h-20h)",
+    "startsAt": "Início", "endsAt": "Término", "capacity": "Capacidade", "room": "Sala",
+    "cohortStatus": {
+      "open": "Aberta", "full": "Lotada", "cancelled": "Cancelada", "finished": "Finalizada"
+    }
   },
   "memberships": {
     "title": "Matrículas",

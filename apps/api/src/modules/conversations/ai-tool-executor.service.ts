@@ -12,6 +12,7 @@ import { ListingsService } from '../listings/listings.service';
 import { PetsService } from '../pets/pets.service';
 import { RestaurantsService } from '../restaurants/restaurants.service';
 import { GymsService } from '../gyms/gyms.service';
+import { EducationService } from '../education/education.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -36,6 +37,7 @@ export class AIToolExecutorService {
         private petsService: PetsService,
         private restaurantsService: RestaurantsService,
         private gymsService: GymsService,
+        private educationService: EducationService,
     ) { }
 
     /**
@@ -176,6 +178,19 @@ export class AIToolExecutorService {
 
                 case 'freeze_membership':
                     return this.freezeMembershipTool(schemaName, args);
+
+                // ── Education tools ───────────────────────────────
+                case 'get_courses':
+                    return this.getCoursesTool(schemaName, args);
+
+                case 'get_course_schedule':
+                    return this.getCourseScheduleTool(schemaName, args);
+
+                case 'enroll_student':
+                    return this.enrollStudentTool(schemaName, contactId, args);
+
+                case 'get_placement_test_link':
+                    return this.getPlacementTestLinkTool(schemaName, contactId, args);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -1675,6 +1690,119 @@ export class AIToolExecutorService {
                 frozenFrom: member.frozen_from,
                 frozenUntil: member.frozen_until,
                 message: `Membresía congelada por ${args.days} días.`,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Education tools ───────────────────────────────────────────
+
+    private async getCoursesTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const courses = await this.educationService.listCourses(schemaName, {
+                subject: args.subject,
+                level: args.level,
+                modality: args.modality,
+            });
+            if (!courses.length) return { courses: [], message: 'Sin cursos que coincidan con los criterios.' };
+            return {
+                count: courses.length,
+                courses: courses.slice(0, 20).map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    description: c.description,
+                    subject: c.subject,
+                    level: c.level,
+                    modality: c.modality,
+                    durationHours: c.duration_hours,
+                    durationWeeks: c.duration_weeks,
+                    price: Number(c.price),
+                    currency: c.currency,
+                    certification: c.certification,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getCourseScheduleTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const cohorts = await this.educationService.upcomingCohorts(schemaName, {
+                subject: args.subject,
+                level: args.level,
+                modality: args.modality,
+                daysAhead: args.daysAhead,
+            });
+            if (!cohorts.length) {
+                return { cohorts: [], message: 'No hay cohortes abiertas en el rango solicitado. Sugerir entrar a lista de espera.' };
+            }
+            return {
+                count: cohorts.length,
+                cohorts: cohorts.map(c => ({
+                    cohortId: c.cohort_id,
+                    courseId: c.course_id,
+                    courseName: c.course_name,
+                    subject: c.subject,
+                    level: c.level,
+                    modality: c.modality,
+                    startsAt: c.starts_at,
+                    endsAt: c.ends_at,
+                    schedule: c.schedule,
+                    availableSeats: c.available_seats,
+                    maxCapacity: c.max_capacity,
+                    durationHours: c.duration_hours,
+                    durationWeeks: c.duration_weeks,
+                    price: Number(c.price),
+                    currency: c.currency,
+                    certification: c.certification,
+                })),
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async enrollStudentTool(schemaName: string, contactId: string, args: any): Promise<any> {
+        try {
+            const enrollment = await this.educationService.enrollStudent(schemaName, {
+                cohortId: args.cohortId,
+                contactId,
+                studentName: args.studentName,
+                studentEmail: args.studentEmail,
+                studentPhone: args.studentPhone,
+            });
+            return {
+                enrollmentId: enrollment.id,
+                cohortId: enrollment.cohort_id,
+                status: enrollment.status,
+                paymentStatus: enrollment.payment_status,
+                message: 'Inscripción registrada. Pendiente de pago para confirmar el cupo.',
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async getPlacementTestLinkTool(schemaName: string, contactId: string, args: any): Promise<any> {
+        try {
+            // Look up existing test for the contact first
+            let test = await this.educationService.getPlacementTestForContact(schemaName, contactId);
+            if (!test) {
+                test = await this.educationService.createPlacementTest(schemaName, {
+                    contactId,
+                    subject: args.subject,
+                });
+            }
+            return {
+                testId: test.id,
+                testUrl: test.test_url || null,
+                status: test.status,
+                resultLevel: test.result_level || null,
+                message: test.test_url
+                    ? `Toma el test aquí: ${test.test_url}`
+                    : 'Test pendiente de asignación de URL — pídele al equipo académico que la cargue.',
             };
         } catch (e: any) {
             return { error: e.message };

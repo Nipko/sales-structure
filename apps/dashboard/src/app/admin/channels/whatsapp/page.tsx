@@ -102,9 +102,17 @@ export default function WhatsAppSetupPage() {
     const handleDisconnect = async () => {
         setDisconnecting(true);
         try {
-            await api.fetch("/channels/whatsapp/disconnect", { method: "POST" });
+            const res = await api.fetch("/channels/whatsapp/disconnect", { method: "POST" });
             setShowDisconnectModal(false);
-            setMessage({ type: "success", text: t("whatsapp.disconnectSuccess") });
+            // The backend now returns providerOk to tell us whether the
+            // remote provider (Meta) actually accepted the unsubscribe.
+            // false = BD is updated but provider may keep sending webhooks
+            //         until the user reviews the integration manually.
+            if (res?.providerOk === false) {
+                setMessage({ type: "warning", text: res.message || t("whatsapp.disconnectPartial") });
+            } else {
+                setMessage({ type: "success", text: t("whatsapp.disconnectSuccess") });
+            }
             await loadData();
         } catch (err: any) {
             setMessage({ type: "error", text: err.message || tc("connectionError") });
@@ -175,6 +183,8 @@ export default function WhatsAppSetupPage() {
                         "p-4 rounded-xl mb-6 text-sm border",
                         message.type === "error"
                             ? "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
+                            : message.type === "warning"
+                            ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-900"
                             : "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
                     )}
                 >

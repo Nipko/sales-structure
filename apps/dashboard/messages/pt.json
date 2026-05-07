@@ -1548,7 +1548,8 @@
     "whatsapp": {
       "disconnect": "Desconectar",
       "disconnectConfirm": "Tem certeza que deseja desconectar o WhatsApp? As mensagens não serão mais recebidas.",
-      "disconnectSuccess": "WhatsApp desconectado com sucesso."
+      "disconnectSuccess": "WhatsApp desconectado com sucesso.",
+      "disconnectPartial": "WhatsApp marcado como desconectado na plataforma, mas o Meta pode continuar enviando webhooks. Revise a integração no Meta Business Suite."
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -1567,6 +1568,7 @@
       "disconnect": "Desconectar",
       "disconnectConfirm": "Tem certeza que deseja desconectar o Instagram?",
       "disconnectSuccess": "Instagram desconectado com sucesso.",
+      "disconnectPartial": "Instagram marcado como desconectado na plataforma, mas as permissões podem não ter sido revogadas no Meta. Revise a integração manualmente.",
       "redirecting": "Redirecionando...",
       "backToSetup": "Voltar à configuração",
       "closeWindow": "Você pode fechar esta janela."
@@ -1587,7 +1589,8 @@
       "disconnectDesc": "As mensagens desta página deixarão de ser recebidas",
       "disconnect": "Desconectar",
       "disconnectConfirm": "Tem certeza que deseja desconectar o Messenger?",
-      "disconnectSuccess": "Messenger desconectado com sucesso."
+      "disconnectSuccess": "Messenger desconectado com sucesso.",
+      "disconnectPartial": "Messenger marcado como desconectado na plataforma, mas algumas páginas podem não ter sido cancelas no Meta. Revise a integração manualmente."
     },
     "messengerDesc": "Messenger via integracao de pagina do Facebook",
     "telegramDesc": "Telegram Bot API — mensagens diretas automatizadas",

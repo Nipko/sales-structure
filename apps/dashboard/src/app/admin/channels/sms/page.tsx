@@ -20,6 +20,7 @@ export default function SmsChannelPage() {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [warning, setWarning] = useState("");
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -60,12 +61,21 @@ export default function SmsChannelPage() {
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
+    setWarning(""); setError("");
     try {
-      await fetch(`${API_URL}/channels/sms/disconnect`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      const res = await fetch(`${API_URL}/channels/sms/disconnect`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("accessToken") || localStorage.getItem("token")}` },
       });
+      const data = await res.json().catch(() => ({}));
       setShowDisconnectModal(false);
-      setStatus(null); setSuccess(t("smsDisconnected"));
+      setStatus(null);
+      // providerOk false = our DB is updated but Twilio webhook is still
+      // configured (or some pages failed). Surface that to the user.
+      if (data?.providerOk === false) {
+        setWarning(data.message || t("smsDisconnected"));
+      } else {
+        setSuccess(t("smsDisconnected"));
+      }
     } catch {}
     setDisconnecting(false);
   };
@@ -113,6 +123,13 @@ export default function SmsChannelPage() {
         <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm">
           <CheckCircle2 size={16} /> {success}
           <button onClick={() => setSuccess("")} className="ml-auto text-xs hover:underline bg-transparent border-none cursor-pointer text-emerald-500">{t("dismiss")}</button>
+        </div>
+      )}
+      {warning && (
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 text-sm">
+          <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+          <div className="flex-1">{warning}</div>
+          <button onClick={() => setWarning("")} className="text-xs hover:underline bg-transparent border-none cursor-pointer text-amber-700 dark:text-amber-400 flex-shrink-0">{t("dismiss")}</button>
         </div>
       )}
 

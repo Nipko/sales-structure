@@ -115,9 +115,13 @@ export default function InstagramSetupPage() {
         setDisconnecting(true);
         setMessage({ type: "", text: "" });
         try {
-            await api.fetch("/channels/instagram/disconnect", { method: "DELETE" });
+            const res = await api.fetch("/channels/instagram/disconnect", { method: "DELETE" });
             setShowDisconnectModal(false);
-            setMessage({ type: "success", text: t("instagram.disconnectSuccess") });
+            if (res?.providerOk === false) {
+                setMessage({ type: "warning", text: res.message || t("instagram.disconnectPartial") });
+            } else {
+                setMessage({ type: "success", text: t("instagram.disconnectSuccess") });
+            }
             await loadData();
         } catch (err: any) {
             setMessage({ type: "error", text: err.message || tc("connectionError") });
@@ -195,6 +199,8 @@ export default function InstagramSetupPage() {
                         "p-4 rounded-xl mb-6 text-sm border",
                         message.type === "error"
                             ? "bg-[rgba(255,71,87,0.1)] text-[var(--danger)] border-[rgba(255,71,87,0.2)]"
+                            : message.type === "warning"
+                            ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-900"
                             : "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
                     )}
                 >

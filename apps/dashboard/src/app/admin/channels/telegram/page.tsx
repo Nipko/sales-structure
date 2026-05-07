@@ -36,6 +36,7 @@ export default function TelegramSetupPage() {
     const [disconnecting, setDisconnecting] = useState(false);
     const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
     const [error, setError] = useState("");
+    const [warning, setWarning] = useState("");
     const [step, setStep] = useState(1);
     const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
@@ -93,12 +94,19 @@ export default function TelegramSetupPage() {
 
     const handleDisconnect = async () => {
         setDisconnecting(true);
+        setWarning("");
         try {
-            await api.fetch("/channels/telegram/disconnect", { method: "DELETE" });
+            const res = await api.fetch("/channels/telegram/disconnect", { method: "DELETE" });
             setShowDisconnectModal(false);
             setStatus(null);
             setStep(1);
             setTestResult(null);
+            // If Telegram didn't actually accept deleteWebhook (token expired,
+            // bot revoked, etc.) we still flipped is_active in our DB but the
+            // bot might keep posting messages somewhere else. Surface that.
+            if (res?.providerOk === false) {
+                setWarning(res.message || tc("connectionError"));
+            }
         } catch { /* ignore */ }
         setDisconnecting(false);
     };
@@ -132,6 +140,16 @@ export default function TelegramSetupPage() {
                         {t("connected")}
                     </div>
                 </div>
+
+                {warning && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 text-sm mb-4">
+                        <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">{warning}</div>
+                        <button onClick={() => setWarning("")} className="text-xs hover:underline bg-transparent border-none cursor-pointer text-amber-700 dark:text-amber-400 flex-shrink-0">
+                            {tc("dismiss") || "Cerrar"}
+                        </button>
+                    </div>
+                )}
 
                 {/* Bot Card */}
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">

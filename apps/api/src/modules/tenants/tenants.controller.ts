@@ -1,7 +1,10 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Param, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { TenantsService } from './tenants.service';
+import { TenantThrottleService, QuotaOverrides } from '../throttle/tenant-throttle.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
@@ -27,7 +30,12 @@ class UpdateTenantDto {
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @ApiBearerAuth()
 export class TenantsController {
-    constructor(private tenantsService: TenantsService) { }
+    constructor(
+        private tenantsService: TenantsService,
+        private throttleService: TenantThrottleService,
+        private llmRouter: LLMRouterService,
+        private prisma: PrismaService,
+    ) { }
 
     @Post()
     @Roles('super_admin')
@@ -69,6 +77,36 @@ export class TenantsController {
     async getPlatformHealth() {
         const data = await this.tenantsService.getPlatformHealth();
         return { success: true, data };
+    }
+
+    @Get('llm-stats')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'LLM usage stats — by provider, by tenant, by day' })
+    async getLlmStats(
+        @Query('days') days = 7,
+        @Query('tenantId') tenantId?: string,
+    ) {
+        const until = new Date();
+        const since = new Date();
+        since.setDate(since.getDate() - Number(days));
+        const data = await this.llmRouter.getStats({ since, until, tenantId });
+
+        // Hydrate tenant names for byTenant breakdown
+        const tenantIds = data.byTenant.map(t => t.tenantId);
+        const tenants = tenantIds.length
+            ? await this.prisma.tenant.findMany({
+                where: { id: { in: tenantIds } },
+                select: { id: true, name: true },
+            }).catch(() => [])
+            : [];
+        const nameMap = new Map(tenants.map((t: any) => [t.id, t.name]));
+        return {
+            success: true,
+            data: {
+                ...data,
+                byTenant: data.byTenant.map(t => ({ ...t, tenantName: nameMap.get(t.tenantId) || '—' })),
+            },
+        };
     }
 
     @Get('audit-logs')
@@ -161,5 +199,38 @@ export class TenantsController {
     async deactivate(@Param('id') id: string) {
         const tenant = await this.tenantsService.deactivate(id);
         return { success: true, data: tenant };
+    }
+
+    @Get(':id/quota-overrides')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Get tenant quota overrides + current usage' })
+    async getQuotaOverrides(@Param('id') id: string) {
+        const overrides = await this.throttleService.getQuotaOverrides(id);
+        const [automation, outbound, broadcast, features] = await Promise.all([
+            this.throttleService.getUsage(id, 'automation'),
+            this.throttleService.getUsage(id, 'outbound'),
+            this.throttleService.getUsage(id, 'broadcast'),
+            this.throttleService.getPlanFeatures(id),
+        ]);
+        return {
+            success: true,
+            data: {
+                overrides,
+                features,  // maxAgents/maxCalendars (already merged with overrides)
+                usage: { automation, outbound, broadcast },
+            },
+        };
+    }
+
+    @Put(':id/quota-overrides')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Set tenant quota overrides (super_admin)' })
+    async setQuotaOverrides(
+        @Param('id') id: string,
+        @Body() body: QuotaOverrides,
+        @CurrentUser() user: any,
+    ) {
+        const result = await this.throttleService.setQuotaOverrides(id, body, user?.email || user?.sub);
+        return { success: true, data: result };
     }
 }

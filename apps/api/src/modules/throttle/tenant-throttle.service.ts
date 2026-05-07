@@ -12,6 +12,12 @@ import { RedisService } from '../redis/redis.service';
  *   starter    →   50 automation/h,   200 outbound/h
  *   pro        →  500 automation/h,  2000 outbound/h
  *   enterprise → 5000 automation/h, 20000 outbound/h
+ *
+ * Override mechanism:
+ * super_admin can set per-tenant overrides at `tenant.settings.quotaOverrides`
+ * to bump any limit above the plan default — useful for enterprise tenants
+ * with traffic spikes or for testing without changing pricing tier. Pass
+ * -1 to mean unlimited; omit a key to fall back to the plan default.
  */
 
 type ActionType = 'automation' | 'outbound' | 'broadcast';
@@ -22,6 +28,20 @@ interface PlanLimits {
     broadcast: number;    // max broadcast messages per hour
     priority: number;     // BullMQ job priority (1=highest)
     maxPendingJobs: number; // max jobs queued per tenant
+}
+
+export interface QuotaOverrides {
+    automation?: number;
+    outbound?: number;
+    broadcast?: number;
+    priority?: number;
+    maxPendingJobs?: number;
+    maxAgents?: number;
+    maxCalendars?: number;
+    /** Optional metadata for the audit trail */
+    reason?: string;
+    setBy?: string;
+    setAt?: string;
 }
 
 const PLAN_LIMITS: Record<string, PlanLimits> = {
@@ -51,15 +71,36 @@ export class TenantThrottleService {
     ) {}
 
     /**
+     * Resolve effective limits for a tenant (plan defaults merged with overrides).
+     */
+    private async resolveLimits(tenantId: string): Promise<{ plan: string; limits: PlanLimits; overrides: QuotaOverrides }> {
+        const plan = await this.getTenantPlan(tenantId);
+        const planDefaults = PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN];
+        const overrides = await this.getQuotaOverrides(tenantId);
+        const merged: PlanLimits = {
+            automation: overrides.automation ?? planDefaults.automation,
+            outbound: overrides.outbound ?? planDefaults.outbound,
+            broadcast: overrides.broadcast ?? planDefaults.broadcast,
+            priority: overrides.priority ?? planDefaults.priority,
+            maxPendingJobs: overrides.maxPendingJobs ?? planDefaults.maxPendingJobs,
+        };
+        // -1 means unlimited — convert to Infinity for safe comparisons
+        for (const k of ['automation', 'outbound', 'broadcast', 'maxPendingJobs'] as const) {
+            if (merged[k] === -1) merged[k] = Number.POSITIVE_INFINITY;
+        }
+        return { plan, limits: merged, overrides };
+    }
+
+    /**
      * Check if a tenant has exceeded their rate limit for a given action.
      * Returns true if the action should be BLOCKED.
      */
     async isLimited(tenantId: string, action: ActionType): Promise<boolean> {
-        const plan = await this.getTenantPlan(tenantId);
-        const limits = PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN];
+        const { plan, limits } = await this.resolveLimits(tenantId);
         const limit = limits[action];
 
         if (!limit) return false;
+        if (limit === Number.POSITIVE_INFINITY) return false;
 
         const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
         const current = await this.redis.incrementRateLimit(key, WINDOW_SECONDS);
@@ -75,39 +116,101 @@ export class TenantThrottleService {
     }
 
     /**
-     * Get the BullMQ job priority for a tenant based on their plan.
-     * Lower number = higher priority.
+     * Get the BullMQ job priority for a tenant based on their plan + overrides.
      */
     async getPriority(tenantId: string): Promise<number> {
-        const plan = await this.getTenantPlan(tenantId);
-        return (PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN]).priority;
+        const { limits } = await this.resolveLimits(tenantId);
+        return limits.priority;
     }
 
     /**
      * Get max pending jobs allowed for a tenant.
      */
     async getMaxPendingJobs(tenantId: string): Promise<number> {
-        const plan = await this.getTenantPlan(tenantId);
-        return (PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN]).maxPendingJobs;
+        const { limits } = await this.resolveLimits(tenantId);
+        return limits.maxPendingJobs;
     }
 
     /**
      * Get current usage count for a tenant + action in the current window.
      */
-    async getUsage(tenantId: string, action: ActionType): Promise<{ current: number; limit: number; plan: string }> {
-        const plan = await this.getTenantPlan(tenantId);
-        const limits = PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN];
+    async getUsage(tenantId: string, action: ActionType): Promise<{ current: number; limit: number; plan: string; overridden: boolean }> {
+        const { plan, limits, overrides } = await this.resolveLimits(tenantId);
         const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
         const current = Number(await this.redis.get(key) || 0);
-        return { current, limit: limits[action], plan };
+        return {
+            current,
+            limit: limits[action] === Number.POSITIVE_INFINITY ? -1 : limits[action],
+            plan,
+            overridden: overrides[action] !== undefined,
+        };
     }
 
     /**
-     * Get plan feature limits (max agents, templates, custom prompt)
+     * Get plan feature limits (max agents, templates, custom prompt) merged
+     * with tenant overrides.
      */
     async getPlanFeatures(tenantId: string): Promise<typeof PLAN_FEATURES[string]> {
         const plan = await this.getTenantPlan(tenantId);
-        return PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
+        const base = PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
+        const overrides = await this.getQuotaOverrides(tenantId);
+        return {
+            maxAgents: overrides.maxAgents ?? base.maxAgents,
+            maxCalendars: overrides.maxCalendars ?? base.maxCalendars,
+            templates: base.templates,
+            customPrompt: base.customPrompt,
+        };
+    }
+
+    // ── Quota override management (super_admin) ────────────────────
+
+    /**
+     * Read tenant's quota overrides from settings.quotaOverrides JSONB.
+     */
+    async getQuotaOverrides(tenantId: string): Promise<QuotaOverrides> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings as any) || {};
+            return (settings.quotaOverrides || {}) as QuotaOverrides;
+        } catch {
+            return {};
+        }
+    }
+
+    /**
+     * Persist quota overrides for a tenant. Pass an empty object to clear all.
+     * Invalidates the plan cache so the new limits take effect immediately.
+     */
+    async setQuotaOverrides(tenantId: string, overrides: QuotaOverrides, setBy?: string): Promise<QuotaOverrides> {
+        const existing = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const settings = (existing?.settings as any) || {};
+        const stamped: QuotaOverrides = {
+            ...overrides,
+            setBy: setBy || 'super_admin',
+            setAt: new Date().toISOString(),
+        };
+        // Strip undefined/null entries (except metadata) so toggling back to
+        // plan default is a clean delete, not a stored 'undefined' that
+        // confuses the merge logic.
+        for (const k of ['automation', 'outbound', 'broadcast', 'priority', 'maxPendingJobs', 'maxAgents', 'maxCalendars'] as const) {
+            if (stamped[k] === null || stamped[k] === undefined || (typeof stamped[k] === 'number' && Number.isNaN(stamped[k] as any))) {
+                delete stamped[k];
+            }
+        }
+        settings.quotaOverrides = stamped;
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { settings },
+        });
+        // Invalidate plan cache (which is implicitly the limits cache)
+        await this.redis.del(`tenant_plan:${tenantId}`);
+        return stamped;
     }
 
     /**

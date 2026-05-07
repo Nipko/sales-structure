@@ -170,6 +170,7 @@ export class AgentTestService {
                 temperature: config.llm?.temperature ?? 0.7,
                 tools: tools.length > 0 ? tools : undefined,
                 routingFactors: { ticketValue: 50, complexity: 50, conversationStage: 50, sentiment: 50, intentType: 50 },
+                tenantId,
             });
 
             totalInputTokens += (response as any).usage?.inputTokens ?? (response as any).usage?.prompt_tokens ?? 0;

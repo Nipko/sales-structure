@@ -90,6 +90,7 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/health", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/usage", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/audit", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/llm-stats", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/platform", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/ai-providers", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/ai-config", roles: [ROLE_KEYS.SUPER_ADMIN] },

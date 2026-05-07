@@ -511,6 +511,7 @@ export class ConversationsService {
                 messages: [{ role: 'user', content: `Rewrite naturally:\n${text}` }],
                 systemPrompt: `You are ${personaName}. Rewrite this after-hours message in ${lang}. Be warm and concise.`,
                 temperature: 0.7,
+                tenantId,
             });
             text = result.content || text;
         } catch {} // Fallback to raw message
@@ -961,6 +962,7 @@ export class ConversationsService {
                         sentiment,
                         intentType: complexity,
                     },
+                    tenantId,
                 });
 
                 // Check if LLM wants to call tools

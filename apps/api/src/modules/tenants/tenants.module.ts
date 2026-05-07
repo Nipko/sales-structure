@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
 import { PlatformStatusController } from './platform-status.controller';
+import { AIModule } from '../ai/ai.module';
 
 @Module({
     imports: [
@@ -13,6 +14,7 @@ import { PlatformStatusController } from './platform-status.controller';
             { name: 'nurturing' },
             { name: 'conversation-snooze' },
         ),
+        AIModule,
     ],
     controllers: [TenantsController, PlatformStatusController],
     providers: [TenantsService],

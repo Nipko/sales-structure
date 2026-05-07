@@ -2,6 +2,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModelTier, RoutingFactors, RoutingDecision, RoutingWeights, ChatMessage, ToolDefinition, ToolCall } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { RedisService } from '../../redis/redis.service';
 
 interface ModelConfig {
     id: string;
@@ -40,7 +41,8 @@ export class LLMRouterService {
 
     constructor(
         private configService: ConfigService,
-        @Inject('LLM_PROVIDERS') private providers: ILLMProvider[]
+        @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
+        private redis: RedisService,
     ) { }
 
     /**
@@ -55,9 +57,16 @@ export class LLMRouterService {
     }
 
     /**
-     * Execute completion against the dynamically selected model
+     * Execute completion against the dynamically selected model.
+     * If tenantId is supplied, usage stats (calls, tokens, cost, latency)
+     * are persisted to Redis under the daily aggregation key so the
+     * super_admin observability page can show per-tenant LLM consumption.
      */
-    async execute(options: LLMRequestOptions & { routingFactors?: RoutingFactors, allowedTiers?: ModelTier[] }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
+    async execute(options: LLMRequestOptions & {
+        routingFactors?: RoutingFactors;
+        allowedTiers?: ModelTier[];
+        tenantId?: string;
+    }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
         let modelConfig: ModelConfig | undefined;
         let routingDecision: RoutingDecision | undefined;
 
@@ -76,14 +85,162 @@ export class LLMRouterService {
 
         options.model = modelConfig.id;
         const provider = this.getProvider(modelConfig.provider);
-        
         const startTime = Date.now();
-        const response = await provider.generate(options);
+        let response: LLMResponse;
+        let errored = false;
+        try {
+            response = await provider.generate(options);
+        } catch (e) {
+            errored = true;
+            const durationMs = Date.now() - startTime;
+            this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(() => {});
+            throw e;
+        }
         const durationMs = Date.now() - startTime;
-        
+
         this.logger.log(`[LLM] Generated via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
+        // Fire-and-forget — never block the caller on telemetry
+        this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, errored).catch(err => {
+            this.logger.warn(`Failed to track LLM stats: ${err.message}`);
+        });
 
         return { ...response, routingDecision };
+    }
+
+    /**
+     * Persist a per-tenant per-provider per-day rollup of LLM usage to Redis.
+     * Buckets:
+     *   llm:stats:{tenantId}:{date}:{provider}:{counter}
+     * Counters: calls, errors, tokens_in, tokens_out, cost_centi_usd,
+     * latency_sum_ms (used to compute avg latency = sum / calls).
+     *
+     * Keys auto-expire 90 days after creation. Price data lives in cents
+     * × 100 so we keep 2 decimals of precision via INCRBY (integers only).
+     */
+    private async trackStats(
+        tenantId: string | undefined,
+        modelConfig: ModelConfig,
+        latencyMs: number,
+        usage: LLMResponse['usage'] | undefined,
+        errored: boolean,
+    ): Promise<void> {
+        if (!tenantId) return;
+        const date = new Date().toISOString().slice(0, 10);
+        const baseKey = `llm:stats:${tenantId}:${date}:${modelConfig.provider}`;
+        const tokens = usage?.totalTokens || 0;
+        const tokensIn = usage?.promptTokens || 0;
+        const tokensOut = usage?.completionTokens || 0;
+        // Cost in centi-USD (USD * 10000) so we can use integer INCRBY.
+        // costPer1kTokens is dollars per 1000 tokens.
+        const costCentiUsd = Math.round((tokens / 1000) * modelConfig.costPer1kTokens * 10000);
+
+        const ttl = 90 * 24 * 3600;
+        const incrs: Promise<any>[] = [
+            this.redis.incrBy(`${baseKey}:calls`, 1),
+            this.redis.incrBy(`${baseKey}:tokens_in`, tokensIn),
+            this.redis.incrBy(`${baseKey}:tokens_out`, tokensOut),
+            this.redis.incrBy(`${baseKey}:cost_centi_usd`, costCentiUsd),
+            this.redis.incrBy(`${baseKey}:latency_sum_ms`, latencyMs),
+            this.redis.sadd('llm:stats:dates', date),
+            this.redis.sadd(`llm:stats:tenants:${date}`, tenantId),
+            this.redis.sadd(`llm:stats:providers:${date}`, modelConfig.provider),
+        ];
+        if (errored) incrs.push(this.redis.incrBy(`${baseKey}:errors`, 1));
+        await Promise.allSettled(incrs);
+        // TTL on the day-scoped keys
+        await Promise.allSettled([
+            this.redis.expire(`${baseKey}:calls`, ttl),
+            this.redis.expire(`${baseKey}:tokens_in`, ttl),
+            this.redis.expire(`${baseKey}:tokens_out`, ttl),
+            this.redis.expire(`${baseKey}:cost_centi_usd`, ttl),
+            this.redis.expire(`${baseKey}:latency_sum_ms`, ttl),
+        ]);
+    }
+
+    /**
+     * Aggregate Redis stats over a date range. Used by /admin/llm-stats.
+     */
+    async getStats(opts: { since: Date; until: Date; tenantId?: string }): Promise<{
+        totals: { calls: number; tokensIn: number; tokensOut: number; costUsd: number; avgLatencyMs: number; errors: number };
+        byProvider: Array<{ provider: string; calls: number; tokensIn: number; tokensOut: number; costUsd: number; avgLatencyMs: number; errors: number }>;
+        byTenant: Array<{ tenantId: string; calls: number; costUsd: number }>;
+        byDay: Array<{ date: string; calls: number; costUsd: number }>;
+    }> {
+        const days: string[] = [];
+        const cur = new Date(opts.since);
+        cur.setUTCHours(0, 0, 0, 0);
+        const end = new Date(opts.until);
+        end.setUTCHours(0, 0, 0, 0);
+        while (cur <= end) {
+            days.push(cur.toISOString().slice(0, 10));
+            cur.setUTCDate(cur.getUTCDate() + 1);
+        }
+
+        const totals = { calls: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, avgLatencyMs: 0, errors: 0, latencySum: 0 };
+        const byProvider = new Map<string, any>();
+        const byTenant = new Map<string, any>();
+        const byDay = new Map<string, any>();
+
+        for (const date of days) {
+            const tenantSet = await this.redis.smembers(`llm:stats:tenants:${date}`);
+            const tenantsToScan = opts.tenantId ? [opts.tenantId] : (tenantSet || []);
+            const providerSet = await this.redis.smembers(`llm:stats:providers:${date}`);
+
+            for (const t of tenantsToScan) {
+                for (const provider of providerSet || []) {
+                    const baseKey = `llm:stats:${t}:${date}:${provider}`;
+                    const [calls, tIn, tOut, costCenti, latSum, errors] = await Promise.all([
+                        this.redis.get(`${baseKey}:calls`),
+                        this.redis.get(`${baseKey}:tokens_in`),
+                        this.redis.get(`${baseKey}:tokens_out`),
+                        this.redis.get(`${baseKey}:cost_centi_usd`),
+                        this.redis.get(`${baseKey}:latency_sum_ms`),
+                        this.redis.get(`${baseKey}:errors`),
+                    ]);
+                    const c = Number(calls || 0);
+                    if (c === 0) continue;
+                    const ti = Number(tIn || 0);
+                    const to = Number(tOut || 0);
+                    const cost = Number(costCenti || 0) / 10000;  // back to USD
+                    const ls = Number(latSum || 0);
+                    const er = Number(errors || 0);
+
+                    totals.calls += c;
+                    totals.tokensIn += ti;
+                    totals.tokensOut += to;
+                    totals.costUsd += cost;
+                    totals.latencySum += ls;
+                    totals.errors += er;
+
+                    const ap = byProvider.get(provider) || { provider, calls: 0, tokensIn: 0, tokensOut: 0, costUsd: 0, latencySum: 0, errors: 0 };
+                    ap.calls += c; ap.tokensIn += ti; ap.tokensOut += to; ap.costUsd += cost; ap.latencySum += ls; ap.errors += er;
+                    byProvider.set(provider, ap);
+
+                    const at = byTenant.get(t) || { tenantId: t, calls: 0, costUsd: 0 };
+                    at.calls += c; at.costUsd += cost;
+                    byTenant.set(t, at);
+
+                    const ad = byDay.get(date) || { date, calls: 0, costUsd: 0 };
+                    ad.calls += c; ad.costUsd += cost;
+                    byDay.set(date, ad);
+                }
+            }
+        }
+
+        totals.avgLatencyMs = totals.calls > 0 ? Math.round(totals.latencySum / totals.calls) : 0;
+        const byProviderArr = Array.from(byProvider.values()).map(p => ({
+            ...p,
+            avgLatencyMs: p.calls > 0 ? Math.round(p.latencySum / p.calls) : 0,
+        }));
+        delete (totals as any).latencySum;
+        for (const p of byProviderArr) delete p.latencySum;
+
+        return {
+            totals,
+            byProvider: byProviderArr.sort((a, b) => b.calls - a.calls),
+            byTenant: Array.from(byTenant.values()).sort((a, b) => b.costUsd - a.costUsd).slice(0, 25),
+            byDay: Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date)),
+        };
     }
 
     /**

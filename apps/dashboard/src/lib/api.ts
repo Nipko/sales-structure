@@ -430,6 +430,21 @@ export const api = {
         apiDelete(`/offboarding/${tenantId}/purge`),
     reactivateChannels: (tenantId: string) =>
         apiPost(`/offboarding/${tenantId}/reactivate-channels`, {}),
+    getTenantQuotaOverrides: (tenantId: string) =>
+        apiGet(`/tenants/${tenantId}/quota-overrides`),
+    setTenantQuotaOverrides: (tenantId: string, data: {
+        automation?: number; outbound?: number; broadcast?: number;
+        maxAgents?: number; maxCalendars?: number;
+        priority?: number; maxPendingJobs?: number;
+        reason?: string;
+    }) => apiPut(`/tenants/${tenantId}/quota-overrides`, data),
+    getLlmStats: (params?: { days?: number; tenantId?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.days) qs.set("days", String(params.days));
+        if (params?.tenantId) qs.set("tenantId", params.tenantId);
+        const q = qs.toString();
+        return apiGet(`/tenants/llm-stats${q ? `?${q}` : ""}`);
+    },
     // Platform-wide maintenance banner (public read, super_admin write)
     getPlatformMaintenance: () => apiGet("/platform-status"),
     setPlatformMaintenance: (data: {

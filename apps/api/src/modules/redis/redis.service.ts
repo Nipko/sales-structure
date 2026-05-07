@@ -94,12 +94,27 @@ export class RedisService implements OnModuleDestroy {
         return this.client.incr(key);
     }
 
+    async incrBy(key: string, by: number): Promise<number> {
+        if (by === 0) return 0;
+        return this.client.incrby(key, by);
+    }
+
     async incrByFloat(key: string, increment: number): Promise<string> {
         return this.client.incrbyfloat(key, increment);
     }
 
     async expire(key: string, seconds: number): Promise<void> {
         await this.client.expire(key, seconds);
+    }
+
+    // ---- Set operations ----
+
+    async sadd(key: string, member: string): Promise<number> {
+        return this.client.sadd(key, member);
+    }
+
+    async smembers(key: string): Promise<string[]> {
+        return this.client.smembers(key);
     }
 
     // ---- Rate Limiting ----

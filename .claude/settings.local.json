@@ -44,7 +44,10 @@
       "Bash(git -C C:/Users/USER/Desktop/Sales_Structure add apps/api/scripts/sync-mp-plans.ts)",
       "Bash(git -C C:/Users/USER/Desktop/Sales_Structure add apps/api/src/modules/billing/billing.service.ts)",
       "Bash(git -C C:/Users/USER/Desktop/Sales_Structure add apps/api/src/modules/billing/adapters/mercadopago.adapter.ts)",
-      "Bash(git -C C:/Users/USER/Desktop/Sales_Structure add apps/api/src/modules/billing/billing-email.service.ts apps/api/src/modules/billing/billing.module.ts)"
+      "Bash(git -C C:/Users/USER/Desktop/Sales_Structure add apps/api/src/modules/billing/billing-email.service.ts apps/api/src/modules/billing/billing.module.ts)",
+      "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" status --short)",
+      "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" add apps/api/prisma/tenant-schema.sql apps/api/src/modules/treatment-plans/ apps/api/src/app.module.ts apps/api/src/modules/conversations/conversations.module.ts apps/api/src/modules/conversations/conversations.service.ts apps/api/src/modules/conversations/agent-test.service.ts apps/api/src/modules/conversations/ai-tool-executor.service.ts apps/api/src/modules/conversations/tools/treatment-tools.ts)",
+      "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" push origin main)"
     ]
   }
 }

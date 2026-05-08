@@ -75,6 +75,22 @@ export class FinancialsController {
     }
 
     /**
+     * Linear-regression forecast on FinancialSnapshot history.
+     * Default: 6 months ahead, 6 months history.
+     */
+    @Get('forecast')
+    async getForecast(
+        @Query('monthsAhead') monthsAhead?: string,
+        @Query('monthsHistory') monthsHistory?: string,
+    ) {
+        const data = await this.financialsService.getForecast(
+            monthsAhead ? parseInt(monthsAhead, 10) : 6,
+            monthsHistory ? parseInt(monthsHistory, 10) : 6,
+        );
+        return { success: true, data };
+    }
+
+    /**
      * Live LLM usage drilldown — pulls from Redis llm:stats:* (90-day window).
      * For historical data older than 90 days use the persisted
      * TenantFinancialSnapshot.llmCostCents instead.

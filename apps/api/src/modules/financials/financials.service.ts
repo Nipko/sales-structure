@@ -209,6 +209,134 @@ export class FinancialsService {
         };
     }
 
+    /**
+     * GET /financials/forecast?monthsAhead=6&monthsHistory=6
+     *
+     * Linear-regression forecast on FinancialSnapshot history.
+     * Projects MRR, active customers, and revenue forward N months
+     * with a 95% confidence band (1.96σ on residuals).
+     *
+     * Returns null projection if there are fewer than 3 historical
+     * snapshots — regression is meaningless on 2 points.
+     */
+    async getForecast(monthsAhead = 6, monthsHistory = 6) {
+        const snapshots = await this.prisma.financialSnapshot.findMany({
+            orderBy: { snapshotMonth: 'desc' },
+            take: monthsHistory,
+        });
+        if (snapshots.length < 3) {
+            return {
+                history: [],
+                forecast: [],
+                metadata: {
+                    insufficientData: true,
+                    historyMonths: snapshots.length,
+                    requiredMonths: 3,
+                },
+            };
+        }
+
+        const history = [...snapshots].reverse(); // oldest → newest
+        const xs = history.map((_, i) => i);
+
+        const mrrFit = this.linearFit(xs, history.map((s: any) => s.mrrCents));
+        const customersFit = this.linearFit(xs, history.map((s: any) => s.activeCustomers));
+        const revenueFit = this.linearFit(xs, history.map((s: any) => s.revenueCollectedCents));
+
+        // Forecast points start one month after the last historical snapshot
+        const lastDate = new Date(history[history.length - 1].snapshotMonth);
+        const forecast: Array<{
+            month: Date;
+            projectedMrrCents: number;
+            projectedMrrLowerCents: number;
+            projectedMrrUpperCents: number;
+            projectedRevenueCents: number;
+            projectedActiveCustomers: number;
+        }> = [];
+
+        for (let i = 1; i <= monthsAhead; i++) {
+            const x = history.length - 1 + i;
+            const projMrr = Math.max(0, Math.round(mrrFit.slope * x + mrrFit.intercept));
+            const projRevenue = Math.max(0, Math.round(revenueFit.slope * x + revenueFit.intercept));
+            const projCustomers = Math.max(0, Math.round(customersFit.slope * x + customersFit.intercept));
+            // 95% CI widens with horizon — multiply σ by sqrt(steps) for prediction variance
+            const margin = Math.round(1.96 * mrrFit.residualStdDev * Math.sqrt(i));
+            const month = new Date(lastDate.getFullYear(), lastDate.getMonth() + i, 1);
+            forecast.push({
+                month,
+                projectedMrrCents: projMrr,
+                projectedMrrLowerCents: Math.max(0, projMrr - margin),
+                projectedMrrUpperCents: projMrr + margin,
+                projectedRevenueCents: projRevenue,
+                projectedActiveCustomers: projCustomers,
+            });
+        }
+
+        // Average MoM growth rate over the historical window — useful number for
+        // the dashboard headline ("growing 8.4%/mo") even if the regression
+        // captures the line.
+        const momRates: number[] = [];
+        for (let i = 1; i < history.length; i++) {
+            const prev = (history[i - 1] as any).mrrCents;
+            const curr = (history[i] as any).mrrCents;
+            if (prev > 0) momRates.push((curr - prev) / prev);
+        }
+        const avgMoMGrowth = momRates.length > 0
+            ? momRates.reduce((a, b) => a + b, 0) / momRates.length
+            : 0;
+
+        return {
+            history: history.map((s: any) => ({
+                month: s.snapshotMonth,
+                mrr: s.mrrCents,
+                revenue: s.revenueCollectedCents,
+                activeCustomers: s.activeCustomers,
+            })),
+            forecast,
+            metadata: {
+                insufficientData: false,
+                historyMonths: history.length,
+                avgMoMGrowthPct: Math.round(avgMoMGrowth * 10000) / 100,
+                rSquared: Math.round(mrrFit.rSquared * 100) / 100,
+                projected3MonthMrrCents: forecast[2]?.projectedMrrCents ?? null,
+                projected6MonthMrrCents: forecast[5]?.projectedMrrCents ?? null,
+                projected12MonthMrrCents: forecast.length >= 12 ? forecast[11].projectedMrrCents : null,
+            },
+        };
+    }
+
+    /**
+     * Ordinary least squares fit + residual stddev + R². Pure function,
+     * no external deps. We use sample stddev (n-2) for the residual to
+     * be conservative on small histories.
+     */
+    private linearFit(xs: number[], ys: number[]) {
+        const n = xs.length;
+        const meanX = xs.reduce((a, b) => a + b, 0) / n;
+        const meanY = ys.reduce((a, b) => a + b, 0) / n;
+
+        let num = 0; // Σ(x-mean)(y-mean)
+        let den = 0; // Σ(x-mean)²
+        let totVar = 0; // Σ(y-mean)² for R²
+        for (let i = 0; i < n; i++) {
+            num += (xs[i] - meanX) * (ys[i] - meanY);
+            den += (xs[i] - meanX) ** 2;
+            totVar += (ys[i] - meanY) ** 2;
+        }
+        const slope = den === 0 ? 0 : num / den;
+        const intercept = meanY - slope * meanX;
+
+        let rss = 0; // residual sum of squares
+        for (let i = 0; i < n; i++) {
+            const yhat = slope * xs[i] + intercept;
+            rss += (ys[i] - yhat) ** 2;
+        }
+        const residualStdDev = n > 2 ? Math.sqrt(rss / (n - 2)) : 0;
+        const rSquared = totVar === 0 ? 1 : 1 - rss / totVar;
+
+        return { slope, intercept, residualStdDev, rSquared };
+    }
+
     // POST /financials/infra-costs
     async upsertInfraCost(data: {
         month: string;

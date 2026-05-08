@@ -29,6 +29,8 @@
     "errorSaving": "Error saving",
     "connectionError": "Connection error",
     "noData": "No data available",
+    "unknown": "Unknown",
+    "due": "Due",
     "deleteConfirm": "Are you sure you want to delete?",
     "select": "Select...",
     "logout": "Log out",
@@ -105,6 +107,9 @@
       "courses": "Courses",
       "insurance": "Insurance",
       "serviceRequests": "Requests",
+      "treatmentPlans": "Treatment plans",
+      "pets": "Pets",
+      "photoSessions": "Photo sessions",
       "platformUsage": "Tenant usage",
       "platformHealth": "System health",
       "platformAudit": "Audit log",
@@ -3831,7 +3836,8 @@
         "properties": "No properties",
         "listings": "No listings",
         "treatment_plans": "No treatment plans",
-        "services": "No services"
+        "services": "No services configured",
+        "photo_sessions": "No sessions recorded"
       }
     },
     "drilldown": {
@@ -3882,8 +3888,97 @@
       "listingsPublished": "Published listings",
       "serviceRequests": "Service requests",
       "serviceRequestsOpen": "Open requests",
-      "serviceRequestsCompleted": "Completed"
+      "serviceRequestsCompleted": "Completed",
+      "sessionsScheduled": "Sessions scheduled",
+      "sessionsInProgress": "Sessions in progress",
+      "sessionsDelivered": "Sessions delivered",
+      "sessions30d": "Sessions 30d",
+      "revenue30d": "Revenue 30d",
+      "deliveriesDue7d": "Deliveries due 7d"
     }
+  },
+  "treatmentPlansPage": {
+    "title": "Treatment plans",
+    "subtitle": "Global view of all active, paused, and completed plans",
+    "searchPlaceholder": "Search by patient or plan...",
+    "status": {
+      "all": "All",
+      "active": "Active",
+      "paused": "Paused",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "col": {
+      "patient": "Patient",
+      "plan": "Plan",
+      "progress": "Progress",
+      "status": "Status",
+      "started": "Started",
+      "cost": "Cost"
+    },
+    "empty": {
+      "title": "No plans in this status",
+      "hint": "Plans are created from each patient's profile or by the AI agent during a conversation"
+    }
+  },
+  "petsPage": {
+    "title": "Pets",
+    "subtitle": "Pet records with owner, species, and vaccination history",
+    "searchPlaceholder": "Search by name, owner, or phone...",
+    "filters": {
+      "all": "All",
+      "dog": "Dogs",
+      "cat": "Cats",
+      "other": "Other"
+    },
+    "col": {
+      "name": "Name",
+      "owner": "Owner",
+      "species": "Species",
+      "breed": "Breed",
+      "age": "Age",
+      "vaccinations": "Vaccinations",
+      "lastVisit": "Last visit"
+    },
+    "empty": {
+      "title": "No pets registered yet",
+      "hint": "Pets are registered from a customer's profile or automatically when the AI agent books an appointment"
+    }
+  },
+  "photoSessionsPage": {
+    "title": "Photo sessions",
+    "subtitle": "Session bookings, packages, and delivered galleries",
+    "searchPlaceholder": "Search by client or package...",
+    "status": {
+      "all": "All",
+      "scheduled": "Scheduled",
+      "in_progress": "In progress",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
+    },
+    "sessionTypes": {
+      "wedding": "Wedding",
+      "portrait": "Portrait",
+      "event": "Event",
+      "product": "Product",
+      "family": "Family",
+      "newborn": "Newborn",
+      "other": "Other"
+    },
+    "col": {
+      "client": "Client",
+      "type": "Type",
+      "package": "Package",
+      "date": "Date",
+      "status": "Status",
+      "price": "Price",
+      "gallery": "Gallery"
+    },
+    "empty": {
+      "title": "No sessions booked yet",
+      "hint": "Sessions are booked from a customer's profile or by the AI agent during conversation"
+    },
+    "noGallery": "Not delivered"
   },
   "webhookTap": {
     "title": "Webhook live tail",

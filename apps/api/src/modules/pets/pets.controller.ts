@@ -21,6 +21,18 @@ export class PetsController {
 
     // ── Pets CRUD ────────────────────────────────────────────────
 
+    @Get(':tenantId/all')
+    @ApiOperation({ summary: 'List all pets in the clinic (global view)' })
+    async listAll(
+        @Param('tenantId') tenantId: string,
+        @Query('species') species?: string,
+        @Query('search') search?: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.service.listAll(schemaName, { species, search });
+        return { success: true, data };
+    }
+
     @Get(':tenantId/contacts/:contactId')
     @ApiOperation({ summary: 'List pets for a contact (tutor)' })
     async listForContact(

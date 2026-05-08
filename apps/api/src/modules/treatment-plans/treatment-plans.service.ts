@@ -22,6 +22,47 @@ export class TreatmentPlansService {
 
     // ── Plans ────────────────────────────────────────────────────
 
+    /** Global list across all contacts — used by /admin/treatment-plans page. */
+    async listAll(schemaName: string, filters: { status?: string; search?: string } = {}): Promise<any[]> {
+        const where: string[] = ['1=1'];
+        const params: any[] = [];
+        let idx = 1;
+        if (filters.status && filters.status !== 'all') {
+            where.push(`p.status = $${idx}`);
+            params.push(filters.status);
+            idx++;
+        }
+        if (filters.search) {
+            where.push(`(p.name ILIKE $${idx} OR c.name ILIKE $${idx} OR c.phone ILIKE $${idx})`);
+            params.push(`%${filters.search}%`);
+            idx++;
+        }
+        return this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT p.*, c.name AS contact_name, c.phone AS contact_phone
+             FROM treatment_plans p
+             LEFT JOIN contacts c ON c.id = p.contact_id
+             WHERE ${where.join(' AND ')}
+             ORDER BY
+               CASE p.status WHEN 'active' THEN 1 WHEN 'paused' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END,
+               p.created_at DESC
+             LIMIT 200`,
+            params,
+        );
+    }
+
+    /** Aggregate counts by status, used by the global list page header. */
+    async countsByStatus(schemaName: string): Promise<Record<string, number>> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT status, COUNT(*)::int AS n FROM treatment_plans GROUP BY status`,
+            [],
+        );
+        const out: Record<string, number> = { active: 0, paused: 0, completed: 0, cancelled: 0 };
+        for (const row of rows || []) out[row.status] = row.n;
+        return out;
+    }
+
     async listForContact(schemaName: string, contactId: string): Promise<any[]> {
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,

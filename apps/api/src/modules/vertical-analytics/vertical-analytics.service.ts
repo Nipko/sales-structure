@@ -80,12 +80,16 @@ export class VerticalAnalyticsService {
         const gapsResult = await this.detectActivationGaps(tenants as any[]);
 
         const totals = {
-            tenantsActive: tenants.length,
-            verticalsCount: byIndustry.size,
-            activatedTenants: tenants.filter((t: any) => t.firstMessageAt).length,
-            payingTenants: tenants.filter((t: any) =>
+            tenantsTotal: tenants.length,
+            tenantsActivated: tenants.filter((t: any) => t.firstMessageAt).length,
+            tenantsPaying: tenants.filter((t: any) =>
                 t.subscriptionStatus === 'active' || t.subscriptionStatus === 'past_due',
             ).length,
+            tenantsTrialing: tenants.filter((t: any) => t.subscriptionStatus === 'trialing').length,
+            tenantsRecent7d: tenants.filter((t: any) =>
+                t.createdAt && (Date.now() - new Date(t.createdAt).getTime()) < 7 * 86_400_000,
+            ).length,
+            industriesCovered: byIndustry.size,
         };
 
         const result = {
@@ -108,25 +112,31 @@ export class VerticalAnalyticsService {
         industry: string;
         tenantId: string;
         tenantName: string;
-        gap: string;
+        missing: string;
     }>> {
         const gaps: any[] = [];
-        const checks: Record<string, { table: string; description: string }> = {
-            restaurantes: { table: 'menu_items', description: 'sin platos en el menú' },
-            gimnasios: { table: 'membership_plans', description: 'sin planes de membresía' },
-            education: { table: 'courses', description: 'sin cursos en catálogo' },
-            seguros: { table: 'insurance_plans', description: 'sin planes de seguro' },
-            inmobiliaria: { table: 'real_estate_listings', description: 'sin propiedades en catálogo' },
-            turismo: { table: 'tour_packages', description: 'sin tours / paquetes' },
+        // missing key matches i18n keys on the dashboard (gaps.missingKeys.*)
+        const checks: Record<string, { table: string; missing: string; activeFilter?: string }> = {
+            restaurantes: { table: 'menu_items', missing: 'menu_items', activeFilter: 'is_active = true' },
+            gimnasios: { table: 'membership_plans', missing: 'membership_plans', activeFilter: 'is_active = true' },
+            education: { table: 'courses', missing: 'courses', activeFilter: 'is_active = true' },
+            seguros: { table: 'insurance_plans', missing: 'insurance_plans', activeFilter: 'is_active = true' },
+            inmobiliaria: { table: 'real_estate_listings', missing: 'listings', activeFilter: 'is_active = true' },
+            turismo: { table: 'tour_packages', missing: 'properties', activeFilter: 'is_active = true' },
+            servicios_hogar: { table: 'services', missing: 'services', activeFilter: 'is_active = true' },
+            veterinaria: { table: 'pets', missing: 'pets', activeFilter: 'is_active = true' },
+            pet_services: { table: 'pets', missing: 'pets', activeFilter: 'is_active = true' },
+            fotografia: { table: 'photo_sessions', missing: 'photo_sessions' },
         };
 
         for (const t of tenants) {
             const check = checks[t.industry];
             if (!check || !t.schemaName) continue;
             try {
+                const filter = check.activeFilter ? `WHERE ${check.activeFilter}` : '';
                 const rows = await this.prisma.executeInTenantSchema<any[]>(
                     t.schemaName,
-                    `SELECT COUNT(*)::int AS cnt FROM ${check.table} WHERE is_active = true`,
+                    `SELECT COUNT(*)::int AS cnt FROM ${check.table} ${filter}`,
                 );
                 const cnt = rows[0]?.cnt || 0;
                 if (cnt === 0) {
@@ -134,7 +144,7 @@ export class VerticalAnalyticsService {
                         industry: t.industry,
                         tenantId: t.id,
                         tenantName: t.name,
-                        gap: check.description,
+                        missing: check.missing,
                     });
                 }
             } catch {
@@ -502,6 +512,36 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
             sessionsScheduledWeek: sCounts.scheduled || 0,
         };
     },
+
+    fotografia: async (prisma, schema) => {
+        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
+            try { return await q(); } catch { return fallback; }
+        };
+        const [byStatus, last30d, deliveryDue] = await Promise.all([
+            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT status, COUNT(*)::int AS cnt FROM photo_sessions GROUP BY status`),
+                [] as any[]),
+            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(price), 0)::numeric AS revenue
+                 FROM photo_sessions WHERE created_at >= NOW() - INTERVAL '30 days'`),
+                [{ cnt: 0, revenue: 0 }] as any),
+            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt FROM photo_sessions
+                 WHERE status IN ('scheduled', 'in_progress')
+                   AND delivery_due_at IS NOT NULL
+                   AND delivery_due_at < CURRENT_DATE + INTERVAL '7 days'`),
+                [{ cnt: 0 }] as any),
+        ]);
+        const counts = (byStatus as any[]).reduce((a: any, r: any) => { a[r.status] = r.cnt; return a; }, {});
+        return {
+            sessionsScheduled: counts.scheduled || 0,
+            sessionsInProgress: counts.in_progress || 0,
+            sessionsDelivered: counts.delivered || 0,
+            sessions30d: last30d[0]?.cnt || 0,
+            revenue30d: Number(last30d[0]?.revenue || 0),
+            deliveriesDue7d: deliveryDue[0]?.cnt || 0,
+        };
+    },
 };
 
 /**
@@ -574,6 +614,14 @@ function aggregateIndustryTotals(industry: string, tenantsData: any[]): Record<s
             treatmentsCompleted: sum('treatmentsCompleted'),
             sessionsCompletedWeek: sum('sessionsCompletedWeek'),
         };
+        case 'fotografia': return {
+            sessionsScheduled: sum('sessionsScheduled'),
+            sessionsInProgress: sum('sessionsInProgress'),
+            sessionsDelivered: sum('sessionsDelivered'),
+            sessions30d: sum('sessions30d'),
+            revenue30d: sum('revenue30d'),
+            deliveriesDue7d: sum('deliveriesDue7d'),
+        };
         default: return null;
     }
 }
@@ -590,6 +638,7 @@ function primaryMetricValue(industry: string, stats: Record<string, any>): numbe
         case 'turismo': return Number(stats.bookingsConfirmed30d || 0);
         case 'servicios_hogar': return Number(stats.requests30d || 0);
         case 'salud': return Number(stats.treatmentsActive || 0);
+        case 'fotografia': return Number(stats.sessions30d || 0);
         default: return 0;
     }
 }

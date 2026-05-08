@@ -29,6 +29,8 @@
     "errorSaving": "Erro ao salvar",
     "connectionError": "Erro de conexao",
     "noData": "Sem dados disponiveis",
+    "unknown": "Desconhecido",
+    "due": "Vence",
     "deleteConfirm": "Tem certeza de que deseja excluir?",
     "select": "Selecionar...",
     "logout": "Sair",
@@ -105,6 +107,9 @@
       "courses": "Cursos",
       "insurance": "Seguros",
       "serviceRequests": "Solicitações",
+      "treatmentPlans": "Planos de tratamento",
+      "pets": "Pets",
+      "photoSessions": "Sessões fotográficas",
       "platformUsage": "Uso por tenant",
       "platformHealth": "Saúde do sistema",
       "platformAudit": "Auditoria",
@@ -3831,7 +3836,8 @@
         "properties": "Sem propriedades",
         "listings": "Sem listings",
         "treatment_plans": "Sem tratamentos",
-        "services": "Sem serviços"
+        "services": "Sem serviços configurados",
+        "photo_sessions": "Sem sessões registradas"
       }
     },
     "drilldown": {
@@ -3882,8 +3888,97 @@
       "listingsPublished": "Listings publicados",
       "serviceRequests": "Solicitações",
       "serviceRequestsOpen": "Solicitações abertas",
-      "serviceRequestsCompleted": "Concluídas"
+      "serviceRequestsCompleted": "Concluídas",
+      "sessionsScheduled": "Sessões agendadas",
+      "sessionsInProgress": "Sessões em andamento",
+      "sessionsDelivered": "Sessões entregues",
+      "sessions30d": "Sessões 30d",
+      "revenue30d": "Receita 30d",
+      "deliveriesDue7d": "Entregas próximas 7d"
     }
+  },
+  "treatmentPlansPage": {
+    "title": "Planos de tratamento",
+    "subtitle": "Visão global de todos os planos ativos, pausados e concluídos",
+    "searchPlaceholder": "Buscar por paciente ou plano...",
+    "status": {
+      "all": "Todos",
+      "active": "Ativos",
+      "paused": "Pausados",
+      "completed": "Concluídos",
+      "cancelled": "Cancelados"
+    },
+    "col": {
+      "patient": "Paciente",
+      "plan": "Plano",
+      "progress": "Progresso",
+      "status": "Estado",
+      "started": "Início",
+      "cost": "Custo"
+    },
+    "empty": {
+      "title": "Sem planos neste estado",
+      "hint": "Os planos são criados a partir da ficha do paciente ou pelo agente IA durante uma conversa"
+    }
+  },
+  "petsPage": {
+    "title": "Pets",
+    "subtitle": "Fichas de pets com tutor, espécie e histórico de vacinação",
+    "searchPlaceholder": "Buscar por nome, tutor ou telefone...",
+    "filters": {
+      "all": "Todos",
+      "dog": "Cães",
+      "cat": "Gatos",
+      "other": "Outros"
+    },
+    "col": {
+      "name": "Nome",
+      "owner": "Tutor",
+      "species": "Espécie",
+      "breed": "Raça",
+      "age": "Idade",
+      "vaccinations": "Vacinas",
+      "lastVisit": "Última visita"
+    },
+    "empty": {
+      "title": "Nenhum pet registrado",
+      "hint": "Os pets são registrados pela ficha do cliente ou automaticamente quando o agente IA agenda uma consulta"
+    }
+  },
+  "photoSessionsPage": {
+    "title": "Sessões fotográficas",
+    "subtitle": "Bookings de sessões, pacotes contratados e galerias entregues",
+    "searchPlaceholder": "Buscar por cliente ou pacote...",
+    "status": {
+      "all": "Todas",
+      "scheduled": "Agendadas",
+      "in_progress": "Em andamento",
+      "delivered": "Entregues",
+      "cancelled": "Canceladas"
+    },
+    "sessionTypes": {
+      "wedding": "Casamento",
+      "portrait": "Retrato",
+      "event": "Evento",
+      "product": "Produto",
+      "family": "Família",
+      "newborn": "Recém-nascido",
+      "other": "Outro"
+    },
+    "col": {
+      "client": "Cliente",
+      "type": "Tipo",
+      "package": "Pacote",
+      "date": "Data",
+      "status": "Estado",
+      "price": "Preço",
+      "gallery": "Galeria"
+    },
+    "empty": {
+      "title": "Sem sessões agendadas",
+      "hint": "As sessões são agendadas pela ficha do cliente ou pelo agente IA durante a conversa"
+    },
+    "noGallery": "Não entregue"
   },
   "webhookTap": {
     "title": "Webhook live tail",

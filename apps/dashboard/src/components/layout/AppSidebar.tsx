@@ -52,6 +52,9 @@ import {
   Scale,
   Filter as FunnelIcon,
   PieChart,
+  ClipboardList,
+  PawPrint,
+  Camera,
   type LucideIcon,
 } from "lucide-react";
 
@@ -104,6 +107,9 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticals: ["education"] },
       { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticals: ["seguros"] },
       { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticals: ["servicios_hogar"] },
+      { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticals: ["veterinaria", "salud"] },
+      { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticals: ["veterinaria", "pet_services"] },
+      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticals: ["fotografia"] },
     ],
   },
   {

@@ -1,5 +1,5 @@
 import {
-    Controller, Get, Post, Put, Delete, Param, Body,
+    Controller, Get, Post, Put, Delete, Param, Body, Query,
     UseGuards, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -18,6 +18,21 @@ export class TreatmentPlansController {
         private readonly service: TreatmentPlansService,
         private readonly prisma: PrismaService,
     ) {}
+
+    @Get(':tenantId/all')
+    @ApiOperation({ summary: 'List all treatment plans for the tenant (global view)' })
+    async listAll(
+        @Param('tenantId') tenantId: string,
+        @Query('status') status?: string,
+        @Query('search') search?: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const [data, counts] = await Promise.all([
+            this.service.listAll(schemaName, { status, search }),
+            this.service.countsByStatus(schemaName),
+        ]);
+        return { success: true, data: { plans: data, counts } };
+    }
 
     @Get(':tenantId/contacts/:contactId')
     @ApiOperation({ summary: 'List treatment plans for a contact' })

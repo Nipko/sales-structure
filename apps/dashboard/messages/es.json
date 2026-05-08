@@ -29,6 +29,8 @@
     "errorSaving": "Error al guardar",
     "connectionError": "Error de conexión",
     "noData": "Sin datos disponibles",
+    "unknown": "Desconocido",
+    "due": "Vence",
     "deleteConfirm": "¿Estás seguro de que deseas eliminar?",
     "select": "Seleccionar...",
     "logout": "Cerrar sesion",
@@ -105,6 +107,9 @@
       "courses": "Cursos",
       "insurance": "Seguros",
       "serviceRequests": "Solicitudes",
+      "treatmentPlans": "Planes de tratamiento",
+      "pets": "Mascotas",
+      "photoSessions": "Sesiones fotográficas",
       "platformUsage": "Uso por tenant",
       "platformHealth": "Salud del sistema",
       "platformAudit": "Auditoría",
@@ -3831,7 +3836,8 @@
         "properties": "Sin propiedades",
         "listings": "Sin listings",
         "treatment_plans": "Sin tratamientos",
-        "services": "Sin servicios"
+        "services": "Sin servicios definidos",
+        "photo_sessions": "Sin sesiones registradas"
       }
     },
     "drilldown": {
@@ -3882,8 +3888,97 @@
       "listingsPublished": "Listings publicados",
       "serviceRequests": "Solicitudes",
       "serviceRequestsOpen": "Solicitudes abiertas",
-      "serviceRequestsCompleted": "Completadas"
+      "serviceRequestsCompleted": "Completadas",
+      "sessionsScheduled": "Sesiones agendadas",
+      "sessionsInProgress": "Sesiones en curso",
+      "sessionsDelivered": "Sesiones entregadas",
+      "sessions30d": "Sesiones 30d",
+      "revenue30d": "Ingresos 30d",
+      "deliveriesDue7d": "Entregas próximas 7d"
     }
+  },
+  "treatmentPlansPage": {
+    "title": "Planes de tratamiento",
+    "subtitle": "Vista global de todos los planes activos, pausados y completados",
+    "searchPlaceholder": "Buscar por paciente o plan...",
+    "status": {
+      "all": "Todos",
+      "active": "Activos",
+      "paused": "Pausados",
+      "completed": "Completados",
+      "cancelled": "Cancelados"
+    },
+    "col": {
+      "patient": "Paciente",
+      "plan": "Plan",
+      "progress": "Progreso",
+      "status": "Estado",
+      "started": "Inicio",
+      "cost": "Costo"
+    },
+    "empty": {
+      "title": "No hay planes en este estado",
+      "hint": "Los planes se crean desde la ficha de cada paciente o desde el AI agent durante una conversación"
+    }
+  },
+  "petsPage": {
+    "title": "Mascotas",
+    "subtitle": "Fichas de mascotas con dueño, especie e historial de vacunas",
+    "searchPlaceholder": "Buscar por nombre, dueño o teléfono...",
+    "filters": {
+      "all": "Todas",
+      "dog": "Perros",
+      "cat": "Gatos",
+      "other": "Otros"
+    },
+    "col": {
+      "name": "Nombre",
+      "owner": "Dueño",
+      "species": "Especie",
+      "breed": "Raza",
+      "age": "Edad",
+      "vaccinations": "Vacunas",
+      "lastVisit": "Última visita"
+    },
+    "empty": {
+      "title": "No hay mascotas registradas",
+      "hint": "Las mascotas se registran desde la ficha del cliente o automáticamente cuando el AI agent agenda una cita"
+    }
+  },
+  "photoSessionsPage": {
+    "title": "Sesiones fotográficas",
+    "subtitle": "Bookings de sesiones, paquetes contratados y galerías entregadas",
+    "searchPlaceholder": "Buscar por cliente o paquete...",
+    "status": {
+      "all": "Todas",
+      "scheduled": "Agendadas",
+      "in_progress": "En curso",
+      "delivered": "Entregadas",
+      "cancelled": "Canceladas"
+    },
+    "sessionTypes": {
+      "wedding": "Boda",
+      "portrait": "Retrato",
+      "event": "Evento",
+      "product": "Producto",
+      "family": "Familia",
+      "newborn": "Recién nacido",
+      "other": "Otro"
+    },
+    "col": {
+      "client": "Cliente",
+      "type": "Tipo",
+      "package": "Paquete",
+      "date": "Fecha",
+      "status": "Estado",
+      "price": "Precio",
+      "gallery": "Galería"
+    },
+    "empty": {
+      "title": "No hay sesiones agendadas",
+      "hint": "Las sesiones se agendan desde la ficha del cliente o desde el AI agent durante la conversación"
+    },
+    "noGallery": "Sin entregar"
   },
   "webhookTap": {
     "title": "Live tail de webhooks",

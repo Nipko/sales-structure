@@ -2314,3 +2314,38 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_requests" (
 CREATE INDEX IF NOT EXISTS "idx_service_requests_status" ON "{{SCHEMA_NAME}}"."service_requests" ("status", "scheduled_at");
 CREATE INDEX IF NOT EXISTS "idx_service_requests_contact" ON "{{SCHEMA_NAME}}"."service_requests" ("contact_id", "created_at" DESC) WHERE "contact_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_service_requests_urgency" ON "{{SCHEMA_NAME}}"."service_requests" ("urgency", "scheduled_at") WHERE "status" IN ('pending', 'scheduled', 'dispatched');
+
+-- ─── Photography vertical ───────────────────────────────────────────
+-- Photo sessions: differentiates fotografia tenants from generic appointments
+-- by adding session-type, package, and gallery delivery tracking.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "contact_id" UUID,
+    "conversation_id" UUID,
+    "session_type" VARCHAR(50) NOT NULL,                    -- wedding | portrait | event | product | family | newborn | other
+    "package_name" VARCHAR(255),
+    "package_description" TEXT,
+    "client_name" VARCHAR(255),
+    "client_phone" VARCHAR(50),
+    "scheduled_at" TIMESTAMP,
+    "duration_minutes" INTEGER,
+    "location" TEXT,
+    "deliverables" JSONB DEFAULT '[]',                      -- e.g. ["50 fotos editadas", "1 video 2min"]
+    "deliverable_count" INTEGER,                            -- expected delivered photo count
+    "delivered_count" INTEGER DEFAULT 0,
+    "gallery_url" TEXT,                                     -- link to client gallery (Pixieset, Pic-Time, Drive)
+    "gallery_password" VARCHAR(100),
+    "delivery_due_at" DATE,
+    "delivered_at" TIMESTAMP,
+    "price" DECIMAL(10,2),
+    "currency" VARCHAR(10) DEFAULT 'COP',
+    "deposit_paid" DECIMAL(10,2) DEFAULT 0,
+    "status" VARCHAR(30) DEFAULT 'scheduled',               -- scheduled | in_progress | delivered | cancelled
+    "notes" TEXT,
+    "metadata" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_photo_sessions_status" ON "{{SCHEMA_NAME}}"."photo_sessions" ("status", "scheduled_at" DESC);
+CREATE INDEX IF NOT EXISTS "idx_photo_sessions_contact" ON "{{SCHEMA_NAME}}"."photo_sessions" ("contact_id", "scheduled_at" DESC) WHERE "contact_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_photo_sessions_delivery" ON "{{SCHEMA_NAME}}"."photo_sessions" ("delivery_due_at") WHERE "status" IN ('scheduled', 'in_progress');

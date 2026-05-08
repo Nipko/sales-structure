@@ -20,6 +20,39 @@ export class PetsService {
 
     // ── Pets CRUD ─────────────────────────────────────────────────
 
+    /** Global list across all tutors — used by /admin/pets page. */
+    async listAll(schemaName: string, filters: { species?: string; search?: string } = {}): Promise<any[]> {
+        const where: string[] = ['p.is_active = true'];
+        const params: any[] = [];
+        let idx = 1;
+        if (filters.species && filters.species !== 'all') {
+            where.push(`p.species = $${idx}`);
+            params.push(filters.species);
+            idx++;
+        }
+        if (filters.search) {
+            where.push(`(p.name ILIKE $${idx} OR c.name ILIKE $${idx} OR c.phone ILIKE $${idx})`);
+            params.push(`%${filters.search}%`);
+            idx++;
+        }
+        return this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT
+                p.*,
+                c.name AS contact_name,
+                c.phone AS contact_phone,
+                (SELECT COUNT(*)::int FROM pet_vaccinations v WHERE v.pet_id = p.id) AS vaccinations_count,
+                (SELECT MAX(created_at) FROM appointments a
+                    WHERE (a.metadata->>'pet_id')::uuid = p.id) AS last_visit
+             FROM pets p
+             LEFT JOIN contacts c ON c.id = p.contact_id
+             WHERE ${where.join(' AND ')}
+             ORDER BY p.created_at DESC
+             LIMIT 200`,
+            params,
+        );
+    }
+
     async listForContact(schemaName: string, contactId: string, includeInactive = false): Promise<any[]> {
         const where = includeInactive ? '' : 'AND is_active = true';
         return this.prisma.executeInTenantSchema<any[]>(

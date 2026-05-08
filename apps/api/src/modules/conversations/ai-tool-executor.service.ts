@@ -2083,26 +2083,45 @@ export class AIToolExecutorService {
      */
     private async requestPhotoQuoteTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
-            // Drop a note on the conversation context so the operator
-            // sees the request and can follow up. For now we just emit
-            // an event; future iterations can persist a quote row.
-            this.eventEmitter.emit('photo_quote.requested', {
+            // Persist the booking request as a photo_sessions row so the
+            // studio can track it and see delivery progress. Status starts
+            // as 'scheduled' if a date was provided, otherwise the team
+            // can confirm a date later.
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO photo_sessions (
+                    contact_id, session_type, package_name, client_name,
+                    client_phone, scheduled_at, location, notes, status
+                 ) VALUES (
+                    $1::uuid, $2, $3, $4, $5, $6::timestamp, $7, $8, $9
+                 ) RETURNING id`,
+                [
+                    contactId || null,
+                    args.sessionType || 'other',
+                    args.packageName || null,
+                    args.customerName || null,
+                    args.customerPhone || null,
+                    args.date || null,
+                    args.location || null,
+                    args.specialRequests || null,
+                    args.date ? 'scheduled' : 'scheduled',
+                ],
+            ).catch((err: any) => {
+                this.logger.warn(`Photo session insert failed (table may not exist yet): ${err.message}`);
+                return [];
+            });
+            this.eventEmitter.emit('photo_session.requested', {
                 tenantSchemaName: schemaName,
                 contactId,
-                date: args.date,
-                packageName: args.packageName,
-                duration: args.duration,
-                location: args.location,
-                customerName: args.customerName,
-                customerEmail: args.customerEmail,
-                customerPhone: args.customerPhone,
-                specialRequests: args.specialRequests,
+                sessionId: rows?.[0]?.id,
+                ...args,
             });
             return {
                 received: true,
+                sessionId: rows?.[0]?.id,
                 date: args.date,
                 package: args.packageName,
-                message: 'Cotización registrada — el equipo te enviará la propuesta personalizada en las próximas horas. ¿Algo más en lo que te pueda ayudar?',
+                message: 'Sesión registrada — el equipo te enviará la propuesta personalizada en las próximas horas. ¿Algo más en lo que te pueda ayudar?',
             };
         } catch (e: any) {
             return { error: e.message };

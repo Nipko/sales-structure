@@ -894,6 +894,13 @@ export const api = {
         apiPut(`/tours/${tenantId}/bookings/${bookingId}/cancel`, {}),
 
     // ─── Treatment Plans (salud / dental, fisioterapia, estética) ───
+    listAllTreatmentPlans: (tenantId: string, params?: { status?: string; search?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.search) qs.set("search", params.search);
+        const q = qs.toString();
+        return apiGet(`/treatment-plans/${tenantId}/all${q ? `?${q}` : ""}`);
+    },
     listTreatmentPlans: (tenantId: string, contactId: string) =>
         apiGet(`/treatment-plans/${tenantId}/contacts/${contactId}`),
     getTreatmentPlan: (tenantId: string, planId: string) =>
@@ -912,6 +919,31 @@ export const api = {
         apiPut(`/treatment-plans/${tenantId}/sessions/${sessionId}/cancel`, {}),
 
     // ─── Pets (veterinaria) ───
+    // ─── Photography ───
+    listPhotoSessions: (tenantId: string, params?: { status?: string; sessionType?: string; search?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.sessionType) qs.set("sessionType", params.sessionType);
+        if (params?.search) qs.set("search", params.search);
+        const q = qs.toString();
+        return apiGet(`/photography/${tenantId}/sessions${q ? `?${q}` : ""}`);
+    },
+    getPhotoSession: (tenantId: string, sessionId: string) =>
+        apiGet(`/photography/${tenantId}/sessions/${sessionId}`),
+    createPhotoSession: (tenantId: string, data: any) =>
+        apiPost(`/photography/${tenantId}/sessions`, data),
+    updatePhotoSession: (tenantId: string, sessionId: string, data: any) =>
+        apiPut(`/photography/${tenantId}/sessions/${sessionId}`, data),
+    deliverPhotoSession: (tenantId: string, sessionId: string, data: { galleryUrl: string; galleryPassword?: string }) =>
+        apiPut(`/photography/${tenantId}/sessions/${sessionId}/deliver`, data),
+
+    listAllPets: (tenantId: string, params?: { species?: string; search?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.species) qs.set("species", params.species);
+        if (params?.search) qs.set("search", params.search);
+        const q = qs.toString();
+        return apiGet(`/pets/${tenantId}/all${q ? `?${q}` : ""}`);
+    },
     listPetsForContact: (tenantId: string, contactId: string) =>
         apiGet(`/pets/${tenantId}/contacts/${contactId}`),
     getPet: (tenantId: string, petId: string) =>

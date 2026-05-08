@@ -29,6 +29,8 @@
     "errorSaving": "Erreur lors de l'enregistrement",
     "connectionError": "Erreur de connexion",
     "noData": "Aucune donnee disponible",
+    "unknown": "Inconnu",
+    "due": "Échéance",
     "deleteConfirm": "Etes-vous sur de vouloir supprimer?",
     "select": "Selectionner...",
     "logout": "Deconnexion",
@@ -105,6 +107,9 @@
       "courses": "Programmes",
       "insurance": "Assurances",
       "serviceRequests": "Demandes",
+      "treatmentPlans": "Plans de traitement",
+      "pets": "Animaux",
+      "photoSessions": "Séances photo",
       "platformUsage": "Utilisation par tenant",
       "platformHealth": "Santé du système",
       "platformAudit": "Audit",
@@ -3831,7 +3836,8 @@
         "properties": "Pas de propriétés",
         "listings": "Pas d'annonces",
         "treatment_plans": "Pas de traitements",
-        "services": "Pas de services"
+        "services": "Pas de services configurés",
+        "photo_sessions": "Aucune séance enregistrée"
       }
     },
     "drilldown": {
@@ -3882,8 +3888,97 @@
       "listingsPublished": "Annonces publiées",
       "serviceRequests": "Demandes",
       "serviceRequestsOpen": "Demandes ouvertes",
-      "serviceRequestsCompleted": "Terminées"
+      "serviceRequestsCompleted": "Terminées",
+      "sessionsScheduled": "Séances planifiées",
+      "sessionsInProgress": "Séances en cours",
+      "sessionsDelivered": "Séances livrées",
+      "sessions30d": "Séances 30j",
+      "revenue30d": "Revenu 30j",
+      "deliveriesDue7d": "Livraisons à venir 7j"
     }
+  },
+  "treatmentPlansPage": {
+    "title": "Plans de traitement",
+    "subtitle": "Vue globale de tous les plans actifs, en pause et terminés",
+    "searchPlaceholder": "Rechercher par patient ou plan...",
+    "status": {
+      "all": "Tous",
+      "active": "Actifs",
+      "paused": "En pause",
+      "completed": "Terminés",
+      "cancelled": "Annulés"
+    },
+    "col": {
+      "patient": "Patient",
+      "plan": "Plan",
+      "progress": "Progression",
+      "status": "Statut",
+      "started": "Début",
+      "cost": "Coût"
+    },
+    "empty": {
+      "title": "Aucun plan dans ce statut",
+      "hint": "Les plans sont créés depuis la fiche du patient ou par l'agent IA pendant une conversation"
+    }
+  },
+  "petsPage": {
+    "title": "Animaux",
+    "subtitle": "Fiches d'animaux avec propriétaire, espèce et historique de vaccination",
+    "searchPlaceholder": "Rechercher par nom, propriétaire ou téléphone...",
+    "filters": {
+      "all": "Tous",
+      "dog": "Chiens",
+      "cat": "Chats",
+      "other": "Autres"
+    },
+    "col": {
+      "name": "Nom",
+      "owner": "Propriétaire",
+      "species": "Espèce",
+      "breed": "Race",
+      "age": "Âge",
+      "vaccinations": "Vaccinations",
+      "lastVisit": "Dernière visite"
+    },
+    "empty": {
+      "title": "Aucun animal enregistré",
+      "hint": "Les animaux sont enregistrés depuis la fiche client ou automatiquement lorsque l'agent IA réserve un rendez-vous"
+    }
+  },
+  "photoSessionsPage": {
+    "title": "Séances photo",
+    "subtitle": "Réservations de séances, forfaits et galeries livrées",
+    "searchPlaceholder": "Rechercher par client ou forfait...",
+    "status": {
+      "all": "Toutes",
+      "scheduled": "Planifiées",
+      "in_progress": "En cours",
+      "delivered": "Livrées",
+      "cancelled": "Annulées"
+    },
+    "sessionTypes": {
+      "wedding": "Mariage",
+      "portrait": "Portrait",
+      "event": "Événement",
+      "product": "Produit",
+      "family": "Famille",
+      "newborn": "Nouveau-né",
+      "other": "Autre"
+    },
+    "col": {
+      "client": "Client",
+      "type": "Type",
+      "package": "Forfait",
+      "date": "Date",
+      "status": "Statut",
+      "price": "Prix",
+      "gallery": "Galerie"
+    },
+    "empty": {
+      "title": "Aucune séance réservée",
+      "hint": "Les séances sont réservées depuis la fiche client ou par l'agent IA pendant la conversation"
+    },
+    "noGallery": "Non livrée"
   },
   "webhookTap": {
     "title": "Live tail des webhooks",

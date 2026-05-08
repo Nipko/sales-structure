@@ -121,7 +121,11 @@ export default function ServiceRequestsPage() {
 
             <div className="bg-card border border-border rounded-xl overflow-hidden">
                 {loading && requests.length === 0 ? (
-                    <div className="text-center py-12"><Loader2 className="h-5 w-5 animate-spin inline" /></div>
+                    <div className="p-3 space-y-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="skeleton h-16 w-full rounded-lg" />
+                        ))}
+                    </div>
                 ) : requests.length === 0 ? (
                     <div className="text-center py-12 text-sm text-muted-foreground">{t("noRequests")}</div>
                 ) : (

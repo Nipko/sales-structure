@@ -138,7 +138,13 @@ export default function PipelineSettingsPage() {
     };
 
     if (loading) {
-        return <div className="flex items-center justify-center h-[400px] text-muted-foreground"><Loader2 className="animate-spin" /></div>;
+        return (
+            <div className="max-w-[800px] mx-auto space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="skeleton h-14 w-full rounded-xl" />
+                ))}
+            </div>
+        );
     }
 
     return (

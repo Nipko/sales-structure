@@ -136,8 +136,10 @@ export default function ScoringConfigPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-                <Loader2 className="animate-spin" />
+            <div className="max-w-2xl space-y-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="skeleton h-20 w-full rounded-xl" />
+                ))}
             </div>
         );
     }

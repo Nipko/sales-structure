@@ -96,8 +96,10 @@ export default function ClassesPage() {
             </div>
 
             {loading ? (
-                <div className="text-center text-muted-foreground py-12">
-                    <Loader2 className="h-5 w-5 animate-spin inline" />
+                <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="skeleton h-24 w-full rounded-xl" />
+                    ))}
                 </div>
             ) : days.length === 0 ? (
                 <div className="bg-card border border-border rounded-xl p-12 text-center text-sm text-muted-foreground">

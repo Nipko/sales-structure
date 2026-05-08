@@ -227,8 +227,10 @@ export default function MenuPage() {
                         </h2>
                     </div>
                     {loading ? (
-                        <div className="p-12 text-center text-muted-foreground">
-                            <Loader2 className="h-5 w-5 animate-spin inline" />
+                        <div className="p-3 space-y-2">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="skeleton h-14 w-full rounded-lg" />
+                            ))}
                         </div>
                     ) : filteredItems.length === 0 ? (
                         <div className="p-12 text-center text-muted-foreground text-sm">

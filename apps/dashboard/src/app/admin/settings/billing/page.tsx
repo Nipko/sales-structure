@@ -318,9 +318,17 @@ export default function BillingPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center py-20 text-neutral-500">
-                <Loader2 className="animate-spin mr-2" size={20} />
-                {t("loading")}
+            <div className="max-w-4xl space-y-6">
+                <div className="space-y-2">
+                    <div className="skeleton h-7 w-48" />
+                    <div className="skeleton h-4 w-72" />
+                </div>
+                <div className="skeleton h-44 w-full rounded-xl" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="skeleton h-72 w-full rounded-xl" />
+                    ))}
+                </div>
             </div>
         );
     }

@@ -76,7 +76,7 @@ export default function HealthPage() {
                 <button
                     onClick={fetchData}
                     disabled={loading}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted rounded-lg text-sm transition disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
                 >
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     {tc("refresh")}
@@ -349,7 +349,7 @@ function QueueInspectorModal({
                     <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                             onClick={load}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border hover:bg-muted rounded text-xs transition"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border hover:bg-muted text-foreground rounded text-xs transition-colors"
                             title={tc("refresh")}
                         >
                             <RefreshCw className="h-3.5 w-3.5" />
@@ -478,7 +478,7 @@ function JobRow({
     return (
         <div className={cn("hover:bg-muted/20 transition", busy && "opacity-50 pointer-events-none")}>
             <div className="p-3 flex items-start justify-between gap-3">
-                <button onClick={toggleExpand} className="flex-shrink-0 mt-0.5 p-0.5 hover:bg-muted rounded">
+                <button onClick={toggleExpand} className="flex-shrink-0 mt-0.5 p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors">
                     {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
                 <div className="min-w-0 flex-1">
@@ -650,7 +650,7 @@ function CleanAllModal({
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} disabled={busy} className="p-1 hover:bg-muted rounded disabled:opacity-50">
+                    <button onClick={onClose} disabled={busy} className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded disabled:opacity-50 transition-colors">
                         <X className="h-4 w-4" />
                     </button>
                 </div>
@@ -697,7 +697,7 @@ function CleanAllModal({
                 </div>
 
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm disabled:opacity-50">
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm disabled:opacity-50 transition-colors">
                         {tc("cancel")}
                     </button>
                     <button

@@ -291,7 +291,7 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
                         <button
                             onClick={handleClearAll}
                             disabled={saving}
-                            className="px-3 py-2 hover:bg-muted rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50"
+                            className="px-3 py-2 bg-muted/40 hover:bg-muted text-foreground border border-border rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50 transition-colors"
                         >
                             <RotateCcw className="h-4 w-4" /> {t("clearAll")}
                         </button>

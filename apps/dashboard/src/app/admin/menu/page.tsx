@@ -290,7 +290,7 @@ export default function MenuPage() {
                                                 {item.is_available ? t("available") : t("unavailable")}
                                             </button>
                                             <div className="flex gap-1">
-                                                <button onClick={() => setShowItemForm(item)} className="p-1.5 hover:bg-muted rounded" title={tc("edit") || "Edit"}>
+                                                <button onClick={() => setShowItemForm(item)} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors" title={tc("edit") || "Edit"}>
                                                     <Edit2 className="h-3.5 w-3.5" />
                                                 </button>
                                                 <button onClick={() => handleDeleteItem(item.id)} className="p-1.5 hover:bg-red-500/10 rounded" title={tc("delete") || "Delete"}>
@@ -490,7 +490,7 @@ function ItemFormModal({
                 </div>
 
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSubmit} disabled={busy || !form.name || !form.price} className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}

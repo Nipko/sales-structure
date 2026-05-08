@@ -122,7 +122,7 @@ export default function AuditPage() {
                 <button
                     onClick={fetchData}
                     disabled={loading}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted rounded-lg text-sm transition disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
                 >
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     {tc("refresh")}
@@ -257,14 +257,14 @@ export default function AuditPage() {
                         <button
                             onClick={() => setPage(Math.max(0, page - 1))}
                             disabled={page === 0}
-                            className="px-3 py-1.5 bg-card border border-border hover:bg-muted disabled:opacity-50 rounded-lg"
+                            className="px-3 py-1.5 bg-card border border-border hover:bg-muted text-foreground disabled:opacity-50 rounded-lg text-sm transition-colors"
                         >
                             {tc("previous")}
                         </button>
                         <button
                             onClick={() => setPage(page + 1)}
                             disabled={page >= totalPages - 1}
-                            className="px-3 py-1.5 bg-card border border-border hover:bg-muted disabled:opacity-50 rounded-lg"
+                            className="px-3 py-1.5 bg-card border border-border hover:bg-muted text-foreground disabled:opacity-50 rounded-lg text-sm transition-colors"
                         >
                             {tc("next")}
                         </button>

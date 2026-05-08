@@ -188,7 +188,7 @@ export default function CoursesPage() {
                                 <button onClick={() => setShowCohortForm(course)} className="text-xs px-2 py-1 hover:bg-muted rounded inline-flex items-center gap-1" title={t("addCohort")}>
                                     <Calendar className="h-3 w-3" /> {t("addCohort")}
                                 </button>
-                                <button onClick={() => setShowCourseForm(course)} className="p-1.5 hover:bg-muted rounded">
+                                <button onClick={() => setShowCourseForm(course)} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors">
                                     <Edit2 className="h-3.5 w-3.5" />
                                 </button>
                                 <button onClick={() => handleDeleteCourse(course.id)} className="p-1.5 hover:bg-red-500/10 rounded">
@@ -397,7 +397,7 @@ function CourseFormModal({ course, onClose, onSaved }: { course: Course | null; 
                     <input type="text" placeholder={t("certificationPlaceholder")} value={form.certification} onChange={e => setForm({ ...form, certification: e.target.value })} className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm" />
                 </div>
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSubmit} disabled={busy || !form.name} className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}
@@ -477,7 +477,7 @@ function CohortFormModal({ course, onClose, onSaved }: { course: Course; onClose
                     </div>
                 </div>
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSubmit} disabled={busy} className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}

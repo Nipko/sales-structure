@@ -98,7 +98,7 @@ export default function ServiceRequestsPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
-                <button onClick={load} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted rounded-lg text-sm transition disabled:opacity-50">
+                <button onClick={load} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     {tc("refresh")}
                 </button>
@@ -253,7 +253,7 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
                     </div>
                 </div>
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSave} disabled={busy} className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}

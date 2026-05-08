@@ -171,7 +171,7 @@ export default function InsurancePage() {
                                     </div>
                                 </div>
                                 <div className="flex gap-1">
-                                    <button onClick={() => setShowPlanForm(plan)} className="p-1.5 hover:bg-muted rounded">
+                                    <button onClick={() => setShowPlanForm(plan)} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors">
                                         <Edit2 className="h-3.5 w-3.5" />
                                     </button>
                                     <button onClick={() => handleDeletePlan(plan.id)} className="p-1.5 hover:bg-red-500/10 rounded">
@@ -435,7 +435,7 @@ function PlanFormModal({ plan, onClose, onSaved }: { plan: Plan | null; onClose:
                     </div>
                 </div>
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSubmit} disabled={busy || !form.name} className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}

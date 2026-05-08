@@ -162,7 +162,7 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                     <button
                         onClick={handleReactivateChannels}
                         disabled={busy === "channels"}
-                        className="flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted rounded-lg text-sm font-medium transition disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 rounded-lg text-sm font-medium transition disabled:opacity-50"
                     >
                         {busy === "channels" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                         {t("reactivateChannels")}
@@ -278,7 +278,7 @@ function ExtendTrialModal({
                         <h3 className="text-base font-semibold">{t("extendTrialTitle")}</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">{tenant.name}</p>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
+                    <button onClick={onClose} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
                 </div>
                 <div className="p-5 space-y-4">
                     <div>
@@ -306,7 +306,7 @@ function ExtendTrialModal({
                     {error && <p className="text-sm text-red-600">{error}</p>}
                 </div>
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={onClose} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm text-foreground border border-border">{tc("cancel")}</button>
                     <button onClick={handleSubmit} disabled={busy} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2">
                         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                         {t("extendTrialConfirm", { days })}
@@ -363,7 +363,7 @@ function PurgeTenantModal({
                             <p className="text-xs text-muted-foreground mt-0.5">{tenant.name}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} disabled={busy} className="p-1 hover:bg-muted rounded disabled:opacity-50"><X className="h-4 w-4" /></button>
+                    <button onClick={onClose} disabled={busy} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"><X className="h-4 w-4" /></button>
                 </div>
 
                 <div className="p-5 space-y-4">
@@ -399,7 +399,7 @@ function PurgeTenantModal({
                 </div>
 
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm disabled:opacity-50">{tc("cancel")}</button>
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm text-foreground border border-border disabled:opacity-50">{tc("cancel")}</button>
                     <button
                         onClick={handlePurge}
                         disabled={!matches || busy}
@@ -462,7 +462,7 @@ function CompPlanModal({
                         </h3>
                         <p className="text-xs text-muted-foreground mt-0.5">{tenant.name}</p>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
+                    <button onClick={onClose} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
                 </div>
                 <div className="p-5 space-y-4">
                     <p className="text-xs text-muted-foreground">{t("compPlanHint")}</p>
@@ -503,7 +503,7 @@ function CompPlanModal({
                     {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
                 </div>
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm disabled:opacity-50">{tc("cancel")}</button>
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm text-foreground border border-border disabled:opacity-50">{tc("cancel")}</button>
                     <button
                         onClick={handleSubmit}
                         disabled={busy}

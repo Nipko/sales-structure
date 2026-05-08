@@ -89,14 +89,28 @@ export default function SetupWizardPage() {
             return;
         }
         setSaving(true);
+        let templateApplied = false;
         try {
-            await api.applySetupTemplate(tenantId, {
+            const result = await api.applySetupTemplate(tenantId, {
                 templateId: selectedTemplate.id,
                 customizations: { agentName, greeting, tone },
                 selectedChannels,
             });
+            templateApplied = !!(result as any)?.success;
+            if (!templateApplied) {
+                console.warn("[setup-wizard] applySetupTemplate failed:", (result as any)?.error);
+            }
+        } catch (e) {
+            console.error("[setup-wizard] applySetupTemplate threw:", e);
         } finally {
             setSaving(false);
+        }
+        // Safety net — if applyTemplate did NOT mark the flag (any failure),
+        // explicitly skip so /admin's setup-status check can release. Without
+        // this fallback, a transient backend error sends the user into an
+        // infinite redirect loop between /admin and /admin/setup-wizard.
+        if (!templateApplied) {
+            try { await api.skipSetupWizard(tenantId); } catch { /* swallow */ }
         }
         // Hard navigation so the next /admin mount re-runs setup-status fresh.
         window.location.href = "/admin";
@@ -108,11 +122,15 @@ export default function SetupWizardPage() {
             return;
         }
         try {
-            await api.skipSetupWizard(tenantId);
-        } catch {
+            const result = await api.skipSetupWizard(tenantId);
+            if (!(result as any)?.success) {
+                console.warn("[setup-wizard] skipSetupWizard returned !success:", (result as any)?.error);
+            }
+        } catch (e) {
             // Even if the API call fails, push forward — better to land in
             // /admin and have setup-wizard show again on next visit than to
             // trap the user here. The next finish/skip will retry the flag.
+            console.error("[setup-wizard] skipSetupWizard threw:", e);
         }
         window.location.href = "/admin";
     };

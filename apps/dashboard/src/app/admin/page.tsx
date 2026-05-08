@@ -103,9 +103,18 @@ export default function AdminDashboard() {
     useEffect(() => {
         async function checkSetupWizard() {
             if (!user?.tenantId || user?.role === "super_admin") return;
+            // Loop kill switch — if we just came back from /admin/setup-wizard
+            // and the flag is still unset (backend write failed for some
+            // reason), do NOT redirect again. Stay on /admin so the user is
+            // not trapped. They can re-run the wizard manually from settings.
+            const justBouncedKey = `setupWizard_lastBounce_${user.tenantId}`;
+            const lastBounce = parseInt(sessionStorage.getItem(justBouncedKey) || "0", 10);
+            if (Date.now() - lastBounce < 30_000) return;
+
             try {
                 const res = await api.getSetupStatus(user.tenantId);
                 if (res.success && !res.data?.setupWizardCompleted) {
+                    sessionStorage.setItem(justBouncedKey, String(Date.now()));
                     window.location.href = "/admin/setup-wizard";
                 }
             } catch { /* proceed to dashboard */ }

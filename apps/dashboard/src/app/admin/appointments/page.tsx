@@ -825,11 +825,10 @@ export default function AppointmentsPage() {
         {/*  LOADING STATE                                                */}
         {/* ============================================================ */}
         {loading && (activeTab === "calendar" || activeTab === "agenda") && (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('loadingAppointments')}</p>
-            </div>
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="skeleton h-20 w-full rounded-xl" />
+            ))}
           </div>
         )}
 

@@ -224,7 +224,15 @@ export default function MembershipsPage() {
                             </thead>
                             <tbody className="divide-y divide-border">
                                 {loading && members.length === 0 ? (
-                                    <tr><td colSpan={6} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+                                    <>
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <tr key={i}>
+                                                <td colSpan={6} className="px-4 py-2">
+                                                    <div className="skeleton h-10 w-full rounded-md" />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </>
                                 ) : members.length === 0 ? (
                                     <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">{t("noMembers")}</td></tr>
                                 ) : members.map(m => {

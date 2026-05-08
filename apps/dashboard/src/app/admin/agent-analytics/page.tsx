@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { SkeletonKPIs, SkeletonTable } from "@/components/ui/skeleton-loader";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -389,9 +390,9 @@ export default function AgentAnalyticsPage() {
 
             {/* Content */}
             {loading ? (
-                <div className="flex items-center justify-center h-[300px] gap-3 text-[var(--text-secondary)]">
-                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Loading data...
+                <div className="space-y-4">
+                    <SkeletonKPIs count={4} />
+                    <SkeletonTable rows={6} cols={5} />
                 </div>
             ) : renderTab()}
         </div>

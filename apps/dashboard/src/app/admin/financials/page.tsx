@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
+import { SkeletonKPIs, SkeletonCards } from "@/components/ui/skeleton-loader";
 import {
   BarChart3, LayoutGrid, DollarSign, Users, Server, Settings,
 } from "lucide-react";
@@ -100,11 +101,9 @@ export default function FinancialsPage() {
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as TabId)} />
 
       {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">{tc("loading")}</p>
-          </div>
+        <div className="space-y-6">
+          <SkeletonKPIs count={4} />
+          <SkeletonCards count={3} />
         </div>
       )}
 

@@ -994,8 +994,10 @@ export default function InboxPage() {
                 {/* Conversation List */}
                 <div className="inbox-scrollbar flex-1 overflow-auto">
                     {loadingConv && conversations.length === 0 && (
-                        <div className="flex items-center justify-center py-12 text-muted-foreground">
-                            <Loader2 size={20} className="animate-spin" />
+                        <div className="p-2 space-y-1.5">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                                <div key={i} className="skeleton h-16 w-full rounded-lg" />
+                            ))}
                         </div>
                     )}
                     {filteredConversations.map(conv => {

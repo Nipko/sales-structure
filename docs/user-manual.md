@@ -6,103 +6,70 @@
 
 <p align="center">
   <strong>Plataforma de IA Conversacional Omnicanal</strong><br/>
-  Guía completa para configurar y usar Parallly
+  Guía completa para tenants — administradores, supervisores y agentes
 </p>
 
 <p align="center">
-  Versión 3.0 — Mayo 2026
+  Versión 4.0 — Mayo 2026
 </p>
 
 ---
 
 ## Índice General
 
-| # | Sección | Página |
-|---|---------|--------|
-| 1 | [Introducción](#1-introducción) | |
-| 2 | [Primeros Pasos](#2-primeros-pasos) | |
-| 2.1 | [Crear una cuenta](#21-crear-una-cuenta) | |
-| 2.2 | [Asistente de Onboarding](#22-asistente-de-onboarding) | |
-| 2.3 | [Iniciar sesión](#23-iniciar-sesión) | |
-| 2.4 | [Recuperar contraseña](#24-recuperar-contraseña) | |
-| 3 | [Dashboard](#3-dashboard) | |
-| 4 | [Navegación — Cómo usar la plataforma](#4-navegación--cómo-usar-la-plataforma) | |
-| 4.1 | [Menú principal — 3 secciones, 14 items](#41-menú-principal) | |
-| 4.2 | [Configuración — 5 secciones](#42-configuración--5-secciones) | |
-| 4.3 | [Analytics — 10 pestañas](#43-analytics--10-pestañas) | |
-| 5 | [Inbox — Bandeja de Entrada](#5-inbox--bandeja-de-entrada) | |
-| 5.1 | [Vista general](#51-vista-general) | |
-| 5.2 | [Filtros](#52-filtros) | |
-| 5.3 | [Acciones de conversación](#53-acciones-de-conversación) | |
-| 5.4 | [Panel del contacto](#54-panel-del-contacto) | |
-| 6 | [CRM — Gestión de Contactos](#6-crm--gestión-de-contactos) | |
-| 6.1 | [Contactos](#61-contactos) | |
-| 6.2 | [Pipeline (Kanban)](#62-pipeline-kanban) | |
-| 6.3 | [Segmentos](#63-segmentos) | |
-| 6.4 | [CRM Analytics](#64-crm-analytics) | |
-| 6.5 | [Identidad y Merge](#65-identidad-y-merge) | |
-| 6.6 | [Lead Scoring Configurable](#66-lead-scoring-configurable) | |
-| 6.7 | [AI Insights](#67-ai-insights) | |
-| 6.8 | [Aprobación de Deals](#68-aprobación-de-deals) | |
-| 6.9 | [Filtros Avanzados](#69-filtros-avanzados) | |
-| 7 | [Agentes IA](#7-agentes-ia) | |
-| 7.1 | [Lista de agentes](#71-lista-de-agentes) | |
-| 7.2 | [Editor del agente](#72-editor-del-agente) | |
-| 7.3 | [Plantillas verticales](#73-plantillas-verticales) | |
-| 7.4 | [Test del agente](#74-test-del-agente) | |
-| 8 | [Canales de Comunicación](#8-canales-de-comunicación) | |
-| 8.1 | [WhatsApp](#81-whatsapp) | |
-| 8.2 | [Instagram](#82-instagram) | |
-| 8.3 | [Messenger](#83-messenger) | |
-| 8.4 | [Telegram](#84-telegram) | |
-| 8.5 | [SMS (Twilio)](#85-sms-twilio) | |
-| 8.6 | [Desconectar un canal](#86-desconectar-un-canal) | |
-| 9 | [Citas y Agenda](#9-citas-y-agenda) | |
-| 9.1 | [Calendario](#91-calendario) | |
-| 9.2 | [Servicios](#92-servicios) | |
-| 9.3 | [Disponibilidad](#93-disponibilidad) | |
-| 9.4 | [Calendarios conectados](#94-calendarios-conectados) | |
-| 9.5 | [Reserva por IA](#95-cómo-funciona-la-reserva-por-ia) | |
-| 10 | [Automatización](#10-automatización) | |
-| 11 | [Campañas y Broadcast](#11-campañas-y-broadcast) | |
-| 12 | [Base de Conocimiento](#12-base-de-conocimiento) | |
-| 13 | [Plantillas de Email](#13-plantillas-de-email) | |
-| 14 | [Analytics y Reportes](#14-analytics-y-reportes) | |
-| 15 | [Inventario y Pedidos](#15-inventario-y-pedidos) | |
-| 16 | [Privacidad y Cumplimiento](#16-privacidad-y-cumplimiento) | |
-| 17 | [Configuración General](#17-configuración-general) | |
-| 18 | [Gestión de Usuarios](#18-gestión-de-usuarios) | |
-| 18.1 | [Habilidades del equipo](#181-habilidades-del-equipo) | |
-| 19 | [Facturación y Planes](#19-facturación-y-planes) | |
-| 20 | [Preguntas Frecuentes (FAQ)](#20-preguntas-frecuentes) | |
-| 21 | [Adaptación por Industria (Verticales)](#21-adaptación-por-industria) | |
-| 22 | [Propiedades y Alquiler Vacacional](#22-propiedades-y-alquiler-vacacional) | |
-| 23 | [Panel de Super Administrador](#23-panel-de-super-administrador) | |
-| 24 | [Sistema de Ayuda Contextual](#24-sistema-de-ayuda-contextual) | |
-| A | [Apéndice: Guía de Screenshots](#apéndice-guía-de-screenshots) | |
+| # | Sección |
+|---|---------|
+| 1 | [Introducción](#1-introducción) |
+| 2 | [Primeros pasos](#2-primeros-pasos) |
+| 3 | [Roles y permisos](#3-roles-y-permisos) |
+| 4 | [Dashboard](#4-dashboard) |
+| 5 | [Navegación](#5-navegación) |
+| 6 | [Inbox — Bandeja de entrada](#6-inbox--bandeja-de-entrada) |
+| 7 | [CRM — Gestión de contactos](#7-crm--gestión-de-contactos) |
+| 8 | [Agentes IA](#8-agentes-ia) |
+| 9 | [Canales de comunicación](#9-canales-de-comunicación) |
+| 10 | [Citas y agenda](#10-citas-y-agenda) |
+| 11 | [Automatización](#11-automatización) |
+| 12 | [Campañas y broadcast](#12-campañas-y-broadcast) |
+| 13 | [Base de conocimiento](#13-base-de-conocimiento) |
+| 14 | [Plantillas de email](#14-plantillas-de-email) |
+| 15 | [Analytics y reportes](#15-analytics-y-reportes) |
+| 16 | [Inventario y pedidos](#16-inventario-y-pedidos) |
+| 17 | [Privacidad y cumplimiento](#17-privacidad-y-cumplimiento) |
+| 18 | [Configuración general](#18-configuración-general) |
+| 19 | [Gestión de usuarios](#19-gestión-de-usuarios) |
+| 20 | [Facturación y planes](#20-facturación-y-planes) |
+| 21 | [Adaptación por industria — verticales](#21-adaptación-por-industria--verticales) |
+| 22 | [Sistema de recall (recordatorios)](#22-sistema-de-recall) |
+| 23 | [Sistema de ayuda contextual](#23-sistema-de-ayuda-contextual) |
+| 24 | [Conversaciones resueltas](#24-conversaciones-resueltas) |
+| 25 | [Subir fotos a catálogos](#25-subir-fotos-a-catálogos) |
+| 26 | [Preguntas frecuentes (FAQ)](#26-preguntas-frecuentes) |
 
 ---
 
 # 1. Introducción
 
-Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de WhatsApp, Instagram, Messenger, Telegram y SMS — todo con agentes de inteligencia artificial.
+Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram y SMS** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales.
 
 ### ¿Para quién es Parallly?
 
 - Negocios que reciben consultas por redes sociales o WhatsApp
-- Empresas que quieren automatizar la atención al cliente
+- Empresas que quieren automatizar atención al cliente
 - Equipos de ventas que necesitan un CRM integrado con canales de mensajería
-- Profesionales que agendan citas (consultorios, asesorías, salones)
+- Profesionales que agendan citas (consultorios, asesorías, salones, talleres)
+- Inmobiliarias, agencias de viajes, restaurantes, gimnasios, escuelas, aseguradoras, clínicas veterinarias, fotógrafos, servicios del hogar y más
 
 ### ¿Qué puedes hacer con Parallly?
 
 - Conectar canales de mensajería en minutos
-- Configurar agentes IA que atienden como humanos
-- Agendar citas automáticamente con sincronización de calendario
+- Configurar agentes IA personalizados que atienden 24/7
+- Agendar citas automáticamente con sincronización a Google Calendar
 - Gestionar contactos, leads y pipeline de ventas
 - Crear reglas de automatización
 - Enviar campañas masivas
 - Analizar métricas de rendimiento
+- Adaptar la plataforma a más de 16 industrias verticales
 
 ---
 
@@ -112,1993 +79,1748 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 
 1. Ir a [admin.parallly-chat.cloud](https://admin.parallly-chat.cloud)
 2. Clic en **Registrarse**
-3. Ingresar email y contraseña
+3. Ingresar email y contraseña (o usar Google OAuth)
 4. Verificar el email con el código de 6 dígitos que recibirás
 5. Completar el asistente de onboarding (sección 2.2)
 
-> **Tip:** También puedes registrarte con tu cuenta de Google haciendo clic en "Continuar con Google".
-
----
-
 ## 2.2 Asistente de Onboarding
 
-Al crear tu cuenta, un asistente de 5 pasos te guía para configurar tu negocio:
+Al crear tu cuenta, un asistente de 5 pasos configura tu negocio:
 
 ### Paso 1 — Perfil de empresa
 
-| Campo | Descripción | Obligatorio |
-|-------|-------------|:-----------:|
-| Nombre de la empresa | El nombre de tu negocio | ✅ |
-| Sitio web | URL de tu página web | No |
-| Teléfono | Número de contacto del negocio | No |
-| Email | Email de contacto comercial | No |
-| Descripción | Qué hace tu negocio (usado por el agente IA) | No |
-| Redes sociales | Instagram, Facebook, LinkedIn, TikTok | No |
-| Industria | Sector de tu negocio | ✅ |
-| Tamaño | Cantidad de empleados | No |
-| Zona horaria | Tu zona horaria local | ✅ |
+| Campo | Obligatorio |
+|-------|:-----------:|
+| Nombre de la empresa | ✅ |
+| Sitio web | No |
+| Teléfono | No |
+| Email comercial | No |
+| Descripción | No |
+| Industria | ✅ |
+| Sub-tipo de negocio | Adapta el agente |
+| Tamaño | No |
+| Zona horaria | ✅ |
 
 ### Paso 2 — Audiencia
 
-Las opciones se adaptan automáticamente a la industria que seleccionaste en el Paso 1:
-
-| Industria | Ejemplos de audiencia |
-|-----------|----------------------|
-| **Salud** | Pacientes particulares, Por derivación médica, Obra social / prepaga |
-| **Inmobiliaria** | Compradores, Inversores, Arrendatarios |
-| **Restaurantes** | Comensales locales, Turistas, Corporativo / eventos |
-| **Otras industrias** | B2C (consumidores), B2B (empresas), Gobierno |
+Las opciones se adaptan a tu industria. Por ejemplo:
+- **Salud**: Pacientes particulares, Por derivación, Obra social/prepaga
+- **Inmobiliaria**: Compradores, Inversores, Arrendatarios
+- **Restaurantes**: Comensales locales, Turistas, Corporativo
 
 ### Paso 3 — Objetivos
 
-El título y las opciones se adaptan a tu industria usando el nombre de tu agente IA:
-
-- **Salud**: "¿Cómo ayudará Sofía a tus pacientes?" — Agendar citas, Responder preguntas médicas frecuentes, Dar seguimiento post-consulta
-- **Inmobiliaria**: "¿Cómo ayudará Carlos a tus clientes?" — Filtrar propiedades, Agendar visitas, Calificar compradores
-- **Restaurantes**: "¿Cómo ayudará Luca a tus comensales?" — Tomar reservas, Responder preguntas del menú, Gestionar delivery
-- **General**: FAQ, Citas, Ventas, Soporte al cliente, Promociones
+El título y opciones se adaptan al nombre del agente IA recomendado:
+- **Salud**: "¿Cómo ayudará Sofía a tus pacientes?"
+- **Inmobiliaria**: "¿Cómo ayudará Carlos a tus clientes?"
+- **Restaurantes**: "¿Cómo ayudará Luca a tus comensales?"
 
 ### Paso 4 — Referencia
-¿Cómo conociste Parallly?
+¿Cómo conociste Parallly? (Google, Instagram, recomendación, etc.)
 
-### Paso 5 — Plan y pago
-Selecciona tu plan (Starter gratuito, Pro o Enterprise) y agrega método de pago si es necesario.
+### Paso 5 — Plan
+Seleccionas plan (Starter, Pro o Enterprise) y método de pago si es necesario.
 
-### ¿Qué se configura automáticamente al terminar el onboarding?
+### Configuración automática al terminar
 
-Al completar el asistente, Parallly pre-configura automáticamente:
-- **Etapas del pipeline** adaptadas a tu industria
-- **Agente IA** con nombre, rol, tono y reglas específicos de tu vertical
-- **FAQs base** con las preguntas más comunes de tu industria
-- **Servicios** de ejemplo según tu tipo de negocio
-
----
+- **Pipeline** con etapas adaptadas a tu industria
+- **Agente IA** con nombre, rol, tono y herramientas pre-configurados
+- **FAQs base** de tu sector
+- **Servicios** ejemplo según tu tipo de negocio
+- **Tablas verticales** activadas (menú, planes, propiedades, etc. según corresponda)
 
 ## 2.3 Iniciar sesión
 
-| Método | Descripción |
-|--------|-------------|
-| Email + contraseña | Ingresa tus credenciales |
-| Google OAuth | Clic en "Continuar con Google" |
-| Recordarme | Mantiene la sesión por 14 días (sin esto, expira en 8 horas) |
+| Método | Detalle |
+|--------|---------|
+| Email + contraseña | Credenciales habituales |
+| Google OAuth | "Continuar con Google" |
+| Recordarme | Sesión 14 días (sin esto: 8h) |
 
-> **Importante:** Después de 60 minutos sin actividad, aparece un modal de advertencia con cuenta regresiva de 2 minutos. Si no respondes, la sesión se cierra automáticamente.
-
----
+> Después de 60 minutos de inactividad aparece un modal con cuenta regresiva de 2 minutos. Si no respondes, la sesión cierra.
 
 ## 2.4 Recuperar contraseña
 
-1. En la pantalla de login, clic en **¿Olvidaste tu contraseña?**
-2. Ingresa tu email registrado
-3. Recibirás un código OTP por email
-4. Ingresa el código y establece una nueva contraseña
+1. Login → "¿Olvidaste tu contraseña?"
+2. Ingresa tu email
+3. Recibes código OTP por correo
+4. Ingresas el código y estableces nueva contraseña
 
 ---
 
-# 3. Dashboard
+# 3. Roles y Permisos
+
+Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los administradores definen quién es qué desde Configuración → Usuarios.
+
+## 3.1 Resumen rápido
+
+| Rol | A quién va | Acceso típico |
+|-----|------------|---------------|
+| **Tenant Admin** | Dueño del negocio, gerente | TODO — incluye facturación, canales, usuarios, agente IA |
+| **Tenant Supervisor** | Líder de operaciones, jefe de equipo | Operación + analytics + automatización (sin facturación ni usuarios) |
+| **Tenant Agent** | Asesor, vendedor, recepcionista | Solo bandeja, contactos, citas, su propia performance |
+
+## 3.2 Tenant Admin — Acceso completo
+
+**Ideal para:** dueño/a del negocio, gerente general, persona que firma el contrato.
+
+**Puede:**
+- ✅ Todo lo del Supervisor y Agent
+- ✅ Conectar y desconectar canales (WhatsApp, Instagram, Messenger, Telegram, SMS)
+- ✅ Configurar agentes IA (crear, editar, asignar canales, eliminar)
+- ✅ Gestionar usuarios (invitar, cambiar roles, desactivar)
+- ✅ Cambiar plan de facturación, método de pago, pausar/cancelar
+- ✅ Aplicar cupones promocionales
+- ✅ Ver historial de pagos
+- ✅ Configurar políticas de privacidad y compliance
+- ✅ Ver y modificar configuración general de la empresa
+- ✅ Acceder a base de conocimiento (cargar documentos)
+
+**No puede:**
+- Acceder a paneles de plataforma global (eso solo lo ven los super-admins de Parallly)
+
+## 3.3 Tenant Supervisor — Operación + Analytics
+
+**Ideal para:** jefe/a de equipo, supervisor/a comercial, líder de soporte.
+
+**Puede:**
+- ✅ Todo lo del Agent
+- ✅ Crear y editar reglas de automatización
+- ✅ Crear y enviar campañas de broadcast
+- ✅ Cargar contenido a la base de conocimiento
+- ✅ Ver analytics completas (CRM, agentes, canales, CSAT)
+- ✅ Configurar etapas del pipeline y reglas de scoring
+- ✅ Crear macros, plantillas de email y formularios pre-chat
+- ✅ Definir campos personalizados, horarios de atención y localización
+- ✅ Aprobar deals que requieren aprobación
+- ✅ Hacer merge manual de contactos en duplicados
+
+**No puede:**
+- ❌ Conectar/desconectar canales
+- ❌ Crear o eliminar agentes IA
+- ❌ Ver ni cambiar facturación
+- ❌ Gestionar usuarios
+
+## 3.4 Tenant Agent — Operativo
+
+**Ideal para:** asesor de ventas, recepcionista, agente de atención.
+
+**Puede:**
+- ✅ Atender conversaciones desde la bandeja (handoff humano)
+- ✅ Ver y editar contactos / leads asignados
+- ✅ Mover deals en el pipeline
+- ✅ Agendar y reprogramar citas
+- ✅ Ver el calendario propio y del negocio
+- ✅ Ver sus propias métricas en agent-analytics
+- ✅ Ver y solicitar features (feature requests)
+- ✅ Acceder a media (logos, fotos compartidas)
+
+**No puede:**
+- ❌ Configurar agentes IA, canales o automatizaciones
+- ❌ Ver analytics generales (solo las propias)
+- ❌ Crear campañas masivas o cargar conocimiento
+- ❌ Modificar pipeline, scoring, o configuración del tenant
+- ❌ Ver facturación ni gestionar usuarios
+
+## 3.5 Cambiar el rol de un usuario
+
+Solo un **Tenant Admin** puede cambiar roles:
+
+1. Configuración → **Usuarios**
+2. Click en el usuario
+3. Selecciona el nuevo rol
+4. Guarda
+
+> **Importante:** Si bajás de Admin a Supervisor a alguien que tiene canales conectados, los canales siguen funcionando — solo se le quita la habilidad de modificarlos.
+
+---
+
+# 4. Dashboard
 
 **Ruta:** Menú → Dashboard
+**Roles:** Todos
 
-El dashboard es tu vista general del negocio al iniciar sesión. Se adapta automáticamente a tu industria.
+El dashboard es tu vista general al iniciar sesión y se adapta a tu industria.
 
-### Mensaje de bienvenida
+### Mensaje de bienvenida vertical
 
-Al iniciar sesión, el dashboard te recibe con un mensaje contextual según tu industria:
-- **Salud**: "Bienvenido a tu consultorio virtual, Dr. López"
+- **Salud**: "Bienvenido a tu consultorio virtual"
 - **Restaurantes**: "Tu restaurante está listo"
 - **Inmobiliaria**: "Tu agencia está lista para cerrar negocios"
 - **General**: "Bienvenido a Parallly"
 
-### Métricas principales (KPIs por industria)
-
-Los KPIs se adaptan a tu tipo de negocio:
+### KPIs por industria
 
 | Industria | KPI 1 | KPI 2 | KPI 3 |
 |-----------|-------|-------|-------|
 | **Salud** | Citas hoy | Pacientes nuevos | No shows |
-| **Automotriz** | Leads hoy | Test drives | Cotizaciones |
-| **Restaurantes** | Reservas hoy | Comensales | No shows |
-| **General** | Leads hoy | Leads calientes | Mensajes procesados |
-
-También siempre disponibles:
-| Métrica | Descripción |
-|---------|-------------|
-| Mensajes procesados | Total de mensajes IA enviados/recibidos hoy |
-| Costo IA | Costo de los modelos de lenguaje usados hoy |
+| **Veterinaria** | Citas hoy | Mascotas registradas | Vacunas próximas |
+| **Restaurantes** | Pedidos hoy | Mesas ocupadas | Ingresos día |
+| **Gimnasios** | Miembros activos | Clases hoy | Check-ins 7d |
+| **Inmobiliaria** | Leads hoy | Visitas agendadas | Cierres mes |
+| **Turismo** | Reservas día | Tours activos | Ocupación |
+| **Educación** | Inscripciones | Cursos activos | Estudiantes |
+| **Servicios hogar** | Solicitudes hoy | Emergencias | Técnicos disponibles |
+| **General** | Conversaciones hoy | Leads nuevos | Tasa respuesta |
 
 ### Vista principal (homepage vertical)
 
-La sección central del dashboard cambia según tu industria:
-- **Salud, Belleza, Restaurantes**: Vista de **agenda del día** — próximas citas, servicios agendados, hora y cliente
-- **Inmobiliaria, Automotriz**: Vista de **leads recientes** — últimos leads capturados, etapa, score
-
-### Actividad reciente
-Lista de las últimas interacciones: conversaciones nuevas, handoffs a humanos, y pedidos recibidos.
-
-### Uso de modelos
-Distribución de qué modelos IA se están usando con porcentajes y ahorro del router inteligente.
+Para algunas industrias el dashboard muestra una vista contextualizada:
+- **Salud / Veterinaria / Belleza**: agenda del día con citas
+- **Inmobiliaria / Automotriz**: lista de leads
+- **Restaurantes**: pedidos en cocina + reservas
+- **Otras**: actividad reciente
 
 ### Checklist de configuración
 
-Si tu cuenta es nueva, aparece un checklist adaptado a tu industria:
-- **Salud**: "Configura tu asistente médico", "Carga tus servicios (consultas, procedimientos)", "Conecta tu calendario"
-- **Restaurantes**: "Carga tu menú y horarios", "Conecta WhatsApp Business", "Activa reservas"
-- **General**: "Conecta un canal de mensajería", "Configura tu agente IA", "Carga tu base de conocimiento"
+Banner con pasos pendientes para activar tu cuenta:
+- Conectar al menos un canal
+- Personalizar tu agente IA
+- Crear un servicio/producto
+- Cargar tu logo
 
 ---
 
-# 4. Navegación — Cómo usar la plataforma
+# 5. Navegación
 
-Parallly está organizado en **3 secciones nombradas** (14 items en total) accesibles desde el menú lateral izquierdo, más Configuración en la parte inferior.
+## 5.1 Menú principal — 3 secciones, items dinámicos
 
-## 4.1 Menú principal
+El sidebar se organiza en 3 secciones nombradas:
 
-```
-┌─────────────────────────────┐
-│  [Logo]  Nombre del negocio │
-├─────────────────────────────┤
-│  OPERACIÓN                  │
-│  💬  Conversaciones         │
-│  👥  CRM                    │
-│  📊  Embudo                 │
-│  📅  Agenda                 │
-│  🏠  Propiedades *          │
-│                             │
-│  CRECIMIENTO                │
-│  📣  Campañas               │
-│  ⚡  Automatización         │
-│  🤖  Agente IA              │
-│  📚  Base de Conocimiento   │
-│                             │
-│  GESTIÓN                    │
-│  📈  Analíticas             │
-│  📡  Canales                │
-│  👤  Usuarios               │
-├─────────────────────────────┤
-│  ⚙️  Configuración          │
-│  [Avatar]  Nombre usuario   │
-└─────────────────────────────┘
-* Solo visible en industria Turismo
-```
+### OPERACIÓN
+- **Bandeja de entrada** — conversaciones activas
+- **Contactos** — CRM
+- **Pipeline** — kanban de deals
+- **Agenda** — citas y disponibilidad
+- *(verticales)* Propiedades, Tours, Inmuebles, Menú, Pedidos, Membresías, Clases, Cursos, Seguros, Solicitudes, Mascotas, Sesiones fotográficas, Planes de tratamiento
 
-| Item | Sección | Para qué sirve |
-|------|---------|---------------|
-| **Conversaciones** | OPERACIÓN | Bandeja de entrada con todas las conversaciones en tiempo real |
-| **CRM** | OPERACIÓN | Contactos, leads, segmentos y gestión de relaciones |
-| **Embudo** | OPERACIÓN | Pipeline de ventas tipo Kanban con etapas configurables |
-| **Agenda** | OPERACIÓN | Citas, calendario, servicios y disponibilidad |
-| **Propiedades** | OPERACIÓN | Gestión de propiedades de alquiler vacacional (Turismo) |
-| **Campañas** | CRECIMIENTO | Broadcasts masivos, secuencias y automatización de mensajes |
-| **Automatización** | CRECIMIENTO | Reglas de automatización (triggers, condiciones, acciones) |
-| **Agente IA** | CRECIMIENTO | Configuración, plantillas y prueba de tus agentes de IA |
-| **Base de Conocimiento** | CRECIMIENTO | Artículos, FAQs, políticas para el RAG del agente |
-| **Analíticas** | GESTIÓN | Todos los reportes y analíticas en 10 pestañas |
-| **Canales** | GESTIÓN | Conectar y gestionar WhatsApp, Instagram, Messenger, Telegram, SMS |
-| **Usuarios** | GESTIÓN | Gestión de equipo, roles y habilidades |
-| **Configuración** | — | Ajustes de cuenta, empresa, IA y herramientas |
+### CRECIMIENTO
+- **Campañas** — broadcasts (admin/supervisor)
+- **Automatización** — reglas (admin/supervisor)
+- **Base de conocimiento** — RAG (admin/supervisor)
+- **Analíticas** — métricas (admin/supervisor)
 
-### Permisos de acceso
+### GESTIÓN
+- **Agente IA** — configuración (admin)
+- **Canales** — conexiones (admin)
+- **Usuarios** — equipo (admin)
 
-| Item | Acceso mínimo requerido |
-|------|------------------------|
-| Conversaciones, CRM, Embudo, Agenda | Agente |
-| Analíticas, Propiedades | Agente |
-| Campañas, Automatización, Base de Conocimiento | Supervisor |
-| Agente IA, Usuarios | Admin |
-| Canales, Configuración | Admin |
+### Configuración (al fondo)
+Sección con 5 áreas (ver siguiente sección).
 
-## 4.2 Configuración — 5 secciones
+> **Adaptación vertical:** los items específicos de una industria solo aparecen si tu negocio es de esa vertical. Por ejemplo, "Propiedades" solo lo ven los tenants de Turismo.
 
-Al hacer clic en **Configuración**, accedes a 5 secciones limpias sin enlaces externos:
+## 5.2 Configuración — 5 secciones
 
-| Sección | Qué incluye |
-|---------|-------------|
-| **Cuenta** | Perfil personal, contraseña, 2FA, sesiones activas |
-| **Empresa** | Información del negocio, logo, horario de atención, info de contacto |
-| **Herramientas** | Canales (WhatsApp, IG, Messenger, Telegram, SMS), inventario, servicios, atributos personalizados, formularios pre-chat, compliance |
-| **IA** | Agentes IA, automatización, base de conocimiento, FAQs, políticas, scoring de leads, plantillas de email, macros |
-| **Avanzado** | Alertas, reportes programados, gestión de medios, opciones del sistema |
+| Sección | Contiene |
+|---------|----------|
+| **Cuenta** | Mi perfil, cambiar contraseña, sesiones |
+| **Empresa** | Datos del negocio, horarios, localización, custom attributes |
+| **Herramientas** | Pipeline, scoring, macros, plantillas email, pre-chat, recall |
+| **IA** | Configuración del modelo, comportamiento avanzado |
+| **Avanzado** | Compliance, exportación de datos, webhooks (admin) |
 
-> **Tip:** Todos los módulos de configuración están organizados por propósito. Ya no necesitas buscar en menús separados — todo está en 5 secciones claras.
+## 5.3 Analítica — pestañas
 
-## 4.3 Analytics — 10 pestañas
-
-La sección **Análisis** consolida todos los reportes en una sola página con 10 pestañas:
+Acceso solo para admin/supervisor. Pestañas disponibles:
 
 | Pestaña | Contenido |
 |---------|-----------|
-| **General** | KPIs globales: conversaciones, handoffs, costo IA, CSAT |
-| **IA & Bot** | Tasa de resolución IA, contención, uso de modelos, motivos de handoff |
-| **Automatización** | Reglas activas, ejecuciones, tasa de éxito por regla |
-| **Campañas** | Funnel (enviado→entregado→leído→fallido) por campaña |
-| **Canales** | Comparación de volumen y rendimiento por canal |
-| **CSAT** | Encuestas de satisfacción, distribución 1-5, comentarios |
-| **Anomalías** | Detección automática de desvíos >2σ del promedio 30 días |
-| **Cohortes** | Retención de contactos por mes de primer contacto |
-| **CRM** | Funnel, velocidad de pipeline, leaderboard de agentes |
-| **Agentes** | Rendimiento individual: mensajes, tiempo respuesta, CSAT |
+| Resumen | KPIs principales |
+| Conversaciones | Volumen, resolución, tiempo respuesta |
+| CSAT | Encuestas de satisfacción |
+| Embudo | Funnel de conversión |
+| Velocidad | Días por etapa del pipeline |
+| Win/Loss | Tasa de cierre y motivos |
+| Agentes | Leaderboard, performance |
+| Canales | Por canal de mensajería |
+| Fuentes | Origen de leads |
+| AI Insights | Análisis IA de tendencias |
 
 ---
 
-# 5. Inbox — Bandeja de Entrada
+# 6. Inbox — Bandeja de Entrada
 
-**Ruta:** Menú → Conversaciones
+**Ruta:** Sidebar → Bandeja de entrada
+**Roles:** Todos
 
-El inbox es tu centro de operaciones para conversaciones en tiempo real con clientes.
+## 6.1 Vista general
 
-## 5.1 Vista general
+Layout de 3 columnas:
+- **Izquierda**: lista de conversaciones (con filtros)
+- **Centro**: hilo de mensajes
+- **Derecha**: panel del contacto
 
-La bandeja tiene 3 paneles:
+Avatares con foto real (Instagram, WhatsApp Business, Messenger). Cuando el avatar expira o no carga, fallback a gradiente con inicial.
 
-| Panel | Contenido |
-|-------|-----------|
-| **Izquierda** | Lista de conversaciones con filtros y búsqueda |
-| **Centro** | Chat activo con historial de mensajes |
-| **Derecha** | Información del contacto (colapsable) |
+## 6.2 Filtros
 
-Cada conversación en la lista muestra el **nombre de la cuenta del canal** y la **foto de perfil** del canal por donde llegó el mensaje, para que puedas identificar rápidamente de dónde viene cada conversación.
+Pills arriba de la lista:
+- **Todas** — todas las conversaciones
+- **Activas** — sin marcar resueltas
+- **Asignadas a mí** — solo lo que tienes asignado
+- **Sin asignar** — conversaciones huérfanas
+- **Esperando humano** — handoff pendiente
+- **Con humano** — ya tienen agente
+- **Resueltas** — cerradas hace 72h o manualmente
 
-Las conversaciones nuevas llegan en **tiempo real** gracias a WebSocket: cuando un cliente nuevo escribe, la conversación aparece automáticamente en tu lista sin necesidad de recargar la página.
+Filtros por canal: WhatsApp, Instagram, Messenger, Telegram, SMS.
 
----
+## 6.3 Notificaciones de handoff
 
-## 5.2 Filtros
+La campana en TopBar muestra 7 categorías:
+- **handoff_direct** — el cliente pidió hablar con humano (rojo)
+- **handoff_normal** — IA escaló por baja confianza (amarillo)
+- **escalation** — supervisor: alguien lleva >5min sin responder (rojo + sonido)
+- **system** — alertas de plataforma
+- **billing** — pagos, trials terminando
+- **csat** — encuesta respondida
+- **mention** — alguien te etiquetó
 
-| Filtro | Muestra |
-|--------|---------|
-| Todos | Todas las conversaciones activas |
-| Míos | Solo conversaciones asignadas a ti |
-| Sin asignar | Conversaciones sin agente humano asignado |
-| Handoff | Conversaciones escaladas que esperan atención humana |
+## 6.4 Acciones de conversación
 
-También puedes buscar conversaciones por nombre del contacto o contenido del mensaje.
+| Acción | Quién |
+|--------|-------|
+| Responder | Todos |
+| Tomar control (handoff) | Todos |
+| Devolver al bot | Todos |
+| Snooze (posponer) | Todos |
+| Marcar como resuelta | Todos |
+| Archivar | Todos |
+| Eliminar conversación | Admin |
+| Asignar a otro agente | Admin/Supervisor |
+| Mover etapa pipeline | Todos |
+| Aplicar macro | Todos |
+| Ver historial cross-canal | Todos |
 
-### Notificaciones de handoff
+## 6.5 Panel del contacto
 
-Cuando una conversación se escala a un agente humano:
-
-- **Sonido**: se reproduce una alerta auditiva en el dashboard
-- **Badge visual**: aparece un indicador en la pestaña del navegador
-- **Email**: el agente asignado recibe un correo con los detalles del cliente y un enlace directo al inbox
-- **Escalamiento**: si nadie responde en 5 minutos, se alerta al supervisor
-
----
-
-## 5.3 Acciones de conversación
-
-La barra de acciones es **responsiva**: en pantallas pequeñas se muestran solo los iconos, y las acciones secundarias (archivar, eliminar) se agrupan en un menú desplegable **"Más"**.
-
-| Acción | Descripción |
-|--------|-------------|
-| **Responder** | Envía un mensaje como agente humano |
-| **Asignar** | Asigna la conversación a un agente específico |
-| **Resolver** | Devuelve la conversación al agente IA |
-| **Posponer** | Pausa por 1h, 3h, mañana, o lunes |
-| **Macros** | Inserta respuestas predefinidas |
-| **Archivar** | Mueve al archivo (muestra spinner de carga durante la acción) |
-| **Eliminar** | Elimina permanentemente (muestra spinner de carga durante la acción) |
-| **Notas** | Agrega notas internas (invisibles para el cliente) |
-
-> **Atención:** La acción **Eliminar** es irreversible. Se eliminan todos los mensajes y la conversación permanentemente.
-
----
-
-## 5.4 Panel del contacto
-
-El panel derecho es **colapsable**: puedes ocultarlo o mostrarlo con un botón de toggle para ganar espacio en pantalla cuando no lo necesitas.
-
-Al seleccionar una conversación, el panel muestra:
-
-- **Nombre** del contacto
-- **Teléfono** y **email**
-- **Canal** de comunicación (WhatsApp, Instagram, etc.)
-- **Etapa** en el pipeline de ventas
-- **Tags** asignados
-- **Score** del contacto
-- **Historial** de interacciones previas
+Lateral derecho con tabs:
+- **Info**: nombre, teléfono, canal de origen, tags, score
+- **Pipeline**: etapa actual, valor del deal
+- **Citas**: próximas y pasadas
+- **Historial**: notas, actividades, llamadas
+- **Custom fields**: campos personalizados según industria
 
 ---
 
-# 6. CRM — Gestión de Contactos
+# 7. CRM — Gestión de Contactos
 
-## 5.1 Contactos
+## 7.1 Contactos
 
-**Ruta:** Menú → CRM
+**Ruta:** Sidebar → Contactos
+**Roles:** Todos (con limitaciones de edición según rol)
 
 ### Ver contactos
 
-La lista muestra todos tus clientes y leads con:
-- Nombre y datos de contacto
-- Etapa actual (Nuevo, Contactado, Respondió, Calificado, etc.)
-- Tags asignados
-- Fecha de última interacción
-- Score de lead
-- **Iconos de canales**: cada contacto muestra badges circulares indicando todos los canales por los que ha interactuado (WhatsApp, Instagram, Messenger, etc.)
-- **Conteo de conversaciones**: muestra el número real de conversaciones que ha tenido el contacto
-
-Los contactos que han escrito por múltiples canales (por ejemplo, WhatsApp e Instagram) se **consolidan en una sola fila** mostrando todos los iconos de sus canales.
+Tabla con columnas: nombre, canal, último mensaje, score, etapa pipeline, tags. Ordenable por cualquiera.
 
 ### Acciones principales
 
-| Acción | Descripción |
-|--------|-------------|
-| **Buscar** | Por nombre, email o teléfono |
-| **Filtrar** | Por segmento, etapa, tag, score mínimo/máximo, rango de fechas |
-| **Importar** | Subir archivo CSV con contactos |
-| **Exportar** | Descargar todos los contactos como CSV |
-| **Crear** | Botón "Crear" abre un modal para agregar un lead nuevo |
+| Acción | Roles |
+|--------|-------|
+| Ver detalle | Todos |
+| Editar | Todos |
+| Crear lead | Todos |
+| Archivar | Admin/Supervisor |
+| Acciones masivas | Admin/Supervisor |
+| Filtros avanzados | Todos |
 
 ### Crear un lead
 
-Al hacer clic en el botón **"Crear"** en la lista de contactos, se abre un formulario modal con los siguientes campos:
+1. Botón **+ Nuevo contacto**
+2. Modal con campos: nombre, teléfono (obligatorio), email, etapa pipeline inicial
+3. Guardar → aparece en la lista
 
-| Campo | Obligatorio |
-|-------|:-----------:|
-| Nombre | No |
-| Apellido | No |
-| Teléfono | ✅ |
-| Email | No |
-| Etapa | No (se asigna "Nuevo" por defecto) |
+> El teléfono se normaliza automáticamente a formato E.164 (CO, AR, MX, BR, CL, PE, EC, US/CA).
 
-### Acciones masivas (Bulk Actions)
+### Acciones masivas
 
-Cada contacto en la lista tiene un **checkbox** para seleccionarlo. También hay un checkbox de **"Seleccionar todos"** en la cabecera.
-
-Al seleccionar uno o más contactos, aparece una **barra de acciones fija** en la parte inferior con las siguientes opciones:
-
-| Acción masiva | Descripción |
-|---------------|-------------|
-| **Cambiar etapa** | Mueve todos los seleccionados a una etapa del pipeline |
-| **Agregar tag** | Agrega una etiqueta a todos los seleccionados |
-| **Archivar** | Archiva los contactos seleccionados |
+Selecciona varios checkboxes → barra sticky abajo con:
+- Cambiar etapa
+- Agregar/quitar tag
+- Archivar
+- Asignar a agente
 
 ### Filtros avanzados
 
-Además de los filtros básicos (etapa, tag, segmento), la lista soporta:
+Drawer lateral con chips:
+- Score (rango)
+- Fecha de creación
+- Última actividad
+- Tags (múltiple)
+- Canal de origen
+- Etapa pipeline
+- VIP / archivado
 
-| Filtro | Descripción |
-|--------|-------------|
-| Score mínimo | Solo leads con score mayor o igual al valor indicado |
-| Score máximo | Solo leads con score menor o igual al valor indicado |
-| Fecha desde | Interacción posterior a esta fecha |
-| Fecha hasta | Interacción anterior a esta fecha |
-| Tags | Filtrar por uno o varios tags |
+### Detalle del contacto (lead 360°)
 
-### Detalle del contacto
+Pestañas:
+- **Resumen**: edición inline (nombre, email, teléfono, etapa, VIP, tags)
+- **Score breakdown**: 5 factores expandibles (recencia, engagement, intent keywords, etapa, plan)
+- **AI Insights**: análisis automático del comportamiento del lead
+- **Custom fields**: campos personalizados según industria
+- **Conversaciones**: historial cross-canal
+- **Citas**: próximas y pasadas
+- **Notas**: anotaciones del equipo
+- **Actividades**: timeline de tareas y eventos
+- **Documentos**: archivos compartidos
+- *(verticales)* Planes de tratamiento, Mascotas, Pólizas, Cursos inscritos
 
-Al hacer clic en un contacto, ves su ficha completa:
-- Información básica
-- Historial de conversaciones
-- Pipeline y etapa actual
-- Notas internas del equipo
-- Atributos personalizados (ver sección siguiente)
+## 7.2 Pipeline (Kanban)
 
-#### Editar un lead
+**Ruta:** Sidebar → Pipeline
 
-En la vista de detalle, haz clic en el **icono de lápiz** para activar el modo de edición inline. Puedes modificar:
-- Nombre
-- Email
-- Teléfono
-- Etapa en el pipeline
-- Marca VIP
-- Tags
+Vista kanban con etapas configurables. Cada deal una tarjeta arrastrable.
 
-Al terminar, usa los botones **Guardar** o **Cancelar** para confirmar o descartar los cambios.
+### Personalizar etapas
 
-#### Archivar un lead
-
-En la vista de detalle, haz clic en el **icono de archivo**. Aparece un diálogo de confirmación. Al confirmar, el lead pasa a estado archivado (no se elimina permanentemente, puedes recuperarlo).
-
-#### Campos personalizados
-
-La ficha del contacto incluye una tarjeta de **Campos personalizados** que muestra todos los atributos que hayas configurado (ver Configuración → Atributos). Los campos se renderizan según su tipo:
-
-| Tipo de campo | Cómo se muestra |
-|---------------|-----------------|
-| Texto | Campo de texto libre |
-| Número | Campo numérico |
-| Booleano | Toggle encendido/apagado |
-| Fecha | Selector de fecha |
-| Selección | Menú desplegable con opciones |
-
-Al modificar cualquier valor, aparece un botón **Guardar** para confirmar los cambios.
-
-#### Score — Desglose transparente
-
-Al hacer clic en el **número de score** del contacto, se expande un panel de desglose que muestra cómo se calcula el puntaje. Cada factor tiene una barra de progreso visual:
-
-| Factor | Qué mide |
-|--------|-----------|
-| Engagement | Nivel de interacción (mensajes, respuestas) |
-| Intención | Señales de compra detectadas por la IA |
-| Recencia | Qué tan reciente fue la última interacción |
-| Etapa | Posición en el pipeline de ventas |
-| Perfil | Completitud de datos del contacto |
-
----
-
-## 5.2 Pipeline (Kanban)
-
-**Ruta:** Menú → Pipeline
-
-Vista tipo tablero con columnas por etapa:
-
-```
-Nuevo → Contactado → Respondió → Calificado → Tibio → Caliente → Listo para cierre → Ganado / Perdido
-```
-
-- **Arrastra** tarjetas entre columnas para cambiar etapas
-- Cada tarjeta muestra: nombre, valor del deal, días en la etapa
-- **Métricas superiores:** valor total, pronóstico ponderado, cantidad de deals
-- **Sin duplicados**: cada lead aparece como una sola tarjeta en el pipeline (no se crean oportunidades duplicadas)
-
-### Personalizar etapas del pipeline
-
-**Ruta:** Configuración → Pipeline
-
-Puedes personalizar completamente las etapas de tu pipeline:
-- **Reordenar**: arrastra las etapas para cambiar su posición
-- **Editar**: modifica el nombre, color y probabilidad de cada etapa
-- **Agregar**: crea nuevas etapas según tu proceso de ventas
-- **Eliminar**: borra etapas que no uses
-- **Terminal**: marca una etapa como terminal (ej: "Ganado", "Perdido") para indicar que el deal ya cerró
-- **SLA**: configura horas máximas que un deal puede permanecer en cada etapa
+Solo Admin/Supervisor desde Configuración → Pipeline:
+- Reordenar arrastrando
+- Editar color (8 colores) y probabilidad de cierre
+- Marcar etapas terminales (ganado/perdido)
+- Crear/eliminar etapas
 
 ### Aprobación de deals
 
-Para deals de alto valor, puedes requerir aprobación antes de moverlos a una etapa superior:
+Para etapas marcadas como "requieren aprobación":
+- Agente mueve la tarjeta → aparece badge amarillo "Pendiente"
+- Supervisor/Admin revisa y aprueba/rechaza con motivo
+- Solo entonces avanza a la siguiente etapa
 
-1. En la tarjeta del deal, clic en **"Solicitar aprobación"**
-2. Selecciona la etapa destino
-3. Un supervisor o admin recibe la notificación
-4. El supervisor puede **Aprobar** (mueve el deal) o **Rechazar** (con motivo)
+### Deduplicación
 
-Los deals pendientes de aprobación muestran un badge amarillo en el pipeline.
+El pipeline muestra **un deal por lead** (DISTINCT ON lead_id) para no saturar con conversaciones duplicadas.
 
----
+## 7.3 Segmentos
 
-## 5.3 Segmentos
+Filtros guardados que puedes reusar y compartir.
 
-**Ruta:** CRM → Segmentos
+1. Aplicar filtros en la lista de contactos
+2. Click "Guardar segmento" → nombre + descripción
+3. Disponible en sidebar de Contactos
 
-Crea filtros guardados para agrupar contactos automáticamente:
+## 7.4 CRM Analytics
 
-| Criterio | Ejemplo |
-|----------|---------|
-| Por etapa | Todos los "Calificados" |
-| Por tag | Contactos con tag "VIP" |
-| Por score | Score mayor a 50 |
-| Por canal | Solo contactos de WhatsApp |
-| Por fecha | Interacción en los últimos 7 días |
+**Roles:** Admin/Supervisor
 
----
+Pestañas (recharts):
+- **Resumen**: KPIs (leads totales, nuevos, conversión, valor pipeline)
+- **Embudo**: visualización por etapa
+- **Velocidad**: días promedio en cada etapa
+- **Win/Loss**: tasa de cierre + motivos
+- **Agentes**: leaderboard
+- **Fuentes**: por canal de adquisición
 
-## 5.4 CRM Analytics
+## 7.5 Identidad y Merge
 
-**Ruta:** Menú → CRM Analytics
-
-Panel de analytics dedicado al CRM con 4 pestañas:
-
-### Pestaña Overview (Resumen)
-
-- **5 tarjetas de KPIs**: total de leads, leads nuevos del periodo, tasa de conversión, valor total del pipeline, tiempo promedio de cierre
-- **Gráfico de barras**: distribución de leads por etapa del pipeline
-- **Gráfico de pastel**: fuentes de leads (WhatsApp, Instagram, Messenger, etc.)
-- **Resumen de resultados**: cantidad de deals ganados vs. perdidos con porcentajes
-
-### Pestaña Funnel (Embudo)
-
-Visualización del embudo de ventas con **barras horizontales** que muestran:
-- Cantidad de leads en cada etapa
-- Porcentaje de caída entre etapas (drop-off)
-- Identificación de cuellos de botella en tu proceso
-
-### Pestaña Velocity (Velocidad)
-
-**Gráfico de barras** mostrando los días promedio que un lead permanece en cada etapa. Te ayuda a identificar dónde se estancan los deals y optimizar tu proceso de ventas.
-
-### Pestaña Agents (Agentes)
-
-Tabla de rendimiento tipo **leaderboard** con:
-- Ranking de agentes (medallas para los 3 primeros)
-- Deals cerrados por agente
-- Valor total generado
-- Tasa de conversión individual
-- Tiempo promedio de cierre
-
----
-
-## 5.5 Identidad y Merge
-
-**Ruta:** Menú → Identidad
-
-Parallly consolida automáticamente los contactos que interactúan por múltiples canales en un solo perfil unificado.
+**Roles:** Admin/Supervisor
 
 ### Merge automático
 
-Cuando un contacto escribe por dos canales diferentes usando el **mismo número de teléfono**, Parallly los unifica automáticamente en un solo perfil.
+Si un contacto te escribe desde dos canales con el mismo número o email, Parallly los unifica automáticamente bajo un "Customer Profile".
 
 ### Sugerencias de merge
 
-Cuando la coincidencia es por **email** (pero no por teléfono), Parallly genera una sugerencia de merge que requiere tu aprobación.
-
-En la página de Identidad verás una lista de sugerencias pendientes:
-- **Perfil A** (ej: contacto de WhatsApp) y **Perfil B** (ej: contacto de Instagram)
-- Motivo de la sugerencia (email compartido)
-- Botones: **Aprobar** (fusiona los perfiles) o **Rechazar** (ignora la sugerencia)
-
-### Contactos cross-canal
-
-Los contactos que llegan por canales diferentes (ej: Instagram vs WhatsApp) y no comparten teléfono ni email requieren **merge manual** si determinas que son la misma persona.
+Sidebar → Identidad → tab "Sugerencias":
+- Lista de pares de contactos con alta similitud (nombre + teléfono parcial, etc.)
+- Botón aprobar / rechazar para cada par
 
 ### Merge manual
 
-Para fusionar dos contactos manualmente:
+1. Identidad → "Merge manual"
+2. Selecciona contacto A y contacto B
+3. Elige qué campos preservar de cada uno
+4. Confirmar
 
-1. Identifica los dos contactos que son la misma persona
-2. En la página de Identidad, haz clic en **"Fusionar manualmente"**
-3. Selecciona el **Contacto A** y el **Contacto B**
-4. Confirma la fusión
+## 7.6 Lead Scoring Configurable
 
-Al fusionar:
-- Se consolida el historial de conversaciones de ambos canales en un solo perfil
-- Se preservan todos los mensajes, notas y actividades
-- Los datos del perfil se combinan (el más completo prevalece)
+**Roles:** Admin/Supervisor
+**Ruta:** Configuración → Pipeline → Scoring
 
-> **Tip:** Cuando se fusionan dos perfiles, se conserva el historial de conversaciones de ambos canales en un solo contacto.
+Configura los pesos de los 5 factores:
+- **Recencia** (días desde última interacción) — peso 1-10
+- **Engagement** (mensajes intercambiados) — peso 1-10
+- **Intent keywords** — palabras clave de compra
+- **Etapa pipeline** — score por etapa
+- **Plan / valor** — si aplica a tu negocio
 
----
+### Decaimiento
 
-## 5.6 Lead Scoring Configurable
+Configurable: el score baja N puntos cada X días sin actividad. Útil para que leads viejos no inflen el ranking.
 
-Configura cómo Parallly califica a tus leads automáticamente.
+## 7.7 AI Insights
 
-### Acceder
-Configuración → Lead Scoring
+Tarjeta en el detalle del lead con análisis automático:
+- Probabilidad de cierre
+- Próxima mejor acción
+- Keywords identificadas
+- Patrón de respuesta
+- Riesgo de churn
 
-### Pesos de calificación
-Ajusta la importancia de cada factor arrastrando los sliders:
-- **Engagement** (25%): Frecuencia de interacción del lead
-- **Intención** (30%): Señales de compra detectadas por IA
-- **Recencia** (20%): Qué tan reciente fue el último contacto
-- **Progreso en pipeline** (15%): Avance en las etapas
-- **Perfil completo** (10%): Datos de contacto disponibles
+## 7.8 Filtros Avanzados
 
-Los pesos deben sumar 100%.
-
-### Palabras clave de compra
-Agrega palabras que indican intención de compra: "precio", "costo", "comprar", "reservar", etc. El agente IA las detecta automáticamente.
-
-### Decaimiento de score
-Habilita para que leads inactivos pierdan puntuación gradualmente:
-- **Días**: Después de cuántos días sin actividad inicia el decaimiento
-- **Factor**: Cuánto se reduce (0.5 = se reduce a la mitad)
+Drawer con chips combinables. Multi-criterio (AND), guardable como segmento.
 
 ---
 
-## 5.7 AI Insights
+# 8. Agentes IA
 
-En el detalle de cada lead, hay una tarjeta colapsable "AI Insights" que genera un análisis inteligente con recomendaciones:
+**Ruta:** Sidebar → Agente IA
+**Roles:** Tenant Admin (lectura limitada para Supervisor desde inbox)
 
-- Haz clic en la tarjeta para expandirla
-- La primera vez que se expande, consulta a la IA para generar un análisis
-- Incluye: siguiente mejor acción, nivel de interés, recomendaciones
-- El resultado se cachea (no se recalcula al colapsar/expandir)
+## 8.1 Lista de agentes
 
----
-
-## 5.8 Aprobación de Deals
-
-Cuando un deal se mueve a una etapa terminal (ej: "Cerrado ganado"), se requiere aprobación:
-
-1. Al arrastrar un deal a una etapa terminal, aparece un modal de confirmación
-2. El deal queda con badge **"Pendiente aprobación"** (amarillo)
-3. Un administrador o supervisor puede:
-   - ✅ **Aprobar**: El deal se mueve a la etapa final
-   - ❌ **Rechazar**: Se solicita una razón y el deal vuelve a su etapa anterior
-
-Los badges visibles en las tarjetas del kanban:
-- 🟡 Pendiente aprobación
-- 🔴 Rechazado (con razón visible)
-
----
-
-## 5.9 Filtros Avanzados
-
-En la página de Contactos, haz clic en **"Filtros avanzados"** para abrir el panel lateral:
-
-- **Rango de score**: Filtra por puntuación mínima/máxima (1-10)
-- **Rango de fechas**: Filtra por fecha de creación
-- **Etiquetas**: Filtra por tags asignados
-
-Los filtros activos se muestran como chips encima de la tabla. Cada chip tiene una X para eliminar ese filtro individualmente.
-
----
-
-# 6. Agentes IA
-
-## 6.1 Lista de agentes
-
-**Ruta:** Menú → Agente IA
-
-Cada tarjeta de agente muestra:
-- Nombre y estado (activo/inactivo)
-- Canales **conectados** asignados (solo se muestran los canales que están efectivamente conectados, no todos los asignados)
-- Cantidad de reglas y herramientas
-- Badge de "Agente por defecto"
+Ves todos los agentes IA configurados. Cards con:
+- Nombre, rol, plantilla base
+- Canales asignados
+- Estado activo/pausado
+- Versión
 
 ### Banner de alerta
 
-Si tienes canales conectados que **no tienen un agente IA asignado**, aparece un **banner rojo** en la parte superior de la página con el mensaje de advertencia y un botón **"Asignar agente ahora"** que te lleva directamente a la configuración de asignación.
+Si tienes canales conectados sin agente asignado, aparece banner rojo: "Tienes X canales sin agente — el bot no responderá".
 
 ### Acciones
 
-| Acción | Descripción |
-|--------|-------------|
-| Crear | Nuevo agente desde plantilla o en blanco |
-| Editar | Abrir el editor de configuración |
-| Clonar | Duplicar un agente existente |
-| Eliminar | Borrar permanentemente |
-| Predeterminado | Establecer como agente principal |
+- **Crear agente** — desde plantilla o blank
+- **Duplicar** — copia exacta para experimentar
+- **Editar** — abre el editor
+- **Eliminar** — con confirmación
+- **Guardar como plantilla** — para reusar
 
 ### Límites por plan
 
-| Plan | Agentes IA |
-|------|:----------:|
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
+| Plan | Agentes IA | Plantillas custom |
+|------|-----------|-------------------|
+| Starter | 1 | No |
+| Pro | 3 | Sí |
+| Enterprise | 10 | Sí |
+| Custom | Ilimitado | Sí |
 
----
+## 8.2 Editor del agente
 
-## 6.2 Editor del agente
-
-**Ruta:** Agente IA → clic en un agente
-
-El editor tiene secciones tipo tarjeta. Al realizar cambios, una **barra fija en la parte inferior** ("sticky save bar") permanece visible en todo momento para que puedas guardar sin necesidad de buscar el botón.
+Hub con cards organizadas:
 
 ### Identidad
-- Nombre del agente (ej: "Andrea", "Carlos")
-- Rol (ej: "Asesor de Ventas", "Soporte técnico")
-- Saludo inicial
-- Mensaje de despedida/fallback
+- Nombre del agente (ej: Sofía, Carlos, Maya)
+- Rol / título
+- Avatar
 
 ### Personalidad
-- Tono: formal, casual, amigable
-- Uso de emojis: nunca, moderado, frecuente
-- Humor: serio, ligero
+- Tono (formal, amigable, técnico, empático)
+- Estilo de comunicación
+- Saludo inicial
 
 ### Modelo IA
-- Selección del modelo principal
-- Temperatura (creatividad: 0.0 - 1.0)
-- Tokens máximos
+- Proveedor (OpenAI, Anthropic, Google, xAI, DeepSeek)
+- Modelo específico
+- Tier (basic, pro, premium)
+- Temperatura
 
 ### Comportamiento
-- Reglas personalizadas (ej: "Nunca inventar precios")
+- Reglas custom (free text)
 - Temas prohibidos
-- Triggers de handoff (cuándo escalar a humano)
+- Modo respuesta (siempre IA, siempre humano, híbrido)
+- Activación / horario
 
 ### Asignación de canales
 
-La sección de asignación **solo muestra los canales que tienes conectados** (no los que no has configurado aún). Cada canal se asigna a UN solo agente:
-- WhatsApp → Agente A
-- Instagram → Agente B
-- etc.
+Selector de canales que este agente atiende. **Regla dura**: un canal solo puede tener UN agente.
 
 ### Herramientas
-Activa funciones del agente:
-- Citas (agendar, cancelar, consultar disponibilidad)
-- Catálogo (buscar productos, precios)
-- FAQs (buscar respuestas en la base de conocimiento)
-- Políticas (consultar políticas del negocio)
 
-### Checklist de configuración
+Toggles para tools que el agente puede usar:
+- Buscar en la base de conocimiento (RAG)
+- Verificar disponibilidad de citas
+- Crear citas
+- Listar productos / servicios / propiedades
+- Crear órdenes / reservas
+- Solicitar handoff a humano
+- Tools verticales según industria
 
-El editor incluye un checklist que guía los pasos pendientes. El paso de conectar canal indica **"Conectar un canal de mensajería"** (genérico, no específico a WhatsApp) para reflejar que puedes empezar con cualquier canal.
+### Sticky save bar
 
----
+Barra inferior siempre visible con "Guardar cambios" — no perdés ediciones al hacer scroll.
 
-## 6.3 Plantillas verticales
+## 8.3 Plantillas verticales
 
-Al crear un nuevo agente, el selector de plantillas muestra primero las **"Recomendadas para tu negocio"** según tu industria.
+Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado según tu industria.
 
 ### Plantillas por industria
 
-| Industria | Plantillas disponibles |
-|-----------|----------------------|
-| **Salud** | Asistente médico general, Recepcionista dental, Psicología y terapia |
-| **Belleza** | Asistente de salón / barbería, Coordinadora de spa |
-| **Inmobiliaria** | Asesor inmobiliario, Coordinador de visitas |
-| **Restaurantes** | Host de reservas, Asistente de delivery |
-| **Automotriz** | Asesor de ventas de autos, Coordinador de test drives |
-| **Turismo** | Agente de alquiler vacacional, Coordinador de tours |
-| **Educación** | Asesor de inscripciones, Soporte estudiantil |
+- **Salud / Veterinaria**: Sofía recepcionista, Sofía dental
+- **Inmobiliaria**: Carlos asesor, Carlos venta, Carlos arriendo
+- **Restaurantes**: Luca toma pedidos, Luca reservas
+- **Gimnasios**: Trainer, recepción
+- **Educación**: Asesor académico
+- **Seguros**: Roberto cotizador, Roberto reclamos
+- **Turismo**: Maya tours, Maya alquiler
+- **Servicios hogar**: Toby plomería, Toby electricidad
 
 ### Plantillas generales
 
-| Plantilla | Ideal para |
-|-----------|-----------|
-| Asesor de Ventas | Negocios que venden productos/servicios |
-| Agente de Soporte | Atención al cliente y resolución de problemas |
-| Bot FAQ | Respuestas rápidas a preguntas frecuentes |
-| Agendador de Citas | Consultorios, salones, asesorías |
-| Calificador de Leads | Clasificar leads por nivel de interés |
-| En Blanco | Configuración desde cero |
+- Sales Advisor
+- Support Agent
+- FAQ Bot
+- Appointment Scheduler
+- Lead Qualifier
+- Blank (configurar todo desde cero)
+
+## 8.4 Test del agente
+
+Modo simulador: chateá con tu agente sin afectar contactos reales. Útil antes de activarlo en producción.
 
 ---
 
-## 6.4 Test del agente
+# 9. Canales de Comunicación
 
-**Ruta:** Agente → botón Test
+**Ruta:** Sidebar → Canales
+**Roles:** Tenant Admin (lectura para los demás)
 
-Prueba tu agente sin afectar conversaciones reales:
-- Envía mensajes y ve la respuesta del agente
-- Panel de debug con 5 pestañas:
-  - **System Prompt**: el prompt completo que recibe el LLM
-  - **Tools**: herramientas llamadas y sus resultados
-  - **RAG**: artículos de conocimiento recuperados
-  - **Metrics**: tokens, costo, latencia, modelo usado
-  - **Turn Context**: contexto XML del turno
+## 9.1 WhatsApp
 
----
-
-# 7. Canales de Comunicación
-
-**Ruta:** Menú → Canales
-
----
-
-## 7.1 WhatsApp
-
-### Conectar
-
-1. Ir a **Canales → WhatsApp**
-2. Clic en **Conectar con WhatsApp**
-3. Se abre el Embedded Signup de Meta
-4. Autoriza tu cuenta de WhatsApp Business
-5. Selecciona tu número de teléfono
-6. Canal conectado automáticamente
+### Conectar (Embedded Signup v4)
+1. Canales → WhatsApp → "Conectar"
+2. Se abre flujo de Meta
+3. Login con Facebook
+4. Selecciona/creá tu WhatsApp Business Account (WABA)
+5. Selecciona/agrega un número de teléfono
+6. Verificación SMS o llamada
+7. Aprobar permisos
+8. Listo — el bot responde inmediatamente
 
 ### Funciones disponibles
-- Envío y recepción de mensajes de texto, imágenes, documentos
-- Plantillas de mensaje (Templates) para mensajes proactivos
-- Indicador de escritura (typing)
-- Confirmaciones de entrega y lectura
+- Mensajes de texto, imágenes, videos, documentos, audio
+- Botones interactivos (Quick Replies, List Messages)
+- Templates aprobados de Meta
+- Recepción de ubicación, contactos
+- Webhooks de delivery (entregado, leído)
 
 ### Templates de WhatsApp
 
-**Ruta:** Canales → WhatsApp → Templates
+Para enviar fuera de la ventana de 24h, necesitas plantillas aprobadas por Meta:
+1. Configuración → Empresa → Templates
+2. Crear plantilla → categoría (transactional/marketing) + idioma + variables
+3. Enviar a Meta para aprobación (24-72h típicamente)
 
-Crea y gestiona plantillas aprobadas por Meta para mensajes proactivos:
-- Nombre del template
-- Cuerpo con variables (`{{1}}`, `{{2}}`)
-- Header opcional (texto o imagen)
-- Footer y botones (URL, teléfono, respuesta rápida)
+## 9.2 Instagram
 
-> **Nota:** Los templates requieren aprobación de Meta antes de poder usarse.
-
----
-
-## 7.2 Instagram
-
-### Conectar
-
-1. Ir a **Canales → Instagram**
-2. Clic en **Conectar con Instagram**
-3. Se abre una **ventana popup** de autorización OAuth de Instagram
-4. Inicia sesión con tu cuenta de Instagram Business
-5. Concede los permisos solicitados
-6. La ventana se cierra y tu cuenta queda conectada
-
-Una vez conectado, verás el nombre de tu cuenta en formato **"Nombre (@username)"** junto con la **foto de perfil** obtenida automáticamente.
-
-> **Requisitos:**
-> - Cuenta Instagram Business (no personal)
-> - Permisos: `instagram_business_basic`, `instagram_business_manage_messages`
+### Conectar (OAuth + BroadcastChannel)
+1. Canales → Instagram → "Conectar"
+2. Popup con Instagram OAuth
+3. Login con cuenta IG **Business** (no personal)
+4. Aprobar `instagram_manage_messages`
+5. Callback procesa el code
+6. Token long-lived de 60 días + foto de perfil + username
 
 ### Renovación del token
-- El token se renueva automáticamente cada 30 días
-- Si expira, verás un banner ámbar pidiendo reconectar
-- Indicador visual muestra los días restantes del token
+Cron diario @6AM revisa y renueva tokens que expiran en menos de 30 días. Recibirás alerta si la renovación falla.
 
----
+## 9.3 Messenger
 
-## 7.3 Messenger
+### Conectar (FB SDK)
+1. Canales → Messenger → "Conectar"
+2. Modal con Facebook Login
+3. Aprueba `pages_messaging`
+4. Selecciona la página de Facebook
+5. Token de página + foto de perfil
+6. Listo
 
-### Conectar
+## 9.4 Telegram
 
-1. Ir a **Canales → Messenger**
-2. Clic en **Conectar con Facebook**
-3. Se carga el **SDK de Facebook** y se abre el diálogo de login
-4. Inicia sesión con tu cuenta de Facebook
-5. Autoriza los permisos de páginas y mensajería
-6. Parallly conecta automáticamente tus páginas con permiso de mensajería
+### Conectar (Bot API)
+1. Canales → Telegram → "Conectar"
+2. Pegar el token del bot (desde @BotFather)
+3. Parallly configura el webhook automáticamente
+4. Listo
 
-Una vez conectado, se muestra la **foto de perfil** de la página obtenida a través del Graph API de Facebook.
-
-> **Nota:** El token de página de Messenger **no expira**, por lo que no necesitas reconectar periódicamente como con Instagram.
-
----
-
-## 7.4 Telegram
+## 9.5 SMS (Twilio)
 
 ### Conectar
+1. Canales → SMS → "Conectar"
+2. Ingresar Account SID, Auth Token y número Twilio
+3. Configurar webhook en Twilio: `https://api.parallly-chat.cloud/api/v1/sms/webhook/{tenantId}`
+4. Listo
 
-1. Abre Telegram y busca **@BotFather**
-2. Envía `/newbot` y sigue las instrucciones para crear un bot
-3. Copia el **token** del bot
-4. En Parallly: **Canales → Telegram**
-5. Pega el token y nombre del bot
-6. Clic en **Conectar**
+## 9.6 Desconectar un canal
 
----
-
-## 7.5 SMS (Twilio)
-
-### Conectar
-
-1. Crea una cuenta en [twilio.com](https://www.twilio.com)
-2. Obtén tu **Account SID** y **Auth Token**
-3. Compra un número de teléfono en Twilio
-4. En Parallly: **Canales → SMS**
-5. Ingresa las credenciales y el número
-6. Clic en **Conectar**
+1. Canales → click en el canal → "Desconectar"
+2. Modal confirmación con resultado real:
+   - **Verde** ✅ "Desconectado completamente": proveedor confirmó la desuscripción
+   - **Amarillo** ⚠️ "Desconectado en plataforma — revisar el proveedor": tu BD se actualizó pero el proveedor podría seguir enviando. Causas: token expirado, cambio de permisos. Hay que entrar manualmente al proveedor (Meta Business Suite, etc.)
+   - **Rojo** ❌: error de red — reintenta
 
 ---
 
-## 7.6 Desconectar un canal
+# 10. Citas y Agenda
 
-En cada página de canal conectado:
+**Ruta:** Sidebar → Agenda
+**Roles:** Todos (configuración solo Admin/Supervisor)
 
-1. Scroll hasta la sección **Desconectar**
-2. Clic en el botón rojo **Desconectar**
-3. Confirma la acción en el diálogo
-4. El canal se desactiva inmediatamente
+## 10.1 Calendario
 
-> **Nota:** Al desconectar, las conversaciones existentes permanecen en el inbox. Solo se dejan de recibir mensajes nuevos por ese canal.
+Vista mensual / semanal / diaria con todas las citas. Colores por servicio.
 
----
+Acciones:
+- Click en día → ver citas del día
+- Click en cita → detalle (paciente, servicio, hora, ubicación)
+- Reprogramar arrastrando
+- Cancelar con motivo
 
-# 8. Citas y Agenda
+## 10.2 Servicios
 
-**Ruta:** Menú → Citas
+**Roles:** Admin/Supervisor
 
-## 8.1 Calendario
+Define los servicios que ofreces:
+- Nombre, descripción, duración (minutos)
+- Precio (opcional)
+- Buffer antes/después
+- Tipo de ubicación: presencial / online / híbrido
+- Link de videoconferencia (auto-generado para Meet o Teams)
+- Dirección física
+- Staff asignado (opcional, multi)
+- Calendario asignado (opcional, para multi-calendar)
+- Activo / inactivo
 
-Vista semanal con todas las citas agendadas:
-- Cada cita muestra servicio (color codificado), nombre del cliente, y hora
-- Clic en un espacio vacío para crear una cita manual
-- Clic en una cita existente para editar o cancelar
-
----
-
-## 8.2 Servicios
-
-**Ruta:** Citas → pestaña Servicios
-
-Configura los servicios que ofreces:
-
-| Campo | Descripción |
-|-------|-------------|
-| Nombre | Nombre del servicio |
-| Duración | Tiempo en minutos (15 min - 4 horas) |
-| Precio | Costo del servicio |
-| Buffer | Tiempo de descanso entre citas |
-| Color | Color para identificar en el calendario |
-| Modalidad | **Presencial**, **Online** o **Híbrido** |
-| Dirección | Para servicios presenciales |
-| Enlace de reunión | Para online (o se genera automáticamente con Meet/Teams) |
-
-> **Tip:** Si dejas el enlace de reunión vacío y tienes Google Calendar o Microsoft Calendar conectado, Parallly genera automáticamente un enlace de Google Meet o Microsoft Teams.
-
----
-
-## 8.3 Disponibilidad
-
-**Ruta:** Citas → pestaña Configuración
+## 10.3 Disponibilidad
 
 ### Horario semanal
-- Activa/desactiva cada día de la semana con un toggle
-- Establece hora de apertura y cierre por día
-- Toggle **24/7** para disponibilidad completa
+
+Configura por día de la semana qué horas estás disponible. Por staff o general.
 
 ### Fechas bloqueadas
-Agrega fechas donde no se aceptan citas:
-- Festivos
-- Vacaciones
-- Eventos especiales
 
----
+Bloquea días específicos (vacaciones, feriados) — el agente IA no ofrecerá esos slots.
 
-## 8.4 Calendarios conectados
+## 10.4 Calendarios conectados
 
-Sincroniza con Google Calendar o Microsoft Outlook:
+### Google Calendar
 
-1. En la pestaña Configuración, busca la sección **Calendarios**
-2. Clic en **Conectar Google** o **Conectar Microsoft**
-3. Autoriza el acceso OAuth
-4. Selecciona la asignación:
-   - **General**: disponibilidad de todo el negocio
-   - **Miembro del equipo**: agenda personal
-   - **Servicio**: solo para ese servicio específico
+1. Configuración → Agenda → Calendarios → "Conectar Google Calendar"
+2. OAuth con Google
+3. Selecciona qué calendario sincronizar
+4. Listo — citas se crean en ambos lados
 
-### Límites por plan
+### Multi-calendar (plan-gated)
 
 | Plan | Calendarios |
-|------|:-----------:|
+|------|-------------|
 | Starter | 1 |
 | Pro | 3 |
 | Enterprise | 10 |
+| Custom | Ilimitados |
 
-> **Protección:** No puedes desconectar un calendario si tiene citas futuras asignadas. Primero cancela o reasigna las citas.
-
----
-
-## 8.5 Cómo funciona la reserva por IA
-
-Cuando un cliente escribe por WhatsApp pidiendo una cita, el agente IA maneja todo el flujo:
-
-```
-1. Cliente: "Hola, quiero agendar una cita"
-2. Agente: Muestra servicios disponibles
-3. Cliente: Elige un servicio
-4. Agente: Pregunta la fecha
-5. Cliente: "Mañana"
-6. Agente: Muestra horarios disponibles (cruzando con calendario)
-7. Cliente: Elige un horario
-8. Agente: Pide nombre y email
-9. Cliente: Confirma
-10. Cita creada en Google Calendar + confirmación por WhatsApp
-```
-
-### Qué pasa al confirmar:
-- Se crea un evento en el calendario conectado
-- El cliente recibe una invitación por email
-- Se envía confirmación por WhatsApp con los detalles
-- Si el servicio es **Online**, se incluye el enlace de Meet/Teams
-- El dashboard se actualiza en tiempo real
-
-### Después de la cita — Confirmación de asistencia
-
-Una vez que la cita finaliza, Parallly envía automáticamente un mensaje al cliente por su canal de mensajería preguntando si asistió:
-
-1. **Confirmación de asistencia**: "¿Pudiste asistir a tu cita de [servicio]?"
-2. **Si confirma asistencia**: La cita se marca como completada y se dispara una encuesta de satisfacción (CSAT)
-3. **Si no asistió (no-show)**: Se envía un mensaje de seguimiento ofreciendo reagendar
-4. **Auto-completar**: Si después de 2 horas no hay respuesta pero la cita estaba confirmada, se marca automáticamente como completada
+Resolución 3-tier al sincronizar:
+1. Calendario específico del **servicio**
+2. Calendario específico del **staff**
+3. Calendario general del tenant
 
 ### Desconectar un calendario con citas futuras
 
-Si intentas desconectar un calendario que tiene citas futuras:
+Si el calendario tiene citas futuras, antes de desconectar:
+1. Botón "Reasignar a otro calendario"
+2. Selecciona destino
+3. Las citas se mueven y luego se desconecta
 
-1. Aparece un diálogo mostrando **cuántas citas** quedan pendientes
-2. Se te da la opción de **reasignar** las citas a otro calendario conectado
-3. Selecciona el calendario destino en el dropdown
-4. Al confirmar, todas las citas futuras se mueven al nuevo calendario y luego se desconecta el original
+## 10.5 Reserva por IA
 
-> **Nota:** Si solo tienes un calendario, deberás cancelar las citas futuras manualmente antes de desconectar.
+El agente IA puede agendar citas usando un **state machine determinístico** (no LLM-driven):
 
----
+1. **select_service** — bot pregunta qué servicio
+2. **select_date** — fecha disponible
+3. **select_time** — hora disponible
+4. **confirm** — confirmación final + verificación anti-doble-booking
+5. **booked** — cita creada
 
-# 9. Automatización
+### Qué pasa al confirmar
 
-**Ruta:** Menú → Automatización
+- Se crea la cita en BD
+- Se sincroniza con Google Calendar (si aplica)
+- Se envía email de confirmación al cliente
+- Se notifica al staff asignado
+- Si es servicio online: se genera link Meet/Teams
 
-### Crear una regla (4 pasos)
+### Después de la cita — Confirmación de asistencia
 
-#### Paso 1 — Trigger (¿Cuándo se activa?)
-
-| Trigger | Descripción |
-|---------|-------------|
-| Lead capturado | Un nuevo lead entra al sistema |
-| Mensaje recibido | El cliente envía un mensaje |
-| Conversación asignada | Un agente toma la conversación |
-| SLA vencido | El tiempo de respuesta se superó |
-| Inactividad | El cliente no responde en X tiempo |
-| Etapa cambiada | El lead avanza o retrocede en el pipeline |
-
-#### Paso 2 — Condiciones (¿Bajo qué circunstancias?)
-
-| Condición | Ejemplo |
-|-----------|---------|
-| Canal | = WhatsApp |
-| Etapa | = Calificado |
-| Score | > 50 |
-| Tag | contiene "VIP" |
-| Fuente | = campaña X |
-
-#### Paso 3 — Acciones (¿Qué hacer?)
-
-| Acción | Descripción |
-|--------|-------------|
-| Enviar template | Enviar un mensaje predefinido |
-| Crear tarea | Asignar una tarea a un agente |
-| Cambiar etapa | Mover el lead en el pipeline |
-| Agregar tag | Etiquetar el contacto |
-| Asignar agente | Asignar a un agente específico |
-| Enviar notificación | Notificar al equipo |
-| Webhook | Llamar un servicio externo |
-
-> Cada acción puede tener un **delay** (retraso): inmediato, minutos, horas, o días.
-
-#### Paso 4 — Guardar
-Revisa el resumen y activa la regla con el toggle.
+Cron horario (`@Cron('20 * * * *')`):
+- Citas terminadas hace 2+ horas se marcan como `completed` automáticamente
+- Mensaje de seguimiento opcional al cliente
 
 ---
 
-# 10. Campañas y Broadcast
+# 11. Automatización
 
-**Ruta:** Menú → Campañas
+**Ruta:** Sidebar → Automatización
+**Roles:** Admin/Supervisor
 
-### Crear una campaña
+## 11.1 Crear una regla (4 pasos)
 
-1. Clic en **Nueva campaña**
-2. Nombre de la campaña
-3. Canal (WhatsApp, Instagram, SMS)
-4. Template de mensaje
-5. Audiencia (todos, segmento, lista personalizada)
-6. Programar envío (ahora o fecha/hora futura)
-7. **Enviar**
+1. **Trigger** — qué evento dispara la regla (mensaje recibido, lead creado, etapa cambió, etc.)
+2. **Condiciones** — filtros (canal, palabras clave, etiqueta, score)
+3. **Acciones** — qué hace (enviar mensaje, mover etapa, agregar tag, asignar agente, crear tarea)
+4. **Programación** — inmediato o con delay
 
-### Métricas de seguimiento
+## 11.2 Secuencias de nurturing
 
-| Métrica | Descripción |
-|---------|-------------|
-| Enviados | Total de mensajes enviados |
-| Entregados | Llegaron al dispositivo |
-| Leídos | El cliente los abrió |
-| Fallidos | No se pudieron entregar |
-| Respuestas | Clientes que respondieron |
+Configurables: serie de mensajes con delays entre ellos. Cada paso puede:
+- Enviar template
+- Esperar X horas/días
+- Esperar respuesta (con timeout)
+- Bifurcar según respuesta
+- Detener secuencia si el lead avanza de etapa
 
----
+## 11.3 BullMQ y reintentos
 
-# 11. Base de Conocimiento
-
-**Ruta:** Menú → Base de Conocimiento
-
-### Tipos de contenido
-
-| Tipo | Cómo agregar |
-|------|-------------|
-| **Manual** | Escribe el contenido directamente |
-| **PDF** | Sube un archivo PDF |
-| **URL** | Ingresa una URL para extraer contenido |
-| **FAQ** | Pares de pregunta-respuesta |
-| **Política** | Devoluciones, envío, garantía, etc. |
-
-### Cómo lo usa el agente IA
-
-Cuando un cliente hace una pregunta, el agente IA busca en tu base de conocimiento y responde con información verificada, citando la fuente: `[FAQ #3]`, `[Artículo: Horarios]`, `[Política: Devoluciones]`.
-
-### Portal público
-
-Tu base de conocimiento tiene un portal público accesible en:
-```
-admin.parallly-chat.cloud/kb/tu-empresa
-```
-Los clientes pueden buscar artículos sin contactar al agente.
+Las acciones se procesan con BullMQ — 3 reintentos automáticos si falla. Visible en el log de la regla.
 
 ---
 
-# 13. Plantillas de Email
+# 12. Campañas y Broadcast
 
-**Ruta:** Configuración → Contenido → Plantillas de Email
+**Ruta:** Sidebar → Campañas
+**Roles:** Admin/Supervisor
 
-Las plantillas de email te permiten crear y enviar correos electrónicos con diseño profesional a tus clientes.
+## 12.1 Crear una campaña
 
-## 13.1 Plantillas predeterminadas
+1. Selecciona segmento (o sube CSV)
+2. Selecciona template aprobado de WhatsApp
+3. Personaliza variables ({{nombre}}, {{empresa}}, etc.)
+4. Programa envío (inmediato o futuro)
+5. Confirmar → entra a cola con rate limit (80 msg/s)
 
-Parallly incluye **14 plantillas predeterminadas** listas para usar:
+## 12.2 Métricas de seguimiento
 
-| Plantilla | Cuándo se usa |
-|-----------|--------------|
-| **appointment_confirmation** | Al confirmar una cita por WhatsApp/IA |
-| **appointment_reminder** | 24h y 1h antes de la cita (automático) |
-| **appointment_confirmation_email** | Email de confirmación al agendar una cita |
-| **appointment_reminder_email** | Email recordatorio 24h antes de la cita |
-| **property_booking_confirmation** | Al crear una reserva de alquiler vacacional |
-| **property_check_in_reminder** | 24h antes del check-in de una propiedad |
-| **handoff_notification** | Cuando una conversación se escala a agente humano |
-| **order_confirmation** | Al crear un pedido |
-| **welcome** | Al registrarse un nuevo usuario |
-| **verification** | Verificación de email (código OTP) |
-| **password_reset** | Recuperación de contraseña |
-| **2fa_code** | Código de autenticación de dos factores |
-| **payment_success** | Al procesar un pago exitoso |
-| **trial_ending** | 3 días antes de que termine el período de prueba |
+- Total enviados / pendientes / errores
+- Tasa de entrega
+- Tasa de lectura
+- Tasa de respuesta
+- Click-through (si hay buttons)
 
-## 13.2 Flujos automáticos conectados
+## 12.3 Límites por plan
 
-Algunas plantillas se disparan automáticamente:
-
-| Evento | Plantilla enviada | Canal |
-|--------|-------------------|-------|
-| Cita creada por IA o manual | `appointment_confirmation_email` | Email |
-| 24h antes de la cita | `appointment_reminder_email` | Email |
-| Reserva de propiedad creada | `property_booking_confirmation` | Email |
-| 24h antes del check-in | `property_check_in_reminder` | Email |
-| Handoff a agente humano | `handoff_notification` | Email al agente |
-
-## 13.3 Editor de plantillas
-
-El editor tiene dos modos:
-
-- **Editor visual (bloques)**: arrastra y suelta secciones (header, texto, botón, imagen, footer)
-- **Editor HTML**: acceso directo al HTML para personalización avanzada
-
-### Variables disponibles
-
-Las plantillas soportan variables que se reemplazan automáticamente:
-
-| Variable | Descripción |
-|----------|-------------|
-| `{{customer_name}}` | Nombre del cliente |
-| `{{service_name}}` | Nombre del servicio agendado |
-| `{{appointment_date}}` | Fecha de la cita |
-| `{{appointment_time}}` | Hora de la cita |
-| `{{agent_name}}` | Nombre del agente IA o humano |
-| `{{company_name}}` | Nombre de tu empresa |
-| `{{property_name}}` | Nombre de la propiedad (alquiler vacacional) |
-| `{{check_in_date}}` | Fecha de check-in |
-| `{{check_out_date}}` | Fecha de check-out |
-| `{{booking_link}}` | URL de la reserva |
-
-### Preview en tiempo real
-
-Al editar, el panel derecho muestra el email renderizado en tiempo real. Puedes:
-1. Ver cómo se verá en escritorio y móvil
-2. Enviar un **email de prueba** a tu dirección para verificar el diseño
-3. Guardar como borrador antes de activar
-
-## 13.4 Crear desde plantilla
-
-Al crear una nueva plantilla de email, haz clic en **"Crear desde plantilla"** para abrir el selector de presets:
-
-| Preset | Caso de uso |
-|--------|-------------|
-| Confirmación de cita | Email que confirma un agendamiento |
-| Recordatorio de cita | Recordatorio automático pre-cita |
-| Confirmación de reserva | Para alquiler vacacional y propiedades |
-| Recordatorio de check-in | Instrucciones de llegada para huéspedes |
-| Bienvenida | Email de bienvenida a nuevos clientes |
-| Notificación de equipo | Para notificar al equipo sobre eventos |
+| Plan | Campañas/mes |
+|------|--------------|
+| Starter | 3 |
+| Pro | Ilimitadas |
+| Enterprise | Ilimitadas |
 
 ---
 
-# 14. Analytics y Reportes
+# 13. Base de Conocimiento
 
-## 12.1 Analytics del negocio
+**Ruta:** Sidebar → Base de Conocimiento
+**Roles:** Admin/Supervisor
 
-**Ruta:** Menú → Analytics
+## 13.1 Tipos de contenido
 
-- Leads en el funnel de ventas
+- **FAQs** — preguntas y respuestas estructuradas
+- **Documentos** — PDFs, DOCX, MD
+- **URLs** — Parallly hace scraping y vectoriza
+- **Texto libre** — políticas, manuales internos
+
+## 13.2 Cómo lo usa el agente IA
+
+RAG con pgvector: cuando el cliente pregunta algo, el agente busca chunks relevantes en tu KB y los inyecta en el prompt antes de responder.
+
+## 13.3 Portal público
+
+`https://admin.parallly-chat.cloud/kb/{tu-slug}` — versión pública de tu KB para clientes (light theme, sin auth). Ideal para enlazar desde tu web.
+
+---
+
+# 14. Plantillas de Email
+
+**Ruta:** Configuración → Plantillas de Email
+**Roles:** Admin/Supervisor
+
+## 14.1 Plantillas predeterminadas
+
+Auto-creadas la primera vez que entrás:
+- `appointment_confirmation` — confirmación de cita
+- `appointment_reminder` — recordatorio antes de la cita
+- `order_confirmation` — confirmación de orden
+- `welcome` — bienvenida a nuevos clientes
+- `recall` — recordatorio de visita
+
+## 14.2 Flujos automáticos conectados
+
+- Cita creada → `appointment_confirmation`
+- 24h antes de la cita → `appointment_reminder`
+- Orden completada → `order_confirmation`
+- Cliente nuevo → `welcome`
+
+## 14.3 Editor
+
+- Visual con preview a la derecha
+- Variables disponibles: `{{nombre}}`, `{{empresa}}`, `{{fecha}}`, `{{servicio}}`, etc.
+- HTML + texto plano fallback
+- Test send a tu propio email antes de activar
+
+## 14.4 Template picker
+
+Modal con 6 presets visuales — elige el estilo (corporativo, friendly, minimalista) y se rellena el contenido base.
+
+---
+
+# 15. Analytics y Reportes
+
+**Roles:** Admin/Supervisor (los Agents ven solo sus propias métricas)
+
+## 15.1 Analytics del negocio
+
+Pestañas:
+- Resumen — KPIs principales
+- Conversaciones — volumen y resolución
+- CSAT — satisfacción del cliente (encuestas post-cierre)
+- Embudo, Velocidad, Win/Loss
+- Fuentes — origen de leads
+
+## 15.2 Reportes de agentes
+
+Leaderboard con:
+- Conversaciones atendidas
+- Tiempo de primera respuesta
+- Deals cerrados
 - Tasa de conversión
-- Performance de campañas
-- Distribución por fuente
+- CSAT promedio
 
-## 12.2 Reportes de agentes
+## 15.3 Mis métricas (rol Agent)
 
-**Ruta:** Menú → Reportes
-
-4 pestañas de reportes:
-
-| Pestaña | Contenido |
-|---------|-----------|
-| **Resumen** | Conversaciones totales, tiempo de respuesta, tasa de handoff, CSAT |
-| **Agentes** | Rendimiento individual (mensajes, tiempo, satisfacción) |
-| **Canales** | Comparación WhatsApp vs Instagram vs otros |
-| **CSAT** | Encuestas de satisfacción del cliente (1-5 estrellas) |
+Cada agente ve solo sus propias métricas en `/admin/agent-analytics`:
+- Mis conversaciones hoy / semana / mes
+- Mi tiempo de respuesta
+- Mis deals
+- Mi ranking interno
 
 ---
 
-# 13. Inventario y Pedidos
+# 16. Inventario y Pedidos
 
-## 13.1 Inventario
+**Ruta:** Sidebar → Inventario / Pedidos
+**Roles:** Todos (Admin/Supervisor para gestionar productos)
 
-**Ruta:** Menú → Inventario
+## 16.1 Inventario
 
-- Crear productos con nombre, SKU, precio, stock
-- Categorías con colores
+Catálogo de productos con stock:
+- SKU, nombre, descripción, precio
+- Stock actual
 - Alertas de stock bajo
-- Historial de movimientos (entradas, salidas, ajustes)
-- Importar/exportar productos (CSV)
+- Categorías
+- Imágenes
 
-## 13.2 Pedidos
+## 16.2 Pedidos
 
-**Ruta:** Menú → Pedidos
+Vista kanban: pendientes, confirmados, enviados, entregados, cancelados.
 
-- Crear pedido con líneas de productos
-- Estados: Pendiente → Confirmado → Pagado → Completado
-- Historial de pagos
-- Envío de confirmación por WhatsApp/email
+> Para industrias específicas hay vistas dedicadas: **Restaurantes** usa Pedidos de Comida en `/admin/food-orders` con tablero kanban tipo cocina.
 
 ---
 
-# 14. Privacidad y Cumplimiento
+# 17. Privacidad y Cumplimiento
 
-**Ruta:** Menú → Compliance
+**Ruta:** Configuración → Avanzado → Compliance
+**Roles:** Admin
 
-| Sección | Descripción |
-|---------|-------------|
-| **Textos legales** | Gestiona términos, política de privacidad, consentimiento |
-| **Consentimientos** | Registro de consentimientos otorgados por clientes |
-| **Solicitudes de baja** | Lista de clientes que pidieron no recibir más mensajes |
-| **Solicitudes de eliminación** | Solicitudes de eliminación de datos (GDPR/Habeas Data) |
+## 17.1 Funciones
 
-### Baja automática
-Parallly detecta automáticamente cuando un cliente escribe keywords como "no quiero", "cancelar", "basta" y lo agrega a la lista de solicitudes de baja. Los mensajes proactivos (broadcasts, automaciones) se bloquean, pero las respuestas a mensajes del cliente siguen funcionando.
+- Detección automática de opt-out (palabras como "BAJA", "STOP", "NO MAS")
+- Registro de consentimientos
+- Audit log de accesos
+- Exportación GDPR (descargar todos los datos de un contacto)
+- Eliminación bajo solicitud (right-to-erasure)
 
----
+## 17.2 Baja automática
 
-# 15. Configuración
-
-**Ruta:** Menú → Configuración
-
-| Sección | Qué configura |
-|---------|---------------|
-| **Perfil** | Tu nombre, email, foto |
-| **Seguridad** | Contraseña, 2FA, sesiones |
-| **Notificaciones** | Qué alertas recibes y cómo |
-| **Empresa** | Logo, colores, información del negocio |
-| **Horario** | Horas de atención del negocio |
-| **Atributos** | Campos personalizados para contactos |
-| **Macros** | Respuestas predefinidas para el inbox |
-| **Pre-chat** | Formulario antes de iniciar conversación |
-| **Medios** | Biblioteca de imágenes y archivos |
-| **Email Templates** | Plantillas de correo electrónico |
-| **Alertas** | Reglas de alerta y webhooks |
-| **Pipeline** | Etapas del pipeline de ventas (ver abajo) |
-| **Scoring** | Pesos de factores y configuración de decaimiento |
-| **Facturación** | Plan, pagos, método de pago |
-
-### Etapas del Pipeline
-
-**Ruta:** Configuración → Pipeline
-
-Personaliza las etapas de tu funnel de ventas:
-
-1. **Reordenar**: arrastra y suelta las etapas para cambiar su orden
-2. **Editar**: haz clic en una etapa para modificar su nombre, color representativo y probabilidad de cierre (%)
-3. **Agregar**: clic en "Agregar etapa" para crear una nueva
-4. **Eliminar**: borra etapas que ya no uses
-5. **Marcar como terminal**: indica que una etapa es final (ej: "Ganado" o "Perdido"), lo que significa que el deal ya no avanza
-
-Los cambios se reflejan inmediatamente en la vista de Pipeline (Kanban) y en todos los filtros del CRM.
+Si un cliente escribe "BAJA" o sinónimos → automáticamente:
+- Marca el contacto como `opted_out`
+- Detiene cualquier secuencia de nurturing
+- No se le pueden enviar más broadcasts
+- Queda registrado en audit_log
 
 ---
 
-# 16. Gestión de Usuarios
+# 18. Configuración General
 
-**Ruta:** Menú → Usuarios
+**Ruta:** Sidebar → Configuración
 
-### Roles disponibles
+## 18.1 Cuenta (todos los roles)
+- Mi perfil (nombre, foto, idioma de la UI)
+- Cambiar contraseña
+- Sesiones activas
+- Cerrar sesión en todos los dispositivos
 
-| Rol | Acceso |
-|-----|--------|
-| **Admin** | Configuración completa, todos los módulos |
-| **Agente** | Inbox, conversaciones, CRM básico |
-| **Viewer** | Solo lectura (ver sin modificar) |
+## 18.2 Empresa (Admin)
+- Datos del negocio (nombre, dirección, teléfono, sitio)
+- Logo (usado en emails y portal público)
+- Horarios de atención
+- Localización (idioma y zona horaria)
+- Custom attributes (campos personalizados)
 
-### Crear usuario
+## 18.3 Herramientas (Admin/Supervisor)
+- Etapas del Pipeline
+- Lead Scoring
+- Macros (acciones rápidas con un click)
+- Plantillas de email
+- Pre-chat (formularios pre-conversación)
+- Sistema de Recall (recordatorios automáticos)
 
-1. Clic en **Nuevo usuario**
-2. Ingresa nombre, email, contraseña temporal
-3. Selecciona el rol
-4. El usuario recibe un email de invitación
+## 18.4 IA (Admin)
+- Modelo por defecto del tenant
+- Configuración global de comportamiento del agente
 
-### Gestionar usuarios
-- Editar datos y cambiar rol
-- Resetear contraseña
-- Desactivar/activar usuario
-
----
-
-## 16.1 Habilidades del equipo
-
-Cada usuario puede tener **habilidades (skills)** asignadas que se usan para el enrutamiento inteligente de conversaciones:
-
-1. Ve a **Usuarios** en el menú
-2. En la columna "Skills", haz clic para editar
-3. Escribe una habilidad y presiona Enter, o selecciona de las sugeridas:
-   - ventas, soporte, técnico, facturación, quejas, general, vip, idiomas
-4. Los cambios se guardan automáticamente
-
-**¿Para qué sirven?** Cuando un cliente solicita atención humana, el sistema asigna al agente que tenga las habilidades más relevantes para el tipo de consulta.
+## 18.5 Avanzado (Admin)
+- Compliance (consentimientos, opt-outs, GDPR)
+- Webhooks de salida (para integrar con sistemas externos)
+- Exportar datos
+- API keys del tenant
 
 ---
 
-# 17. Facturación y Planes
+# 19. Gestión de Usuarios
+
+**Ruta:** Sidebar → Usuarios
+**Roles:** Tenant Admin
+
+## 19.1 Crear usuario
+
+1. Botón "+ Invitar usuario"
+2. Email + nombre + rol (admin / supervisor / agent)
+3. Selecciona habilidades (skills) — para enrutar handoffs
+4. Capacidad máxima de conversaciones simultáneas
+5. Enviar — el usuario recibe email de invitación
+
+## 19.2 Gestionar usuarios
+
+- Editar rol y permisos
+- Cambiar habilidades
+- Reset password
+- Activar / desactivar
+- Ver actividad (últimas conversaciones, citas)
+
+## 19.3 Habilidades del equipo
+
+Tags como `WhatsApp`, `Inglés`, `Nivel-2`, `Pacientes-VIP`. Las usa el sistema de handoff con auto-assign para enrutar conversaciones al humano correcto.
+
+Capacidad máxima: cuántas conversaciones puede tener un agente abiertas a la vez. Si está al máximo, el sistema busca el siguiente con skill compatible.
+
+## 19.4 SLA y escalamiento
+
+Cada conversación asignada tiene un SLA de 5 minutos por defecto:
+- Si pasa sin respuesta → notificación al agente
+- Si pasa 10 min → escala al supervisor (notificación de campana + sonido)
+
+---
+
+# 20. Facturación y Planes
 
 **Ruta:** Configuración → Facturación
+**Roles:** Tenant Admin
 
-### Comparación de planes
+## 20.1 Planes disponibles
 
-| Feature | Starter | Pro | Enterprise |
-|---------|:-------:|:---:|:----------:|
-| Precio | Gratis | $129/mes | $349/mes |
-| Agentes IA | 1 | 3 | 10 |
-| Calendarios | 1 | 3 | 10 |
-| Plantillas | Básicas | Personalizadas | Todo |
-| Prompt personalizado | No | Si | Si |
-| Soporte | Email | Prioritario | Dedicado |
+| Plan | Precio mensual | Agentes IA | Mensajes IA/mes | Calendarios | Trial |
+|------|----------------|-----------|-----------------|-------------|-------|
+| **Starter** | USD $39 | 1 | 5.000 | 1 | 7 días |
+| **Pro** | USD $129 | 3 | 25.000 | 3 | 15 días |
+| **Enterprise** | USD $349 | 10 | 100.000 | 10 | 15 días |
+| **Custom** | A medida | Ilimitados | Ilimitados | Ilimitados | — |
 
-### Cambiar plan
-- Clic en **Cambiar plan** para upgrade o downgrade
-- **Upgrade**: se aplica inmediatamente
-- **Downgrade**: se aplica al final del periodo
+## 20.2 Precio en moneda local
 
-### Cancelar cuenta
+El dashboard detecta tu país (campo `billingCountry`) y muestra automáticamente:
+- Precio en moneda local si hay override curado (CO/AR/MX/CL/PE/UY/BR principal)
+- Precio convertido por tasa FX si no hay override (con leyenda "≈ USD X")
+- Precio en USD si no hay datos de FX
 
-1. Ir a Configuración → Facturación
-2. Clic en **Cancelar cuenta**
-3. La cuenta permanece activa hasta el final del periodo pagado
-4. Tienes **90 días** para reactivar antes de que se eliminen los datos
+Las monedas soportadas para display: COP, ARS, MXN, CLP, PEN, UYU, BRL, USD.
 
----
+## 20.3 Cambiar plan
 
-# 18. Preguntas Frecuentes
+1. Configuración → Facturación
+2. Click en el plan deseado
+3. Si subis (upgrade): se requiere tarjeta — pago inmediato del nuevo plan
+4. Si bajas: aplica al final del período actual (no se cobra de nuevo)
 
-## General
+> MercadoPago no soporta cambio de plan dinámico — el sistema cancela la suscripción vieja y crea una nueva con el nuevo plan.
 
-<details>
-<summary><strong>¿En qué idiomas funciona Parallly?</strong></summary>
+## 20.4 Cambiar tarjeta
 
-El dashboard está disponible en **español, inglés, portugués y francés**. El agente IA detecta automáticamente el idioma del cliente y responde en ese idioma.
-</details>
+1. Botón "Cambiar tarjeta"
+2. Modal de MercadoPago para tokenizar nueva tarjeta
+3. Confirmar — el cobro siguiente se hace con la nueva
 
-<details>
-<summary><strong>¿Puedo usar Parallly en múltiples países?</strong></summary>
+## 20.5 Pausar suscripción
 
-Sí. Configura la zona horaria y moneda por empresa. Los precios se manejan en la moneda local (COP, USD, BRL, EUR).
-</details>
+**Para tomar un descanso sin cancelar.**
 
-## Agente IA
+1. Botón "Pausar suscripción"
+2. Modal pide motivo (opcional, queda en audit log)
+3. Confirmar → el proveedor deja de cobrarte
 
-<details>
-<summary><strong>¿Qué modelos de IA usa Parallly?</strong></summary>
+Mientras está pausada:
+- Banner ámbar "Tu suscripción está pausada"
+- Solo aparece el botón "Reanudar"
+- Los límites del plan siguen aplicando (no son ilimitados durante la pausa)
 
-Por defecto: **Grok** (xAI) para conversación natural y **Gemini** para tool calling. También soporta OpenAI GPT-4, Anthropic Claude, y DeepSeek como alternativas.
-</details>
+### Reanudar
+Click en "Reanudar" → vuelve a `ACTIVE` (o `TRIALING` si aún quedaba trial). Próximo cobro en la fecha original del ciclo.
 
-<details>
-<summary><strong>¿El agente IA puede agendar citas automáticamente?</strong></summary>
+## 20.6 Reintentar cobro (recovery de past_due)
 
-Sí. Configura servicios y disponibilidad, conecta tu calendario (Google/Microsoft), y el agente maneja todo el flujo de reserva: muestra servicios → pregunta fecha → muestra horarios → confirma → crea evento en calendario + envía confirmación.
-</details>
+Si tu suscripción quedó en estado **"Pago pendiente"** (past_due) por una tarjeta rechazada, hay 2 caminos:
 
-<details>
-<summary><strong>¿Puedo personalizar completamente el agente?</strong></summary>
+1. **Cambiar la tarjeta** y esperar al próximo intento del cron (cada hora)
+2. **"Reintentar cobro ahora"** — botón verde que fuerza una sincronización inmediata con MercadoPago
 
-Sí. Usa el **editor guiado** (identidad, personalidad, reglas) o el **modo prompt personalizado** para control total sobre el comportamiento del agente.
-</details>
+Si MercadoPago ya reintentó en background y el cobro fue exitoso, este botón actualiza tu estado al toque.
 
-<details>
-<summary><strong>¿El agente responde en el idioma del cliente?</strong></summary>
+## 20.7 Cancelar suscripción
 
-Sí. El agente detecta automáticamente el idioma del cliente (español, inglés, portugués, francés) y responde en ese idioma, manteniendo el tono configurado.
-</details>
+Dos opciones:
 
-## Canales
+| Opción | Comportamiento |
+|--------|----------------|
+| **Cancelar al final del período** | Conservas acceso hasta `currentPeriodEnd`. Banner ámbar te avisa la fecha. |
+| **Cancelar inmediatamente** | Acceso revocado al instante. Sin reembolso del período actual (a menos que pidas refund por separado). |
 
-<details>
-<summary><strong>¿Puedo conectar múltiples canales a la vez?</strong></summary>
+## 20.8 Aplicar cupón promocional
 
-Sí. Puedes tener WhatsApp, Instagram, Messenger, Telegram y SMS conectados simultáneamente. Cada canal puede tener un agente IA diferente asignado.
-</details>
+Si recibiste un código promocional (campaña, regalo de Parallly, etc.):
 
-<details>
-<summary><strong>¿Qué pasa si desconecto un canal?</strong></summary>
+1. Configuración → Facturación
+2. Sección "Código de cupón"
+3. Pegá el código (se normaliza a mayúsculas automáticamente)
+4. Click "Aplicar"
 
-Los mensajes dejan de llegar por ese canal. Las conversaciones existentes permanecen en el inbox. Puedes reconectar en cualquier momento.
-</details>
+3 tipos de cupones:
+- **% de descuento** durante N ciclos de cobro
+- **Monto fijo** descontado durante N ciclos
+- **Meses gratis** — extiende tu trial sin cobrar
 
-<details>
-<summary><strong>¿Necesito un número de WhatsApp Business?</strong></summary>
+Errores posibles al aplicar:
+- "Cupón no existe"
+- "Vencido"
+- "Llegó al máximo de canjes"
+- "No aplica a tu plan actual"
+- "Ya usaste este cupón antes"
 
-Sí. Parallly usa la WhatsApp Cloud API de Meta. Durante la conexión, vinculas tu cuenta de WhatsApp Business automáticamente mediante el Embedded Signup.
-</details>
+## 20.9 Historial de pagos
 
-## Citas
+Tabla con últimos 20 pagos:
+- Fecha
+- Monto (en moneda original del cobro)
+- Estado (Exitoso / Fallido / Reembolsado / Pendiente)
+- Factura PDF (cuando esté disponible)
 
-<details>
-<summary><strong>¿Se sincronizan las citas con mi calendario?</strong></summary>
+## 20.10 Trial — recordatorios
 
-Sí. Conecta Google Calendar o Microsoft Outlook. Las citas creadas por el agente IA aparecen automáticamente en tu calendario, y el cliente recibe una invitación por email.
-</details>
+3 días antes de que termine tu trial, recibís email automático: "Tu prueba termina pronto — agregá una tarjeta para seguir".
 
-<details>
-<summary><strong>¿Puedo tener servicios online y presenciales?</strong></summary>
+Si el trial vence sin tarjeta:
+- Suscripción pasa a `expired`
+- Acceso a la plataforma revocado (banner de "Suscripción vencida" al hacer login)
+- Datos preservados — se reactivan al pagar
 
-Sí. Cada servicio puede ser **Presencial**, **Online** o **Híbrido**. Los servicios online generan automáticamente un enlace de Google Meet o Microsoft Teams.
-</details>
+## 20.11 Pasos post-pago fallido
 
-## Datos y Privacidad
-
-<details>
-<summary><strong>¿Dónde se almacenan mis datos?</strong></summary>
-
-En servidores seguros con **aislamiento por empresa** (cada negocio tiene su propia base de datos). Los tokens y credenciales se encriptan con AES-256-GCM.
-</details>
-
-<details>
-<summary><strong>¿Qué pasa con mis datos si cancelo?</strong></summary>
-
-Tienes **90 días** para reactivar tu cuenta. Después de 90 días, los datos se eliminan permanentemente (incluidos contactos, conversaciones, y archivos).
-</details>
-
-<details>
-<summary><strong>¿Cumplen con regulaciones de protección de datos?</strong></summary>
-
-Sí. Parallly cumple con:
-- **Ley 1581 de 2012** (Colombia — Habeas Data)
-- **LFPDPPP** (México)
-- Controles de solicitudes de baja, consentimiento, y solicitudes de eliminación integrados
-</details>
+Cuando un cobro falla, MercadoPago reintenta automáticamente con su lógica de retries. Mientras tanto:
+1. Tu suscripción queda en `past_due`
+2. Email automático "Pago fallido" con instrucciones
+3. Banner en dashboard
+4. Después de 7 días sin recuperar → suspensión automática del tenant
 
 ---
 
-# 19. Adaptación por Industria
+# 21. Adaptación por Industria — Verticales
 
-Parallly se adapta automáticamente al tipo de negocio que seleccionas durante el registro. No es solo un cambio de nombre — toda la plataforma se reconfigura.
+Parallly opera 16 industrias verticales. Cada una activa funcionalidades específicas durante el onboarding.
 
-## 19.1 ¿Qué se adapta?
+## 21.1 Turismo — Tours, Paquetes y Alquiler Vacacional
 
-| Elemento | Ejemplo (Salud) | Ejemplo (Restaurantes) |
-|----------|-----------------|------------------------|
-| **Agente IA** | "Sofía" — profesional, empática | "Luca" — cálido, amigable |
-| **Sidebar** | Pacientes, Seguimiento, Agenda Médica | Comensales, Reservas, Reservaciones |
-| **Pipeline** | Consulta→Cita→Visita→Activo | Consulta→Reserva→Completada |
-| **KPIs** | Citas Hoy, No Shows, Pacientes Nuevos | Reservas Hoy, Consultas, No Shows |
-| **FAQs** | Horarios, pagos, emergencias | Menú, reservas, alergias |
-| **Welcome** | "Bienvenido a tu consultorio virtual" | "Tu restaurante está listo" |
-| **Empty states** | "Cuando llegue tu primer paciente..." | "Tus comensales aparecerán aquí..." |
-| **Checklist** | "Configura tu asistente médico" | "Carga tu menú y horarios" |
-| **Homepage** | Vista de agenda del día | Vista de agenda del día |
+**Para quién:** agencias de viajes, operadores de tours, hoteles con experiencias, alquiler vacacional (Airbnb-style).
 
-## 19.2 Industrias disponibles
+**Sub-tipos:**
+- `tours` — agencias de día / multi-día
+- `agencia_viajes` — operador full
+- `alquiler_vacacional` — propiedades estilo Airbnb
 
-1. **Salud** — Clínicas, consultorios, estética, psicología, farmacias
-2. **Moda y Belleza** — Salones, barberías, spas, boutiques
-3. **Inmobiliaria** — Venta, arriendo, comercial, construcción
-4. **Restaurantes** — Casual dining, comida rápida, cafeterías, dark kitchens
-5. **Automotriz** — Concesionarios, talleres, repuestos, alquiler
-6. **Turismo** — Agencias de viajes, hoteles, tours, alquiler vacacional
-7. **Educación** — Idiomas, universidades, cursos online, capacitación
-8. **Finanzas** — Seguros, asesoría financiera, fintech, créditos
-9. **Servicios Profesionales** — Abogados, contadores, arquitectos, consultores
-10. **Retail** — Moda, electrónica, hogar, marketplace
-11. **Tecnología** — SaaS, consultoría TI, desarrollo, hardware
-12. **Otro** — Configuración genérica
+### 21.1.1 Tours y Paquetes
 
-## 19.3 Sub-tipo de negocio
-
-Después de seleccionar tu industria, puedes elegir un sub-tipo para una configuración más precisa. Por ejemplo:
-- Salud → **Odontología** vs **Psicología** vs **Estética**
-- Restaurantes → **Casual dining** vs **Dark kitchen** vs **Cafetería**
-
-## 19.4 Terminología automática
-
-El agente IA usa vocabulario de tu industria en cada conversación:
-- Salud: "paciente", "consulta", "cita médica"
-- Inmobiliaria: "interesado", "propiedad", "visita"
-- Restaurantes: "comensal", "reserva", "mesa"
-
-No necesitas configurar nada — se activa automáticamente al registrarte.
-
-## 19.5 Temas prohibidos por industria
-
-Cada vertical tiene restricciones adicionales que el agente IA respeta:
-- **Salud**: No da diagnósticos, no prescribe medicamentos
-- **Finanzas**: No garantiza rendimientos, no solicita datos bancarios completos
-- **Inmobiliaria**: No garantiza valorización, no discrimina por zona
-
----
-
-# 20. Propiedades y Alquiler Vacacional
-
-Para negocios de alquiler vacacional (Airbnb, Booking.com, etc.), Parallly ofrece un módulo completo de gestión de propiedades con sincronización de calendarios.
-
-> **Nota**: Este módulo aparece en el sidebar como "Propiedades" cuando tu industria es Turismo (sub-tipo: alquiler vacacional).
-
-## 20.1 Crear una propiedad
-
-1. Ve a **Propiedades** en el menú
-2. Clic en **"Agregar propiedad"**
-3. Completa: nombre, descripción, dirección, ciudad, capacidad, habitaciones, baños
-4. Configura el precio por noche y tarifa de limpieza
-5. Selecciona amenidades (organizadas en 6 categorías)
-6. Agrega imágenes de la propiedad
-7. Guarda
-
-### Amenidades — 30 opciones en 6 categorías
-
-| Categoría | Amenidades incluidas |
-|-----------|---------------------|
-| **Básicos** | WiFi, Aire acondicionado, Calefacción, TV, Lavadora, Secadora |
-| **Dormitorio & Baño** | Toallas, Ropa de cama, Secador de cabello, Plancha, Armario/Closet |
-| **Cocina** | Cocina completa, Microondas, Cafetera, Platos/Utensilios, Refrigerador, Congelador |
-| **Exterior** | Piscina, BBQ/Parrilla, Patio/Terraza, Balcón, Jardín, Estacionamiento |
-| **Servicios** | Gimnasio, Spa, Desayuno incluido, Conserjería, Ascensor, Acceso silla de ruedas |
-| **Seguridad** | Cerradura inteligente, Caja de seguridad, Extintor, Detector de humo, Vigilancia |
-
-### Galería de imágenes
-
-- Sube múltiples imágenes directamente desde el modal de creación/edición
-- La **primera imagen** se usa como miniatura en la lista de propiedades
-- Puedes reordenar imágenes arrastrando
-- Formatos soportados: JPG, PNG, WebP (máx. 5MB por imagen)
-
-### Límites por plan
-| Plan | Propiedades máximas |
-|------|---------------------|
-| Starter | 2 |
-| Pro | 10 |
-| Enterprise | 50 |
-| Custom | Ilimitado |
-
-## 20.2 Calendario de disponibilidad
-
-El **Calendario es la primera pestaña** del detalle de la propiedad, ya que es la vista más importante para gestionar alquileres vacacionales.
-
-La vista mensual usa un sistema de colores:
-- Verde = días disponibles para reservar
-- Rojo = reservado (reserva directa en Parallly)
-- Naranja/Amber = bloqueado (importado de Airbnb/Booking.com)
-- Gris = fechas pasadas (no se pueden reservar)
-
-Navega entre meses con las flechas ← →.
-
-### Banner "Sincroniza tu disponibilidad"
-
-Si no tienes feeds iCal conectados, aparece un **banner informativo** en la parte superior del calendario indicando que tu disponibilidad no está sincronizada con plataformas externas. Haz clic en "Configurar iCal" para ir directamente a la pestaña de feeds.
-
-## 20.3 Sincronización iCal (Airbnb / Booking.com)
-
-### Importar disponibilidad (de Airbnb/Booking a Parallly)
-
-1. Ve al tab **iCal Feeds** en el detalle de la propiedad
-2. Clic en **"Agregar feed"**
-3. Selecciona la plataforma (Airbnb, Booking.com, Vrbo, Otro)
-4. Pega la **URL del calendario iCal** que te da la plataforma:
-   - **Airbnb**: Ve a tu anuncio → Calendario → Disponibilidad → Sincronizar calendarios → Exportar calendario → Copia la URL
-   - **Booking.com**: Extranet → Tarifas y disponibilidad → Exportar → Copia la URL
-5. Parallly sincroniza automáticamente cada **30 minutos**
-6. También puedes hacer clic en **"Sincronizar ahora"** para forzar una actualización
-
-### Exportar disponibilidad (de Parallly a Airbnb/Booking)
-
-1. En el tab **iCal Feeds**, copia la **URL de exportación** que Parallly genera
-2. Ve a tu plataforma:
-   - **Airbnb**: Calendario → Sincronizar → Importar calendario → Pega la URL
-   - **Booking.com**: Extranet → Tarifas y disponibilidad → Importar → Pega la URL
-3. La plataforma consultará esta URL periódicamente para ver tus fechas bloqueadas
-
-### ¿Cómo se evitan las dobles reservas?
-
-- Parallly verifica disponibilidad en TIEMPO REAL antes de aceptar cualquier reserva
-- Consulta tanto las fechas importadas (Airbnb/Booking) como las reservas directas
-- Si hay conflicto, la reserva se rechaza automáticamente
-- **Importante**: iCal tiene un delay de 3-6 horas. Para protección máxima, acepta reservas con al menos 24h de anticipación.
-
-## 20.4 Reservas directas
-
-Crea reservas directamente en Parallly (sin pasar por Airbnb/Booking):
-
-1. Ve al tab **Reservas** en el detalle de la propiedad
-2. Clic en **"Nueva reserva"**
-3. Completa: fechas, nombre del huésped, teléfono, número de huéspedes
-4. El precio se calcula automáticamente
-5. La reserva aparecerá en el feed de exportación para que las plataformas la vean
-
-## 20.5 Instrucciones de Check-in
-
-En el tab **Check-in** de cada propiedad:
-- Escribe las instrucciones de llegada (código de puerta, WiFi, estacionamiento)
-- Agrega las reglas de la casa
-- Configura hora de check-in y check-out
-- El agente IA puede enviar estas instrucciones automáticamente a los huéspedes
-
-## 20.6 El agente IA y las propiedades
-
-El agente IA puede:
-- ✅ Verificar disponibilidad en tiempo real
-- ✅ Mostrar detalles y amenidades de la propiedad
-- ✅ Dar precio por noche con tarifa de limpieza
-- ✅ Crear reservas directas
-- ✅ Enviar instrucciones de check-in
-
----
-
-# 21. Panel de Super Administrador
-
-El super administrador tiene visibilidad y control completo sobre todos los tenants de la plataforma.
-
-## 21.1 Dashboard de plataforma
-
-6 KPIs en tiempo real:
-- Tenants totales y activos
-- Usuarios totales
-- Mensajes hoy (cross-tenant)
-- Handoffs pendientes
-- Distribución por vertical
-
-## 21.2 Detalle del tenant (6 tabs)
-
-| Tab | Contenido |
-|-----|-----------|
-| **Info** | Datos de la empresa, industria, plan, fecha de creación |
-| **Usuarios** | Lista de usuarios, roles, reset de contraseña |
-| **Canales** | Canales conectados (WhatsApp, IG, Messenger, etc.) |
-| **Facturación** | Estado de suscripción, plan, periodo |
-| **Actividad** | Health score (0-100), mensajes 7d/30d, conversaciones activas, handoffs, agentes/FAQs/servicios configurados |
-| **Config IA** | Agentes del tenant con canales asignados, pipeline stages configurados, info vertical |
-
-## 21.3 Health Score
-
-Cada tenant tiene un score de salud (0-100) calculado automáticamente:
-- 🟢 ≥60: Saludable (canales conectados, agente configurado, actividad reciente)
-- 🟡 30-59: Requiere atención
-- 🔴 <30: Inactivo/dormido
-
-**Fórmula**:
-- Canales conectados: +20 puntos
-- Agente IA configurado: +20 puntos
-- FAQs cargadas (≥3): +15 puntos
-- Servicios creados: +10 puntos
-- Actividad reciente (mensajes 7d): +35 puntos
-
----
-
-# 24. Sistema de Ayuda Contextual
-
-Cada sección de la plataforma incluye un botón de ayuda **"?"** que al hacer clic despliega información específica de ese módulo.
-
-## ¿Qué muestra el panel de ayuda?
-
-- **Descripción** de la sección y qué puedes hacer en ella
-- **Video tutorial** (cuando esté disponible) — se reproduce directamente en la plataforma sin salir de la página
-- **Imágenes** de referencia mostrando la funcionalidad
-- **Tips prácticos** para aprovechar al máximo cada herramienta
-
-## ¿Dónde aparece?
-
-El botón de ayuda está disponible en las 15 secciones principales:
-
-| Sección | Tipo de ayuda disponible |
-|---------|--------------------------|
-| Conversaciones | Cómo gestionar conversaciones y usar filtros |
-| CRM | Cómo gestionar leads, pipeline y segmentos |
-| Embudo | Cómo configurar etapas y mover deals |
-| Agenda | Cómo configurar servicios, disponibilidad y calendarios |
-| Propiedades | Cómo gestionar propiedades y sincronizar disponibilidad |
-| Campañas | Cómo crear y monitorear campañas masivas |
-| Automatización | Cómo configurar reglas de automatización |
-| Agente IA | Cómo configurar y probar tu agente |
-| Base de Conocimiento | Cómo cargar contenido para el RAG |
-| Analíticas | Cómo interpretar métricas y reportes |
-| Canales | Cómo conectar cada canal de mensajería |
-| Usuarios | Cómo gestionar el equipo y roles |
-| Configuración | Cómo configurar cada aspecto de tu negocio |
-| Empresas | Guía para super administradores |
-| Finanzas | Cómo interpretar métricas SaaS |
-
-## Cómo usar el panel de ayuda
-
-1. Busca el botón **"?"** en la esquina superior derecha de cualquier página
-2. Haz clic para expandir el panel de ayuda
-3. Lee la descripción, mira el video si está disponible, y sigue los tips
-4. Haz clic nuevamente en "?" para colapsar el panel y recuperar espacio en pantalla
-
-## Videos tutoriales
-
-Los videos se embeben directamente de YouTube. Para verlos en pantalla completa, haz clic en el ícono de pantalla completa del reproductor de YouTube integrado.
-
-> **Tip:** Los videos se irán agregando gradualmente. Si aún no hay video para una sección, la ayuda textual y los tips están siempre disponibles.
-
----
-
----
-
-# Apéndice: Guía de Screenshots
-
-Para documentar visualmente la plataforma, estas son las pantallas clave donde tomar capturas para el manual y materiales de marketing:
-
-## Onboarding
-
-1. **Step 1 — Industria**: Formulario con selector de industria + sub-tipo seleccionado (ej: Salud → Odontología)
-2. **Step 3 — Objetivos verticales**: Pantalla mostrando "¿Cómo ayudará Sofía a tus pacientes?" con opciones adaptadas a salud
-3. **Step 5 — Plan picker**: Selector de plan con los 3 opciones y características comparadas
-
-## Dashboard
-
-4. **Bienvenida vertical**: Dashboard con mensaje "Bienvenido a tu consultorio virtual, Dr. López"
-5. **KPIs verticales**: Cards mostrando "Citas Hoy", "Pacientes Nuevos", "No Shows" para industria salud
-6. **Agenda del día**: Sección de homepage con citas del día listadas con hora, servicio y nombre del paciente
-
-## Navegación
-
-7. **Sidebar definitivo**: Menú lateral con 3 secciones nombradas (OPERACIÓN, CRECIMIENTO, GESTIÓN) y 14 items + Configuración al fondo + avatar del usuario
-8. **Hub de Configuración**: Vista de configuración con las 5 secciones (Cuenta, Empresa, Herramientas, IA, Avanzado)
-
-## CRM
-
-9. **Lista de contactos**: Con filtros avanzados abiertos mostrando chips de filtros activos (score, fecha, tags)
-10. **Pipeline Kanban**: Con badges amarillos de "Pendiente aprobación" visibles en tarjetas
-11. **Detalle de lead**: Con panel de score breakdown expandido + tarjeta AI Insights abierta
-
-## Agente IA
-
-12. **Lista de agentes**: Con selector de plantillas mostrando sección "Recomendados para tu negocio" destacada
-13. **Editor de agente — Persona médica**: Agente "Sofía" configurada con rol de asistente médico, reglas y herramientas activadas
-
-## Canales
-
-14. **Vista general de canales**: WhatsApp, Instagram y Messenger conectados con foto de perfil y nombre de cuenta
-15. **Modal de desconectar canal**: Confirmación unificada con ícono de advertencia, descripción del impacto y botones Cancelar/Desconectar
-
-## Propiedades (Turismo)
-
-16. **Lista de propiedades**: Cards con imagen miniatura, amenidades resumidas, badges de disponibilidad
-17. **Detalle — Pestaña Calendario**: Vista mensual con colores (verde/rojo/amber/gris) y banner "Sincroniza tu disponibilidad"
-18. **Detalle — Pestaña Info**: Amenidades organizadas en 6 categorías + galería de imágenes con upload
-19. **Detalle — Pestaña iCal Feeds**: URL de exportación visible + feeds de Airbnb/Booking sincronizados con fecha de última sync
-20. **Crear propiedad — Modal**: Formulario con selector de amenidades por categoría (acordeón por categoría) + zona de upload de imágenes
-
-## Plantillas de Email
-
-21. **Editor de templates**: Editor visual con preview renderizado del email a la derecha
-22. **Template picker modal**: Modal con 6 presets visuales organizados por caso de uso
-
-## Analytics
-
-23. **Vista general**: KPIs principales + gráfico de volumen de conversaciones
-24. **Pestaña CRM Analytics**: Funnel de ventas + gráfico de velocidad de pipeline
-25. **Pestaña Agentes**: Tabla leaderboard con ranking, deals cerrados y tasa de conversión
-
-## Super Administrador
-
-26. **Tenants Overview**: Tabla con columna de vertical badge (etiqueta de industria) + health dot indicator
-27. **Tenant Detail — Actividad**: Health score circular + KPIs de actividad (mensajes 7d/30d, conversaciones activas)
-28. **Platform Dashboard**: 6 KPIs de la plataforma + distribución de tenants por vertical
-
----
-
----
-
-## 21. Verticales operativas — Sprint Tier 1 (mayo 2026)
-
-Parallly ahora opera 3 verticales de manera completa, con tablas, herramientas IA y pantallas dedicadas. Si tu industria es una de estas, vas a ver la sección correspondiente en el sidebar y el agente IA podrá operar sobre tu catálogo real.
-
-### 21.1 Turismo — Tours y Paquetes
-
-**Para quién:** agencias de viajes, operadores de tours, hoteles que ofrecen experiencias.
-
-**Cómo activarlo:**
-1. Onboarding → Industria = "Turismo" → sub-tipo `tours` o `agencia_viajes`
-2. El agente IA "Maya" se configura automáticamente con plantilla vertical
-3. Aparece "Tours y Paquetes" en el sidebar
+**Ruta:** Sidebar → Tours
 
 **Cómo crear paquetes:**
-1. Sidebar → **Tours y Paquetes** → "Crear paquete"
-2. Elige tipo: **Tour del día** (city tour, snorkel, parapente — duración en horas) o **Paquete** (multi-día, ej: Cartagena 3D2N)
-3. Completa nombre, destino, precio, capacidad máxima, idiomas ofrecidos
-4. Guarda → entra al detalle del paquete
+1. Tours → "Crear paquete"
+2. Tipo: **Tour del día** (horas de duración) o **Paquete** (multi-día)
+3. Nombre, destino, precio, capacidad máxima, idiomas
+4. Guardar
 
-**Cómo gestionar cupos por fecha:**
-1. Detalle del paquete → tab **Cupos por fecha**
-2. "Agregar salida" → fecha + hora (opcional) + cupos totales + precio especial (opcional)
-3. La barra de ocupación se actualiza visualmente
-4. Si dejas un paquete sin fechas, el agente lo ofrecerá como "personalizable" (cualquier fecha, cupo ilimitado)
-
-**Cómo el agente IA usa esto:**
-Cliente pregunta "¿qué tours tienen el sábado para 2 personas?" → el agente llama `search_packages` con tu catálogo real → muestra opciones con precio y disponibilidad → cuando confirma, llama `create_tour_booking` y la reserva aparece en el tab **Reservas** del paquete.
-
-**Reservas:**
-- Estados: `reservada` → `confirmada` → `completada` (o `cancelada`/`no asistió`)
-- Cancelar libera el cupo automáticamente
-
----
-
-### 21.2 Salud — Planes de tratamiento (Sub-tipo Dental)
-
-**Para quién:** clínicas dentales, fisioterapia, estética, psicología (cualquier salud con tratamientos multi-sesión).
-
-**Cómo activarlo:**
-1. Onboarding → Industria = "Salud" → sub-tipo `dental`
-2. Sofía dental se configura como agente automáticamente
-3. La opción "Planes de tratamiento" aparece dentro del detalle de cada lead/paciente
-
-**Cómo crear un plan de tratamiento:**
-1. CRM → entra al lead/paciente
-2. En el panel izquierdo busca la tarjeta **"Planes de tratamiento"** (collapsible)
-3. Expandir → "Crear plan de tratamiento"
-4. Tipo (Ortodoncia, Blanqueamiento, Serie de limpiezas, Fisioterapia...) + sesiones totales (ej: 18) + frecuencia (ej: cada 30 días) + costo total + fecha de inicio
-5. Guarda → aparece la barra de progreso "0/18 sesiones"
-
-**Marcar sesiones como completadas:**
-- Expande el plan → ves cada sesión con su estado
-- Botón ✓ para marcar como completada → el progreso se actualiza
-- Al llegar al total de sesiones, el plan se marca automáticamente como `completed`
+**Cupos por fecha:**
+1. Detalle del paquete → tab "Cupos por fecha"
+2. "Agregar salida" → fecha + cupos totales + precio especial (opcional)
+3. Barra de ocupación se actualiza visualmente
+4. Sin fechas → el agente lo ofrece como "personalizable"
 
 **Cómo el agente IA usa esto:**
-Paciente pregunta "¿cuántas sesiones me faltan?" → el agente llama `get_treatment_plan` → responde con datos reales: "Te quedan 5 sesiones de tu ortodoncia. La próxima está agendada el 15 de mayo."
+"¿Qué tours tienen el sábado para 2 personas?" → llama `search_packages` → muestra opciones con disponibilidad → al confirmar llama `create_tour_booking`.
 
-**FAQs dentales pre-cargadas:**
-Al activar el sub-tipo dental se cargan automáticamente 5 FAQs (seguros, costos, dolor/sedación, ortodoncia, urgencias) que el agente puede responder.
+### 21.1.2 Propiedades (Alquiler vacacional)
 
----
+**Ruta:** Sidebar → Propiedades
 
-### 21.3 Inmobiliaria — Listings de venta y arriendo
+**Crear propiedad:**
+1. Propiedades → "Crear propiedad"
+2. Datos: nombre, dirección, capacidad, habitaciones, baños
+3. **Amenidades** — 30 opciones en 6 categorías (acordeón):
+   - Esenciales: WiFi, A/C, calefacción, agua caliente
+   - Cocina: nevera, microondas, lavavajillas, cafetera
+   - Confort: TV, Smart TV, Netflix, juegos
+   - Espacio: piscina, jacuzzi, terraza, parrilla, estacionamiento
+   - Seguridad: detector humo, caja fuerte, cámaras exteriores
+   - Accesibilidad: rampa, baño accesible, ascensor
 
-**Para quién:** inmobiliarias, asesores independientes, constructores con catálogo propio. NO para alquiler vacacional (eso es Propiedades).
+**Galería de imágenes:**
+- Drag & drop, máximo 5 fotos, 2 MB cada una
+- Reordenar, elegir foto portada
+- Botones flecha para mover, ✓ para portada
 
-**Cómo activarlo:**
-1. Onboarding → Industria = "Inmobiliaria" → cualquier sub-tipo
-2. Carlos asesor se configura como agente automáticamente
-3. "Inmuebles" aparece en el sidebar
+**Límites por plan:**
 
-**Cómo cargar inmuebles:**
-1. Sidebar → **Inmuebles** → "Crear inmueble"
-2. Elige tipo: **Venta** o **Arriendo**
-3. Completa: tipo de propiedad (apartamento, casa, comercial, oficina, lote), precio, habitaciones, baños, m², parqueaderos, estrato, año de construcción
+| Plan | Propiedades |
+|------|-------------|
+| Starter | 1 |
+| Pro | 3 |
+| Enterprise | 10 |
+| Custom | 999 |
+
+### 21.1.3 Calendario y sincronización iCal
+
+**Tab Calendario:**
+- Vista mensual con colores: verde (libre), rojo (reservado), ámbar (bloqueo manual), gris (pasado)
+- Click en día disponible → click en otro día → modal "Bloquear del X al Y"
+
+**Importar feeds (Airbnb / Booking):**
+1. Tab "Calendario iCal" → "Agregar feed"
+2. Nombre + plataforma + URL pública del calendario `.ics`
+3. **Sync inmediato**: pill verde "OK" + N eventos importados, o roja con error
+4. Cron cada 30 min sincroniza automáticamente
+
+**Exportar tu calendario:**
+1. Mismo tab → bloque "URL de exportación"
+2. Click "Copiar" → pegá esa URL en Airbnb → "Sincronizar calendario"
+3. Airbnb lee tu calendario aprox cada hora
+
+**Anti-doble-booking:**
+- Verificación en tiempo real al confirmar reserva
+- iCal tiene delay 3-6h — para máxima protección, acepta reservas con 24h+ de anticipación
+
+### 21.1.4 Reservas directas
+
+1. Detalle de propiedad → tab "Reservas" → "Nueva reserva"
+2. Fechas, huésped, teléfono, número de huéspedes
+3. Precio se calcula automáticamente
+4. Aparece en feed de exportación (Airbnb la ve)
+
+### 21.1.5 Check-in
+
+Tab "Check-in" en cada propiedad:
+- Instrucciones (código de puerta, WiFi, parking)
+- Reglas de la casa
+- Hora de check-in / check-out
+- El agente IA puede enviarlas automáticamente
+
+## 21.2 Inmobiliaria — Listings de venta y arriendo
+
+**Para quién:** inmobiliarias, asesores independientes, constructores con catálogo. NO para vacacional (eso es 21.1).
+
+**Sidebar:** Inmuebles
+
+**Cargar un inmueble:**
+1. Inmuebles → "Crear inmueble"
+2. Tipo: **Venta** o **Arriendo**
+3. Datos: tipo (apartamento/casa/comercial/oficina/lote), precio, habitaciones, baños, m², parqueaderos, estrato, año
 4. Dirección, barrio, ciudad
-5. Para venta: marca si aplica a crédito hipotecario / VIS
-6. Para arriendo: completa administración (HOA), depósito, mínimo de meses
-7. Guarda
+5. Para venta: marca crédito hipotecario / VIS si aplica
+6. Para arriendo: administración (HOA), depósito, mínimo de meses
 
-**Cómo el agente IA usa esto:**
-Cliente: "Busco apto en Chapinero menos de 800 millones, 3 habitaciones" → agente llama `search_listings(transactionType: 'sale', maxPrice: 800000000, minBedrooms: 3, neighborhood: 'Chapinero')` → muestra 3-5 opciones reales de tu catálogo. Cuando muestra interés en una específica, llama `get_listing_details` para datos completos.
-
-**Filtros de búsqueda del agente:**
-- transactionType (sale | rent)
-- propertyKind (apartment, house, commercial, office, land)
-- maxPrice / minPrice
-- minBedrooms / minAreaM2
-- neighborhood (búsqueda parcial: "Chapinero" matchea "Chapinero Alto")
-- city
-
-**Estados del inmueble:**
+**Estados:**
 `disponible` → `reservado` → `vendido` / `arrendado` / `inactivo`
 
+**Cómo el agente IA usa esto:**
+"Busco apto en Chapinero menos de 800M, 3 hab" → llama `search_listings` con esos filtros → muestra opciones reales → "¿Más info del segundo?" → llama `get_listing_details`.
+
+**Filtros del agente:**
+- transactionType, propertyKind, maxPrice/minPrice, minBedrooms, minAreaM2, neighborhood (búsqueda parcial), city.
+
+## 21.3 Salud — Citas + Planes de Tratamiento
+
+**Sub-tipos:** `dental`, `medico`, `fisioterapia`, `estetica`, `psicologia`, `general`
+
+### 21.3.1 Planes de tratamiento
+
+Para tratamientos multi-sesión (ortodoncia, fisioterapia, series estéticas, psicoterapia, etc.).
+
+**Vista global:**
+**Ruta:** Sidebar → Planes de Tratamiento
+
+Tabla con todos los planes activos/pausados/completados de la clínica:
+- Paciente, plan, progreso (barra), estado, fecha inicio, costo
+- Tabs por estado: Todos, Activos, Pausados, Completados, Cancelados
+- Búsqueda por paciente o nombre del plan
+
+**Vista por paciente:**
+1. CRM → entra al lead/paciente
+2. Tarjeta "Planes de tratamiento" en el panel izquierdo (collapsible)
+3. "Crear plan" → tipo + sesiones totales + frecuencia + costo
+4. Aparece la barra de progreso "0/N sesiones"
+
+**Marcar sesiones completadas:**
+- Expandir el plan → ves cada sesión
+- Botón ✓ → progreso se actualiza
+- Al completar todas → plan marca automáticamente como `completed`
+
+**Cómo el agente IA usa esto:**
+"¿Cuántas sesiones me faltan?" → `get_treatment_plan` → "Te quedan 5 sesiones de tu ortodoncia. Próxima 15 de mayo."
+
+## 21.4 Veterinaria — Mascotas + Tratamientos
+
+**Sub-tipos:** `clinica_general`, `especialidad`, `peluqueria_canina`, `daycare`
+
+### 21.4.1 Fichas de mascotas
+
+**Ruta:** Sidebar → Mascotas
+
+Grid de cards de mascotas con:
+- Foto / emoji por especie (🐕 perro, 🐈 gato, 🦜 ave, 🐰 conejo, 🦎 reptil)
+- Nombre, raza, sexo, edad calculada
+- Dueño (link al contacto)
+- Conteo de vacunas
+- Última visita (fecha)
+
+**Filtros:**
+- Tabs: Todas, Perros, Gatos, Otros
+- Búsqueda por nombre, dueño o teléfono
+
+**Crear / editar:**
+Desde el detalle del contacto (dueño) → tarjeta "Mascotas" → "Agregar mascota":
+- Nombre, especie, raza, sexo, esterilizado/a, fecha nacimiento, peso, color, microchip
+- Alergias, condiciones crónicas, medicación actual
+- Foto
+
+**Vacunaciones:**
+Detalle de la mascota → tab "Vacunas" → "Registrar vacuna" con tipo + fecha + lote + próxima fecha → el agente IA puede responder "¿Cuándo es la próxima vacuna de Toby?"
+
+### 21.4.2 Planes de tratamiento veterinarios
+
+Igual que 21.3 — sirve para tratamientos veterinarios multi-sesión (oncología, fisio, dietas).
+
+## 21.5 Restaurantes — Menú + Pedidos
+
+**Sub-tipos:** `restaurante`, `cafeteria`, `bar`, `delivery`, `cloud_kitchen`
+
+### 21.5.1 Menú
+
+**Ruta:** Sidebar → Menú
+
+**Crear categoría:**
+1. Menú → "Categoría" → nombre, orden visual
+
+**Crear plato:**
+1. "Crear plato" → categoría, nombre, descripción, precio
+2. Foto (opcional)
+3. Tags: vegetariano, vegano, sin gluten, picante, popular
+4. Disponibilidad por horario
+5. Ingredientes / opcionales con precio extra
+
+### 21.5.2 Pedidos de comida (Kanban tipo cocina)
+
+**Ruta:** Sidebar → Pedidos
+
+Vista kanban con columnas:
+- **Recibido** — entró pedido
+- **En cocina** — preparándose
+- **Listo** — para entregar / recoger
+- **En camino** (delivery) — en ruta
+- **Entregado** — completado
+- **Cancelado**
+
+Cada tarjeta muestra: número de pedido, items, total, tiempo desde creación, dirección (delivery), notas especiales.
+
+Drag entre columnas para avanzar. Sonido de notificación al entrar nuevo pedido.
+
+### 21.5.3 Promociones
+
+Crear promos con dto. % o fijo, vigencia, condiciones (mín de pedido), aplicación automática vs código.
+
+**Cómo el agente IA usa esto:**
+"¿Tienen pizza?" → `list_menu_items(category: 'pizza')` → muestra opciones → al ordenar llama `create_food_order` → aparece en kanban de cocina.
+
+## 21.6 Gimnasios — Membresías + Clases
+
+**Sub-tipos:** `gimnasio`, `crossfit`, `yoga`, `pilates`, `boxeo`, `funcional`
+
+### 21.6.1 Planes de membresía
+
+**Ruta:** Sidebar → Membresías
+
+**Crear plan:**
+1. "Crear plan" → nombre (ej: Mensual, Trimestral), precio, duración (días)
+2. Beneficios incluidos (clases, acceso fitness, parking, etc.)
+3. Política de congelamiento (cuántos días puede pausar)
+
+### 21.6.2 Miembros
+
+Lista de miembros con:
+- Nombre, plan actual, fecha inicio, vencimiento
+- Estado: activo, congelado, expirado
+- Check-ins recientes
+- Plan congelado / despertar
+
+### 21.6.3 Clases programadas
+
+**Ruta:** Sidebar → Clases
+
+Calendario con clases:
+- Tipo (yoga, crossfit, spinning, funcional)
+- Coach asignado
+- Capacidad máxima + cupos disponibles
+- Recurrencia (lunes/miércoles/viernes 7am)
+
+### 21.6.4 Reservas y check-ins
+
+- Miembros reservan clases via WhatsApp / Instagram
+- Check-in al llegar al gym (manual o QR)
+- Sistema de tasa de fill (% de ocupación) por clase
+- Recall a inactivos (>30 días sin check-in)
+
+**Cómo el agente IA usa esto:**
+"¿Hay yoga mañana?" → `list_classes(date: tomorrow, type: 'yoga')` → ofrece horarios con cupos → al confirmar llama `book_class`.
+
+## 21.7 Educación — Cursos y Cohortes
+
+**Sub-tipos:** `escuela`, `instituto`, `idiomas`, `coaching`, `cursos_online`, `tutorias`
+
+### 21.7.1 Cursos
+
+**Ruta:** Sidebar → Cursos
+
+**Crear curso:**
+1. Nombre, descripción, duración (semanas), precio total
+2. Modalidad: presencial / online / híbrido
+3. Nivel: básico / intermedio / avanzado
+4. Imagen de portada
+
+### 21.7.2 Cohortes (camadas)
+
+Cada curso tiene cohortes (versiones que arrancan en diferentes fechas):
+- Fecha inicio / fin
+- Capacidad máxima
+- Docentes asignados
+- Horario semanal
+- Estado: planeada, abierta inscripciones, en curso, completada
+
+### 21.7.3 Inscripciones
+
+Lista de estudiantes inscritos a cada cohorte:
+- Datos del alumno
+- Estado pago: pendiente / pagado / parcial / vencido
+- Tasa de pago general por cohorte
+
+### 21.7.4 Pruebas de nivel
+
+Para idiomas / coaching técnico:
+- El agente IA toma datos básicos
+- Asigna nivel sugerido
+- Recomienda curso adecuado
+
+**Cómo el agente IA usa esto:**
+"Quiero aprender inglés" → `take_placement_test` → preguntas básicas → "Te recomiendo el nivel B1, este es el curso más cercano que arranca el 15 de junio".
+
+## 21.8 Seguros — Planes, Cotizaciones, Pólizas y Reclamos
+
+**Sub-tipos:** `salud`, `auto`, `hogar`, `vida`, `viaje`
+
+### 21.8.1 Planes
+
+**Ruta:** Sidebar → Seguros → Planes
+
+**Crear plan:**
+1. Nombre, tipo (salud/auto/hogar/vida/viaje)
+2. Cobertura, exclusiones, precio mensual/anual
+3. Edad mínima/máxima
+4. Documentación requerida
+
+### 21.8.2 Cotizaciones
+
+Cliente pide cotización:
+1. Agente IA toma datos básicos (edad, situación, intereses)
+2. Llama `quote_insurance(planId, customerData)` → calcula prima
+3. Genera cotización formal con vigencia (típicamente 15 días)
+4. Cliente puede aceptar → pasa a póliza
+
+### 21.8.3 Pólizas activas
+
+Lista de pólizas vigentes:
+- Cliente, plan, prima mensual
+- Fecha emisión, vigencia
+- Estado: activa, suspendida (impago), cancelada
+- Número de póliza
+
+### 21.8.4 Reclamos (claims)
+
+**Ruta:** Sidebar → Seguros → Reclamos
+
+Cliente reporta siniestro:
+1. Datos del incidente (fecha, lugar, descripción)
+2. Fotos / documentos
+3. Estado: recibido → en revisión → aprobado / rechazado → pagado
+4. Tracking del cliente: "¿Cómo va mi reclamo del 5 de mayo?"
+
+## 21.9 Servicios del hogar — Despacho de técnicos
+
+**Sub-tipos:** `plomeria`, `electricidad`, `fumigacion`, `limpieza`, `jardineria`, `aire_acondicionado`, `general`
+
+### 21.9.1 Solicitudes de servicio
+
+**Ruta:** Sidebar → Solicitudes
+
+Vista priorizada por urgencia + scheduled_at:
+- 🔴 Emergencia (fugas, sin luz)
+- 🟠 Alta (urgente pero no crítico)
+- 🟢 Normal
+- 🔵 Flexible
+
+**Cada solicitud:**
+- Cliente (nombre, teléfono)
+- Tipo de servicio
+- Dirección + notas (referencia, "casa amarilla")
+- Descripción del problema
+- Fotos del problema
+- Fecha/franja preferida ("mañana en la mañana", "14:00-16:00")
+- Costo estimado (rango)
+- Técnico asignado
+- Estado: pendiente → cotizado → agendado → despachado → en curso → completado
+
+### 21.9.2 Asignación de técnicos
+
+Drag manual a un técnico, o el agente IA lo asigna automáticamente según skills (plomero / electricista) y carga.
+
+**Cómo el agente IA usa esto:**
+"Tengo una fuga en el baño" → `create_service_request(type: 'plomeria', urgency: 'emergencia', address, photos)` → confirma "Iván llega entre 9:00-11:00".
+
+## 21.10 Servicios para mascotas — Daycare y peluquería canina
+
+**Sub-tipo:** `pet_services`
+
+Comparte ficha de mascotas (sección 21.4.1) + agenda de citas pero con servicios específicos:
+- Baño y peluquería
+- Daycare diario
+- Hospedaje (boarding)
+- Adiestramiento
+
+## 21.11 Fotografía — Sesiones y galerías
+
+**Sub-tipos:** `bodas`, `productos`, `eventos`, `retrato`, `familia`, `recien_nacido`
+
+### 21.11.1 Sesiones
+
+**Ruta:** Sidebar → Sesiones fotográficas
+
+Cards por sesión con:
+- Cliente, paquete contratado
+- Tipo (boda / retrato / evento / producto / familia / recién nacido)
+- Fecha programada, ubicación
+- Estado: agendada → en curso → entregada → cancelada
+- Precio + depósito pagado
+- Tracking de entrega: "X / Y fotos entregadas"
+- Link de galería (Pixieset, Pic-Time, Drive) cuando se entrega
+
+**Tabs por estado:** Todas, Agendadas, En curso, Entregadas, Canceladas. Búsqueda por cliente o paquete.
+
+### 21.11.2 Reserva por IA
+
+"Quiero una sesión de boda para junio" → el agente toma fecha, paquete, ubicación → crea registro en `photo_sessions` con estado "agendada" → el equipo del estudio la confirma y completa con depósito.
+
+### 21.11.3 Entrega de galería
+
+1. Detalle de la sesión → "Marcar como entregada"
+2. Pega URL de la galería (con contraseña opcional)
+3. El sistema cambia a `delivered`, registra `deliveredAt`
+4. El agente puede mandar el link al cliente automáticamente
+
 ---
 
-## 22. Sistema de Recall (recordatorios automáticos)
+# 22. Sistema de Recall
 
-**Para quién:** clínicas dentales (recall semestral), gimnasios (inactividad), estética (series), cualquier negocio con visitas recurrentes.
+**Para quién:** dentales (revisión semestral), gimnasios (inactividad), estética (series), veterinarias (vacunas), cualquier negocio con visitas recurrentes.
 
-**Cómo configurar:**
-Hoy se configura por API hasta que se haga la UI. Endpoints:
+**Roles:** Admin/Supervisor
 
-```bash
-# Ver config actual
-GET /api/v1/recall/{tenantId}/config
+## 22.1 Configuración
 
-# Actualizar
-PUT /api/v1/recall/{tenantId}/config
-{
-  "enabled": true,
-  "daysThreshold": 180,        // ej: 6 meses para dental
-  "cooldownDays": 90,           // no re-disparar a la misma persona en 3 meses
-  "channelType": "whatsapp",
-  "message": "Hola {name}, ya pasaron {months} meses desde tu última visita. ¿Quieres agendar tu cita de control?"
-}
+**Ruta:** Configuración → Herramientas → Recall
 
-# Disparar manualmente para probar
-POST /api/v1/recall/{tenantId}/run-now
+| Campo | Detalle |
+|-------|---------|
+| Habilitado | On/Off |
+| Días umbral | A partir de cuántos días sin visita disparar (ej: 180 dental) |
+| Días cooldown | No re-disparar a la misma persona en N días |
+| Canal | WhatsApp / Email |
+| Mensaje | Template con `{name}` y `{months}` |
+
+Ejemplo de mensaje:
+```
+Hola {name}, ya pasaron {months} meses desde tu última visita. ¿Quieres agendar tu cita de control?
 ```
 
-**Placeholders soportados en el mensaje:**
-- `{name}` — primer nombre del contacto
-- `{months}` — meses transcurridos desde la última cita
+## 22.2 Cron y disparo
 
-**Cuándo se ejecuta:**
 - Cron diario a las 9 AM (hora del servidor)
 - Busca contactos con `last_appointment_at` más viejo que `daysThreshold`
-- Envía template via WhatsApp (respeta los límites de plan)
-- Marca `next_recall_at` con cooldown para no spammear
+- Envía template via canal seleccionado (respeta límites de plan)
+- Marca `next_recall_at` con cooldown — no spammea
 
-**Para que `last_appointment_at` se actualice:** marca las citas como `completed` desde la pantalla de Citas o deja que el cron auto-complete las confirmadas que terminaron hace 2+ horas.
+## 22.3 Probarlo manualmente
+
+Botón "Disparar ahora" — útil para pruebas controladas. Solo afecta a contactos que cumplen criterio.
+
+> Para que `last_appointment_at` se actualice: marca las citas como `completed` desde Citas o deja que el cron las auto-complete después de 2h.
 
 ---
 
-## 23. Conversaciones resueltas — historial y reabrir
+# 23. Sistema de Ayuda Contextual
 
-Las conversaciones inactivas por 72+ horas se marcan automáticamente como `resolved` para limpiar el inbox. Esto puede pasar desapercibido y dar la impresión de que "se perdieron mensajes".
+Cada sección de la plataforma tiene un botón **"?"** que despliega ayuda específica.
 
-**Cómo verlas y consultarlas:**
-1. Conversaciones (Inbox) → barra de filtros arriba → click en pill **"Resueltas"**
+## 23.1 Qué muestra
+
+- Descripción de la sección
+- Video tutorial (cuando esté disponible — embebido de YouTube)
+- Imágenes de referencia
+- Tips prácticos
+
+## 23.2 Dónde aparece
+
+15 secciones principales: Conversaciones, CRM, Embudo, Agenda, Propiedades, Campañas, Automatización, Agente IA, Conocimiento, Analíticas, Canales, Usuarios, Configuración, Plantillas, Plan.
+
+## 23.3 Cómo usar
+
+1. Botón **"?"** esquina superior derecha
+2. Click → expande panel con la información
+3. Click otra vez → colapsa para recuperar espacio
+
+> Si aún no hay video para tu sección, la ayuda textual y los tips siguen disponibles. Los videos se irán agregando gradualmente.
+
+---
+
+# 24. Conversaciones Resueltas
+
+Las conversaciones inactivas por 72+ horas se marcan automáticamente como `resolved` para limpiar el inbox.
+
+## 24.1 Verlas
+
+1. Bandeja → barra de filtros → click pill **"Resueltas"**
 2. Aparecen ordenadas por fecha de resolución (más reciente arriba)
 3. Click en una para ver el historial completo en modo solo-lectura
 
-**Cómo reabrir una conversación:**
-- Dentro de la conversación resuelta vas a ver un banner gris con check verde + botón **"Reabrir conversación"**
-- Click → la conversación vuelve al inbox activo
-- El filtro automáticamente cambia a "Todos" para que la veas de inmediato
+## 24.2 Reabrir una conversación
 
-**Cuándo conviene reabrir:**
-- El cliente respondió por otro canal (email, llamada) y querés continuar el hilo en chat
+Dentro de la conversación resuelta:
+- Banner gris con check verde + botón **"Reabrir conversación"**
+- Click → vuelve al inbox activo
+- Filtro cambia a "Todos" automáticamente
+
+## 24.3 Cuándo conviene reabrir
+
+- Cliente respondió por otro canal y querés continuar en chat
 - Necesitas hacer follow-up manual
 - Te equivocaste al cerrarla
 
 ---
 
-## 24. Desconectar canales correctamente
+# 25. Subir Fotos a Catálogos
 
-Cuando le das **"Desconectar"** a un canal, ahora la plataforma:
-1. Llama al proveedor (Meta, Telegram, Twilio) para cortar la suscripción
-2. Marca el canal como inactivo en BD
-3. Revoca las credenciales (cuando aplica)
-4. Te muestra un banner con el resultado real
+Todas las pantallas de catálogo (Propiedades, Inmuebles, Tours, Menú, Mascotas) tienen pestaña dedicada **"Fotos"**:
 
-**Banner verde** ✅ "Desconectado completamente": el proveedor confirmó la desuscripción. No vas a recibir más mensajes ni webhooks.
+1. **Drag & drop** o click para seleccionar — múltiples archivos
+2. **Límites**: máximo 5 fotos por anuncio, 2 MB por foto, formato imagen
+3. **Barra de progreso**: "Subiendo 3 de 5..."
+4. **Reordenar**: hover sobre una foto → flechas ← → para mover, ✓ para "usar como portada"
+5. **Foto portada**: la primera es la que aparece en cards de listado
+6. **Cambios pendientes**: si reordenaste o eliminaste, barra sticky abajo "Cambios sin guardar" → click "Guardar"
 
-**Banner amarillo** ⚠️ "Desconectado en plataforma — revisar el proveedor": tu BD se actualizó pero el proveedor (Meta/Twilio) podría seguir enviando. Causas típicas: token expirado, permisos cambiados, error de red. Tienes que entrar a Meta Business Suite (o el proveedor correspondiente) y desactivar manualmente.
-
-**Banner rojo** ❌: error de red, no se pudo procesar. Reintenta.
-
-**Si tras desconectar el canal sigue apareciendo activo en Meta:** entra a Meta Business Suite → WhatsApp Business → Suscripciones de la WABA → quita la app de Parallly manualmente. Esto pasa cuando el banner fue amarillo.
+Si una foto se rechaza (>2 MB o no es imagen), aparece mensaje específico con nombre del archivo. Las que sí pasaron se suben sin bloquear.
 
 ---
 
-## 25. Tours iCal sync — feeds entrantes y salientes
+# 26. Preguntas Frecuentes
 
-**Para alquiler vacacional (sub-tipo `alquiler_vacacional`):**
+## General
 
-### Importar bloqueos desde Airbnb / Booking
-1. Propiedades → entra a la propiedad → tab **Calendario iCal**
-2. "Agregar feed" → nombre + plataforma + URL pública del calendario `.ics` que te dio Airbnb
-3. Pega la URL → Guardar
-4. **Sync inmediato**: la plataforma intenta importar inmediatamente y muestra el resultado:
-   - ✅ Pill verde "OK" + número de eventos importados → calendario actualizado
-   - ❌ Pill rojo "Error" + mensaje del fallo (URL inválida, 403 de Cloudflare, etc.)
-5. Cron cada 30 minutos sincroniza automáticamente todos los feeds activos
+**¿Cuánto cuesta Parallly?**
+Desde USD $39/mes (Starter). Ver tabla completa en sección 20.1.
 
-### Exportar tu calendario a Airbnb / Booking
-1. Misma pestaña → bloque "URL de exportación"
-2. Click "Copiar" → pega esa URL en Airbnb → "Sincronizar calendario" → "Importar calendario"
-3. Airbnb va a leer tu calendario de Parallly cada hora aprox
-4. La URL es pública (protegida por UUIDs largos, mismo modelo que Airbnb usa)
+**¿Puedo probar antes de pagar?**
+Sí: 7 días en Starter, 15 días en Pro y Enterprise. Sin tarjeta para Starter.
 
-### Bloqueos manuales de fechas
-1. Tab **Calendario** → click en un día disponible (verde)
-2. Click en otro día → modal "Bloquear del X al Y" con campo de nota opcional
-3. Confirmar → el rango aparece en amber con etiqueta "Manual"
-4. Para desbloquear: click en una fecha bloqueada manual → confirmación → vuelve a verde
+**¿En qué países funciona?**
+Toda Latinoamérica. Soporte de moneda local: COP, ARS, MXN, CLP, PEN, UYU, BRL, USD.
 
----
+**¿Cómo cambio de plan?**
+Configuración → Facturación → click en el plan deseado. Si bajás aplica al final del período actual.
 
-## 26. Subir fotos a propiedades / inmuebles / tours
+**¿Puedo pausar mi suscripción?**
+Sí — botón "Pausar" en Facturación. No se cobra mientras esté pausada y los datos se preservan.
 
-Todas las pantallas de catálogo (Propiedades, Inmuebles, Tours) tienen una pestaña dedicada de **Fotos**:
+## Agente IA
 
-1. **Drag & drop** o click para seleccionar — soporta múltiples archivos a la vez
-2. **Límites**: máximo 5 fotos por anuncio, 2 MB por foto. Solo formatos imagen
-3. **Barra de progreso** muestra "Subiendo 3 de 5..."
-4. **Reordenar**: hover sobre cualquier foto → botones ← → para mover, ✓ para "usar como portada"
-5. **Foto portada**: la primera foto es la que aparece en la card del listado
-6. **Cambios pendientes**: si reordenaste o eliminaste, aparece una barra sticky abajo "Tienes cambios sin guardar" → click "Guardar"
+**¿El agente puede operar 24/7?**
+Sí. Configurable desde el editor: siempre activo, solo en horario, o híbrido.
 
-Si una foto se rechaza (>2 MB o no es imagen), aparece el mensaje específico con el nombre del archivo. Las que sí pasaron se suben sin bloquear.
+**¿Puedo hacer que el agente entregue a humano en ciertos casos?**
+Sí — palabras clave de handoff (ej: "hablar con persona") + reglas de baja confianza disparan entrega automática.
+
+**¿Cómo entrena al agente con mi negocio?**
+Carga FAQs, documentos y URLs en Base de Conocimiento. El agente busca con RAG cuando necesita info.
+
+**¿Puedo tener varios agentes diferentes?**
+Sí — uno por canal según tu plan. Por ejemplo: Sofía formal en email, Sofía amigable en Instagram.
+
+## Canales
+
+**¿Necesito aprobar templates de WhatsApp?**
+Solo para mensajes salientes fuera de la ventana de 24h. Para conversaciones que el cliente inició, no.
+
+**¿Funciona Instagram personal?**
+No — solo Instagram Business. Es un requisito de Meta, no de Parallly.
+
+**¿Cuántos canales puedo conectar?**
+Sin límite por número de canales — el límite real es por agentes IA (1 agente = 1 canal).
+
+## Citas
+
+**¿Sincroniza con mi Google Calendar?**
+Sí — OAuth desde Configuración → Agenda. Multi-calendar plan-gated.
+
+**¿Qué pasa si dos personas reservan el mismo slot?**
+Anti-doble-booking automático: el sistema verifica disponibilidad en el momento de confirmar y rechaza el segundo intento.
+
+**¿Genera link de Meet o Teams?**
+Sí — automáticamente para servicios con tipo `online` o `hibrido`.
+
+## Datos y Privacidad
+
+**¿Mis datos están aislados de otros tenants?**
+Sí — cada tenant tiene su propio schema de PostgreSQL. Aislamiento total a nivel de base de datos.
+
+**¿Puedo exportar todo?**
+Sí — Configuración → Avanzado → "Exportar datos". GDPR compliant.
+
+**¿Qué pasa si cancelo?**
+Datos preservados por 90 días. Pasado ese tiempo, schema se elimina (audit log preservado por compliance).
+
+**¿Cumple con GDPR / CCPA?**
+Sí — registro de consentimientos, opt-out automático, right-to-erasure, audit log inmutable.
 
 ---
 

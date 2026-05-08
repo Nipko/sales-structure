@@ -7,7 +7,10 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
-import { PawPrint, Loader2, Search, Syringe, Calendar, ChevronRight } from "lucide-react";
+import { PawPrint, Search, Syringe, Calendar, ChevronRight } from "lucide-react";
+import { motion } from "motion/react";
+import { SkeletonCards } from "@/components/ui/skeleton-loader";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface PetRow {
     id: string;
@@ -105,69 +108,76 @@ export default function PetsPage() {
                 </div>
             </div>
 
-            {loading && (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-                </div>
-            )}
+            {loading && <SkeletonCards count={6} />}
 
             {!loading && pets.length === 0 && (
-                <div className="bg-white dark:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl py-16 text-center">
-                    <PawPrint className="w-10 h-10 text-neutral-300 dark:text-neutral-700 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("empty.title")}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{t("empty.hint")}</p>
-                </div>
+                <EmptyState
+                    icon={PawPrint}
+                    iconColor="text-pink-400"
+                    title={t("empty.title")}
+                    description={t("empty.hint")}
+                />
             )}
 
             {!loading && pets.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {pets.map((pet) => (
-                        <Link
+                    {pets.map((pet, i) => (
+                        <motion.div
                             key={pet.id}
-                            href={pet.contact_id ? `/admin/contacts/${pet.contact_id}` : "#"}
-                            className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm transition-all group"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: 0.04 * Math.min(i, 8) }}
+                            whileHover={{ y: -2 }}
                         >
-                            <div className="flex items-start gap-3">
-                                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center text-2xl flex-shrink-0">
-                                    {pet.photo_url ? (
-                                        <img src={pet.photo_url} alt={pet.name} className="w-14 h-14 rounded-full object-cover" />
-                                    ) : (
-                                        <span>{SPECIES_EMOJI[pet.species] || "🐾"}</span>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 justify-between">
-                                        <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 truncate">
-                                            {pet.name}
-                                        </h3>
-                                        <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-indigo-500 flex-shrink-0" />
-                                    </div>
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                                        {[pet.breed, pet.sex, ageFromBirth(pet.birth_date)].filter(Boolean).join(" · ")}
-                                    </p>
-                                    {pet.contact_name && (
-                                        <p className="text-xs text-neutral-700 dark:text-neutral-300 mt-1 truncate">
-                                            <span className="text-neutral-500">{t("col.owner")}:</span> {pet.contact_name}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
+                            <Link
+                                href={pet.contact_id ? `/admin/contacts/${pet.contact_id}` : "#"}
+                                className="group relative block bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 overflow-hidden hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-lg hover:shadow-indigo-500/5 transition-all duration-200 no-underline"
+                            >
+                                {/* Gradient hover wash */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-transparent to-pink-500/0 group-hover:from-indigo-500/[0.04] group-hover:to-pink-500/[0.06] transition-colors pointer-events-none" />
 
-                            <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
-                                    <Syringe className="w-3.5 h-3.5" />
-                                    <span>{pet.vaccinations_count} {t("col.vaccinations").toLowerCase()}</span>
+                                <div className="relative flex items-start gap-3">
+                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center text-2xl flex-shrink-0 ring-1 ring-inset ring-current/10 group-hover:scale-105 transition-transform">
+                                        {pet.photo_url ? (
+                                            <img src={pet.photo_url} alt={pet.name} className="w-14 h-14 rounded-full object-cover" />
+                                        ) : (
+                                            <span>{SPECIES_EMOJI[pet.species] || "🐾"}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 justify-between">
+                                            <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                                                {pet.name}
+                                            </h3>
+                                            <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                                        </div>
+                                        <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                                            {[pet.breed, pet.sex, ageFromBirth(pet.birth_date)].filter(Boolean).join(" · ")}
+                                        </p>
+                                        {pet.contact_name && (
+                                            <p className="text-xs text-neutral-700 dark:text-neutral-300 mt-1 truncate">
+                                                <span className="text-neutral-500">{t("col.owner")}:</span> {pet.contact_name}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    <span>
-                                        {pet.last_visit
-                                            ? new Date(pet.last_visit).toLocaleDateString()
-                                            : "—"}
-                                    </span>
+
+                                <div className="relative mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+                                        <Syringe className="w-3.5 h-3.5" />
+                                        <span>{pet.vaccinations_count} {t("col.vaccinations").toLowerCase()}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        <span>
+                                            {pet.last_visit
+                                                ? new Date(pet.last_visit).toLocaleDateString()
+                                                : "—"}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                        </Link>
+                            </Link>
+                        </motion.div>
                     ))}
                 </div>
             )}

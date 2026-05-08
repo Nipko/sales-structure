@@ -8,9 +8,12 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import {
-    Camera, Loader2, Search, Image as ImageIcon, ExternalLink,
-    Calendar, DollarSign, Clock, CheckCircle2,
+    Camera, Search, Image as ImageIcon, ExternalLink,
+    Calendar, Clock,
 } from "lucide-react";
+import { motion } from "motion/react";
+import { SkeletonCards } from "@/components/ui/skeleton-loader";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface SessionRow {
     id: string;
@@ -106,23 +109,20 @@ export default function PhotoSessionsPage() {
                 </div>
             </div>
 
-            {loading && (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-                </div>
-            )}
+            {loading && <SkeletonCards count={4} />}
 
             {!loading && sessions.length === 0 && (
-                <div className="bg-white dark:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl py-16 text-center">
-                    <Camera className="w-10 h-10 text-neutral-300 dark:text-neutral-700 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("empty.title")}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{t("empty.hint")}</p>
-                </div>
+                <EmptyState
+                    icon={Camera}
+                    iconColor="text-purple-400"
+                    title={t("empty.title")}
+                    description={t("empty.hint")}
+                />
             )}
 
             {!loading && sessions.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {sessions.map((s) => {
+                    {sessions.map((s, i) => {
                         const meta = STATUS_META[s.status] || STATUS_META.cancelled;
                         const clientLabel = s.contact_name || s.client_name || tc("unknown");
                         const phone = s.contact_phone || s.client_phone || null;
@@ -130,10 +130,16 @@ export default function PhotoSessionsPage() {
                             ? t(`sessionTypes.${s.session_type}`)
                             : s.session_type;
                         return (
-                            <div
+                            <motion.div
                                 key={s.id}
-                                className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all"
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.3, delay: 0.04 * Math.min(i, 8) }}
+                                whileHover={{ y: -2 }}
+                                className="group relative bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 overflow-hidden hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-200"
                             >
+                                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 via-transparent to-fuchsia-500/0 group-hover:from-purple-500/[0.04] group-hover:to-fuchsia-500/[0.06] transition-colors pointer-events-none" />
+                                <div className="relative">
                                 <div className="flex items-start justify-between gap-3 mb-3">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
@@ -206,7 +212,8 @@ export default function PhotoSessionsPage() {
                                         <span className="text-xs text-neutral-400 italic">{t("noGallery")}</span>
                                     )}
                                 </div>
-                            </div>
+                                </div>
+                            </motion.div>
                         );
                     })}
                 </div>

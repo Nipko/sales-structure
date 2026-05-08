@@ -8,9 +8,11 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import {
-    ClipboardList, Loader2, Search, ChevronRight,
+    ClipboardList, Search, ChevronRight,
     PlayCircle, Pause, CheckCircle2, XCircle,
 } from "lucide-react";
+import { SkeletonTable } from "@/components/ui/skeleton-loader";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface PlanRow {
     id: string;
@@ -101,18 +103,15 @@ export default function TreatmentPlansPage() {
                 </div>
             </div>
 
-            {loading && (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-                </div>
-            )}
+            {loading && <SkeletonTable rows={6} cols={6} />}
 
             {!loading && plans.length === 0 && (
-                <div className="bg-white dark:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl py-16 text-center">
-                    <ClipboardList className="w-10 h-10 text-neutral-300 dark:text-neutral-700 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("empty.title")}</p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{t("empty.hint")}</p>
-                </div>
+                <EmptyState
+                    icon={ClipboardList}
+                    iconColor="text-cyan-400"
+                    title={t("empty.title")}
+                    description={t("empty.hint")}
+                />
             )}
 
             {!loading && plans.length > 0 && (

@@ -55,6 +55,7 @@ import {
   ClipboardList,
   PawPrint,
   Camera,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
 
@@ -162,6 +163,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
       { labelKey: "funnel", href: "/admin/funnel", icon: FunnelIcon },
       { labelKey: "verticalAnalytics", href: "/admin/vertical-analytics", icon: PieChart },
+      { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
     ],
   },
   {

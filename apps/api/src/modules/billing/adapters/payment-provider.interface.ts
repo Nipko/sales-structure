@@ -85,6 +85,16 @@ export interface IPaymentProvider {
         newProviderPlanId: string,
     ): Promise<ProviderSubscription>;
 
+    // --- Refunds ---
+
+    /**
+     * Issue a refund for a previously succeeded charge. If amountCents is
+     * omitted, the full amount is refunded. The webhook for the refund
+     * fires asynchronously and BillingService picks up the status change
+     * via parseWebhookEvent → handleBillingEvent.
+     */
+    refundPayment(providerPaymentId: string, amountCents?: number): Promise<void>;
+
     // --- Reconciliation ---
 
     getSubscription(providerSubscriptionId: string): Promise<ProviderSubscription>;

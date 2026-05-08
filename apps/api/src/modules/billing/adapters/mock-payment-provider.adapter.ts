@@ -35,6 +35,7 @@ export class MockPaymentProvider implements IPaymentProvider {
     private readonly customers = new Map<string, ProviderCustomer>();
     private readonly subscriptions = new Map<string, ProviderSubscription>();
     private readonly plans = new Map<string, ProviderPlan>();
+    readonly refunds: Array<{ providerPaymentId: string; amountCents: number | null }> = [];
 
     // -------------------------------------------------------------------------
     // Customer
@@ -135,6 +136,11 @@ export class MockPaymentProvider implements IPaymentProvider {
     async resumeSubscription(providerSubscriptionId: string): Promise<void> {
         const sub = this.requireSubscription(providerSubscriptionId);
         this.subscriptions.set(providerSubscriptionId, { ...sub, rawStatus: 'mock_active', status: SubscriptionStatus.ACTIVE });
+    }
+
+    async refundPayment(providerPaymentId: string, _amountCents?: number): Promise<void> {
+        // Mock: just record the intent — tests can introspect via this.refunds
+        this.refunds.push({ providerPaymentId, amountCents: _amountCents ?? null });
     }
 
     async changeSubscriptionPlan(providerSubscriptionId: string, newProviderPlanId: string): Promise<ProviderSubscription> {

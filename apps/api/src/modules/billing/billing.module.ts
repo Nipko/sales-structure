@@ -4,7 +4,10 @@ import { RedisModule } from '../redis/redis.module';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
+import { BillingAdminController } from './billing-admin.controller';
 import { BillingWebhookController } from './webhook.controller';
+import { CouponsService } from './coupons.service';
+import { CouponsController } from './coupons.controller';
 import { BillingEmailService } from './billing-email.service';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
@@ -24,16 +27,17 @@ import { BillingReconciliationProcessor } from './processors/reconciliation.proc
  */
 @Module({
     imports: [PrismaModule, RedisModule, EmailTemplatesModule],
-    controllers: [BillingController, BillingWebhookController],
+    controllers: [BillingController, BillingAdminController, CouponsController, BillingWebhookController],
     providers: [
         BillingService,
         BillingEmailService,
+        CouponsService,
         PaymentProviderFactory,
         MockPaymentProvider,
         MercadoPagoAdapter,
         MercadoPagoConfigService,
         BillingReconciliationProcessor,
     ],
-    exports: [BillingService],
+    exports: [BillingService, CouponsService],
 })
 export class BillingModule {}

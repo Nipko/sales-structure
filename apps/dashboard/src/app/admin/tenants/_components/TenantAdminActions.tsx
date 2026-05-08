@@ -18,7 +18,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle,
+    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift,
 } from "lucide-react";
 
 interface TenantSummary {
@@ -42,6 +42,7 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
 
     const [showExtendTrial, setShowExtendTrial] = useState(false);
     const [showPurge, setShowPurge] = useState(false);
+    const [showCompPlan, setShowCompPlan] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<ActionResult>(null);
 
@@ -167,6 +168,14 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                         {t("reactivateChannels")}
                     </button>
 
+                    {/* Comp plan — gift a tenant a free plan for N days */}
+                    <button
+                        onClick={() => setShowCompPlan(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 rounded-lg text-sm font-medium transition"
+                    >
+                        <Gift className="h-4 w-4" /> {t("compPlan")}
+                    </button>
+
                     {/* Purge — destructive */}
                     <button
                         onClick={() => setShowPurge(true)}
@@ -206,6 +215,18 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                                 files: summary.mediaFilesRemoved ?? 0,
                             }),
                         });
+                        onChange?.();
+                    }}
+                />
+            )}
+
+            {showCompPlan && (
+                <CompPlanModal
+                    tenant={tenant}
+                    onClose={() => setShowCompPlan(false)}
+                    onSuccess={() => {
+                        setShowCompPlan(false);
+                        setFeedback({ type: "success", text: t("compPlanGranted") });
                         onChange?.();
                     }}
                 />
@@ -386,6 +407,110 @@ function PurgeTenantModal({
                     >
                         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                         {t("purgeConfirm")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Comp Plan Modal — gift a tenant a free plan for N days
+// ──────────────────────────────────────────────────────────────────────
+
+function CompPlanModal({
+    tenant, onClose, onSuccess,
+}: { tenant: TenantSummary; onClose: () => void; onSuccess: () => void }) {
+    const t = useTranslations("tenantAdminActions");
+    const tc = useTranslations("common");
+    const [planSlug, setPlanSlug] = useState<"starter" | "pro" | "enterprise" | "custom">("pro");
+    const [days, setDays] = useState(30);
+    const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    async function handleSubmit() {
+        if (days < 1 || days > 3650) {
+            setError(t("compPlanDaysInvalid"));
+            return;
+        }
+        if (!reason.trim() || reason.trim().length < 3) {
+            setError(t("compPlanReasonRequired"));
+            return;
+        }
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api.grantCompPlan(tenant.id, { planSlug, durationDays: days, reason: reason.trim() });
+            if (res.success) onSuccess();
+            else setError((res as any).error || tc("connectionError"));
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-border">
+                    <div>
+                        <h3 className="text-base font-semibold flex items-center gap-2">
+                            <Gift className="h-4 w-4 text-purple-500" />
+                            {t("compPlanTitle")}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">{tenant.name}</p>
+                    </div>
+                    <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
+                </div>
+                <div className="p-5 space-y-4">
+                    <p className="text-xs text-muted-foreground">{t("compPlanHint")}</p>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">{t("compPlanLabel")}</label>
+                        <select
+                            value={planSlug}
+                            onChange={e => setPlanSlug(e.target.value as any)}
+                            className="w-full bg-card border border-border rounded-lg px-3 py-2"
+                        >
+                            <option value="starter">Starter</option>
+                            <option value="pro">Pro</option>
+                            <option value="enterprise">Enterprise</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">{t("compPlanDays")}</label>
+                        <input
+                            type="number"
+                            min={1}
+                            max={3650}
+                            value={days}
+                            onChange={e => setDays(parseInt(e.target.value || "0", 10))}
+                            className="w-full bg-card border border-border rounded-lg px-3 py-2"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">{t("compPlanReason")} <span className="text-red-500">*</span></label>
+                        <input
+                            type="text"
+                            value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            placeholder={t("compPlanReasonPlaceholder")}
+                            className="w-full bg-card border border-border rounded-lg px-3 py-2"
+                        />
+                    </div>
+                    {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
+                </div>
+                <div className="flex justify-end gap-2 p-4 border-t border-border">
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm disabled:opacity-50">{tc("cancel")}</button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={busy}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2"
+                    >
+                        {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {t("compPlanConfirm", { days })}
                     </button>
                 </div>
             </div>

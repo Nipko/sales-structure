@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Logger, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Logger, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -59,6 +59,12 @@ class UpdatePaymentMethodDto {
     cardTokenId!: string;
 }
 
+class PauseSubscriptionDto {
+    @IsOptional()
+    @IsString()
+    reason?: string;
+}
+
 @Controller('billing')
 export class BillingController {
     private readonly logger = new Logger(BillingController.name);
@@ -73,7 +79,7 @@ export class BillingController {
      * dashboard plan picker. No auth required.
      */
     @Get('plans')
-    async listPlans() {
+    async listPlans(@Query('country') country?: string) {
         const plans = await this.prisma.billingPlan.findMany({
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
@@ -90,7 +96,58 @@ export class BillingController {
                 priceLocalOverrides: true,
             },
         });
-        return { success: true, data: plans };
+
+        // Resolve display price per plan based on requested country.
+        // Order of precedence:
+        //  1. priceLocalOverrides[country].priceLocalCents (curated, manual)
+        //  2. latest ExchangeRate USD→localCurrency (auto, fallback)
+        //  3. USD (no override, no FX rate available)
+        const localPrice = country ? await this.resolveLocalPrice(country) : null;
+
+        const enriched = plans.map((p) => {
+            const overrides = (p.priceLocalOverrides ?? {}) as Record<string, any>;
+            const countryOverride = country ? overrides[country] : null;
+
+            let displayCurrency: string = 'USD';
+            let displayPriceCents: number = p.priceUsdCents;
+            let priceSource: 'override' | 'fx' | 'usd' = 'usd';
+
+            if (countryOverride?.priceLocalCents && countryOverride?.currency) {
+                displayCurrency = countryOverride.currency;
+                displayPriceCents = countryOverride.priceLocalCents;
+                priceSource = 'override';
+            } else if (localPrice) {
+                displayCurrency = localPrice.currency;
+                displayPriceCents = Math.round(p.priceUsdCents * localPrice.rate);
+                priceSource = 'fx';
+            }
+
+            return {
+                ...p,
+                displayPriceCents,
+                displayCurrency,
+                priceSource,
+            };
+        });
+
+        return { success: true, data: enriched };
+    }
+
+    private async resolveLocalPrice(country: string): Promise<{ currency: string; rate: number } | null> {
+        const COUNTRY_CURRENCY: Record<string, string> = {
+            CO: 'COP', AR: 'ARS', MX: 'MXN', CL: 'CLP', PE: 'PEN', UY: 'UYU',
+            BR: 'BRL', US: 'USD', CA: 'USD', PY: 'PYG', BO: 'BOB', EC: 'USD',
+            VE: 'USD', CR: 'CRC', PA: 'USD', DO: 'DOP', GT: 'GTQ',
+        };
+        const currency = COUNTRY_CURRENCY[country.toUpperCase()];
+        if (!currency || currency === 'USD') return null;
+
+        const fx = await this.prisma.exchangeRate.findFirst({
+            where: { fromCurrency: 'USD', toCurrency: currency },
+            orderBy: { rateDate: 'desc' },
+        });
+        if (!fx) return null;
+        return { currency, rate: Number(fx.rate) };
     }
 
     /**
@@ -100,14 +157,27 @@ export class BillingController {
     @Get(':tenantId/subscription')
     @UseGuards(AuthGuard('jwt'))
     async getCurrentSubscription(@Param('tenantId') tenantId: string) {
-        const sub = await this.billingService.getActiveSubscription(tenantId);
-        if (!sub) return { success: true, data: null };
-
-        const recentPayments = await this.prisma.billingPayment.findMany({
-            where: { tenantId },
-            orderBy: { createdAt: 'desc' },
-            take: 20,
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { billingCountry: true, billingEmail: true },
         });
+        const sub = await this.billingService.getActiveSubscription(tenantId);
+
+        const recentPayments = sub
+            ? await this.prisma.billingPayment.findMany({
+                where: { tenantId },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+            })
+            : [];
+
+        if (!sub) {
+            return {
+                success: true,
+                data: null,
+                billingCountry: tenant?.billingCountry ?? null,
+            };
+        }
 
         return {
             success: true,
@@ -123,8 +193,10 @@ export class BillingController {
                 currentPeriodEnd: sub.currentPeriodEnd,
                 cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
                 cancelledAt: sub.cancelledAt,
+                cancellationReason: sub.cancellationReason,
                 payments: recentPayments,
             },
+            billingCountry: tenant?.billingCountry ?? null,
         };
     }
 
@@ -190,5 +262,38 @@ export class BillingController {
         const provider = (this.billingService as any).providerFactory.getByName(sub.provider);
         await provider.updatePaymentMethod(sub.providerCustomerId, body.cardTokenId);
         return { success: true };
+    }
+
+    /**
+     * Pause an active subscription — short-term hold without cancelling.
+     * Provider stops charging but record stays so tenant can resume later
+     * with the same card on file.
+     */
+    @Post(':tenantId/subscription/pause')
+    @UseGuards(AuthGuard('jwt'))
+    async pause(@Param('tenantId') tenantId: string, @Body() body: PauseSubscriptionDto) {
+        await this.billingService.pauseSubscription(tenantId, { reason: body.reason });
+        return { success: true };
+    }
+
+    /** Resume a paused subscription. */
+    @Post(':tenantId/subscription/resume')
+    @UseGuards(AuthGuard('jwt'))
+    async resume(@Param('tenantId') tenantId: string) {
+        await this.billingService.resumeSubscription(tenantId);
+        return { success: true };
+    }
+
+    /**
+     * Force an immediate provider sync — used by the past_due recovery
+     * "retry now" button. Pulls the latest state from MP; if MP succeeded
+     * a retry charge in background, we pick it up without waiting for
+     * the hourly reconciliation cron.
+     */
+    @Post(':tenantId/subscription/sync')
+    @UseGuards(AuthGuard('jwt'))
+    async sync(@Param('tenantId') tenantId: string) {
+        const result = await this.billingService.syncFromProvider(tenantId);
+        return { success: true, data: result };
     }
 }

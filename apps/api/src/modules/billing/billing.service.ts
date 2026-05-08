@@ -307,6 +307,348 @@ export class BillingService {
     }
 
     // -------------------------------------------------------------------------
+    // Pause / Resume — short-term hold without cancelling
+    // -------------------------------------------------------------------------
+
+    /**
+     * Pause an active subscription. The provider stops charging but the
+     * subscription record stays so the tenant can resume later without a
+     * new card token. We map this to PAST_DUE internally so plan limits
+     * still kick in and the dashboard shows a "paused" banner.
+     */
+    async pauseSubscription(tenantId: string, opts: { reason?: string } = {}): Promise<void> {
+        const sub = await this.requireSubscription(tenantId);
+        if (sub.status !== SubscriptionStatus.ACTIVE && sub.status !== SubscriptionStatus.TRIALING) {
+            throw new BadRequestException({
+                error: 'cannot_pause',
+                message: 'Solo se pueden pausar suscripciones activas o en trial.',
+                currentStatus: sub.status,
+            });
+        }
+        if (!sub.providerSubscriptionId) {
+            throw new BadRequestException({ error: 'missing_provider_subscription' });
+        }
+
+        const provider = this.providerFactory.getByName(sub.provider);
+        if (typeof (provider as any).pauseSubscription !== 'function') {
+            throw new BadRequestException({ error: 'pause_unsupported', message: `${sub.provider} does not support pause.` });
+        }
+        await (provider as any).pauseSubscription(sub.providerSubscriptionId);
+
+        await this.prisma.billingSubscription.update({
+            where: { id: sub.id },
+            data: {
+                status: SubscriptionStatus.PAST_DUE,
+                cancellationReason: opts.reason ? `paused: ${opts.reason}` : 'paused',
+            },
+        });
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { subscriptionStatus: SubscriptionStatus.PAST_DUE },
+        });
+        await this.redis.del(`tenant_plan:${tenantId}`);
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId,
+                action: 'subscription_paused',
+                resource: `billing_subscriptions/${sub.id}`,
+                details: { reason: opts.reason ?? null, plan: (sub as any).plan?.slug ?? null },
+            },
+        });
+        this.logger.log(`[Billing] Tenant ${tenantId} paused subscription`);
+    }
+
+    /**
+     * Resume a paused subscription. The provider resumes the next billing
+     * cycle. We restore status to ACTIVE if there's a current period, or
+     * back to TRIALING if the trial hadn't expired yet.
+     */
+    async resumeSubscription(tenantId: string): Promise<void> {
+        const sub = await this.requireSubscription(tenantId);
+        if (sub.cancellationReason !== 'paused' && !sub.cancellationReason?.startsWith('paused:')) {
+            throw new BadRequestException({
+                error: 'not_paused',
+                message: 'La suscripción no está pausada.',
+            });
+        }
+        if (!sub.providerSubscriptionId) {
+            throw new BadRequestException({ error: 'missing_provider_subscription' });
+        }
+
+        const provider = this.providerFactory.getByName(sub.provider);
+        if (typeof (provider as any).resumeSubscription !== 'function') {
+            throw new BadRequestException({ error: 'resume_unsupported' });
+        }
+        await (provider as any).resumeSubscription(sub.providerSubscriptionId);
+
+        // Restore to TRIALING if trial hasn't expired, otherwise ACTIVE
+        const now = new Date();
+        const stillTrialing = sub.trialEndsAt && sub.trialEndsAt > now;
+        const restoredStatus = stillTrialing ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE;
+
+        await this.prisma.billingSubscription.update({
+            where: { id: sub.id },
+            data: { status: restoredStatus, cancellationReason: null },
+        });
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { subscriptionStatus: restoredStatus },
+        });
+        await this.redis.del(`tenant_plan:${tenantId}`);
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId,
+                action: 'subscription_resumed',
+                resource: `billing_subscriptions/${sub.id}`,
+                details: { restoredStatus },
+            },
+        });
+        this.logger.log(`[Billing] Tenant ${tenantId} resumed subscription`);
+    }
+
+    // -------------------------------------------------------------------------
+    // Retry payment now (past_due recovery without waiting for cron)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Force an immediate sync against the provider for this tenant's
+     * subscription. Used by the dashboard "retry now" button when a tenant
+     * is past_due. Does NOT issue a new charge — it pulls the latest state
+     * from the provider; if MP retried in background and succeeded, this
+     * picks it up immediately instead of waiting for the hourly cron.
+     */
+    async syncFromProvider(tenantId: string): Promise<{ status: string; updated: boolean }> {
+        const sub = await this.requireSubscription(tenantId);
+        if (!sub.providerSubscriptionId) {
+            throw new BadRequestException({ error: 'missing_provider_subscription' });
+        }
+
+        const provider = this.providerFactory.getByName(sub.provider);
+        const remote = await provider.getSubscription(sub.providerSubscriptionId);
+        const remoteStatus = remote.status as SubscriptionStatus;
+        const updated = remoteStatus !== sub.status;
+
+        if (updated) {
+            await this.prisma.billingSubscription.update({
+                where: { id: sub.id },
+                data: {
+                    status: remoteStatus,
+                    currentPeriodStart: remote.currentPeriodStart || sub.currentPeriodStart,
+                    currentPeriodEnd: remote.currentPeriodEnd || sub.currentPeriodEnd,
+                },
+            });
+            await this.prisma.tenant.update({
+                where: { id: tenantId },
+                data: { subscriptionStatus: remoteStatus },
+            });
+            await this.redis.del(`tenant_plan:${tenantId}`);
+
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'subscription_synced',
+                    resource: `billing_subscriptions/${sub.id}`,
+                    details: { from: sub.status, to: remoteStatus },
+                },
+            });
+        }
+        return { status: remoteStatus, updated };
+    }
+
+    // -------------------------------------------------------------------------
+    // Coupon application
+    // -------------------------------------------------------------------------
+
+    /**
+     * Apply free_months by extending the local trial end. The provider
+     * subscription continues on its own schedule; we just delay our
+     * "expected next charge" notion. percent_off / amount_off coupons
+     * are tracked as redemption rows but do NOT mutate the subscription
+     * here — see the runbook for how the actual credit is reconciled.
+     */
+    async applyFreeMonthsExtension(tenantId: string, months: number): Promise<void> {
+        const sub = await this.requireSubscription(tenantId);
+        const ms = months * 30 * 86_400_000;
+        const newTrialEnd = sub.trialEndsAt
+            ? new Date(sub.trialEndsAt.getTime() + ms)
+            : new Date(Date.now() + ms);
+        const newPeriodEnd = sub.currentPeriodEnd
+            ? new Date(sub.currentPeriodEnd.getTime() + ms)
+            : newTrialEnd;
+
+        await this.prisma.billingSubscription.update({
+            where: { id: sub.id },
+            data: {
+                trialEndsAt: newTrialEnd,
+                currentPeriodEnd: newPeriodEnd,
+                status: SubscriptionStatus.TRIALING,
+            },
+        });
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                trialEndsAt: newTrialEnd,
+                currentPeriodEnd: newPeriodEnd,
+                subscriptionStatus: SubscriptionStatus.TRIALING,
+            },
+        });
+        await this.redis.del(`tenant_plan:${tenantId}`);
+        this.logger.log(`[Billing] Extended trial for tenant ${tenantId} by ${months} months`);
+    }
+
+    // -------------------------------------------------------------------------
+    // Refund (super_admin only)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Issue a refund for a previously succeeded payment. Caller must be
+     * super_admin (enforced at controller level). The actual status update
+     * on BillingPayment.status='refunded' arrives via the provider webhook;
+     * this just kicks off the refund and writes an audit row immediately.
+     */
+    async refundPayment(input: {
+        paymentId: string;
+        amountCents?: number;
+        reason?: string;
+        actorUserId?: string;
+    }): Promise<{ providerPaymentId: string; partialAmountCents: number | null }> {
+        const payment = await this.prisma.billingPayment.findUnique({
+            where: { id: input.paymentId },
+        });
+        if (!payment) throw new NotFoundException({ error: 'payment_not_found' });
+        if (payment.status === 'refunded') {
+            throw new BadRequestException({ error: 'already_refunded' });
+        }
+        if (payment.status !== 'succeeded') {
+            throw new BadRequestException({
+                error: 'cannot_refund',
+                message: `Cannot refund a payment with status='${payment.status}'.`,
+            });
+        }
+        if (!payment.providerPaymentId) {
+            throw new BadRequestException({ error: 'missing_provider_payment_id' });
+        }
+        if (input.amountCents != null && input.amountCents > payment.amountCents) {
+            throw new BadRequestException({
+                error: 'refund_exceeds_payment',
+                paymentAmountCents: payment.amountCents,
+                requestedAmountCents: input.amountCents,
+            });
+        }
+
+        const provider = this.providerFactory.getByName(payment.provider);
+        await provider.refundPayment(payment.providerPaymentId, input.amountCents);
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: payment.tenantId,
+                action: 'payment_refunded',
+                resource: `billing_payments/${payment.id}`,
+                userId: input.actorUserId,
+                details: {
+                    providerPaymentId: payment.providerPaymentId,
+                    fullAmountCents: payment.amountCents,
+                    refundedAmountCents: input.amountCents ?? payment.amountCents,
+                    isPartial: input.amountCents != null && input.amountCents < payment.amountCents,
+                    reason: input.reason ?? null,
+                },
+            },
+        });
+        this.logger.log(`[Billing] Refunded payment ${payment.id} (${input.amountCents ?? 'full'} cents)`);
+
+        return {
+            providerPaymentId: payment.providerPaymentId,
+            partialAmountCents: input.amountCents ?? null,
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // Plan override (super_admin — comp / gift)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Super-admin tool to grant a tenant a plan without charging. Useful for
+     * comp accounts (employees, design partners, churned tenants we want
+     * back). Updates the local subscription + tenant.plan but does NOT
+     * touch the provider — the existing provider subscription (if any) keeps
+     * running on its own schedule. We mark the subscription as 'comp' via
+     * cancellationReason='comp:<reason>' for audit visibility.
+     */
+    async grantCompPlan(input: {
+        tenantId: string;
+        planSlug: string;
+        durationDays: number;
+        reason: string;
+        actorUserId?: string;
+    }): Promise<void> {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
+        if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
+        const plan = await this.prisma.billingPlan.findUnique({ where: { slug: input.planSlug } });
+        if (!plan) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug });
+
+        const now = new Date();
+        const periodEnd = new Date(now.getTime() + input.durationDays * 86_400_000);
+
+        const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
+        if (existing) {
+            await this.prisma.billingSubscription.update({
+                where: { id: existing.id },
+                data: {
+                    planId: plan.id,
+                    status: SubscriptionStatus.ACTIVE,
+                    currentPeriodStart: now,
+                    currentPeriodEnd: periodEnd,
+                    cancelAtPeriodEnd: false,
+                    cancelledAt: null,
+                    cancellationReason: `comp: ${input.reason}`,
+                },
+            });
+        } else {
+            await this.prisma.billingSubscription.create({
+                data: {
+                    tenantId: input.tenantId,
+                    planId: plan.id,
+                    status: SubscriptionStatus.ACTIVE,
+                    provider: 'mercadopago',
+                    providerCustomerId: `comp_${input.tenantId}`,
+                    providerSubscriptionId: null,
+                    currentPeriodStart: now,
+                    currentPeriodEnd: periodEnd,
+                    cancellationReason: `comp: ${input.reason}`,
+                },
+            });
+        }
+
+        await this.prisma.tenant.update({
+            where: { id: input.tenantId },
+            data: {
+                plan: input.planSlug,
+                subscriptionStatus: SubscriptionStatus.ACTIVE,
+                currentPeriodEnd: periodEnd,
+            },
+        });
+        await this.redis.del(`tenant_plan:${input.tenantId}`);
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: input.tenantId,
+                action: 'plan_comp_granted',
+                resource: `tenants/${input.tenantId}`,
+                userId: input.actorUserId,
+                details: {
+                    planSlug: input.planSlug,
+                    durationDays: input.durationDays,
+                    periodEnd: periodEnd.toISOString(),
+                    reason: input.reason,
+                },
+            },
+        });
+        this.logger.log(`[Billing] Granted comp plan ${input.planSlug} to tenant ${input.tenantId} for ${input.durationDays}d`);
+    }
+
+    // -------------------------------------------------------------------------
     // Webhook event handler
     // -------------------------------------------------------------------------
 

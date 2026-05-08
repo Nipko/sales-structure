@@ -722,7 +722,7 @@ export const api = {
         apiGet(`/dashboard-analytics/cohorts/${tenantId}?months=${months || 6}`),
 
     // --- Billing (Sprint 2+3) ---
-    getBillingPlans: () => apiGet(`/billing/plans`),
+    getBillingPlans: (country?: string) => apiGet(`/billing/plans${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     getBillingSubscription: (tenantId: string) =>
         apiGet(`/billing/${tenantId}/subscription`),
     startBillingTrial: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingEmail?: string; billingCountry?: string }) =>
@@ -733,6 +733,30 @@ export const api = {
         apiPost(`/billing/${tenantId}/subscription/cancel`, data),
     updateBillingPaymentMethod: (tenantId: string, data: { cardTokenId: string }) =>
         apiPost(`/billing/${tenantId}/subscription/payment-method`, data),
+    pauseBillingSubscription: (tenantId: string, data?: { reason?: string }) =>
+        apiPost(`/billing/${tenantId}/subscription/pause`, data || {}),
+    resumeBillingSubscription: (tenantId: string) =>
+        apiPost(`/billing/${tenantId}/subscription/resume`, {}),
+    syncBillingSubscription: (tenantId: string) =>
+        apiPost(`/billing/${tenantId}/subscription/sync`, {}),
+
+    // --- Billing admin (super_admin only) ---
+    refundBillingPayment: (paymentId: string, data?: { amountCents?: number; reason?: string }) =>
+        apiPost(`/billing-admin/payments/${paymentId}/refund`, data || {}),
+    grantCompPlan: (tenantId: string, data: { planSlug: string; durationDays: number; reason: string }) =>
+        apiPost(`/billing-admin/tenants/${tenantId}/comp-plan`, data),
+
+    // --- Coupons (super_admin CRUD + tenant redeem) ---
+    listCoupons: (active?: boolean) =>
+        apiGet(`/billing-coupons/admin${active !== undefined ? `?active=${active}` : ""}`),
+    createCoupon: (data: any) => apiPost(`/billing-coupons/admin`, data),
+    updateCoupon: (id: string, data: any) => apiPut(`/billing-coupons/admin/${id}`, data),
+    deactivateCoupon: (id: string) => apiDelete(`/billing-coupons/admin/${id}`),
+    listCouponRedemptions: (id: string) => apiGet(`/billing-coupons/admin/${id}/redemptions`),
+    validateCoupon: (tenantId: string, data: { code: string; planId: string }) =>
+        apiPost(`/billing-coupons/validate/${tenantId}`, data),
+    redeemCoupon: (tenantId: string, code: string) =>
+        apiPost(`/billing-coupons/redeem/${tenantId}`, { code }),
 
     // --- Feature Requests (Apr 27) ---
     listFeatureRequests: (params?: { status?: string; category?: string; search?: string; sort?: string }) => {

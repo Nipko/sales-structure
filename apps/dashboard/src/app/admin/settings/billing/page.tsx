@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
-    Zap, Rocket, Briefcase, Sparkles, Loader2, X,
+    Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag,
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
 
@@ -24,6 +25,10 @@ interface Plan {
     maxAiMessages: number;
     features: Record<string, any>;
     priceLocalOverrides: Record<string, { currency: string; amountCents: number; mpPlanId?: string }>;
+    /** Display values returned by backend when ?country=XX is sent */
+    displayPriceCents?: number;
+    displayCurrency?: string;
+    priceSource?: "override" | "fx" | "usd";
 }
 
 interface Payment {
@@ -48,6 +53,7 @@ interface Subscription {
     currentPeriodEnd?: string | null;
     cancelAtPeriodEnd: boolean;
     cancelledAt?: string | null;
+    cancellationReason?: string | null;
     payments: Payment[];
 }
 
@@ -93,12 +99,14 @@ const PLAN_ICON: Record<string, any> = {
 export default function BillingPage() {
     const t = useTranslations("billingPage");
     const { activeTenantId } = useTenant();
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === "super_admin";
     const locale = typeof navigator !== "undefined" ? navigator.language : "es-CO";
 
     const [loading, setLoading] = useState(true);
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [plans, setPlans] = useState<Plan[]>([]);
-    const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate">(null);
+    const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -113,11 +121,12 @@ export default function BillingPage() {
         setLoading(true);
         setError(null);
         try {
-            const [subRes, plansRes] = await Promise.all([
-                api.getBillingSubscription(activeTenantId),
-                api.getBillingPlans(),
-            ]);
+            // First fetch the subscription to learn the tenant's billing country,
+            // then re-fetch plans with that country so prices come back localized.
+            const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
+            const country = (subRes as any)?.billingCountry as string | null;
+            const plansRes = await api.getBillingPlans(country || undefined);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
         } catch (err: any) {
             setError(err?.message || t("loadError"));
@@ -185,6 +194,105 @@ export default function BillingPage() {
         }
     };
 
+    const [couponCode, setCouponCode] = useState("");
+    const [redeemingCoupon, setRedeemingCoupon] = useState(false);
+
+    const handleRedeemCoupon = async () => {
+        if (!activeTenantId || !couponCode.trim()) return;
+        setRedeemingCoupon(true);
+        try {
+            const res = await api.redeemCoupon(activeTenantId, couponCode.trim());
+            if (!res?.success) {
+                const errKey = (res as any)?.error;
+                throw new Error(errKey ? t(`couponErrors.${errKey}`) : t("actionFailed"));
+            }
+            setToast(t("couponRedeemed"));
+            setCouponCode("");
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setRedeemingCoupon(false);
+        }
+    };
+
+    const handleRefund = async (paymentId: string, fullAmountCents: number, currency: string) => {
+        const partial = window.prompt(
+            t("refundAmountPrompt", {
+                full: formatMoney(fullAmountCents, currency, locale),
+            }) || "Partial amount in cents (leave empty for full):",
+        );
+        if (partial === null) return;
+        let amountCents: number | undefined;
+        if (partial.trim() !== "") {
+            const parsed = parseInt(partial.trim(), 10);
+            if (Number.isNaN(parsed) || parsed <= 0 || parsed > fullAmountCents) {
+                alert(t("refundInvalidAmount"));
+                return;
+            }
+            amountCents = parsed;
+        }
+        const reason = window.prompt(t("refundReasonPrompt") || "Reason (required for audit):");
+        if (reason === null || !reason.trim()) return;
+
+        try {
+            const res = await api.refundBillingPayment(paymentId, { amountCents, reason });
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            setToast(t("refundIssued"));
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        }
+    };
+
+    const handlePause = async () => {
+        if (!activeTenantId) return;
+        const reason = window.prompt(t("pauseReasonPrompt") || "Reason (optional):");
+        if (reason === null) return;  // user cancelled
+        setAction("pause");
+        try {
+            const res = await api.pauseBillingSubscription(activeTenantId, { reason: reason || undefined });
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            setToast(t("paused"));
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setAction(null);
+        }
+    };
+
+    const handleResume = async () => {
+        if (!activeTenantId) return;
+        setAction("resume");
+        try {
+            const res = await api.resumeBillingSubscription(activeTenantId);
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            setToast(t("resumed"));
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setAction(null);
+        }
+    };
+
+    const handleRetry = async () => {
+        if (!activeTenantId) return;
+        setAction("retry");
+        try {
+            const res = await api.syncBillingSubscription(activeTenantId);
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            const data: any = (res as any).data;
+            setToast(data?.updated ? t("retrySucceeded") : t("retryNoChange"));
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        } finally {
+            setAction(null);
+        }
+    };
+
     const handleCancel = async (immediate: boolean) => {
         if (!activeTenantId) return;
         const confirmed = window.confirm(immediate ? t("confirmCancelImmediate") : t("confirmCancelAtPeriodEnd"));
@@ -249,7 +357,11 @@ export default function BillingPage() {
                             <p className="text-xs uppercase text-neutral-500 tracking-wider">{t("currentPlan")}</p>
                             <h2 className="text-xl font-semibold mt-1">{currentPlan?.name ?? "—"}</h2>
                             <p className="text-sm text-neutral-500 mt-1">
-                                {currentPlan ? formatMoney(currentPlan.priceUsdCents, "USD", locale) : ""} / {t("month")}
+                                {currentPlan ? formatMoney(
+                                    currentPlan.displayPriceCents ?? currentPlan.priceUsdCents,
+                                    currentPlan.displayCurrency ?? "USD",
+                                    locale,
+                                ) : ""} / {t("month")}
                             </p>
                         </div>
                         <StatusBadge status={subscription.status} />
@@ -274,39 +386,113 @@ export default function BillingPage() {
                         </p>
                     )}
 
-                    <div className="mt-5 flex flex-wrap gap-2">
-                        {(subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due") && (
-                            <button
-                                onClick={() => setModal({ kind: "change-card" })}
-                                className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900"
-                            >
-                                {t("changeCard")}
-                            </button>
-                        )}
-                        {(subscription.status === "active" || subscription.status === "trialing") && !subscription.cancelAtPeriodEnd && (
+                    {(() => {
+                        const isPaused = subscription.status === "past_due"
+                            && (subscription.cancellationReason === "paused"
+                                || subscription.cancellationReason?.startsWith("paused:"));
+                        return (
                             <>
-                                <button
-                                    onClick={() => handleCancel(false)}
-                                    disabled={action === "cancel"}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 disabled:opacity-50"
-                                >
-                                    {t("cancelAtPeriodEnd")}
-                                </button>
-                                <button
-                                    onClick={() => handleCancel(true)}
-                                    disabled={action === "cancel"}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900 disabled:opacity-50"
-                                >
-                                    {t("cancelImmediate")}
-                                </button>
+                                {isPaused && (
+                                    <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-sm text-amber-800 dark:text-amber-300">
+                                        {t("pausedBanner")}
+                                    </div>
+                                )}
+
+                                <div className="mt-5 flex flex-wrap gap-2">
+                                    {(subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due") && (
+                                        <button
+                                            onClick={() => setModal({ kind: "change-card" })}
+                                            className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900"
+                                        >
+                                            {t("changeCard")}
+                                        </button>
+                                    )}
+
+                                    {/* Past-due (and not paused): "retry now" force-syncs from MP */}
+                                    {subscription.status === "past_due" && !isPaused && (
+                                        <button
+                                            onClick={handleRetry}
+                                            disabled={action === "retry"}
+                                            className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 disabled:opacity-50"
+                                        >
+                                            {action === "retry" ? <Loader2 className="inline animate-spin" size={14} /> : t("retryNow")}
+                                        </button>
+                                    )}
+
+                                    {/* Paused: only resume button */}
+                                    {isPaused && (
+                                        <button
+                                            onClick={handleResume}
+                                            disabled={action === "resume"}
+                                            className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 disabled:opacity-50"
+                                        >
+                                            {action === "resume" ? <Loader2 className="inline animate-spin" size={14} /> : t("resume")}
+                                        </button>
+                                    )}
+
+                                    {/* Active / trialing (not pending cancel, not paused): pause + cancel options */}
+                                    {(subscription.status === "active" || subscription.status === "trialing") && !subscription.cancelAtPeriodEnd && !isPaused && (
+                                        <>
+                                            <button
+                                                onClick={handlePause}
+                                                disabled={action === "pause"}
+                                                className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 disabled:opacity-50"
+                                            >
+                                                {action === "pause" ? <Loader2 className="inline animate-spin" size={14} /> : t("pause")}
+                                            </button>
+                                            <button
+                                                onClick={() => handleCancel(false)}
+                                                disabled={action === "cancel"}
+                                                className="px-4 py-2 rounded-lg text-sm font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 disabled:opacity-50"
+                                            >
+                                                {t("cancelAtPeriodEnd")}
+                                            </button>
+                                            <button
+                                                onClick={() => handleCancel(true)}
+                                                disabled={action === "cancel"}
+                                                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900 disabled:opacity-50"
+                                            >
+                                                {t("cancelImmediate")}
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </>
-                        )}
-                    </div>
+                        );
+                    })()}
                 </section>
             ) : (
                 <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 p-6 text-sm text-indigo-800 dark:text-indigo-300">
                     <p className="font-medium">{t("noSubscription")}</p>
                     <p className="mt-1 text-indigo-700 dark:text-indigo-400">{t("noSubscriptionHint")}</p>
+                </section>
+            )}
+
+            {/* Coupon redeem */}
+            {subscription && (
+                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Tag className="w-4 h-4 text-indigo-500" />
+                        <h2 className="text-sm font-semibold">{t("couponTitle")}</h2>
+                    </div>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("couponHint")}</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                            type="text"
+                            value={couponCode}
+                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                            placeholder="LAUNCH50"
+                            className="flex-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm font-mono"
+                        />
+                        <button
+                            onClick={handleRedeemCoupon}
+                            disabled={redeemingCoupon || !couponCode.trim()}
+                            className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white inline-flex items-center justify-center gap-2"
+                        >
+                            {redeemingCoupon && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {t("redeem")}
+                        </button>
+                    </div>
                 </section>
             )}
 
@@ -334,9 +520,18 @@ export default function BillingPage() {
                                         <h3 className="font-semibold">{plan.name}</h3>
                                     </div>
                                     <p className="mt-3 text-2xl font-bold">
-                                        {formatMoney(plan.priceUsdCents, "USD", locale)}
+                                        {formatMoney(
+                                            plan.displayPriceCents ?? plan.priceUsdCents,
+                                            plan.displayCurrency ?? "USD",
+                                            locale,
+                                        )}
                                         <span className="text-sm font-normal text-neutral-500"> / {t("month")}</span>
                                     </p>
+                                    {plan.priceSource === "fx" && (
+                                        <p className="text-xs text-neutral-400 -mt-1.5">
+                                            ≈ {formatMoney(plan.priceUsdCents, "USD", locale)} {t("approxFromUsd")}
+                                        </p>
+                                    )}
                                     <ul className="mt-4 space-y-1.5 text-sm text-neutral-600 dark:text-neutral-400 flex-1">
                                         <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("agentsUpTo", { n: plan.maxAgents })}</li>
                                         <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("aiMessages", { n: plan.maxAiMessages.toLocaleString() })}</li>
@@ -430,11 +625,21 @@ export default function BillingPage() {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            {p.invoicePdfUrl ? (
-                                                <a href={p.invoicePdfUrl} target="_blank" rel="noopener" className="text-indigo-500 hover:underline">{t("download")}</a>
-                                            ) : (
-                                                <span className="text-neutral-400">—</span>
-                                            )}
+                                            <div className="flex items-center justify-end gap-3">
+                                                {p.invoicePdfUrl ? (
+                                                    <a href={p.invoicePdfUrl} target="_blank" rel="noopener" className="text-indigo-500 hover:underline">{t("download")}</a>
+                                                ) : (
+                                                    <span className="text-neutral-400">—</span>
+                                                )}
+                                                {isSuperAdmin && p.status === "succeeded" && (
+                                                    <button
+                                                        onClick={() => handleRefund(p.id, p.amountCents, p.currency)}
+                                                        className="text-xs px-2 py-0.5 rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-900"
+                                                    >
+                                                        {t("refund")}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

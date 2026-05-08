@@ -214,6 +214,32 @@ export class MercadoPagoAdapter implements IPaymentProvider {
         });
     }
 
+    async refundPayment(providerPaymentId: string, amountCents?: number): Promise<void> {
+        try {
+            if (amountCents == null) {
+                // Full refund — MP SDK accepts payment_id string
+                await this.mpConfig.paymentRefund.create({
+                    payment_id: providerPaymentId,
+                });
+            } else {
+                // Partial refund — MP expects amount in major units (decimal)
+                const amount = amountCents / 100;
+                await this.mpConfig.paymentRefund.create({
+                    payment_id: providerPaymentId,
+                    body: { amount } as any,
+                });
+            }
+            this.logger.log(`Refunded MP payment ${providerPaymentId} (amountCents=${amountCents ?? 'full'})`);
+        } catch (err: any) {
+            this.logger.error(`MP refund failed for payment ${providerPaymentId}: ${err.message}`);
+            throw new BadRequestException({
+                error: 'mp_refund_failed',
+                message: err.message,
+                providerPaymentId,
+            });
+        }
+    }
+
     async changeSubscriptionPlan(providerSubscriptionId: string, newProviderPlanId: string): Promise<ProviderSubscription> {
         // MP has no native plan change with proration. Try the simple PUT
         // updating `preapproval_plan_id` — works on some accounts. If MP

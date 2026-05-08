@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { MercadoPagoConfig, PreApproval, PreApprovalPlan, Payment } from 'mercadopago';
+import { MercadoPagoConfig, PreApproval, PreApprovalPlan, Payment, PaymentRefund } from 'mercadopago';
 
 /**
  * Thin wrapper around the MercadoPago SDK's MercadoPagoConfig that exposes
@@ -19,6 +19,7 @@ export class MercadoPagoConfigService implements OnModuleInit {
     private _preApproval!: PreApproval;
     private _preApprovalPlan!: PreApprovalPlan;
     private _payment!: Payment;
+    private _paymentRefund!: PaymentRefund;
     private _webhookSecret: string | undefined;
 
     onModuleInit() {
@@ -46,6 +47,7 @@ export class MercadoPagoConfigService implements OnModuleInit {
         this._preApproval = new PreApproval(this.config);
         this._preApprovalPlan = new PreApprovalPlan(this.config);
         this._payment = new Payment(this.config);
+        this._paymentRefund = new PaymentRefund(this.config);
 
         this.logger.log(`MercadoPago SDK initialised in ${this.environment()} mode`);
         if (!this._webhookSecret) {
@@ -84,6 +86,11 @@ export class MercadoPagoConfigService implements OnModuleInit {
     get payment(): Payment {
         this.requireConfigured();
         return this._payment;
+    }
+
+    get paymentRefund(): PaymentRefund {
+        this.requireConfigured();
+        return this._paymentRefund;
     }
 
     /** Used by verifyWebhookSignature in Sprint 2.5. */

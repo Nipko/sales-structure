@@ -314,6 +314,57 @@ model BillingPayment {
   @@schema("public")
 }
 
+// ---- Billing Coupons ----
+// Promo codes that apply at trial start or upgrade. Three types:
+//   percent_off: percentDiscount (1-100) applies to N billing cycles (or forever)
+//   amount_off : amountOffCents reduced from each charge for N cycles
+//   free_months: extends the free trial by N months (no charge during the gift period)
+// Redemption tracking is via BillingCouponRedemption — a tenant can redeem each
+// code once. maxRedemptions caps total platform-wide usage; null = unlimited.
+model BillingCoupon {
+  id                String   @id @default(uuid())
+  code              String   @unique                                // user-facing code, uppercase normalized
+  description       String?
+  type              String                                          // percent_off | amount_off | free_months
+  percentDiscount   Int?     @map("percent_discount")               // 1-100 when type=percent_off
+  amountOffCents    Int?     @map("amount_off_cents")               // when type=amount_off
+  freeMonths        Int?     @map("free_months")                    // when type=free_months
+  durationCycles    Int?     @map("duration_cycles")                // for percent_off / amount_off — null = forever
+  appliesToPlanIds  String[] @default([]) @map("applies_to_plan_ids")  // empty = any plan
+  maxRedemptions    Int?     @map("max_redemptions")                // null = unlimited
+  redemptionCount   Int      @default(0) @map("redemption_count")
+  expiresAt         DateTime? @map("expires_at")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdByUserId   String?  @map("created_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  redemptions       BillingCouponRedemption[]
+
+  @@index([isActive, expiresAt])
+  @@map("billing_coupons")
+  @@schema("public")
+}
+
+// ---- Coupon Redemptions ----
+// One row per tenant×coupon. Prevents reuse and lets us audit who redeemed what.
+model BillingCouponRedemption {
+  id                String   @id @default(uuid())
+  couponId          String   @map("coupon_id")
+  tenantId          String   @map("tenant_id")
+  subscriptionId    String?  @map("subscription_id")
+  redeemedAt        DateTime @default(now()) @map("redeemed_at")
+  cyclesRemaining   Int?     @map("cycles_remaining")               // counts down on each charge for percent/amount
+  metadata          Json     @default("{}")
+
+  coupon            BillingCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, tenantId])
+  @@index([tenantId])
+  @@map("billing_coupon_redemptions")
+  @@schema("public")
+}
+
 // ============================================
 // FINANCIALS — Platform-level SaaS metrics
 // ============================================

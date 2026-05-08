@@ -106,6 +106,14 @@ export default function BillingPage() {
     const [loading, setLoading] = useState(true);
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [plans, setPlans] = useState<Plan[]>([]);
+    const [usage, setUsage] = useState<{
+        used: number;
+        limit: number | null;
+        remaining: number | null;
+        percent: number;
+        monthKey: string;
+        plan: string;
+    } | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -126,8 +134,12 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
-            const plansRes = await api.getBillingPlans(country || undefined);
+            const [plansRes, usageRes] = await Promise.all([
+                api.getBillingPlans(country || undefined),
+                api.getBillingUsage(activeTenantId),
+            ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
+            if (usageRes?.success) setUsage(((usageRes.data as any)?.aiMessages) ?? null);
         } catch (err: any) {
             setError(err?.message || t("loadError"));
         } finally {
@@ -473,6 +485,72 @@ export default function BillingPage() {
                 <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 p-6 text-sm text-indigo-800 dark:text-indigo-300">
                     <p className="font-medium">{t("noSubscription")}</p>
                     <p className="mt-1 text-indigo-700 dark:text-indigo-400">{t("noSubscriptionHint")}</p>
+                </section>
+            )}
+
+            {/* Usage this month */}
+            {usage && (
+                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                                {t("usageTitle")}
+                            </h2>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                {t("usageHint")}
+                            </p>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+                            {usage.monthKey}
+                        </span>
+                    </div>
+
+                    <div className="flex items-end justify-between gap-3 mb-2">
+                        <div>
+                            <span className="text-3xl font-bold tabular text-neutral-900 dark:text-neutral-100">
+                                {usage.used.toLocaleString()}
+                            </span>
+                            <span className="text-sm text-neutral-500 ml-2">
+                                {usage.limit !== null
+                                    ? `/ ${usage.limit.toLocaleString()} ${t("usageMessages")}`
+                                    : t("usageUnlimited")}
+                            </span>
+                        </div>
+                        {usage.limit !== null && (
+                            <span
+                                className={`text-xs font-bold px-2 py-1 rounded-full ${
+                                    usage.percent >= 90
+                                        ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                        : usage.percent >= 70
+                                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                }`}
+                            >
+                                {usage.percent}%
+                            </span>
+                        )}
+                    </div>
+
+                    {usage.limit !== null && (
+                        <>
+                            <div className="h-2 w-full bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all ${
+                                        usage.percent >= 90 ? "bg-red-500"
+                                            : usage.percent >= 70 ? "bg-amber-500"
+                                                : "bg-emerald-500"
+                                    }`}
+                                    style={{ width: `${Math.min(usage.percent, 100)}%` }}
+                                />
+                            </div>
+                            {usage.percent >= 90 && (
+                                <p className="text-xs text-red-600 dark:text-red-400 mt-3 flex items-start gap-1.5">
+                                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                                    <span>{t("usageNearLimit")}</span>
+                                </p>
+                            )}
+                        </>
+                    )}
                 </section>
             )}
 

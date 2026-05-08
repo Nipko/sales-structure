@@ -739,6 +739,7 @@ export const api = {
         apiPost(`/billing/${tenantId}/subscription/resume`, {}),
     syncBillingSubscription: (tenantId: string) =>
         apiPost(`/billing/${tenantId}/subscription/sync`, {}),
+    getBillingUsage: (tenantId: string) => apiGet(`/billing/${tenantId}/usage`),
 
     // --- Billing admin (super_admin only) ---
     refundBillingPayment: (paymentId: string, data?: { amountCents?: number; reason?: string }) =>

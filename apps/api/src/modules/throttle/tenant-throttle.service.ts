@@ -258,6 +258,82 @@ export class TenantThrottleService {
         }
     }
 
+    // ── AI message monthly quota ───────────────────────────────────
+    //
+    // Plans cap monthly AI message volume (BillingPlan.maxAiMessages):
+    //   starter    →   5,000/mes
+    //   pro        →  25,000/mes
+    //   enterprise → 100,000/mes
+    //   custom     → unlimited (-1)
+    //
+    // Counters live in Redis with monthly key `ai_msg:{tenantId}:{YYYY-MM}`
+    // and a 35-day TTL so the next cycle naturally resets. We never block
+    // the conversation pipeline outright when over quota — instead the
+    // caller decides what to do (typically: send a fallback reply and
+    // skip the LLM call).
+
+    /**
+     * Get current AI-message usage for the running calendar month.
+     * Returns { used, limit, remaining, percent, monthKey }.
+     * `limit` is Infinity for unlimited plans; remaining is null in that case.
+     */
+    async getAiMessageUsage(tenantId: string): Promise<{
+        used: number;
+        limit: number;
+        remaining: number | null;
+        percent: number;
+        monthKey: string;
+        plan: string;
+    }> {
+        const monthKey = this.currentMonthKey();
+        const used = Number((await this.redis.get(`ai_msg:${tenantId}:${monthKey}`)) || 0);
+        const plan = await this.getTenantPlan(tenantId);
+        const planRow = await this.prisma.billingPlan.findUnique({
+            where: { slug: plan },
+            select: { maxAiMessages: true },
+        });
+        const rawLimit = planRow?.maxAiMessages ?? 0;
+        const limit = rawLimit === -1 ? Number.POSITIVE_INFINITY : rawLimit;
+        const remaining = Number.isFinite(limit) ? Math.max(0, (limit as number) - used) : null;
+        const percent = Number.isFinite(limit) && (limit as number) > 0
+            ? Math.min(100, Math.round((used / (limit as number)) * 100))
+            : 0;
+        return { used, limit, remaining, percent, monthKey, plan };
+    }
+
+    /**
+     * Increment counter atomically. Sets TTL on first write so old months
+     * vanish without manual cleanup. Returns the new used count.
+     */
+    async incrementAiMessageCount(tenantId: string, by = 1): Promise<number> {
+        const key = `ai_msg:${tenantId}:${this.currentMonthKey()}`;
+        const newCount = await this.redis.incrBy(key, by);
+        // First write of the month — set TTL so Redis evicts the bucket
+        // a few days into the next month (35d covers month-end edge cases).
+        if (newCount === by) {
+            await this.redis.expire(key, 35 * 24 * 60 * 60);
+        }
+        return newCount;
+    }
+
+    /**
+     * Returns true if the tenant has remaining AI-message quota for the
+     * current month. Cheap call — uses the cached counter and plan slug.
+     * Never blocks: it's the caller's job to decide what to do when false.
+     */
+    async hasAiMessageQuota(tenantId: string): Promise<boolean> {
+        const { used, limit } = await this.getAiMessageUsage(tenantId);
+        if (!Number.isFinite(limit)) return true;
+        return used < (limit as number);
+    }
+
+    private currentMonthKey(): string {
+        const now = new Date();
+        const yyyy = now.getUTCFullYear();
+        const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+        return `${yyyy}-${mm}`;
+    }
+
     /**
      * Resolve tenant plan with Redis caching (5 min TTL).
      */

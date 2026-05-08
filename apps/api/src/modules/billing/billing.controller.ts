@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 /**
  * Tenant-facing billing endpoints.
@@ -72,6 +73,7 @@ export class BillingController {
     constructor(
         private readonly prisma: PrismaService,
         private readonly billingService: BillingService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     /**
@@ -282,6 +284,29 @@ export class BillingController {
     async resume(@Param('tenantId') tenantId: string) {
         await this.billingService.resumeSubscription(tenantId);
         return { success: true };
+    }
+
+    /**
+     * Current-month usage for the tenant — drives the dashboard usage card.
+     * Returns AI message count vs plan limit. Cheap call (Redis-backed).
+     */
+    @Get(':tenantId/usage')
+    @UseGuards(AuthGuard('jwt'))
+    async getUsage(@Param('tenantId') tenantId: string) {
+        const aiMessages = await this.throttle.getAiMessageUsage(tenantId);
+        return {
+            success: true,
+            data: {
+                aiMessages: {
+                    used: aiMessages.used,
+                    limit: Number.isFinite(aiMessages.limit) ? aiMessages.limit : null,
+                    remaining: aiMessages.remaining,
+                    percent: aiMessages.percent,
+                    monthKey: aiMessages.monthKey,
+                    plan: aiMessages.plan,
+                },
+            },
+        };
     }
 
     /**

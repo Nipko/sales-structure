@@ -38,6 +38,7 @@ import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -70,6 +71,7 @@ export class ConversationsService {
         private promptAssembler: PromptAssemblerService,
         private languageDetector: LanguageDetectorService,
         private businessInfoService: BusinessInfoService,
+        private throttle: TenantThrottleService,
     ) {}
 
     /**
@@ -259,15 +261,33 @@ export class ConversationsService {
             }
         } catch { /* non-blocking */ }
 
-        // 6. Generate AI Response
+        // 6. AI message quota check (per-tenant, per-month)
+        // Plans cap monthly AI volume (5K starter / 25K pro / 100K enterprise).
+        // Over-quota: skip the LLM call and send a fallback that nudges the
+        // tenant to upgrade. We never break the conversation thread for
+        // customers — just stop calling the LLM.
+        const hasQuota = await this.throttle.hasAiMessageQuota(tenantId);
+        if (!hasQuota) {
+            this.logger.warn(`[Pipeline] Tenant ${tenantId} exhausted AI message quota for the month. Sending fallback.`);
+            const fallback = await this.buildQuotaFallbackMessage(tenantId);
+            if (fallback) {
+                await this.sendResponse(tenantId, fallback, normalizedMsg);
+                await this.saveAiMessage(tenantId, conversation.id, fallback, channelType);
+            }
+            this.eventEmitter.emit('billing.quota.ai_messages_exhausted', { tenantId });
+            return;
+        }
+
+        // 7. Generate AI Response
         this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
-        // Track AI response event
+        // Track AI response event + increment monthly quota counter
         if (response) {
+            this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'message_sent',
                 conversationId: conversation.id, contactId: contact.id,
@@ -1153,4 +1173,25 @@ export class ConversationsService {
         return schema;
     }
 
+    /**
+     * Static fallback when the tenant has exhausted their monthly AI quota.
+     * We do NOT call the LLM — that's the point of the cap. We pick a polite
+     * message in the tenant's preferred language so customers aren't left
+     * staring at a black hole. Translation strings are intentionally plain
+     * (no variables) to avoid pulling i18n into a hot path.
+     */
+    private async buildQuotaFallbackMessage(tenantId: string): Promise<string> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { language: true },
+        }).catch(() => null);
+        const lang = (tenant?.language || 'es').slice(0, 2).toLowerCase();
+        const messages: Record<string, string> = {
+            es: 'Gracias por tu mensaje. En breve un agente humano te atenderá.',
+            en: 'Thanks for your message. A human agent will reach out shortly.',
+            pt: 'Obrigado pela sua mensagem. Um atendente humano entrará em contato em breve.',
+            fr: 'Merci pour votre message. Un agent humain vous répondra sous peu.',
+        };
+        return messages[lang] || messages.es;
+    }
 }

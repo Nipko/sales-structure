@@ -3,7 +3,7 @@
 -- pending_plan_change_at <= now().
 
 ALTER TABLE "billing_subscriptions"
-    ADD COLUMN IF NOT EXISTS "pending_plan_id" TEXT,
+    ADD COLUMN IF NOT EXISTS "pending_plan_id" UUID,
     ADD COLUMN IF NOT EXISTS "pending_plan_change_at" TIMESTAMP(3);
 
 DO $$

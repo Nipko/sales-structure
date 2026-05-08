@@ -12,6 +12,7 @@ import {
     PieChart as PieIcon, RefreshCw, Loader2, AlertCircle, Building2,
     LayoutGrid, BarChart3, Sparkles, ChevronRight,
 } from "lucide-react";
+import { SkeletonKPIs, SkeletonCards } from "@/components/ui/skeleton-loader";
 
 interface IndustryRow {
     industry: string;
@@ -150,8 +151,9 @@ export default function VerticalAnalyticsPage() {
             />
 
             {loading && (
-                <div className="flex items-center justify-center py-24">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                <div className="space-y-6">
+                    <SkeletonKPIs count={6} />
+                    <SkeletonCards count={6} />
                 </div>
             )}
 

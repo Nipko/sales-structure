@@ -9,6 +9,7 @@ import Link from "next/link";
 import {
     Building2, Plus, MapPin, BedDouble, Bath, Square, X, Tag,
 } from "lucide-react";
+import { SkeletonCards } from "@/components/ui/skeleton-loader";
 
 const LISTINGS_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 function resolveMediaUrl(url: string): string {
@@ -71,8 +72,8 @@ export default function ListingsPage() {
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-[400px]">
-                <div className="w-10 h-10 border-[3px] border-neutral-200 dark:border-neutral-700 border-t-indigo-500 rounded-full animate-spin" />
+            <div className="p-4 md:p-6 max-w-7xl mx-auto">
+                <SkeletonCards count={6} />
             </div>
         );
     }

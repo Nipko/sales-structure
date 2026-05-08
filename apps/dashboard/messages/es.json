@@ -2264,7 +2264,16 @@
       "passwordPlaceholder": "Mínimo 6 caracteres",
       "role": "Rol",
       "tenantIdLabel": "ID de empresa (opcional)",
-      "tenantIdPlaceholder": "UUID de la empresa"
+      "tenantIdPlaceholder": "UUID de la empresa",
+      "tenantIdHint": "Solo super_admin puede invitar a otra empresa. Dejá vacío para invitar a la actual.",
+      "inviteTitle": "Invitar a un miembro",
+      "inviteSubtitle": "Le enviaremos un correo con un enlace seguro para crear su cuenta.",
+      "inviteButton": "Enviar invitación",
+      "inviteSuccess": "Invitación enviada",
+      "copyLink": "Copiar enlace",
+      "linkCopied": "Enlace copiado",
+      "skillTagsLabel": "Habilidades (opcional)",
+      "skillTagsHint": "Solo aplican a agentes y supervisores. Separa con Enter."
     },
     "toast": {
       "created": "Usuario creado correctamente",
@@ -2274,7 +2283,41 @@
     "addSkill": "Agregar habilidad",
     "skillPlaceholder": "Escribe una habilidad...",
     "noSkills": "Sin habilidades asignadas",
-    "suggestedSkills": "Sugerencias"
+    "suggestedSkills": "Sugerencias",
+    "tabs": {
+      "members": "Miembros",
+      "invitations": "Invitaciones"
+    },
+    "invitations": {
+      "title": "Invitaciones",
+      "empty": "Aún no enviaste invitaciones. Hacé clic en \"Invitar\" para sumar a tu equipo.",
+      "headers": {
+        "email": "Email",
+        "role": "Rol",
+        "status": "Estado",
+        "sent": "Enviada",
+        "expires": "Expira",
+        "actions": "Acciones"
+      },
+      "status": {
+        "pending": "Pendiente",
+        "accepted": "Aceptada",
+        "revoked": "Cancelada",
+        "expired": "Expirada"
+      },
+      "actions": {
+        "resend": "Reenviar",
+        "revoke": "Cancelar",
+        "copyLink": "Copiar enlace"
+      },
+      "toast": {
+        "sent": "Invitación enviada por email",
+        "resent": "Invitación reenviada",
+        "revoked": "Invitación cancelada",
+        "linkCopied": "Enlace copiado"
+      },
+      "confirmRevoke": "¿Cancelar esta invitación? El enlace dejará de funcionar."
+    }
   },
   "orders": {
     "title": "Pedidos",
@@ -4644,5 +4687,41 @@
     "welcomeLabel": "Mensaje de bienvenida",
     "welcomePlaceholder": "¡Hola! Reservá tu cita con nosotros en pocos pasos.",
     "brandColorLabel": "Color de marca"
+  },
+  "acceptInvite": {
+    "greeting": "¡Te invitaron a {tenantName}!",
+    "invitedAs": "Te uniste como",
+    "emailLabel": "Email",
+    "firstNameLabel": "Nombre",
+    "lastNameLabel": "Apellido",
+    "firstNamePlaceholder": "Tu nombre",
+    "lastNamePlaceholder": "Tu apellido",
+    "passwordLabel": "Contraseña",
+    "passwordPlaceholder": "Mínimo 8 caracteres",
+    "passwordHint": "Crearemos tu cuenta con esta contraseña.",
+    "acceptButton": "Aceptar y crear cuenta",
+    "goToLogin": "Ir al login",
+    "firstNameRequired": "El nombre es obligatorio",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres",
+    "acceptFailed": "No pudimos completar la invitación",
+    "expiresOn": "Esta invitación expira el {date}",
+    "reason": {
+      "not_found": {
+        "title": "Invitación no encontrada",
+        "description": "El enlace que usaste no existe o fue eliminado. Pedile al administrador que te envíe una nueva."
+      },
+      "accepted": {
+        "title": "Esta invitación ya fue aceptada",
+        "description": "Ya tenés una cuenta. Iniciá sesión con tus credenciales."
+      },
+      "revoked": {
+        "title": "Invitación cancelada",
+        "description": "El administrador canceló esta invitación. Pedile que te envíe una nueva si todavía deberías unirte."
+      },
+      "expired": {
+        "title": "Invitación expirada",
+        "description": "Las invitaciones duran 14 días. Pedile al administrador que te envíe una nueva."
+      }
+    }
   }
 }

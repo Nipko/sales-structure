@@ -3,10 +3,14 @@
  * Based on respond.io design language: clean, white, centered, with logo header
  */
 
-const LOGO_URL = 'https://parallext.com/logo.png';
-const BRAND_COLOR = '#6c5ce7';
-const SITE_URL = 'https://parallext.com';
-const SUPPORT_URL = 'https://parallext.com/support';
+// Production-served logo. SVG renders fine in Apple Mail, modern Gmail web,
+// and Outlook 2016+. For broader support, deploy a PNG version to the same
+// path (parallly-logo.png) — this URL falls back gracefully because the
+// alt text "Parallly" still shows.
+const LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://parallly-chat.cloud/parallly-logo.svg';
+const BRAND_COLOR = '#3897f0';
+const SITE_URL = 'https://parallly-chat.cloud';
+const SUPPORT_URL = 'mailto:it.executive@parallext.com';
 
 /**
  * Wraps content in the standard Parallly email layout
@@ -43,7 +47,7 @@ export function emailLayout(content: string, footerExtra?: string): string {
             <td style="padding-top:24px;text-align:center;">
               ${footerExtra || ''}
               <p style="margin:12px 0 0;font-size:12px;color:#999;">
-                &copy; ${new Date().getFullYear()} <a href="${SITE_URL}" style="color:#999;text-decoration:underline;">parallext.com</a>
+                &copy; ${new Date().getFullYear()} <a href="${SITE_URL}" style="color:#999;text-decoration:underline;">Parallly</a>
               </p>
             </td>
           </tr>

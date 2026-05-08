@@ -54,6 +54,7 @@ model Tenant {
   users             User[]
   channelAccounts   ChannelAccount[]
   subscription      BillingSubscription?
+  invitations       TenantInvitation[]
 
   @@map("tenants")
   @@schema("public")
@@ -131,6 +132,34 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([userId])
   @@map("audit_logs")
+  @@schema("public")
+}
+
+// ---- Tenant Invitations ----
+// Email-based invitation flow: admin creates a token, an email goes out
+// with /accept-invite/{token}, and the recipient sets their own password
+// (or signs in via Google) to activate. Tokens are single-use, expire in
+// 14 days, and can be revoked or resent before acceptance.
+model TenantInvitation {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  email           String                                          // lowercased, normalized
+  role            String                                          // tenant_admin | tenant_supervisor | tenant_agent
+  skillTags       String[]  @default([]) @map("skill_tags")
+  token           String    @unique                               // crypto-random, used in the magic link
+  invitedByUserId String?   @map("invited_by_user_id")
+  expiresAt       DateTime  @map("expires_at")
+  acceptedAt      DateTime? @map("accepted_at")
+  acceptedUserId  String?   @map("accepted_user_id")
+  revokedAt       DateTime? @map("revoked_at")
+  resentAt        DateTime? @map("resent_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, acceptedAt])
+  @@index([email])
+  @@map("tenant_invitations")
   @@schema("public")
 }
 

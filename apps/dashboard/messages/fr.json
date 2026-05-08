@@ -2263,8 +2263,17 @@
       "password": "Mot de passe",
       "passwordPlaceholder": "Minimum 6 caractères",
       "role": "Rôle",
-      "tenantIdLabel": "ID entreprise (optionnel)",
-      "tenantIdPlaceholder": "UUID de l'entreprise"
+      "tenantIdLabel": "ID de l'entreprise (optionnel)",
+      "tenantIdPlaceholder": "UUID de l'entreprise",
+      "tenantIdHint": "Seul le super_admin peut inviter dans une autre entreprise. Laissez vide pour l'actuelle.",
+      "inviteTitle": "Inviter un coéquipier",
+      "inviteSubtitle": "Nous lui enverrons un email avec un lien sécurisé pour créer son compte.",
+      "inviteButton": "Envoyer l'invitation",
+      "inviteSuccess": "Invitation envoyée",
+      "copyLink": "Copier le lien",
+      "linkCopied": "Lien copié",
+      "skillTagsLabel": "Compétences (optionnel)",
+      "skillTagsHint": "Ne s'appliquent qu'aux agents et superviseurs. Appuyez sur Entrée pour ajouter."
     },
     "toast": {
       "created": "Utilisateur créé avec succès",
@@ -2274,7 +2283,41 @@
     "addSkill": "Ajouter une compétence",
     "skillPlaceholder": "Tapez une compétence...",
     "noSkills": "Aucune compétence attribuée",
-    "suggestedSkills": "Suggestions"
+    "suggestedSkills": "Suggestions",
+    "tabs": {
+      "members": "Membres",
+      "invitations": "Invitations"
+    },
+    "invitations": {
+      "title": "Invitations",
+      "empty": "Aucune invitation pour l'instant. Cliquez sur \"Inviter\" pour ajouter des membres.",
+      "headers": {
+        "email": "Email",
+        "role": "Rôle",
+        "status": "Statut",
+        "sent": "Envoyée",
+        "expires": "Expire",
+        "actions": "Actions"
+      },
+      "status": {
+        "pending": "En attente",
+        "accepted": "Acceptée",
+        "revoked": "Annulée",
+        "expired": "Expirée"
+      },
+      "actions": {
+        "resend": "Renvoyer",
+        "revoke": "Annuler",
+        "copyLink": "Copier le lien"
+      },
+      "toast": {
+        "sent": "Invitation envoyée par email",
+        "resent": "Invitation renvoyée",
+        "revoked": "Invitation annulée",
+        "linkCopied": "Lien copié"
+      },
+      "confirmRevoke": "Annuler cette invitation ? Le lien cessera de fonctionner."
+    }
   },
   "orders": {
     "title": "Commandes",
@@ -4644,5 +4687,41 @@
     "welcomeLabel": "Message de bienvenue",
     "welcomePlaceholder": "Bonjour ! Réservez votre rendez-vous en quelques étapes.",
     "brandColorLabel": "Couleur de marque"
+  },
+  "acceptInvite": {
+    "greeting": "Vous avez été invité à {tenantName} !",
+    "invitedAs": "Rejoignez en tant que",
+    "emailLabel": "Email",
+    "firstNameLabel": "Prénom",
+    "lastNameLabel": "Nom",
+    "firstNamePlaceholder": "Votre prénom",
+    "lastNamePlaceholder": "Votre nom",
+    "passwordLabel": "Mot de passe",
+    "passwordPlaceholder": "Au moins 8 caractères",
+    "passwordHint": "Nous créerons votre compte avec ce mot de passe.",
+    "acceptButton": "Accepter et créer le compte",
+    "goToLogin": "Aller à la connexion",
+    "firstNameRequired": "Le prénom est requis",
+    "passwordTooShort": "Le mot de passe doit avoir au moins 8 caractères",
+    "acceptFailed": "Nous n'avons pas pu compléter l'invitation",
+    "expiresOn": "Cette invitation expire le {date}",
+    "reason": {
+      "not_found": {
+        "title": "Invitation introuvable",
+        "description": "Le lien que vous avez utilisé n'existe pas ou a été supprimé. Demandez à l'admin un nouveau."
+      },
+      "accepted": {
+        "title": "Cette invitation a déjà été acceptée",
+        "description": "Vous avez déjà un compte. Connectez-vous avec vos identifiants."
+      },
+      "revoked": {
+        "title": "Invitation annulée",
+        "description": "L'admin a annulé cette invitation. Demandez-en une nouvelle si vous devez encore rejoindre."
+      },
+      "expired": {
+        "title": "Invitation expirée",
+        "description": "Les invitations durent 14 jours. Demandez à l'admin une nouvelle."
+      }
+    }
   }
 }

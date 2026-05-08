@@ -749,6 +749,18 @@ export const api = {
     updatePublicBookingConfig: (tenantId: string, data: { enabled?: boolean; welcomeText?: string; brandColor?: string }) =>
         apiPost(`/appointments/${tenantId}/public-booking-config`, data),
 
+    // ─── Invitations ───
+    listInvitations: (tenantId: string) => apiGet(`/tenants/${tenantId}/invitations`),
+    createInvitation: (tenantId: string, data: { email: string; role: string; skillTags?: string[] }) =>
+        apiPost(`/tenants/${tenantId}/invitations`, data),
+    resendInvitation: (tenantId: string, invitationId: string) =>
+        apiPost(`/tenants/${tenantId}/invitations/${invitationId}/resend`, {}),
+    revokeInvitation: (tenantId: string, invitationId: string) =>
+        apiDelete(`/tenants/${tenantId}/invitations/${invitationId}`),
+    getInvitationByToken: (token: string) => apiGet(`/invitations/by-token/${token}`),
+    acceptInvitation: (token: string, data: { password: string; firstName: string; lastName?: string }) =>
+        apiPost(`/invitations/by-token/${token}/accept`, data),
+
     // --- Billing admin (super_admin only) ---
     refundBillingPayment: (paymentId: string, data?: { amountCents?: number; reason?: string }) =>
         apiPost(`/billing-admin/payments/${paymentId}/refund`, data || {}),

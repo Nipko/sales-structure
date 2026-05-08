@@ -2264,7 +2264,16 @@
       "passwordPlaceholder": "Mínimo 6 caracteres",
       "role": "Papel",
       "tenantIdLabel": "ID da empresa (opcional)",
-      "tenantIdPlaceholder": "UUID da empresa"
+      "tenantIdPlaceholder": "UUID da empresa",
+      "tenantIdHint": "Apenas super_admin pode convidar para outra empresa. Deixe vazio para a atual.",
+      "inviteTitle": "Convidar um colega",
+      "inviteSubtitle": "Enviaremos um email com um link seguro para criar a conta.",
+      "inviteButton": "Enviar convite",
+      "inviteSuccess": "Convite enviado",
+      "copyLink": "Copiar link",
+      "linkCopied": "Link copiado",
+      "skillTagsLabel": "Habilidades (opcional)",
+      "skillTagsHint": "Aplicam-se apenas a agentes e supervisores. Pressione Enter para adicionar."
     },
     "toast": {
       "created": "Usuário criado com sucesso",
@@ -2274,7 +2283,41 @@
     "addSkill": "Adicionar habilidade",
     "skillPlaceholder": "Digite uma habilidade...",
     "noSkills": "Sem habilidades atribuídas",
-    "suggestedSkills": "Sugestões"
+    "suggestedSkills": "Sugestões",
+    "tabs": {
+      "members": "Membros",
+      "invitations": "Convites"
+    },
+    "invitations": {
+      "title": "Convites",
+      "empty": "Ainda não há convites. Clique em \"Convidar\" para adicionar membros.",
+      "headers": {
+        "email": "Email",
+        "role": "Cargo",
+        "status": "Status",
+        "sent": "Enviado",
+        "expires": "Expira",
+        "actions": "Ações"
+      },
+      "status": {
+        "pending": "Pendente",
+        "accepted": "Aceito",
+        "revoked": "Cancelado",
+        "expired": "Expirado"
+      },
+      "actions": {
+        "resend": "Reenviar",
+        "revoke": "Cancelar",
+        "copyLink": "Copiar link"
+      },
+      "toast": {
+        "sent": "Convite enviado por email",
+        "resent": "Convite reenviado",
+        "revoked": "Convite cancelado",
+        "linkCopied": "Link copiado"
+      },
+      "confirmRevoke": "Cancelar este convite? O link deixará de funcionar."
+    }
   },
   "orders": {
     "title": "Pedidos",
@@ -4644,5 +4687,41 @@
     "welcomeLabel": "Mensagem de boas-vindas",
     "welcomePlaceholder": "Olá! Agende sua consulta em poucos passos.",
     "brandColorLabel": "Cor da marca"
+  },
+  "acceptInvite": {
+    "greeting": "Você foi convidado para {tenantName}!",
+    "invitedAs": "Entrando como",
+    "emailLabel": "Email",
+    "firstNameLabel": "Nome",
+    "lastNameLabel": "Sobrenome",
+    "firstNamePlaceholder": "Seu nome",
+    "lastNamePlaceholder": "Seu sobrenome",
+    "passwordLabel": "Senha",
+    "passwordPlaceholder": "Mínimo 8 caracteres",
+    "passwordHint": "Criaremos sua conta com esta senha.",
+    "acceptButton": "Aceitar e criar conta",
+    "goToLogin": "Ir para login",
+    "firstNameRequired": "Nome é obrigatório",
+    "passwordTooShort": "A senha deve ter no mínimo 8 caracteres",
+    "acceptFailed": "Não conseguimos completar o convite",
+    "expiresOn": "Este convite expira em {date}",
+    "reason": {
+      "not_found": {
+        "title": "Convite não encontrado",
+        "description": "O link que você usou não existe ou foi removido. Peça ao admin para enviar um novo."
+      },
+      "accepted": {
+        "title": "Este convite já foi aceito",
+        "description": "Você já tem uma conta. Entre com suas credenciais."
+      },
+      "revoked": {
+        "title": "Convite cancelado",
+        "description": "O admin cancelou este convite. Peça um novo se você ainda deve se juntar."
+      },
+      "expired": {
+        "title": "Convite expirado",
+        "description": "Os convites duram 14 dias. Peça ao admin um novo."
+      }
+    }
   }
 }

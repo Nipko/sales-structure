@@ -1833,7 +1833,7 @@ export default function LandingPage() {
               {t("cta.button")} {Icon.arrow()}
             </a>
             <a
-              href="mailto:ventas@parallly-chat.cloud"
+              href="mailto:it.executive@parallext.com"
               className="inline-flex items-center justify-center px-8 py-4 border border-border-light hover:border-accent text-text-primary font-medium rounded-xl text-base transition-colors cursor-pointer"
             >
               {t("cta.secondaryButton")}
@@ -1878,8 +1878,8 @@ export default function LandingPage() {
             <ul className="space-y-2 text-sm text-text-muted">
               <li><a href="#" className="hover:text-text-secondary transition-colors">{t("footer.about")}</a></li>
               <li><a href="#" className="hover:text-text-secondary transition-colors">{t("footer.blog")}</a></li>
-              <li><a href="mailto:soporte@parallly-chat.cloud" className="hover:text-text-secondary transition-colors">{t("footer.support")}</a></li>
-              <li><a href="mailto:ventas@parallly-chat.cloud" className="hover:text-text-secondary transition-colors">{t("footer.contact")}</a></li>
+              <li><a href="mailto:it.executive@parallext.com" className="hover:text-text-secondary transition-colors">{t("footer.support")}</a></li>
+              <li><a href="mailto:it.executive@parallext.com" className="hover:text-text-secondary transition-colors">{t("footer.contact")}</a></li>
             </ul>
           </div>
 

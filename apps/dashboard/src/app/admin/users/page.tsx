@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,16 +10,39 @@ import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import {
-    Users, UserPlus, Shield, Mail, Phone, Building2, Search, MoreVertical, ChevronDown, Eye, EyeOff, Plus, X, Tag,
+    Users, UserPlus, Shield, Search, MoreVertical, Plus, X, Tag,
+    Mail, Send, RefreshCw, XCircle, Copy, Clock, CheckCircle2, AlertCircle,
 } from "lucide-react";
 
 const roleStyle: Record<string, { color: string; icon: string }> = {
     super_admin: { color: "#e74c3c", icon: "🛡️" },
     tenant_admin: { color: "#9b59b6", icon: "👑" },
+    tenant_supervisor: { color: "#f39c12", icon: "⭐" },
     tenant_agent: { color: "#3498db", icon: "🎧" },
 };
 
 const SUGGESTED_SKILLS = ['ventas', 'soporte', 'técnico', 'facturación', 'quejas', 'general', 'vip', 'idiomas'];
+
+interface Invitation {
+    id: string;
+    email: string;
+    role: string;
+    skillTags: string[];
+    expiresAt: string;
+    acceptedAt: string | null;
+    revokedAt: string | null;
+    resentAt: string | null;
+    createdAt: string;
+}
+
+type InvStatus = "pending" | "accepted" | "revoked" | "expired";
+
+function deriveStatus(inv: Invitation): InvStatus {
+    if (inv.acceptedAt) return "accepted";
+    if (inv.revokedAt) return "revoked";
+    if (new Date(inv.expiresAt) < new Date()) return "expired";
+    return "pending";
+}
 
 function SkillTagsEditor({ userId, skills, onSave, t }: { userId: string; skills: string[]; onSave: (userId: string, tags: string[]) => void; t: any }) {
     const [editing, setEditing] = useState(false);
@@ -58,7 +81,6 @@ function SkillTagsEditor({ userId, skills, onSave, t }: { userId: string; skills
 
     async function handleSave() {
         setEditing(false);
-        // Only save if tags actually changed
         const changed = tags.length !== skills.length || tags.some((t, i) => t !== skills[i]);
         if (changed) {
             setSaving(true);
@@ -146,39 +168,77 @@ export default function UsersPage() {
     const tRoles = useTranslations("roles");
     const tHelp = useTranslations("help");
     const { user } = useAuth();
+    const { activeTenantId } = useTenant();
 
     const roleLabel = (role: string): string => {
         switch (role) {
             case "super_admin": return tRoles("superAdmin");
             case "tenant_admin": return tRoles("admin");
+            case "tenant_supervisor": return tRoles("supervisor");
             case "tenant_agent": return tRoles("agent");
             case "tenant_viewer": return tRoles("viewer");
             default: return role;
         }
     };
-    const { activeTenantId } = useTenant();
+
+    const [tab, setTab] = useState<"members" | "invitations">("members");
     const [users, setUsers] = useState<any[]>([]);
+    const [invitations, setInvitations] = useState<Invitation[]>([]);
     const [isLive, setIsLive] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
-    const [showNewUser, setShowNewUser] = useState(false);
-    const [newUser, setNewUser] = useState({ email: "", password: "", firstName: "", lastName: "", role: "tenant_agent", tenantId: "" });
-    const [showPassword, setShowPassword] = useState(false);
+    const [showInvite, setShowInvite] = useState(false);
+    const [inviteForm, setInviteForm] = useState<{ email: string; role: string; skillTags: string[]; tenantId: string }>({
+        email: "", role: "tenant_agent", skillTags: [], tenantId: "",
+    });
+    const [inviteSkillInput, setInviteSkillInput] = useState("");
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
+    const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
+
+    const showToast = useCallback((msg: string, ms = 2200) => {
+        setToast(msg);
+        setTimeout(() => setToast(null), ms);
+    }, []);
+
+    const targetTenantId = user?.role === 'super_admin'
+        ? (inviteForm.tenantId || activeTenantId || undefined)
+        : (activeTenantId || undefined);
+
+    async function loadUsers() {
+        try {
+            const result = await api.getUsers();
+            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                setUsers(result.data.map((u: any) => ({
+                    id: u.id,
+                    email: u.email || '',
+                    firstName: u.firstName || u.first_name || '',
+                    lastName: u.lastName || u.last_name || '',
+                    role: u.role || 'tenant_agent',
+                    tenantName: u.tenantName || u.tenant_name || '—',
+                    isActive: u.isActive ?? u.is_active ?? true,
+                    createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—',
+                    skillTags: u.skillTags || u.skill_tags || [],
+                })));
+                setIsLive(true);
+            }
+        } catch (err) { console.error('Failed to load users:', err); }
+    }
+
+    async function loadInvitations() {
+        if (!activeTenantId) return;
+        try {
+            const result = await api.listInvitations(activeTenantId);
+            if (result.success && Array.isArray(result.data)) {
+                setInvitations(result.data as Invitation[]);
+            }
+        } catch (err) { console.error('Failed to load invitations:', err); }
+    }
 
     useEffect(() => {
-        async function load() {
-            try {
-                const result = await api.getUsers();
-                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                    setUsers(result.data.map((u: any) => ({ id: u.id, email: u.email || '', firstName: u.firstName || u.first_name || '', lastName: u.lastName || u.last_name || '', role: u.role || 'tenant_agent', tenantName: u.tenantName || u.tenant_name || '—', isActive: u.isActive ?? u.is_active ?? true, createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—', skillTags: u.skillTags || u.skill_tags || [] })));
-                    setIsLive(true);
-                }
-            } catch (err) { console.error('Failed to load users:', err); }
-        }
-        load();
-    }, []);
+        loadUsers();
+        loadInvitations();
+    }, [activeTenantId]);
 
     const filtered = users.filter(u => {
         const matchSearch = searchQuery ? `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(searchQuery.toLowerCase()) : true;
@@ -186,19 +246,75 @@ export default function UsersPage() {
         return matchSearch && matchRole;
     });
 
-    const stats = { total: users.length, admins: users.filter(u => u.role === "super_admin" || u.role === "tenant_admin").length, agents: users.filter(u => u.role === "tenant_agent").length, active: users.filter(u => u.isActive).length };
+    const stats = {
+        total: users.length,
+        admins: users.filter(u => u.role === "super_admin" || u.role === "tenant_admin").length,
+        agents: users.filter(u => u.role === "tenant_agent").length,
+        active: users.filter(u => u.isActive).length,
+    };
 
-    async function handleCreateUser() {
-        if (!newUser.email || !newUser.password || !newUser.firstName) return;
+    const pendingInvCount = invitations.filter(i => deriveStatus(i) === "pending").length;
+
+    async function handleInvite() {
+        if (!inviteForm.email || !targetTenantId) return;
         setSaving(true);
         try {
-            await api.registerUser({ email: newUser.email, password: newUser.password, firstName: newUser.firstName, lastName: newUser.lastName, role: newUser.role, tenantId: newUser.tenantId || undefined });
-            setUsers(prev => [...prev, { id: `u${Date.now()}`, email: newUser.email, firstName: newUser.firstName, lastName: newUser.lastName, role: newUser.role as any, tenantName: "—", isActive: true, createdAt: new Date().toISOString().split("T")[0], skillTags: [] }]);
-            setShowNewUser(false);
-            setNewUser({ email: "", password: "", firstName: "", lastName: "", role: "tenant_agent", tenantId: "" });
-            setToast(t("toast.created")); setTimeout(() => setToast(null), 2000);
-        } catch { setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000); }
-        finally { setSaving(false); }
+            const result = await api.createInvitation(targetTenantId, {
+                email: inviteForm.email.trim().toLowerCase(),
+                role: inviteForm.role,
+                skillTags: inviteForm.skillTags,
+            });
+            if (!(result as any)?.success) {
+                const errMsg = (result as any)?.error || (result as any)?.message;
+                if (errMsg) {
+                    showToast(errMsg);
+                    setSaving(false);
+                    return;
+                }
+                throw new Error('invite_failed');
+            }
+            setShowInvite(false);
+            setInviteForm({ email: "", role: "tenant_agent", skillTags: [], tenantId: "" });
+            setInviteSkillInput("");
+            showToast(t("invitations.toast.sent"));
+            await loadInvitations();
+            setTab("invitations");
+        } catch (err: any) {
+            showToast(err?.message || tc("errorSaving"));
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleResend(inv: Invitation) {
+        if (!activeTenantId) return;
+        setBusyInvitationId(inv.id);
+        try {
+            const result = await api.resendInvitation(activeTenantId, inv.id);
+            if ((result as any)?.success) {
+                showToast(t("invitations.toast.resent"));
+                await loadInvitations();
+            } else {
+                showToast(tc("errorSaving"));
+            }
+        } catch { showToast(tc("errorSaving")); }
+        finally { setBusyInvitationId(null); }
+    }
+
+    async function handleRevoke(inv: Invitation) {
+        if (!activeTenantId) return;
+        if (!confirm(t("invitations.confirmRevoke"))) return;
+        setBusyInvitationId(inv.id);
+        try {
+            const result = await api.revokeInvitation(activeTenantId, inv.id);
+            if ((result as any)?.success) {
+                showToast(t("invitations.toast.revoked"));
+                await loadInvitations();
+            } else {
+                showToast(tc("errorSaving"));
+            }
+        } catch { showToast(tc("errorSaving")); }
+        finally { setBusyInvitationId(null); }
     }
 
     async function handleSaveSkills(userId: string, skillTags: string[]) {
@@ -206,16 +322,27 @@ export default function UsersPage() {
             const result = await api.updateUserSkills(userId, skillTags);
             if (result.success) {
                 setUsers(prev => prev.map(u => u.id === userId ? { ...u, skillTags } : u));
-                setToast(t("toast.skillsSaved")); setTimeout(() => setToast(null), 2000);
+                showToast(t("toast.skillsSaved"));
             } else {
-                setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000);
+                showToast(tc("errorSaving"));
             }
-        } catch {
-            setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2000);
+        } catch { showToast(tc("errorSaving")); }
+    }
+
+    function addInviteSkill(tag: string) {
+        const trimmed = tag.trim().toLowerCase();
+        if (trimmed && !inviteForm.skillTags.includes(trimmed)) {
+            setInviteForm(p => ({ ...p, skillTags: [...p.skillTags, trimmed] }));
         }
+        setInviteSkillInput("");
+    }
+
+    function removeInviteSkill(tag: string) {
+        setInviteForm(p => ({ ...p, skillTags: p.skillTags.filter(t => t !== tag) }));
     }
 
     const isAdmin = user?.role === 'super_admin' || user?.role === 'tenant_admin';
+    const inviteSkillsApplicable = inviteForm.role === 'tenant_agent' || inviteForm.role === 'tenant_supervisor';
 
     return (
         <>
@@ -225,11 +352,11 @@ export default function UsersPage() {
                     subtitle={t('subtitleStats', { total: stats.total, active: stats.active, agents: stats.agents })}
                     icon={Users}
                     badge={<DataSourceBadge isLive={isLive} />}
-                    action={
-                        <button onClick={() => setShowNewUser(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
-                            <UserPlus size={16} /> {tc("create")}
+                    action={isAdmin ? (
+                        <button onClick={() => setShowInvite(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                            <UserPlus size={16} /> {t("modal.inviteButton")}
                         </button>
-                    }
+                    ) : null}
                 />
 
                 <HelpPanel
@@ -259,125 +386,302 @@ export default function UsersPage() {
                     ))}
                 </div>
 
-                <div className="flex gap-3 mb-5">
-                    <div className="relative flex-1 max-w-[340px]">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                        <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
-                    </div>
-                    <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
-                        <option value="all">{t("filter.allRoles")}</option>
-                        <option value="super_admin">{tRoles("superAdmin")}</option>
-                        <option value="tenant_admin">{tRoles("admin")}</option>
-                        <option value="tenant_agent">{tRoles("agent")}</option>
-                    </select>
+                {/* Tabs */}
+                <div className="flex border-b border-border mb-5" role="tablist">
+                    <button
+                        role="tab"
+                        aria-selected={tab === "members"}
+                        onClick={() => setTab("members")}
+                        className={cn(
+                            "px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px cursor-pointer bg-transparent transition-colors",
+                            tab === "members" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                        )}
+                    >
+                        {t("tabs.members")}
+                    </button>
+                    <button
+                        role="tab"
+                        aria-selected={tab === "invitations"}
+                        onClick={() => setTab("invitations")}
+                        className={cn(
+                            "px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px cursor-pointer bg-transparent transition-colors flex items-center gap-2",
+                            tab === "invitations" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                        )}
+                    >
+                        {t("tabs.invitations")}
+                        {pendingInvCount > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                                {pendingInvCount}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
-                <div className="rounded-[14px] border border-border overflow-hidden">
-                    <table className="w-full border-collapse">
-                        <thead>
-                            <tr className="bg-card">
-                                {(["user", "email", "role", "skills", "tenant", "status", "registered"] as const).map(k => (
-                                    <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
-                                        {k === "skills" ? t("skills") : t(`headers.${k}`)}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filtered.map(u => {
-                                const rc = roleStyle[u.role] || roleStyle.tenant_agent;
-                                return (
-                                    <tr key={u.id} className="border-b border-border">
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ background: `linear-gradient(135deg, ${rc.color}, ${rc.color}88)` }}>
-                                                    {u.firstName.charAt(0)}{u.lastName.charAt(0)}
-                                                </div>
-                                                <span className="font-semibold">{u.firstName} {u.lastName}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.email}</td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>{rc.icon} {roleLabel(u.role)}</span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {isAdmin ? (
-                                                <SkillTagsEditor userId={u.id} skills={u.skillTags || []} onSave={handleSaveSkills} t={t} />
-                                            ) : (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {(u.skillTags || []).length === 0 ? (
-                                                        <span className="text-[11px] text-muted-foreground italic">{t("noSkills")}</span>
-                                                    ) : (
-                                                        (u.skillTags || []).map((tag: string) => (
-                                                            <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--bg-tertiary,hsl(var(--muted)))] border border-border text-xs text-foreground">
-                                                                {tag}
-                                                            </span>
-                                                        ))
-                                                    )}
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.tenantName}</td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: u.isActive ? "rgba(46,204,113,0.15)" : "rgba(231,76,60,0.15)", color: u.isActive ? "#2ecc71" : "#e74c3c" }}>
-                                                {u.isActive ?  tc("active") : tc("inactive")}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.createdAt}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {showNewUser && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowNewUser(false)}>
-                    <div onClick={e => e.stopPropagation()} className="w-[460px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
-                        <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
-                            <button onClick={() => setShowNewUser(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 mb-3.5">
-                            <div>
-                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.firstName")}</label>
-                                <input value={newUser.firstName} onChange={e => setNewUser(p => ({ ...p, firstName: e.target.value }))} placeholder={t("modal.firstNamePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                {tab === "members" && (
+                    <>
+                        <div className="flex gap-3 mb-5">
+                            <div className="relative flex-1 max-w-[340px]">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.lastName")}</label>
-                                <input value={newUser.lastName} onChange={e => setNewUser(p => ({ ...p, lastName: e.target.value }))} placeholder={t("modal.lastNamePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
-                            </div>
-                        </div>
-                        <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.email")}</label>
-                            <input value={newUser.email} onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} placeholder={t("modal.emailPlaceholder")} type="email" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
-                        </div>
-                        <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.password")}</label>
-                            <div className="relative">
-                                <input value={newUser.password} onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} placeholder={t("modal.passwordPlaceholder")} type={showPassword ? "text" : "password"} className="w-full px-3 py-2.5 pr-9 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
-                                <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-none text-muted-foreground cursor-pointer">
-                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                            </div>
-                        </div>
-                        <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.role")}</label>
-                            <select value={newUser.role} onChange={e => setNewUser(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
-                                <option value="tenant_agent">🎧 {tRoles("agent")}</option>
-                                <option value="tenant_admin">👑 {tRoles("admin")}</option>
-                                {user?.role === 'super_admin' && <option value="super_admin">🛡️ {tRoles("superAdmin")}</option>}
+                            <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
+                                <option value="all">{t("filter.allRoles")}</option>
+                                <option value="super_admin">{tRoles("superAdmin")}</option>
+                                <option value="tenant_admin">{tRoles("admin")}</option>
+                                <option value="tenant_supervisor">{tRoles("supervisor")}</option>
+                                <option value="tenant_agent">{tRoles("agent")}</option>
                             </select>
                         </div>
-                        <div className="mb-3.5">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.tenantIdLabel")}</label>
-                            <input value={newUser.tenantId} onChange={e => setNewUser(p => ({ ...p, tenantId: e.target.value }))} placeholder={t("modal.tenantIdPlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+
+                        <div className="rounded-[14px] border border-border overflow-hidden">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="bg-card">
+                                        {(["user", "email", "role", "skills", "tenant", "status", "registered"] as const).map(k => (
+                                            <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
+                                                {k === "skills" ? t("skills") : t(`headers.${k}`)}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filtered.map(u => {
+                                        const rc = roleStyle[u.role] || roleStyle.tenant_agent;
+                                        return (
+                                            <tr key={u.id} className="border-b border-border">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ background: `linear-gradient(135deg, ${rc.color}, ${rc.color}88)` }}>
+                                                            {u.firstName.charAt(0)}{u.lastName.charAt(0)}
+                                                        </div>
+                                                        <span className="font-semibold">{u.firstName} {u.lastName}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.email}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>{rc.icon} {roleLabel(u.role)}</span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {isAdmin ? (
+                                                        <SkillTagsEditor userId={u.id} skills={u.skillTags || []} onSave={handleSaveSkills} t={t} />
+                                                    ) : (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {(u.skillTags || []).length === 0 ? (
+                                                                <span className="text-[11px] text-muted-foreground italic">{t("noSkills")}</span>
+                                                            ) : (
+                                                                (u.skillTags || []).map((tag: string) => (
+                                                                    <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--bg-tertiary,hsl(var(--muted)))] border border-border text-xs text-foreground">
+                                                                        {tag}
+                                                                    </span>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.tenantName}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: u.isActive ? "rgba(46,204,113,0.15)" : "rgba(231,76,60,0.15)", color: u.isActive ? "#2ecc71" : "#e74c3c" }}>
+                                                        {u.isActive ? tc("active") : tc("inactive")}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.createdAt}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
+                    </>
+                )}
+
+                {tab === "invitations" && (
+                    <div className="rounded-[14px] border border-border overflow-hidden">
+                        {invitations.length === 0 ? (
+                            <div className="p-12 text-center">
+                                <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                                    <Mail size={26} className="text-primary" />
+                                </div>
+                                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                                    {t("invitations.empty")}
+                                </p>
+                            </div>
+                        ) : (
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="bg-card">
+                                        {(["email", "role", "status", "sent", "expires", "actions"] as const).map(k => (
+                                            <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
+                                                {t(`invitations.headers.${k}`)}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invitations.map(inv => {
+                                        const status = deriveStatus(inv);
+                                        const rc = roleStyle[inv.role] || roleStyle.tenant_agent;
+                                        const statusStyle: Record<InvStatus, { bg: string; color: string; icon: any }> = {
+                                            pending: { bg: "rgba(245,158,11,0.15)", color: "#f59e0b", icon: Clock },
+                                            accepted: { bg: "rgba(46,204,113,0.15)", color: "#2ecc71", icon: CheckCircle2 },
+                                            revoked: { bg: "rgba(231,76,60,0.15)", color: "#e74c3c", icon: XCircle },
+                                            expired: { bg: "rgba(148,163,184,0.18)", color: "#94a3b8", icon: AlertCircle },
+                                        };
+                                        const ss = statusStyle[status];
+                                        const Icon = ss.icon;
+                                        const canResend = status === "pending" || status === "expired";
+                                        const canRevoke = status === "pending";
+                                        const busy = busyInvitationId === inv.id;
+                                        return (
+                                            <tr key={inv.id} className="border-b border-border">
+                                                <td className="px-4 py-3 text-[13px]">{inv.email}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>
+                                                        {rc.icon} {roleLabel(inv.role)}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: ss.bg, color: ss.color }}>
+                                                        <Icon size={11} /> {t(`invitations.status.${status}`)}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</td>
+                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</td>
+                                                <td className="px-4 py-3">
+                                                    {(canResend || canRevoke) && (
+                                                        <div className="flex items-center gap-2">
+                                                            {canResend && (
+                                                                <button
+                                                                    onClick={() => handleResend(inv)}
+                                                                    disabled={busy}
+                                                                    title={t("invitations.actions.resend")}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-transparent text-[11px] font-semibold text-foreground cursor-pointer hover:bg-muted transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <RefreshCw size={11} className={busy ? "animate-spin" : ""} />
+                                                                    {t("invitations.actions.resend")}
+                                                                </button>
+                                                            )}
+                                                            {canRevoke && (
+                                                                <button
+                                                                    onClick={() => handleRevoke(inv)}
+                                                                    disabled={busy}
+                                                                    title={t("invitations.actions.revoke")}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-500/30 bg-transparent text-[11px] font-semibold text-red-500 cursor-pointer hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <XCircle size={11} />
+                                                                    {t("invitations.actions.revoke")}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Invite modal */}
+            {showInvite && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInvite(false)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-start mb-5">
+                            <div>
+                                <h2 className="text-xl font-semibold m-0">{t("modal.inviteTitle")}</h2>
+                                <p className="text-[13px] text-muted-foreground mt-1.5 leading-snug max-w-[380px]">
+                                    {t("modal.inviteSubtitle")}
+                                </p>
+                            </div>
+                            <button onClick={() => setShowInvite(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer mt-1"><X size={20} /></button>
+                        </div>
+
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.email")}</label>
+                            <input
+                                type="email"
+                                value={inviteForm.email}
+                                onChange={e => setInviteForm(p => ({ ...p, email: e.target.value }))}
+                                placeholder={t("modal.emailPlaceholder")}
+                                autoFocus
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                        </div>
+
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.role")}</label>
+                            <select
+                                value={inviteForm.role}
+                                onChange={e => setInviteForm(p => ({ ...p, role: e.target.value }))}
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            >
+                                <option value="tenant_agent">🎧 {tRoles("agent")}</option>
+                                <option value="tenant_supervisor">⭐ {tRoles("supervisor")}</option>
+                                <option value="tenant_admin">👑 {tRoles("admin")}</option>
+                            </select>
+                        </div>
+
+                        {inviteSkillsApplicable && (
+                            <div className="mb-3.5">
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.skillTagsLabel")}</label>
+                                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-border bg-background min-h-[44px] items-center">
+                                    {inviteForm.skillTags.map(tag => (
+                                        <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-tertiary,hsl(var(--muted)))] border border-border text-xs">
+                                            {tag}
+                                            <button type="button" onClick={() => removeInviteSkill(tag)} className="bg-transparent border-none p-0 cursor-pointer text-muted-foreground hover:text-foreground leading-none">
+                                                <X size={10} />
+                                            </button>
+                                        </span>
+                                    ))}
+                                    <input
+                                        value={inviteSkillInput}
+                                        onChange={e => setInviteSkillInput(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                if (inviteSkillInput.trim()) addInviteSkill(inviteSkillInput);
+                                            } else if (e.key === "Backspace" && !inviteSkillInput && inviteForm.skillTags.length > 0) {
+                                                setInviteForm(p => ({ ...p, skillTags: p.skillTags.slice(0, -1) }));
+                                            }
+                                        }}
+                                        placeholder={inviteForm.skillTags.length === 0 ? t("skillPlaceholder") : ""}
+                                        className="flex-1 min-w-[80px] border-none outline-none bg-transparent text-xs text-foreground placeholder:text-muted-foreground"
+                                    />
+                                </div>
+                                <p className="mt-1 text-[11px] text-muted-foreground">{t("modal.skillTagsHint")}</p>
+                            </div>
+                        )}
+
+                        {user?.role === 'super_admin' && (
+                            <div className="mb-3.5">
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.tenantIdLabel")}</label>
+                                <input
+                                    value={inviteForm.tenantId}
+                                    onChange={e => setInviteForm(p => ({ ...p, tenantId: e.target.value }))}
+                                    placeholder={t("modal.tenantIdPlaceholder")}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                                />
+                                <p className="mt-1 text-[11px] text-muted-foreground">{t("modal.tenantIdHint")}</p>
+                            </div>
+                        )}
+
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowNewUser(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
-                            <button onClick={handleCreateUser} disabled={saving || !newUser.email || !newUser.password || !newUser.firstName} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
-                                {saving ? tc("saving") : tc("create")}
+                            <button onClick={() => setShowInvite(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
+                            <button
+                                onClick={handleInvite}
+                                disabled={saving || !inviteForm.email || !targetTenantId}
+                                className={cn(
+                                    "flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold inline-flex items-center justify-center gap-2",
+                                    saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer",
+                                )}
+                            >
+                                {saving ? (
+                                    <>{tc("saving")}</>
+                                ) : (
+                                    <><Send size={14} /> {t("modal.inviteButton")}</>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -385,7 +689,7 @@ export default function UsersPage() {
             )}
 
             {toast && (
-                <div className={cn("fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold text-white shadow-lg animate-in", toast.includes("Error") ? "bg-red-500" : "bg-emerald-500")}>
+                <div className={cn("fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold text-white shadow-lg animate-in", toast.toLowerCase().includes("error") ? "bg-red-500" : "bg-emerald-500")}>
                     ✓ {toast}
                 </div>
             )}

@@ -2264,7 +2264,16 @@
       "passwordPlaceholder": "Minimum 6 characters",
       "role": "Role",
       "tenantIdLabel": "Tenant ID (optional)",
-      "tenantIdPlaceholder": "Tenant UUID"
+      "tenantIdPlaceholder": "Tenant UUID",
+      "tenantIdHint": "Only super_admin can invite to a different tenant. Leave empty to use the active one.",
+      "inviteTitle": "Invite a teammate",
+      "inviteSubtitle": "We'll send them an email with a secure link to create their account.",
+      "inviteButton": "Send invitation",
+      "inviteSuccess": "Invitation sent",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "skillTagsLabel": "Skills (optional)",
+      "skillTagsHint": "Only apply to agents and supervisors. Press Enter to add."
     },
     "toast": {
       "created": "User created successfully",
@@ -2274,7 +2283,41 @@
     "addSkill": "Add skill",
     "skillPlaceholder": "Type a skill...",
     "noSkills": "No skills assigned",
-    "suggestedSkills": "Suggestions"
+    "suggestedSkills": "Suggestions",
+    "tabs": {
+      "members": "Members",
+      "invitations": "Invitations"
+    },
+    "invitations": {
+      "title": "Invitations",
+      "empty": "No invitations yet. Click \"Invite\" to add teammates.",
+      "headers": {
+        "email": "Email",
+        "role": "Role",
+        "status": "Status",
+        "sent": "Sent",
+        "expires": "Expires",
+        "actions": "Actions"
+      },
+      "status": {
+        "pending": "Pending",
+        "accepted": "Accepted",
+        "revoked": "Revoked",
+        "expired": "Expired"
+      },
+      "actions": {
+        "resend": "Resend",
+        "revoke": "Revoke",
+        "copyLink": "Copy link"
+      },
+      "toast": {
+        "sent": "Invitation sent by email",
+        "resent": "Invitation resent",
+        "revoked": "Invitation revoked",
+        "linkCopied": "Link copied"
+      },
+      "confirmRevoke": "Revoke this invitation? The link will stop working."
+    }
   },
   "orders": {
     "title": "Orders",
@@ -4644,5 +4687,41 @@
     "welcomeLabel": "Welcome message",
     "welcomePlaceholder": "Hi! Book your appointment with us in just a few steps.",
     "brandColorLabel": "Brand color"
+  },
+  "acceptInvite": {
+    "greeting": "You've been invited to {tenantName}!",
+    "invitedAs": "Joining as",
+    "emailLabel": "Email",
+    "firstNameLabel": "First name",
+    "lastNameLabel": "Last name",
+    "firstNamePlaceholder": "Your first name",
+    "lastNamePlaceholder": "Your last name",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "passwordHint": "We'll create your account with this password.",
+    "acceptButton": "Accept and create account",
+    "goToLogin": "Go to login",
+    "firstNameRequired": "First name is required",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "acceptFailed": "We couldn't complete the invitation",
+    "expiresOn": "This invitation expires on {date}",
+    "reason": {
+      "not_found": {
+        "title": "Invitation not found",
+        "description": "The link you used doesn't exist or was removed. Ask the admin to send you a new one."
+      },
+      "accepted": {
+        "title": "This invitation was already accepted",
+        "description": "You already have an account. Sign in with your credentials."
+      },
+      "revoked": {
+        "title": "Invitation cancelled",
+        "description": "The admin cancelled this invitation. Ask them to send a new one if you still should join."
+      },
+      "expired": {
+        "title": "Invitation expired",
+        "description": "Invitations last 14 days. Ask the admin to send you a new one."
+      }
+    }
   }
 }

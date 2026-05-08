@@ -104,7 +104,7 @@ export class BillingController {
         //  3. USD (no override, no FX rate available)
         const localPrice = country ? await this.resolveLocalPrice(country) : null;
 
-        const enriched = plans.map((p) => {
+        const enriched = plans.map((p: typeof plans[number]) => {
             const overrides = (p.priceLocalOverrides ?? {}) as Record<string, any>;
             const countryOverride = country ? overrides[country] : null;
 

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -178,7 +179,7 @@ export class CouponsService {
         tenantId: string;
         subscriptionId?: string;
     }): Promise<{ redemptionId: string; cyclesRemaining: number | null }> {
-        return this.prisma.$transaction(async (tx) => {
+        return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const coupon = await tx.billingCoupon.findUnique({ where: { id: input.couponId } });
             if (!coupon) throw new NotFoundException({ error: 'coupon_not_found' });
             if (!coupon.isActive) throw new BadRequestException({ error: 'inactive' });

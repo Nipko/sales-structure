@@ -1173,6 +1173,10 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."email_templates" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "et_slug_idx" ON "{{SCHEMA_NAME}}"."email_templates" ("slug");
+ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "subject" VARCHAR(500);
+ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "body_html" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "body_json" JSONB DEFAULT '{}';
+ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "variables" TEXT[] DEFAULT '{}';
 
 -- ---- Bookable Services ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."services" (

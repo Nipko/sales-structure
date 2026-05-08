@@ -111,6 +111,27 @@ export class PersonaController {
         config.persona.greeting = config.persona.greeting.replace('{company}', companyName).replace('{agentName}', config.persona.name);
         config.persona.fallbackMessage = config.persona.fallbackMessage.replace('{company}', companyName).replace('{agentName}', config.persona.name);
 
+        // Auto-disable appointments if prerequisites (availability slots) aren't configured yet.
+        // The vertical bootstrap seeds services but not slots, so templates with
+        // appointments enabled would be rejected by savePersonaFromYaml otherwise.
+        if (config.tools?.appointments?.enabled) {
+            try {
+                const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
+                const sn = t?.schemaName;
+                if (sn) {
+                    const [slotsRow] = (await this.prisma.$queryRawUnsafe(
+                        `SELECT COUNT(*)::int AS cnt FROM "${sn}".availability_slots WHERE is_active = true`,
+                    )) as any[];
+                    if (Number(slotsRow?.cnt || 0) === 0) {
+                        config.tools.appointments.enabled = false;
+                        this.logger.log(`Setup wizard: auto-disabled appointments for tenant ${tenantId} (no availability slots configured yet)`);
+                    }
+                }
+            } catch {
+                config.tools.appointments.enabled = false;
+            }
+        }
+
         // Save persona
         const createdBy = req.user?.sub || 'setup-wizard';
         const yamlContent = yaml.dump(config, { lineWidth: -1 });

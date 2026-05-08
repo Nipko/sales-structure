@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,15 +8,19 @@ import { api } from "@/lib/api";
 import {
     Target, Headphones, Calendar, ShoppingCart, Building, UtensilsCrossed,
     ChevronRight, ChevronLeft, Check, Sparkles, MessageSquare, Loader2,
-    Zap, Clock, Users,
+    Zap, Clock, Plane, MapPin, Car, Wrench, Heart, BookOpen, GraduationCap,
+    Scale, Cpu, Briefcase, Home, Globe, Stethoscope, PawPrint,
 } from "lucide-react";
 import AnimatedLogo from "@/components/AnimatedLogo";
-
-const GOALS = ["respond247", "qualifySales", "scheduleAppointments", "handleOrders"];
 
 const ICON_MAP: Record<string, any> = {
     target: Target, headphones: Headphones, calendar: Calendar,
     "shopping-cart": ShoppingCart, building: Building, utensils: UtensilsCrossed,
+    plane: Plane, "map-pin": MapPin, car: Car, wrench: Wrench,
+    heart: Heart, "book-open": BookOpen, "graduation-cap": GraduationCap,
+    scale: Scale, cpu: Cpu, briefcase: Briefcase, home: Home,
+    globe: Globe, sparkles: Sparkles, stethoscope: Stethoscope,
+    "paw-print": PawPrint,
 };
 
 const CHANNELS = [
@@ -27,12 +31,19 @@ const CHANNELS = [
 ];
 
 const INTEGRATIONS = [
-    { name: "Google Calendar", icon: "📅" },
     { name: "Shopify", icon: "🛒" },
     { name: "WooCommerce", icon: "🏪" },
     { name: "Google Sheets", icon: "📊" },
     { name: "Zapier", icon: "⚡" },
 ];
+
+function getToolBadges(tmpl: any): string[] {
+    const cfg = tmpl.config || tmpl.config_json || {};
+    const badges: string[] = [];
+    if (cfg.tools?.appointments?.enabled) badges.push("appointments");
+    if (cfg.rag?.enabled) badges.push("knowledge");
+    return badges;
+}
 
 export default function SetupWizardPage() {
     const t = useTranslations("setupWizard");
@@ -45,8 +56,6 @@ export default function SetupWizardPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    // Form state
-    const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
     const [agentName, setAgentName] = useState("");
     const [greeting, setGreeting] = useState("");
@@ -62,10 +71,10 @@ export default function SetupWizardPage() {
         });
     }, [tenantId]);
 
+    const verticalTemplates = templates.filter(tmpl => tmpl.name && !tmpl.nameKey);
+    const builtinTemplates = templates.filter(tmpl => tmpl.nameKey);
+
     const handleSelectTemplate = (tmpl: any) => {
-        // New-system templates expose config_json; legacy ones expose config.
-        // The /persona/templates endpoint normalises both into `config`, but we
-        // double-check here so the wizard never crashes on a partial payload.
         const cfg = tmpl.config || tmpl.config_json;
         if (!cfg?.persona) return;
         setSelectedTemplate(tmpl);
@@ -82,9 +91,6 @@ export default function SetupWizardPage() {
 
     const handleFinish = async () => {
         if (!tenantId || !selectedTemplate) {
-            // Treat "finish without template" the same as skip — mark
-            // completed so the redirect loop in /admin's setup-status check
-            // releases. Otherwise the user gets bounced right back here.
             await handleSkip();
             return;
         }
@@ -105,41 +111,26 @@ export default function SetupWizardPage() {
         } finally {
             setSaving(false);
         }
-        // Safety net — if applyTemplate did NOT mark the flag (any failure),
-        // explicitly skip so /admin's setup-status check can release. Without
-        // this fallback, a transient backend error sends the user into an
-        // infinite redirect loop between /admin and /admin/setup-wizard.
         if (!templateApplied) {
             try { await api.skipSetupWizard(tenantId); } catch { /* swallow */ }
         }
-        // Hard navigation so the next /admin mount re-runs setup-status fresh.
         window.location.href = "/admin";
     };
 
     const handleSkip = async () => {
-        if (!tenantId) {
-            router.push("/admin");
-            return;
-        }
+        if (!tenantId) { router.push("/admin"); return; }
         try {
-            const result = await api.skipSetupWizard(tenantId);
-            if (!(result as any)?.success) {
-                console.warn("[setup-wizard] skipSetupWizard returned !success:", (result as any)?.error);
-            }
+            await api.skipSetupWizard(tenantId);
         } catch (e) {
-            // Even if the API call fails, push forward — better to land in
-            // /admin and have setup-wizard show again on next visit than to
-            // trap the user here. The next finish/skip will retry the flag.
             console.error("[setup-wizard] skipSetupWizard threw:", e);
         }
         window.location.href = "/admin";
     };
 
     const STEPS = [
-        { key: "step1Title", icon: Target },
-        { key: "step2Title", icon: Sparkles },
-        { key: "step3Title", icon: Zap },
-        { key: "step4Title", icon: MessageSquare },
+        { key: "step1Title", icon: Sparkles },
+        { key: "step2Title", icon: Zap },
+        { key: "step3Title", icon: MessageSquare },
     ];
 
     if (loading) {
@@ -149,6 +140,48 @@ export default function SetupWizardPage() {
             </div>
         );
     }
+
+    const renderTemplateCard = (tmpl: any, idx: number, isRecommended: boolean) => {
+        const Icon = ICON_MAP[tmpl.icon] || Target;
+        const isSelected = selectedTemplate?.id === tmpl.id;
+        const badges = getToolBadges(tmpl);
+        const name = tmpl.nameKey ? t(tmpl.nameKey) : (tmpl.name || tmpl.id);
+        const desc = tmpl.descKey ? t(tmpl.descKey) : (tmpl.description || "");
+
+        return (
+            <button
+                key={tmpl.id}
+                onClick={() => handleSelectTemplate(tmpl)}
+                className={`p-5 rounded-xl border text-left transition-all relative ${
+                    isSelected
+                        ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
+                        : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
+                }`}
+            >
+                {isRecommended && idx === 0 && (
+                    <span className="absolute -top-2.5 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500 text-white">
+                        {t("templates.recommended")}
+                    </span>
+                )}
+                <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-3">
+                    <Icon size={20} />
+                </div>
+                <p className="text-sm font-semibold text-foreground mb-1 truncate">{name}</p>
+                <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2 mb-3">{desc}</p>
+                {badges.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                        {badges.map(badge => (
+                            <span key={badge} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 font-medium">
+                                {badge === "appointments" && <Calendar size={10} />}
+                                {badge === "knowledge" && <BookOpen size={10} />}
+                                {t(`templates.tools.${badge}`)}
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </button>
+        );
+    };
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -190,68 +223,34 @@ export default function SetupWizardPage() {
             {/* Content */}
             <div className="px-6 py-6 overflow-y-auto flex-1">
 
-                {/* Step 0: Goal */}
+                {/* Step 0: Templates */}
                 {step === 0 && (
                     <div>
-                        <h2 className="text-2xl font-semibold text-foreground mb-2">{t("step1Subtitle")}</h2>
-                        <p className="text-muted-foreground text-sm mb-8">{t("subtitle")}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {GOALS.map(goal => {
-                                const selected = selectedGoals.includes(goal);
-                                return (
-                                    <button
-                                        key={goal}
-                                        onClick={() => setSelectedGoals(prev => selected ? prev.filter(g => g !== goal) : [...prev, goal])}
-                                        className={`p-4 rounded-xl border text-left transition-all flex items-center gap-3 ${
-                                            selected
-                                                ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
-                                                : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
-                                        }`}
-                                    >
-                                        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${selected ? "bg-indigo-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"}`}>
-                                            {selected && <Check size={12} />}
-                                        </div>
-                                        <p className="text-sm font-medium text-foreground">{t(`goal_${goal}`)}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* Step 1: Templates */}
-                {step === 1 && (
-                    <div>
                         <h2 className="text-2xl font-semibold text-foreground mb-1">{t("templates.chooseTemplate")}</h2>
-                        <p className="text-muted-foreground text-sm mb-8">{t("templates.customizeAfter")}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {templates.map((tmpl: any, i: number) => {
-                                const Icon = ICON_MAP[tmpl.icon] || Target;
-                                const isSelected = selectedTemplate?.id === tmpl.id;
-                                return (
-                                    <button
-                                        key={tmpl.id}
-                                        onClick={() => handleSelectTemplate(tmpl)}
-                                        className={`p-5 rounded-xl border text-left transition-all relative ${
-                                            isSelected
-                                                ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500/30"
-                                                : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
-                                        }`}
-                                    >
-                                        {i < 2 && (
-                                            <span className="absolute -top-2.5 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500 text-white">
-                                                {t("templates.popular")}
-                                            </span>
-                                        )}
-                                        <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-3">
-                                            <Icon size={20} />
-                                        </div>
-                                        <p className="text-sm font-semibold text-foreground mb-1 truncate">{tmpl.nameKey ? t(tmpl.nameKey) : (tmpl.name || tmpl.id)}</p>
-                                        <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">{tmpl.descKey ? t(tmpl.descKey) : (tmpl.description || "")}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                        <p className="text-muted-foreground text-sm mb-6">{t("subtitle")}</p>
+
+                        {verticalTemplates.length > 0 && (
+                            <>
+                                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                                    {t("templates.forYourIndustry")}
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                                    {verticalTemplates.map((tmpl, i) => renderTemplateCard(tmpl, i, true))}
+                                </div>
+                            </>
+                        )}
+
+                        {builtinTemplates.length > 0 && (
+                            <>
+                                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                                    {t("templates.generic")}
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {builtinTemplates.map((tmpl, i) => renderTemplateCard(tmpl, i, false))}
+                                </div>
+                            </>
+                        )}
+
                         <button
                             onClick={() => router.push("/admin/agent")}
                             className="mt-6 text-[13px] text-muted-foreground hover:text-indigo-500 transition-colors"
@@ -261,10 +260,10 @@ export default function SetupWizardPage() {
                     </div>
                 )}
 
-                {/* Step 2: Customize */}
-                {step === 2 && selectedTemplate && (
+                {/* Step 1: Customize */}
+                {step === 1 && selectedTemplate && (
                     <div>
-                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("step3Title")}</h2>
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("step2Title")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("templates.customizeAfter")}</p>
                         <div className="max-w-lg space-y-5">
                             <div>
@@ -324,8 +323,8 @@ export default function SetupWizardPage() {
                     </div>
                 )}
 
-                {/* Step 3: Channels */}
-                {step === 3 && (
+                {/* Step 2: Channels */}
+                {step === 2 && (
                     <div>
                         <h2 className="text-2xl font-semibold text-foreground mb-1">{t("channels.title")}</h2>
                         <p className="text-muted-foreground text-sm mb-8">{t("channels.subtitle")}</p>
@@ -349,7 +348,6 @@ export default function SetupWizardPage() {
                             ))}
                         </div>
 
-                        {/* Integrations coming soon */}
                         <div className="mt-8 max-w-lg">
                             <p className="text-[13px] text-muted-foreground font-medium mb-3">{t("channels.integrations")}</p>
                             <div className="flex flex-wrap gap-2">
@@ -378,10 +376,10 @@ export default function SetupWizardPage() {
                         <ChevronLeft size={16} /> {t("navigation.previous")}
                     </button>
 
-                    {step < 3 ? (
+                    {step < 2 ? (
                         <button
                             onClick={() => setStep(step + 1)}
-                            disabled={(step === 0 && selectedGoals.length === 0) || (step === 1 && !selectedTemplate)}
+                            disabled={step === 0 && !selectedTemplate}
                             className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 transition-colors"
                         >
                             {t("navigation.next")} <ChevronRight size={16} />
@@ -398,7 +396,7 @@ export default function SetupWizardPage() {
                     )}
                 </div>
             </div>
-            </div>{/* end modal card */}
+            </div>
         </div>
     );
 }

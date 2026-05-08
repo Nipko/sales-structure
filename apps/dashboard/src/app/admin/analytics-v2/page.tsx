@@ -1,6 +1,6 @@
 "use client";
 
-import { SkeletonPage } from "@/components/ui/skeleton-loader";
+import { SkeletonPage, SkeletonKPIs, SkeletonCards } from "@/components/ui/skeleton-loader";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -192,8 +192,9 @@ export default function AnalyticsV2Page() {
             )}
 
             {loading ? (
-                <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
-                    <Loader2 size={20} className="animate-spin" /> {t("loading")}
+                <div className="space-y-6">
+                    <SkeletonKPIs count={4} />
+                    <SkeletonCards count={3} />
                 </div>
             ) : (
                 <>

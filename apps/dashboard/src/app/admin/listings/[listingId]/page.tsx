@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
+import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import Link from "next/link";
 import {
     Building2, Save, Check, MapPin, ExternalLink, Home,
@@ -103,11 +104,7 @@ export default function ListingDetailPage() {
     }
 
     if (loading || !listing) {
-        return (
-            <div className="flex justify-center items-center h-[400px]">
-                <div className="w-10 h-10 border-[3px] border-neutral-200 dark:border-neutral-700 border-t-indigo-500 rounded-full animate-spin" />
-            </div>
-        );
+        return <div className="p-4 md:p-6 max-w-7xl mx-auto"><SkeletonPage /></div>;
     }
 
     const inputCls = "w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";

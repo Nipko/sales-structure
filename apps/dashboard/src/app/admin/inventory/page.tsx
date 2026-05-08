@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -50,7 +51,7 @@ export default function InventoryPage() {
     }, [activeTenantId]);
 
     if (loading || !data) {
-        return <div className="flex justify-center items-center h-[400px]"><div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin" /></div>;
+        return <SkeletonPage />;
     }
 
     const filteredProducts = data.products.filter(p => {

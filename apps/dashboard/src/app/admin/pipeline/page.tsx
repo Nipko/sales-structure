@@ -156,10 +156,17 @@ export default function PipelinePage() {
     const forecast = kanban?.forecast || { total: 0, weighted: 0, dealCount: 0, avgDealValue: 0 };
 
     if (loading) {
+        // Mini kanban skeleton — 4 columns of card stubs to telegraph the layout
         return (
-            <div className="flex items-center justify-center h-[400px] gap-3 text-muted-foreground">
-                <Loader2 size={24} className="animate-spin" />
-                {t('loading')}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 animate-stagger">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="bg-card border border-border rounded-xl p-3 space-y-2">
+                        <div className="skeleton h-3 w-20" />
+                        <div className="skeleton h-20 w-full rounded-md" />
+                        <div className="skeleton h-16 w-full rounded-md" />
+                        <div className="skeleton h-16 w-full rounded-md" />
+                    </div>
+                ))}
             </div>
         );
     }

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" role="img" aria-label="Meta">
+  <defs>
+    <linearGradient id="meta-grad" x1="0" y1="30" x2="200" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0064E0"/>
+      <stop offset="0.5" stop-color="#0099FF"/>
+      <stop offset="1" stop-color="#0064E0"/>
+    </linearGradient>
+  </defs>
+  <text x="0" y="48" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="56" fill="url(#meta-grad)" letter-spacing="-2">Meta</text>
+</svg>

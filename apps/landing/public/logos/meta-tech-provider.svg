@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 64" role="img" aria-label="Meta Tech Provider">
+  <defs>
+    <linearGradient id="mtp-grad" x1="0" y1="32" x2="220" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0064E0"/>
+      <stop offset="0.5" stop-color="#0099FF"/>
+      <stop offset="1" stop-color="#0064E0"/>
+    </linearGradient>
+  </defs>
+  <!-- Verified checkmark badge -->
+  <g transform="translate(8, 14)">
+    <path fill="url(#mtp-grad)" d="M18 0 L22 4 L28 4 L28 10 L34 14 L30 18 L34 22 L28 26 L28 32 L22 32 L18 36 L14 32 L8 32 L8 26 L2 22 L6 18 L2 14 L8 10 L8 4 L14 4 Z"/>
+    <path fill="#fff" d="M14 17 L17 20 L23 14" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <!-- Wordmark "Meta" -->
+  <text x="50" y="32" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="22" fill="url(#mtp-grad)" letter-spacing="-0.5">Meta</text>
+  <!-- Subtitle "Tech Provider" -->
+  <text x="50" y="50" font-family="Helvetica, Arial, sans-serif" font-weight="600" font-size="11" fill="#71717a" letter-spacing="0.5">TECH PROVIDER</text>
+</svg>

@@ -489,32 +489,44 @@ function TrustRow() {
   const t = useTranslations("trust");
   const items = [
     {
-      key: "meta", titleKey: "metaTitle", descKey: "metaDesc",
-      icon: (
-        <svg className="w-7 h-7 text-[#0668e1]" viewBox="0 0 36 36" fill="currentColor">
-          <path d="M20.181 35.87C29.94 34.498 36 27.6 36 18.04 36 8.275 28.21 0 18 0S0 8.275 0 18.04c0 8.65 5.045 15.55 13.21 17.708 1.057.246 1.46-.43 1.46-1.07v-3.79c-3.92.84-4.74-1.6-4.74-1.6-.66-1.7-1.6-2.13-1.6-2.13-1.31-.9.1-.88.1-.88 1.45.1 2.21 1.5 2.21 1.5 1.29 2.21 3.39 1.57 4.21 1.2.13-.94.5-1.58.92-1.94-3.13-.36-6.42-1.57-6.42-6.96 0-1.54.55-2.8 1.45-3.78-.15-.36-.63-1.78.13-3.71 0 0 1.18-.38 3.87 1.44a13.46 13.46 0 0 1 7.05 0c2.69-1.82 3.87-1.44 3.87-1.44.77 1.93.29 3.35.14 3.71.9.98 1.45 2.24 1.45 3.78 0 5.4-3.3 6.6-6.44 6.94.51.44.96 1.3.96 2.62v3.88c0 .64.4 1.32 1.46 1.07Z"/>
-        </svg>
-      ),
+      key: "meta",
+      titleKey: "metaTitle",
+      descKey: "metaDesc",
+      logo: "/logos/meta-tech-provider.svg",
+      logoAlt: "Meta Tech Provider",
       badge: t("metaBadge"),
+      bg: "bg-[#0064E0]/5",
+      ring: "ring-[#0064E0]/20",
     },
     {
-      key: "mp", titleKey: "mpTitle", descKey: "mpDesc",
-      icon: (
-        <svg className="w-7 h-7 text-[#00b1ea]" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5l-4-4 1.41-1.41L11 13.67l4.59-4.58L17 10.5l-6 6z"/>
-        </svg>
-      ),
+      key: "mp",
+      titleKey: "mpTitle",
+      descKey: "mpDesc",
+      logo: "/logos/mercadopago.svg",
+      logoAlt: "MercadoPago",
       badge: t("mpBadge"),
+      bg: "bg-[#00B1EA]/5",
+      ring: "ring-[#00B1EA]/20",
     },
     {
-      key: "latam", titleKey: "latamTitle", descKey: "latamDesc",
-      icon: <span className="text-3xl">🌎</span>,
+      key: "latam",
+      titleKey: "latamTitle",
+      descKey: "latamDesc",
+      logo: null,
+      icon: <span className="text-4xl">🌎</span>,
       badge: t("latamBadge"),
+      bg: "bg-emerald-500/5",
+      ring: "ring-emerald-500/20",
     },
     {
-      key: "enc", titleKey: "encTitle", descKey: "encDesc",
-      icon: Icon.lock("w-7 h-7 text-emerald-400"),
+      key: "enc",
+      titleKey: "encTitle",
+      descKey: "encDesc",
+      logo: null,
+      icon: Icon.lock("w-9 h-9 text-emerald-400"),
       badge: "AES-256-GCM",
+      bg: "bg-emerald-500/5",
+      ring: "ring-emerald-500/20",
     },
   ];
 
@@ -523,22 +535,35 @@ function TrustRow() {
       <div className="text-center mb-12">
         <h2 className="text-2xl sm:text-3xl font-bold">{t("title")}</h2>
       </div>
+
+      {/* Logo strip — top of the trust row */}
+      <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6 mb-12 opacity-90">
+        <img src="/logos/whatsapp.svg" alt="WhatsApp" className="h-7 w-auto" />
+        <img src="/logos/instagram.svg" alt="Instagram" className="h-7 w-auto" />
+        <img src="/logos/messenger.svg" alt="Messenger" className="h-7 w-auto" />
+        <span className="w-px h-7 bg-border" aria-hidden />
+        <img src="/logos/meta.svg" alt="Meta" className="h-6 w-auto" />
+        <img src="/logos/mercadopago.svg" alt="MercadoPago" className="h-9 w-auto" />
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {items.map((item, i) => (
           <motion.div
             key={item.key}
-            className="bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors"
+            className={`bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors ring-1 ${item.ring}`}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ delay: i * 0.08, duration: 0.4 }}
           >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-xl bg-surface-elevated border border-border flex items-center justify-center flex-shrink-0">
-                {item.icon}
-              </div>
-              <h3 className="font-semibold text-text-primary leading-tight">{t(item.titleKey)}</h3>
+            <div className={`mb-4 flex items-center justify-center w-full h-16 rounded-xl ${item.bg} px-4`}>
+              {item.logo ? (
+                <img src={item.logo} alt={item.logoAlt} className="h-9 w-auto" />
+              ) : (
+                item.icon
+              )}
             </div>
+            <h3 className="font-semibold text-text-primary leading-tight mb-2">{t(item.titleKey)}</h3>
             <p className="text-sm text-text-secondary leading-relaxed mb-3">{t(item.descKey)}</p>
             <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
               {item.badge}
@@ -1180,13 +1205,13 @@ export default function LandingPage() {
           <div className="col-span-2 md:col-span-1">
             <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto mb-4" />
             <p className="text-text-muted text-sm leading-relaxed">{t("footer.brandDesc")}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-[#0668e1]/10 text-[#0668e1] font-bold border border-[#0668e1]/20">
-                Meta Tech Provider
-              </span>
-              <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-[#00b1ea]/10 text-[#00b1ea] font-bold border border-[#00b1ea]/20">
-                MercadoPago
-              </span>
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <img src="/logos/meta-tech-provider.svg" alt="Meta Tech Provider" className="h-7 w-auto" />
+              </div>
+              <div className="flex items-center gap-3">
+                <img src="/logos/mercadopago.svg" alt="MercadoPago Partner" className="h-7 w-auto" />
+              </div>
             </div>
           </div>
 

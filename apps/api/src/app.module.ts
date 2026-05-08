@@ -67,6 +67,7 @@ import { GymsModule } from './modules/gyms/gyms.module';
 import { EducationModule } from './modules/education/education.module';
 import { InsuranceModule } from './modules/insurance/insurance.module';
 import { HomeServicesModule } from './modules/home-services/home-services.module';
+import { VerticalAnalyticsModule } from './modules/vertical-analytics/vertical-analytics.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -191,6 +192,7 @@ import llmConfig from './config/llm.config';
         EducationModule,
         InsuranceModule,
         HomeServicesModule,
+        VerticalAnalyticsModule,
     ],
 })
 export class AppModule { }

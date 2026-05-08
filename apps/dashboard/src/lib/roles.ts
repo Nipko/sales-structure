@@ -94,6 +94,7 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/webhooks", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/compliance-admin", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/funnel", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/vertical-analytics", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/platform", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/ai-providers", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/ai-config", roles: [ROLE_KEYS.SUPER_ADMIN] },

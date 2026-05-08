@@ -112,6 +112,7 @@
       "webhookTap": "Webhooks (live)",
       "complianceAdmin": "Compliance",
       "funnel": "Acquisition funnel",
+      "verticalAnalytics": "Vertical analytics",
       "aiModels": "AI models",
       "llmProviders": "LLM providers",
       "aiConfig": "AI config",
@@ -3793,6 +3794,96 @@
     "payingCol": "Paying",
     "conversionCol": "Conv.",
     "hint": "Stamps are generated automatically: onboarding when setup completes, first message on first inbound, paying when subscription_status is active or past_due."
+  },
+  "verticalAnalytics": {
+    "title": "Vertical analytics",
+    "subtitle": "Tenant distribution, deep per-industry metrics, and activation gaps",
+    "tabs": {
+      "overview": "Overview",
+      "drilldown": "By industry"
+    },
+    "kpi": {
+      "totalTenants": "Total tenants",
+      "activated": "Activated",
+      "paying": "Paying",
+      "trialing": "Trialing",
+      "recent7d": "New 7d",
+      "industries": "Industries"
+    },
+    "distribution": {
+      "title": "Distribution by industry",
+      "hint": "Click a bar to view that industry's drilldown"
+    },
+    "paying": "paying",
+    "activated": "active",
+    "plan": "Plan",
+    "gaps": {
+      "title": "Activation gaps",
+      "hint": "Tenants whose vertical needs specific data for the AI agent to function — but it hasn't been loaded yet",
+      "tenant": "Tenant",
+      "industry": "Industry",
+      "missing": "Missing",
+      "missingKeys": {
+        "menu_items": "No menu items",
+        "membership_plans": "No membership plans",
+        "courses": "No courses",
+        "insurance_plans": "No insurance plans",
+        "properties": "No properties",
+        "listings": "No listings",
+        "treatment_plans": "No treatment plans",
+        "services": "No services"
+      }
+    },
+    "drilldown": {
+      "pickIndustry": "Pick an industry above to see KPIs and tenant ranking",
+      "platformTotals": "Platform totals",
+      "tenants": "tenants",
+      "tenantRanking": "Tenant ranking",
+      "tenantRankingHint": "Sorted by the industry's headline metric (orders, members, etc.)",
+      "metrics": "Metrics",
+      "noTenants": "No tenants in this industry",
+      "noStats": "no data loaded"
+    },
+    "perTenant": {
+      "title": "Industry activity",
+      "subtitle": "Specific metrics for the configured vertical"
+    },
+    "metrics": {
+      "menuItems": "Menu items",
+      "ordersTotal": "Orders total",
+      "ordersWeek": "Orders 7d",
+      "promotions": "Promos",
+      "kitchenStates": "Kitchen states",
+      "members": "Members",
+      "membersActive": "Active members",
+      "plans": "Plans",
+      "classes": "Classes",
+      "bookings": "Bookings",
+      "checkIns7d": "Check-ins 7d",
+      "courses": "Courses",
+      "cohorts": "Cohorts",
+      "enrollments": "Enrollments",
+      "placementTests": "Placement tests",
+      "insurancePlans": "Insurance plans",
+      "quotes": "Quotes",
+      "policies": "Active policies",
+      "claims": "Claims",
+      "pets": "Pets",
+      "vaccinations": "Vaccinations",
+      "treatments": "Treatments",
+      "treatmentsActive": "Active treatments",
+      "appointments": "Appointments",
+      "appointmentsWeek": "Appointments 7d",
+      "properties": "Properties",
+      "propertiesPublished": "Published properties",
+      "tours": "Tours",
+      "icalFeeds": "iCal feeds",
+      "listings": "Listings",
+      "listingsPublished": "Published listings",
+      "serviceRequests": "Service requests",
+      "serviceRequestsOpen": "Open requests",
+      "serviceRequestsCompleted": "Completed"
+    }
   },
   "webhookTap": {
     "title": "Webhook live tail",

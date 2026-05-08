@@ -10,6 +10,7 @@ import { TabNav } from "@/components/ui/tab-nav";
 import Link from "next/link";
 import TenantAdminActions from "../_components/TenantAdminActions";
 import TenantActivityFeed from "../_components/TenantActivityFeed";
+import TenantVerticalActivity from "../_components/TenantVerticalActivity";
 import TenantQuotaOverrides from "../_components/TenantQuotaOverrides";
 import TenantFeatureFlags from "../_components/TenantFeatureFlags";
 import {
@@ -304,6 +305,9 @@ export default function TenantDetailPage() {
 
           {/* Per-tenant feature flags */}
           <TenantFeatureFlags tenantId={tenant.id} />
+
+          {/* Vertical-specific KPIs (visible only when tenant has data in its industry) */}
+          <TenantVerticalActivity tenantId={tenant.id} />
 
           {/* Last 10 admin actions for this tenant */}
           <TenantActivityFeed tenantId={tenant.id} />

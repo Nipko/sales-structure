@@ -112,6 +112,7 @@
       "webhookTap": "Webhooks (live)",
       "complianceAdmin": "Conformité",
       "funnel": "Funnel acquisition",
+      "verticalAnalytics": "Analytique par verticale",
       "aiModels": "Modèles IA",
       "llmProviders": "Fournisseurs LLM",
       "aiConfig": "Config IA",
@@ -3793,6 +3794,96 @@
     "payingCol": "Payant",
     "conversionCol": "Conv.",
     "hint": "Horodatages générés automatiquement : onboarding quand le setup se termine, premier message au premier inbound, payant quand subscription_status est active ou past_due."
+  },
+  "verticalAnalytics": {
+    "title": "Analytique par verticale",
+    "subtitle": "Distribution des tenants, métriques détaillées par industrie et gaps d'activation",
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "drilldown": "Par industrie"
+    },
+    "kpi": {
+      "totalTenants": "Tenants total",
+      "activated": "Activés",
+      "paying": "Payant",
+      "trialing": "En essai",
+      "recent7d": "Nouveaux 7j",
+      "industries": "Industries"
+    },
+    "distribution": {
+      "title": "Distribution par industrie",
+      "hint": "Cliquez sur une barre pour voir le détail de l'industrie"
+    },
+    "paying": "payant",
+    "activated": "actifs",
+    "plan": "Plan",
+    "gaps": {
+      "title": "Gaps d'activation",
+      "hint": "Tenants dont la verticale nécessite certaines données pour que l'agent IA fonctionne — mais qui n'ont pas encore été chargées",
+      "tenant": "Tenant",
+      "industry": "Industrie",
+      "missing": "Manquant",
+      "missingKeys": {
+        "menu_items": "Pas d'éléments de menu",
+        "membership_plans": "Pas de plans d'adhésion",
+        "courses": "Pas de cours",
+        "insurance_plans": "Pas de plans d'assurance",
+        "properties": "Pas de propriétés",
+        "listings": "Pas d'annonces",
+        "treatment_plans": "Pas de traitements",
+        "services": "Pas de services"
+      }
+    },
+    "drilldown": {
+      "pickIndustry": "Choisissez une industrie pour voir les KPIs et le classement",
+      "platformTotals": "Totaux de plateforme",
+      "tenants": "tenants",
+      "tenantRanking": "Classement des tenants",
+      "tenantRankingHint": "Trié par la métrique clé de l'industrie (commandes, membres, etc.)",
+      "metrics": "Métriques",
+      "noTenants": "Aucun tenant dans cette industrie",
+      "noStats": "aucune donnée chargée"
+    },
+    "perTenant": {
+      "title": "Activité de l'industrie",
+      "subtitle": "Métriques spécifiques selon la verticale configurée"
+    },
+    "metrics": {
+      "menuItems": "Items menu",
+      "ordersTotal": "Commandes total",
+      "ordersWeek": "Commandes 7j",
+      "promotions": "Promos",
+      "kitchenStates": "États cuisine",
+      "members": "Membres",
+      "membersActive": "Membres actifs",
+      "plans": "Plans",
+      "classes": "Cours",
+      "bookings": "Réservations",
+      "checkIns7d": "Check-ins 7j",
+      "courses": "Programmes",
+      "cohorts": "Cohortes",
+      "enrollments": "Inscriptions",
+      "placementTests": "Tests niveau",
+      "insurancePlans": "Plans assurance",
+      "quotes": "Devis",
+      "policies": "Polices actives",
+      "claims": "Sinistres",
+      "pets": "Animaux",
+      "vaccinations": "Vaccinations",
+      "treatments": "Traitements",
+      "treatmentsActive": "Traitements actifs",
+      "appointments": "Rendez-vous",
+      "appointmentsWeek": "Rendez-vous 7j",
+      "properties": "Propriétés",
+      "propertiesPublished": "Propriétés publiées",
+      "tours": "Tours",
+      "icalFeeds": "Feeds iCal",
+      "listings": "Annonces",
+      "listingsPublished": "Annonces publiées",
+      "serviceRequests": "Demandes",
+      "serviceRequestsOpen": "Demandes ouvertes",
+      "serviceRequestsCompleted": "Terminées"
+    }
   },
   "webhookTap": {
     "title": "Live tail des webhooks",

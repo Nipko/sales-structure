@@ -51,6 +51,7 @@ import {
   Brain,
   Scale,
   Filter as FunnelIcon,
+  PieChart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -154,6 +155,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "webhookTap", href: "/admin/webhooks", icon: Radio },
       { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
       { labelKey: "funnel", href: "/admin/funnel", icon: FunnelIcon },
+      { labelKey: "verticalAnalytics", href: "/admin/vertical-analytics", icon: PieChart },
     ],
   },
   {

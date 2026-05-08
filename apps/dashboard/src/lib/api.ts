@@ -1146,6 +1146,14 @@ export const api = {
     saveInfraCost: (data: any) => apiPost("/financials/infra-costs", data),
     saveExchangeRate: (data: any) => apiPost("/financials/exchange-rates", data),
     generateSnapshot: (month: string) => apiPost("/financials/snapshot/generate", { month }),
+
+    // ─── Vertical Analytics (super_admin) ───
+    getVerticalOverview: (refresh = false) =>
+        apiGet(`/vertical-analytics/overview${refresh ? '?refresh=true' : ''}`),
+    getVerticalIndustry: (industry: string, refresh = false) =>
+        apiGet(`/vertical-analytics/industry/${encodeURIComponent(industry)}${refresh ? '?refresh=true' : ''}`),
+    getVerticalTenant: (tenantId: string, refresh = false) =>
+        apiGet(`/vertical-analytics/tenant/${encodeURIComponent(tenantId)}${refresh ? '?refresh=true' : ''}`),
 };
 
 // ============================================

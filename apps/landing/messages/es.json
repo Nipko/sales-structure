@@ -6,11 +6,33 @@
   "nav": {
     "features": "Características",
     "verticals": "Industrias",
+    "tools": "Herramientas",
     "howItWorks": "Cómo funciona",
     "pricing": "Precios",
     "contact": "Preguntas",
     "login": "Ingresar",
     "startFree": "Empezar gratis"
+  },
+  "channels": {
+    "title": "Funciona en todos tus canales",
+    "subtitle": "WhatsApp, Instagram DM, Messenger y Telegram. Tu agente IA opera con la misma personalidad y datos en todos — el cliente elige el que prefiere.",
+    "note": "Cada cliente tiene un único perfil sin importar por qué canal te escriba. Identidad cross-canal automática."
+  },
+  "tools": {
+    "title": "Mira todo lo que podés hacer",
+    "subtitle": "Estas son algunas de las herramientas que vienen incluidas. Todas funcionan automáticamente — vos solo configurás una vez al inicio.",
+    "tool1Title": "Pipeline kanban inteligente",
+    "tool1Desc": "Tus leads avanzan solos por las etapas según el comportamiento del cliente. Score automático y aprobaciones cuando hace falta.",
+    "tool2Title": "Bandeja unificada de canales",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram y SMS — todo en una sola pantalla con notificaciones en tiempo real.",
+    "tool3Title": "Agendamiento por chat",
+    "tool3Desc": "Tu IA agenda citas verificando disponibilidad real. Sincroniza con Google Calendar y manda recordatorios automáticos.",
+    "tool4Title": "Analítica en tiempo real",
+    "tool4Desc": "Volumen, tiempo de respuesta, conversión por canal, leaderboard de agentes. Sin esperar reportes a fin de mes.",
+    "tool5Title": "Base de conocimiento con IA",
+    "tool5Desc": "Cargás tu catálogo, FAQs y políticas. La IA busca y responde con info real — no inventa.",
+    "tool6Title": "Multi-agente personalizable",
+    "tool6Desc": "Configurá tono, modelo IA y canal por agente. Sofía formal en email, Sofía amigable en Instagram."
   },
   "hero": {
     "badge": "IA conversacional · 16 industrias · Hecho en LatAm",

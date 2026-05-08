@@ -6,11 +6,33 @@
   "nav": {
     "features": "Fonctionnalités",
     "verticals": "Industries",
+    "tools": "Outils",
     "howItWorks": "Comment ça marche",
     "pricing": "Tarifs",
     "contact": "FAQ",
     "login": "Connexion",
     "startFree": "Démarrer gratuitement"
+  },
+  "channels": {
+    "title": "Fonctionne sur tous vos canaux",
+    "subtitle": "WhatsApp, Instagram DM, Messenger et Telegram. Votre agent IA opère avec la même personnalité et les mêmes données partout — le client choisit son préféré.",
+    "note": "Chaque client a un profil unique peu importe le canal utilisé. Identité cross-canal automatique."
+  },
+  "tools": {
+    "title": "Voyez tout ce que vous pouvez faire",
+    "subtitle": "Voici quelques-uns des outils inclus. Tout fonctionne automatiquement — vous configurez une fois au démarrage.",
+    "tool1Title": "Pipeline kanban intelligent",
+    "tool1Desc": "Vos leads avancent seuls dans les étapes selon le comportement client. Scoring automatique et approbations au besoin.",
+    "tool2Title": "Boîte de réception unifiée",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram et SMS — tout sur un seul écran avec notifications en temps réel.",
+    "tool3Title": "Planification par chat",
+    "tool3Desc": "Votre IA planifie en vérifiant la disponibilité réelle. Synchronise avec Google Calendar et envoie des rappels automatiques.",
+    "tool4Title": "Analytique temps réel",
+    "tool4Desc": "Volume, temps de réponse, conversion par canal, classement des agents. Sans attendre les rapports de fin de mois.",
+    "tool5Title": "Base de connaissances IA",
+    "tool5Desc": "Vous téléchargez catalogue, FAQ et politiques. L'IA cherche et répond avec info réelle — n'invente pas.",
+    "tool6Title": "Multi-agent personnalisable",
+    "tool6Desc": "Configurez ton, modèle IA et canal par agent. Sofia formelle en email, Sofia amicale sur Instagram."
   },
   "hero": {
     "badge": "IA conversationnelle · 16 industries · Fait en LatAm",

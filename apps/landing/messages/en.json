@@ -6,11 +6,33 @@
   "nav": {
     "features": "Features",
     "verticals": "Industries",
+    "tools": "Tools",
     "howItWorks": "How it works",
     "pricing": "Pricing",
     "contact": "FAQ",
     "login": "Sign in",
     "startFree": "Start free"
+  },
+  "channels": {
+    "title": "Works across all your channels",
+    "subtitle": "WhatsApp, Instagram DM, Messenger and Telegram. Your AI agent operates with the same personality and data on all of them — your customer picks their favorite.",
+    "note": "Every customer has a single profile no matter which channel they message you on. Automatic cross-channel identity."
+  },
+  "tools": {
+    "title": "See everything you can do",
+    "subtitle": "These are just some of the tools included. They all run automatically — you configure them once at setup.",
+    "tool1Title": "Smart kanban pipeline",
+    "tool1Desc": "Your leads advance through stages by themselves based on customer behavior. Automatic scoring and approvals when needed.",
+    "tool2Title": "Unified channel inbox",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram and SMS — all in one screen with real-time notifications.",
+    "tool3Title": "Chat-based scheduling",
+    "tool3Desc": "Your AI books appointments verifying real availability. Syncs with Google Calendar and sends auto-reminders.",
+    "tool4Title": "Real-time analytics",
+    "tool4Desc": "Volume, response time, conversion by channel, agent leaderboard. No waiting for end-of-month reports.",
+    "tool5Title": "AI knowledge base",
+    "tool5Desc": "You upload your catalog, FAQs and policies. The AI searches and answers with real info — never makes things up.",
+    "tool6Title": "Customizable multi-agent",
+    "tool6Desc": "Set tone, AI model and channel per agent. Formal Sofia on email, friendly Sofia on Instagram."
   },
   "hero": {
     "badge": "Conversational AI · 16 industries · Made in LatAm",

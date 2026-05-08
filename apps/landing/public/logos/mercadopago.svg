@@ -1,19 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 64" role="img" aria-label="MercadoPago">
-  <defs>
-    <linearGradient id="mp-circle" x1="0" y1="0" x2="60" y2="60" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#00B1EA"/>
-      <stop offset="1" stop-color="#0099CC"/>
-    </linearGradient>
-  </defs>
-  <!-- Circle with handshake / smile -->
-  <g transform="translate(4, 6)">
-    <circle cx="26" cy="26" r="26" fill="url(#mp-circle)"/>
-    <!-- Smile / handshake icon (curved chat bubble shape) -->
-    <path fill="#FFF200" d="M26 18 c-7 0 -12 4.5 -12 10 c0 1.5 0.4 2.9 1.1 4.2 l-1.1 4.5 l4.8 -1.4 c2.1 1.2 4.6 1.9 7.2 1.9 c7 0 12 -4.5 12 -10 c0 -5.5 -5 -10 -12 -10 z"/>
-    <!-- Yellow accent stroke -->
-    <path fill="none" stroke="#FFF200" stroke-width="2.5" stroke-linecap="round" d="M18 31 q8 6 16 0"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 56" role="img" aria-label="Mercado Pago">
+  <!-- Yellow circle with cyan handshake (color order matches real MP logo) -->
+  <g transform="translate(2, 2)">
+    <circle cx="26" cy="26" r="26" fill="#FFE600"/>
+    <!-- Stylized handshake: two interlocking curves in MP cyan -->
+    <path
+      d="M 26 16
+         C 19 16, 14 21, 14 26
+         C 14 31, 19 36, 26 36
+         C 33 36, 38 31, 38 26
+         C 38 21, 33 16, 26 16 Z
+         M 18 26
+         C 18 22, 22 19, 26 19
+         L 26 26
+         L 18 26 Z
+         M 26 26
+         L 26 33
+         C 30 33, 34 30, 34 26
+         L 26 26 Z"
+      fill="#00B1EA"
+      fill-rule="evenodd"
+    />
   </g>
-  <!-- Wordmark -->
-  <text x="64" y="30" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="18" fill="#fafafa" letter-spacing="-0.3">Mercado</text>
-  <text x="64" y="50" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="18" fill="#00B1EA" letter-spacing="-0.3">Pago</text>
+
+  <!-- Wordmark "Mercado Pago" -->
+  <text x="60" y="34" font-family="Helvetica, Arial, sans-serif" font-weight="800" font-size="22" fill="#fafafa" letter-spacing="-1">Mercado</text>
+  <text x="155" y="34" font-family="Helvetica, Arial, sans-serif" font-weight="800" font-size="22" fill="#00B1EA" letter-spacing="-1">Pago</text>
 </svg>

@@ -23,12 +23,72 @@ const LOGIN = "https://admin.parallly-chat.cloud/login";
 /*  Verticals (11 con color/emoji/datos diferenciados)                 */
 /* ------------------------------------------------------------------ */
 
+type ChannelKey = "whatsapp" | "instagram" | "messenger" | "telegram";
+
+interface ChannelSkin {
+  key: ChannelKey;
+  name: string;
+  headerBg: string;       // header background (color or gradient)
+  bodyBg: string;          // chat body background
+  outgoingBg: string;      // customer (outgoing on real device — appears right side here)
+  outgoingText: string;
+  incomingBg: string;      // AI agent reply (appears left)
+  incomingText: string;
+  accent: string;          // brand accent color
+  statusText: string;      // "online" / "active now" / etc.
+  logoSrc: string;
+}
+
+const CHANNELS: Record<ChannelKey, ChannelSkin> = {
+  whatsapp: {
+    key: "whatsapp", name: "WhatsApp",
+    headerBg: "#075e54",
+    bodyBg: "#0b141a",
+    outgoingBg: "#005c4b", outgoingText: "#fff",
+    incomingBg: "#1f2c33", incomingText: "#e9edef",
+    accent: "#25D366",
+    statusText: "en línea",
+    logoSrc: "/logos/whatsapp.svg",
+  },
+  instagram: {
+    key: "instagram", name: "Instagram DM",
+    headerBg: "linear-gradient(135deg, #833AB4 0%, #C13584 50%, #F77737 100%)",
+    bodyBg: "#000000",
+    outgoingBg: "linear-gradient(135deg, #5851DB, #C13584)", outgoingText: "#fff",
+    incomingBg: "#262626", incomingText: "#f5f5f5",
+    accent: "#E1306C",
+    statusText: "Activa hace 2m",
+    logoSrc: "/logos/instagram.svg",
+  },
+  messenger: {
+    key: "messenger", name: "Messenger",
+    headerBg: "#0084FF",
+    bodyBg: "#18191a",
+    outgoingBg: "#0084FF", outgoingText: "#fff",
+    incomingBg: "#3a3b3c", incomingText: "#e4e6eb",
+    accent: "#0084FF",
+    statusText: "Activo ahora",
+    logoSrc: "/logos/messenger.svg",
+  },
+  telegram: {
+    key: "telegram", name: "Telegram",
+    headerBg: "#517da2",
+    bodyBg: "#0e1621",
+    outgoingBg: "#2b5278", outgoingText: "#fff",
+    incomingBg: "#182533", incomingText: "#e9edef",
+    accent: "#0088CC",
+    statusText: "en línea",
+    logoSrc: "",  // no oficial local; usamos solo nombre
+  },
+};
+
 interface VerticalDef {
   key: string;
   emoji: string;
   color: string;
   glow: string;
   textOnColor: string;
+  channel: ChannelKey;     // canal donde se muestra esta vertical
   demoMessages: { from: "customer" | "ai"; text: string }[];
   agentName: string;
 }
@@ -36,6 +96,7 @@ interface VerticalDef {
 const VERTICALS: VerticalDef[] = [
   {
     key: "salud", emoji: "🩺", color: "#f43f5e", glow: "rgba(244,63,94,0.35)", textOnColor: "#fff",
+    channel: "whatsapp",
     agentName: "Sofía",
     demoMessages: [
       { from: "customer", text: "Hola, necesito agendar una limpieza dental para esta semana 🦷" },
@@ -46,6 +107,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "veterinaria", emoji: "🐶", color: "#ec4899", glow: "rgba(236,72,153,0.35)", textOnColor: "#fff",
+    channel: "instagram",
     agentName: "Toby",
     demoMessages: [
       { from: "customer", text: "¿Cuándo le toca la vacuna a Max?" },
@@ -56,6 +118,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "restaurantes", emoji: "🍕", color: "#f97316", glow: "rgba(249,115,22,0.35)", textOnColor: "#fff",
+    channel: "whatsapp",
     agentName: "Luca",
     demoMessages: [
       { from: "customer", text: "Buenas! Tienen pizza margarita? Para delivery 🍕" },
@@ -66,6 +129,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "gimnasios", emoji: "💪", color: "#ef4444", glow: "rgba(239,68,68,0.35)", textOnColor: "#fff",
+    channel: "messenger",
     agentName: "Coach",
     demoMessages: [
       { from: "customer", text: "Hay clase de yoga mañana?" },
@@ -76,6 +140,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "inmobiliaria", emoji: "🏠", color: "#10b981", glow: "rgba(16,185,129,0.35)", textOnColor: "#fff",
+    channel: "telegram",
     agentName: "Carlos",
     demoMessages: [
       { from: "customer", text: "Busco apto en Chapinero, 3 habitaciones, hasta 800M" },
@@ -86,6 +151,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "turismo", emoji: "🏝️", color: "#06b6d4", glow: "rgba(6,182,212,0.35)", textOnColor: "#fff",
+    channel: "instagram",
     agentName: "Maya",
     demoMessages: [
       { from: "customer", text: "Tienen tour para el sábado? Somos 4 personas" },
@@ -96,6 +162,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "educacion", emoji: "🎓", color: "#6366f1", glow: "rgba(99,102,241,0.35)", textOnColor: "#fff",
+    channel: "messenger",
     agentName: "Ana",
     demoMessages: [
       { from: "customer", text: "Quiero aprender inglés desde cero, qué cursos tienen?" },
@@ -106,6 +173,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "seguros", emoji: "🛡️", color: "#3b82f6", glow: "rgba(59,130,246,0.35)", textOnColor: "#fff",
+    channel: "whatsapp",
     agentName: "Roberto",
     demoMessages: [
       { from: "customer", text: "Quiero cotizar seguro de auto. Renault Logan 2020" },
@@ -116,6 +184,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "hogar", emoji: "🔧", color: "#f59e0b", glow: "rgba(245,158,11,0.35)", textOnColor: "#fff",
+    channel: "telegram",
     agentName: "Iván",
     demoMessages: [
       { from: "customer", text: "URGENTE! Se rompió un caño y hay agua por todos lados 💧" },
@@ -126,6 +195,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "fotografia", emoji: "📸", color: "#a855f7", glow: "rgba(168,85,247,0.35)", textOnColor: "#fff",
+    channel: "instagram",
     agentName: "Diego",
     demoMessages: [
       { from: "customer", text: "Hola! Cuánto vale una sesión de boda?" },
@@ -136,6 +206,7 @@ const VERTICALS: VerticalDef[] = [
   },
   {
     key: "belleza", emoji: "💅", color: "#d946ef", glow: "rgba(217,70,239,0.35)", textOnColor: "#fff",
+    channel: "instagram",
     agentName: "Camila",
     demoMessages: [
       { from: "customer", text: "Cuánto vale el semipermanente con diseño? 💅" },
@@ -275,10 +346,11 @@ function CountUp({ target, suffix = "" }: { target: number; suffix?: string }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Vertical Chat Demo (per-vertical color/agent)                      */
+/*  Vertical Chat Demo (per-vertical color/agent · per-channel skin)   */
 /* ------------------------------------------------------------------ */
 
 function VerticalChatDemo({ vertical }: { vertical: VerticalDef }) {
+  const skin = CHANNELS[vertical.channel];
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -305,25 +377,30 @@ function VerticalChatDemo({ vertical }: { vertical: VerticalDef }) {
   }, [cycle, runAnimation, vertical.key]);
 
   return (
-    <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl w-full"
-         style={{ boxShadow: `0 0 60px ${vertical.glow}` }}>
-      {/* Header con color de vertical */}
-      <div className="px-4 py-3 flex items-center gap-3" style={{ backgroundColor: vertical.color }}>
+    <div
+      className="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl w-full"
+      style={{ boxShadow: `0 0 60px ${vertical.glow}` }}
+    >
+      {/* Channel-skinned header */}
+      <div className="px-4 py-3 flex items-center gap-3" style={{ background: skin.headerBg }}>
         <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center text-lg backdrop-blur-sm">
           {vertical.emoji}
         </div>
-        <div>
-          <p className="text-white text-sm font-semibold">{vertical.agentName}</p>
-          <p className="text-white/80 text-[11px]">en línea · responde en segundos</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm font-semibold truncate">{vertical.agentName}</p>
+          <p className="text-white/80 text-[11px]">{skin.statusText} · responde en segundos</p>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
           <span className="text-white text-[10px] font-semibold tracking-wide">IA</span>
         </div>
+        {skin.logoSrc && (
+          <img src={skin.logoSrc} alt={skin.name} className="w-5 h-5 ml-1 opacity-90" />
+        )}
       </div>
 
-      {/* Body */}
-      <div className="bg-[#0b141a] p-4 min-h-[320px] flex flex-col gap-2">
+      {/* Body — channel-themed background */}
+      <div className="p-4 min-h-[320px] flex flex-col gap-2" style={{ backgroundColor: skin.bodyBg }}>
         {vertical.demoMessages.map((msg, i) => (
           <AnimatePresence key={`${cycle}-${i}`}>
             {i < visibleCount && (
@@ -334,11 +411,13 @@ function VerticalChatDemo({ vertical }: { vertical: VerticalDef }) {
                 className={`flex ${msg.from === "customer" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[82%] px-3 py-2 rounded-lg text-[13px] leading-relaxed ${
-                    msg.from === "customer"
-                      ? "bg-[#005c4b] text-white rounded-br-sm"
-                      : "bg-[#1f2c33] text-zinc-100 rounded-bl-sm"
+                  className={`max-w-[82%] px-3 py-2 rounded-2xl text-[13px] leading-relaxed shadow-sm ${
+                    msg.from === "customer" ? "rounded-br-sm" : "rounded-bl-sm"
                   }`}
+                  style={{
+                    background: msg.from === "customer" ? skin.outgoingBg : skin.incomingBg,
+                    color: msg.from === "customer" ? skin.outgoingText : skin.incomingText,
+                  }}
                 >
                   {msg.text}
                 </div>
@@ -348,14 +427,19 @@ function VerticalChatDemo({ vertical }: { vertical: VerticalDef }) {
         ))}
       </div>
 
-      {/* Footer */}
-      <div className="bg-surface border-t border-border px-3 py-2 flex items-center justify-center gap-1.5">
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke={vertical.color} strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
-        </svg>
-        <span className="text-[11px] font-medium" style={{ color: vertical.color }}>
-          Respondió en 3 segundos
+      {/* Footer — Channel + response time badge */}
+      <div className="bg-surface border-t border-border px-3 py-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: skin.accent }}>
+          {skin.name}
         </span>
+        <div className="flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke={vertical.color} strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+          </svg>
+          <span className="text-[11px] font-medium" style={{ color: vertical.color }}>
+            Respondió en 3 segundos
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -615,6 +699,506 @@ function FAQItem({ question, answer, idx }: { question: string; answer: string; 
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Multi-Channel Showcase — same scenario in 4 channel skins          */
+/* ------------------------------------------------------------------ */
+
+const CHANNEL_SCENARIOS: Array<{
+  channel: ChannelKey;
+  emoji: string;
+  agentName: string;
+  business: string;
+  messages: { from: "customer" | "ai"; text: string }[];
+}> = [
+  {
+    channel: "whatsapp", emoji: "🩺", agentName: "Sofía", business: "Clínica Dental",
+    messages: [
+      { from: "customer", text: "Quiero agendar limpieza dental" },
+      { from: "ai", text: "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál preferís?" },
+      { from: "customer", text: "Jueves 10am" },
+      { from: "ai", text: "Confirmado ✅ Te recuerdo el miércoles." },
+    ],
+  },
+  {
+    channel: "instagram", emoji: "📸", agentName: "Diego", business: "Foto Studio",
+    messages: [
+      { from: "customer", text: "Vi tu trabajo, cuánto vale una sesión de boda?" },
+      { from: "ai", text: "¡Gracias! Tenemos 3 paquetes. ¿Cuándo es la fecha?" },
+      { from: "customer", text: "15 de junio" },
+      { from: "ai", text: "Disponible 🙌 Te paso opciones por aquí." },
+    ],
+  },
+  {
+    channel: "messenger", emoji: "💪", agentName: "Coach", business: "FitPro Gym",
+    messages: [
+      { from: "customer", text: "Hola, info sobre membresías" },
+      { from: "ai", text: "¡Hola! Mensual $89k, trimestral $240k (ahorrás $27k). ¿Visitamos?" },
+      { from: "customer", text: "Sí, mañana puedo" },
+      { from: "ai", text: "Te agendo a las 10am ✅" },
+    ],
+  },
+  {
+    channel: "telegram", emoji: "🔧", agentName: "Iván", business: "ServicioYA",
+    messages: [
+      { from: "customer", text: "Se me tapó el desagüe, urgente" },
+      { from: "ai", text: "Marco como prioridad alta 🚨 Dirección por favor" },
+      { from: "customer", text: "Calle 50 #15-20" },
+      { from: "ai", text: "Carlos llega en 35min. Te aviso cuando salga." },
+    ],
+  },
+];
+
+function MiniChannelDemo({ scenario, delay }: { scenario: typeof CHANNEL_SCENARIOS[number]; delay: number }) {
+  const skin = CHANNELS[scenario.channel];
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [cycle, setCycle] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-100px" });
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!isInView) return;
+    setVisibleCount(0);
+    const total = scenario.messages.length;
+    const showNext = (i: number) => {
+      if (i > total) {
+        timerRef.current = setTimeout(() => setCycle((c) => c + 1), 3500);
+        return;
+      }
+      timerRef.current = setTimeout(() => {
+        setVisibleCount(i);
+        showNext(i + 1);
+      }, i === 0 ? delay : 800);
+    };
+    showNext(1);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [cycle, isInView, scenario.messages.length, delay]);
+
+  return (
+    <div ref={ref} className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xl">
+      {/* Header */}
+      <div className="px-3 py-2.5 flex items-center gap-2.5" style={{ background: skin.headerBg }}>
+        <div className="w-7 h-7 rounded-full bg-white/25 flex items-center justify-center text-sm">
+          {scenario.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-xs font-semibold truncate">{scenario.business}</p>
+          <p className="text-white/75 text-[10px] truncate">{skin.statusText}</p>
+        </div>
+        {skin.logoSrc && <img src={skin.logoSrc} alt={skin.name} className="w-4 h-4 opacity-90" />}
+      </div>
+      {/* Body */}
+      <div className="p-3 min-h-[200px] flex flex-col gap-1.5" style={{ backgroundColor: skin.bodyBg }}>
+        {scenario.messages.map((msg, i) => (
+          <AnimatePresence key={`${cycle}-${i}`}>
+            {i < visibleCount && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.25 }}
+                className={`flex ${msg.from === "customer" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-snug ${
+                    msg.from === "customer" ? "rounded-br-sm" : "rounded-bl-sm"
+                  }`}
+                  style={{
+                    background: msg.from === "customer" ? skin.outgoingBg : skin.incomingBg,
+                    color: msg.from === "customer" ? skin.outgoingText : skin.incomingText,
+                  }}
+                >
+                  {msg.text}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        ))}
+      </div>
+      {/* Footer */}
+      <div className="bg-surface border-t border-border px-2.5 py-1.5 flex items-center justify-between">
+        <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: skin.accent }}>
+          {skin.name}
+        </span>
+        <span className="text-[9px] text-text-muted">IA respondiendo</span>
+      </div>
+    </div>
+  );
+}
+
+function MultiChannelShowcase() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {CHANNEL_SCENARIOS.map((s, i) => (
+        <motion.div
+          key={s.channel}
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ delay: i * 0.1, duration: 0.5 }}
+        >
+          <MiniChannelDemo scenario={s} delay={400 + i * 300} />
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tools Showcase — animated mini-demos of key features               */
+/* ------------------------------------------------------------------ */
+
+/** Pipeline kanban with a card moving through stages */
+function PipelineDemo() {
+  const [stage, setStage] = useState(0); // 0=new, 1=qualified, 2=won
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-50px" });
+
+  useEffect(() => {
+    if (!isInView) return;
+    let timeouts: ReturnType<typeof setTimeout>[] = [];
+    const cycle = () => {
+      timeouts.push(setTimeout(() => setStage(1), 1500));
+      timeouts.push(setTimeout(() => setStage(2), 3000));
+      timeouts.push(setTimeout(() => setStage(0), 4800));
+      timeouts.push(setTimeout(cycle, 6300));
+    };
+    cycle();
+    return () => timeouts.forEach(clearTimeout);
+  }, [isInView]);
+
+  const stages = [
+    { name: "Nuevo", color: "#3b82f6" },
+    { name: "Calificado", color: "#f59e0b" },
+    { name: "Ganado", color: "#10b981" },
+  ];
+
+  return (
+    <div ref={ref} className="grid grid-cols-3 gap-2 p-3 bg-bg/60 rounded-xl border border-border h-full">
+      {stages.map((s, i) => (
+        <div key={i} className="bg-surface border border-border rounded-lg p-2 min-h-[140px]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: s.color }}>
+              {s.name}
+            </span>
+            <span className="text-[10px] text-text-muted">{i === stage ? "1" : "0"}</span>
+          </div>
+          <AnimatePresence>
+            {i === stage && (
+              <motion.div
+                layoutId="pipeline-card"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                className="bg-bg border-l-2 rounded p-2"
+                style={{ borderColor: s.color }}
+              >
+                <p className="text-[11px] font-semibold text-text-primary truncate">María González</p>
+                <p className="text-[10px] text-text-secondary truncate">Pediatría · WA</p>
+                <div className="flex items-center gap-1 mt-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="text-[9px] text-text-muted">Score 87</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Inbox with messages arriving from different channels */
+function InboxDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-50px" });
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!isInView) return;
+    let timeouts: ReturnType<typeof setTimeout>[] = [];
+    const cycle = () => {
+      [1, 2, 3, 4].forEach((n, i) => {
+        timeouts.push(setTimeout(() => setCount(n), i * 700));
+      });
+      timeouts.push(setTimeout(() => setCount(0), 4500));
+      timeouts.push(setTimeout(cycle, 5500));
+    };
+    cycle();
+    return () => timeouts.forEach(clearTimeout);
+  }, [isInView]);
+
+  const items = [
+    { logo: "/logos/whatsapp.svg", name: "Carlos R.", msg: "Hola, tienen apto en arriendo en Chapinero?", time: "ahora" },
+    { logo: "/logos/instagram.svg", name: "@valeria.foto", msg: "Vi su trabajo, info de bodas?", time: "1m" },
+    { logo: "/logos/messenger.svg", name: "Daniel M.", msg: "Información de membresías mensuales", time: "2m" },
+    { logo: "", name: "Telegram · Anita", msg: "Necesito plomero urgente", time: "3m" },
+  ];
+
+  return (
+    <div ref={ref} className="bg-bg/60 rounded-xl border border-border p-3 h-full overflow-hidden">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-semibold text-text-primary">Bandeja unificada</span>
+        <span className="text-[10px] text-text-muted">{count} sin leer</span>
+      </div>
+      <div className="space-y-1.5">
+        {items.slice(0, count).map((item, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-center gap-2.5 bg-surface border border-border rounded-lg p-2"
+          >
+            <div className="w-7 h-7 rounded-full bg-surface-elevated flex items-center justify-center flex-shrink-0">
+              {item.logo ? (
+                <img src={item.logo} alt="" className="w-4 h-4" />
+              ) : (
+                <svg className="w-4 h-4 text-[#0088CC]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.05-.2-.07-.05-.18-.04-.25-.02-.11.03-1.77 1.12-4.99 3.27-.47.32-.9.48-1.28.47-.42-.01-1.23-.24-1.83-.44-.74-.24-1.32-.37-1.27-.78.03-.21.32-.43.86-.65 3.36-1.46 5.6-2.42 6.72-2.89 3.21-1.35 3.87-1.59 4.31-1.59.09 0 .31.02.45.13.12.09.16.21.18.3.02.09.04.31.02.48z"/>
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-text-primary truncate">{item.name}</p>
+                <span className="text-[9px] text-text-muted ml-2 flex-shrink-0">{item.time}</span>
+              </div>
+              <p className="text-[10px] text-text-secondary truncate">{item.msg}</p>
+            </div>
+            <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Calendar booking — slot pulses, then confirmation appears */
+function CalendarDemo() {
+  const [step, setStep] = useState(0); // 0=idle, 1=hover slot, 2=confirmed
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-50px" });
+
+  useEffect(() => {
+    if (!isInView) return;
+    let timeouts: ReturnType<typeof setTimeout>[] = [];
+    const cycle = () => {
+      timeouts.push(setTimeout(() => setStep(1), 800));
+      timeouts.push(setTimeout(() => setStep(2), 2000));
+      timeouts.push(setTimeout(() => setStep(0), 4500));
+      timeouts.push(setTimeout(cycle, 5500));
+    };
+    cycle();
+    return () => timeouts.forEach(clearTimeout);
+  }, [isInView]);
+
+  const slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"];
+  const selectedIdx = 2; // 11:00
+
+  return (
+    <div ref={ref} className="bg-bg/60 rounded-xl border border-border p-3 h-full">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-semibold text-text-primary">Jueves 15 de mayo</span>
+        <svg className="w-4 h-4 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
+        </svg>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        {slots.map((slot, i) => (
+          <motion.button
+            key={i}
+            className={`py-2 px-2 rounded-lg text-xs font-medium border transition-all ${
+              i === selectedIdx
+                ? step >= 1
+                  ? "bg-accent text-white border-accent shadow-[0_0_20px_rgba(56,151,240,0.4)]"
+                  : "bg-surface border-border text-text-primary"
+                : "bg-surface border-border text-text-secondary"
+            }`}
+            animate={i === selectedIdx && step === 1 ? { scale: [1, 1.05, 1] } : {}}
+            transition={{ duration: 0.4, repeat: step === 1 ? Infinity : 0, repeatType: "loop" }}
+          >
+            {slot}
+          </motion.button>
+        ))}
+      </div>
+      <AnimatePresence>
+        {step === 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2.5 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-emerald-400">Cita confirmada</p>
+              <p className="text-[10px] text-text-secondary truncate">11:00 · María González</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Analytics — counter + mini bar chart that animates in */
+function AnalyticsDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-50px" });
+  const bars = [40, 65, 50, 80, 60, 90, 75]; // mock weekly data
+
+  return (
+    <div ref={ref} className="bg-bg/60 rounded-xl border border-border p-3 h-full">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-text-primary">Esta semana</span>
+        <span className="text-[10px] text-emerald-400 font-bold">↑ 23%</span>
+      </div>
+      <p className="text-2xl font-bold tabular mb-1">
+        {isInView ? <CountUp target={1247} suffix="" /> : "0"}
+      </p>
+      <p className="text-[10px] text-text-muted mb-3">conversaciones</p>
+      <div className="flex items-end gap-1.5 h-14">
+        {bars.map((h, i) => (
+          <motion.div
+            key={i}
+            className="flex-1 bg-gradient-to-t from-accent to-cyan-400 rounded-sm"
+            initial={{ height: 0 }}
+            animate={isInView ? { height: `${h}%` } : { height: 0 }}
+            transition={{ delay: i * 0.07, duration: 0.6, ease: "easeOut" }}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between mt-1.5 text-[9px] text-text-muted">
+        {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => (
+          <span key={i}>{d}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Knowledge base — question typed, then snippet appears */
+function KnowledgeBaseDemo() {
+  const [step, setStep] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-50px" });
+
+  useEffect(() => {
+    if (!isInView) return;
+    let timeouts: ReturnType<typeof setTimeout>[] = [];
+    const cycle = () => {
+      timeouts.push(setTimeout(() => setStep(1), 600));
+      timeouts.push(setTimeout(() => setStep(2), 2000));
+      timeouts.push(setTimeout(() => setStep(0), 5000));
+      timeouts.push(setTimeout(cycle, 6000));
+    };
+    cycle();
+    return () => timeouts.forEach(clearTimeout);
+  }, [isInView]);
+
+  return (
+    <div ref={ref} className="bg-bg/60 rounded-xl border border-border p-3 h-full">
+      <div className="flex items-center gap-2 mb-2">
+        <svg className="w-4 h-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <path d="M4 19.5A2.5 2.5 0 016.5 17H20M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5a2.5 2.5 0 01-2.5-2.5v-15z" strokeLinecap="round" />
+        </svg>
+        <span className="text-xs font-semibold text-text-primary">Base de conocimiento</span>
+      </div>
+      {/* Question */}
+      <div className="bg-surface rounded-lg p-2.5 mb-2 border border-border">
+        <p className="text-[11px] text-text-secondary mb-1">Cliente pregunta:</p>
+        <p className="text-[12px] text-text-primary">¿Aceptan tarjeta sodexo?</p>
+      </div>
+      <AnimatePresence>
+        {step >= 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="text-[10px] text-text-muted mb-2 flex items-center gap-1.5"
+          >
+            <motion.div
+              className="w-1.5 h-1.5 rounded-full bg-accent"
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 1, repeat: Infinity }}
+            />
+            <span>Buscando en KB...</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {step === 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="bg-accent/10 border border-accent/30 rounded-lg p-2.5"
+          >
+            <p className="text-[10px] text-accent font-semibold uppercase tracking-wider mb-1">Encontrado en políticas.pdf</p>
+            <p className="text-[11px] text-text-primary leading-snug">
+              Sí, aceptamos tarjetas Sodexo, Big Pass y Edenred. Pago en sitio, no acumulan puntos.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** AI Agent config — sliders that animate */
+function AgentConfigDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-50px" });
+
+  return (
+    <div ref={ref} className="bg-bg/60 rounded-xl border border-border p-3 h-full">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+          <span className="text-base">🩺</span>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-text-primary">Sofía · Asistente médica</p>
+          <p className="text-[10px] text-text-muted">Plantilla: Salud · Dental</p>
+        </div>
+      </div>
+
+      <div className="space-y-2.5">
+        {[
+          { label: "Tono", value: "Empático", color: "#10b981", width: "85%" },
+          { label: "Modelo IA", value: "Claude Opus", color: "#a855f7", width: "100%" },
+          { label: "Canal", value: "WhatsApp", color: "#25D366", width: "70%" },
+        ].map((s, i) => (
+          <div key={i}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-text-muted">{s.label}</span>
+              <span className="text-[10px] font-semibold" style={{ color: s.color }}>{s.value}</span>
+            </div>
+            <div className="h-1.5 bg-surface rounded-full overflow-hidden">
+              <motion.div
+                className="h-full rounded-full"
+                style={{ background: s.color }}
+                initial={{ width: 0 }}
+                animate={isInView ? { width: s.width } : { width: 0 }}
+                transition={{ delay: i * 0.15, duration: 0.8, ease: "easeOut" }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="text-[10px] text-emerald-400 font-semibold">Activa · 24/7</span>
+      </div>
+    </div>
+  );
+}
+
 /* ====================================================================
    MAIN
    ==================================================================== */
@@ -638,10 +1222,10 @@ export default function LandingPage() {
           <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto" />
         </a>
 
-        <nav className="hidden md:flex items-center gap-7 text-sm text-text-secondary">
+        <nav className="hidden md:flex items-center gap-6 text-sm text-text-secondary">
           <a href="#verticales" className="hover:text-text-primary transition-colors">{t("nav.verticals")}</a>
+          <a href="#herramientas" className="hover:text-text-primary transition-colors">{t("nav.tools")}</a>
           <a href="#caracteristicas" className="hover:text-text-primary transition-colors">{t("nav.features")}</a>
-          <a href="#como-funciona" className="hover:text-text-primary transition-colors">{t("nav.howItWorks")}</a>
           <a href="#precios" className="hover:text-text-primary transition-colors">{t("nav.pricing")}</a>
           <a href="#preguntas" className="hover:text-text-primary transition-colors">{t("nav.contact")}</a>
         </nav>
@@ -846,6 +1430,70 @@ export default function LandingPage() {
         </p>
       </div>
       <VerticalsShowcase />
+    </Section>
+  );
+
+  /* ---------------- Multi-Channel Showcase ---------------- */
+  const channelsSection = (
+    <Section id="canales" className="bg-surface/30">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+          {t("channels.title")}
+        </h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">
+          {t("channels.subtitle")}
+        </p>
+      </div>
+      <MultiChannelShowcase />
+      <p className="text-center text-xs text-text-muted mt-8 max-w-2xl mx-auto">
+        {t("channels.note")}
+      </p>
+    </Section>
+  );
+
+  /* ---------------- Tools Showcase ---------------- */
+  const toolsSection = (
+    <Section id="herramientas">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+          {t("tools.title")}
+        </h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">
+          {t("tools.subtitle")}
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {[
+          { titleKey: "tool1Title", descKey: "tool1Desc", icon: Icon.users(), demo: <PipelineDemo /> },
+          { titleKey: "tool2Title", descKey: "tool2Desc", icon: Icon.inbox(), demo: <InboxDemo /> },
+          { titleKey: "tool3Title", descKey: "tool3Desc", icon: Icon.calendar(), demo: <CalendarDemo /> },
+          { titleKey: "tool4Title", descKey: "tool4Desc", icon: Icon.chart(), demo: <AnalyticsDemo /> },
+          { titleKey: "tool5Title", descKey: "tool5Desc", icon: Icon.book(), demo: <KnowledgeBaseDemo /> },
+          { titleKey: "tool6Title", descKey: "tool6Desc", icon: Icon.bot(), demo: <AgentConfigDemo /> },
+        ].map((tool, i) => (
+          <motion.div
+            key={i}
+            className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 hover:border-accent/30 transition-colors"
+            initial={{ opacity: 0, y: 25 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ delay: (i % 3) * 0.08, duration: 0.5 }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center flex-shrink-0">
+                {tool.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-text-primary mb-1">{t(`tools.${tool.titleKey}`)}</h3>
+                <p className="text-xs text-text-secondary leading-relaxed">{t(`tools.${tool.descKey}`)}</p>
+              </div>
+            </div>
+            <div className="flex-1 min-h-[200px]">
+              {tool.demo}
+            </div>
+          </motion.div>
+        ))}
+      </div>
     </Section>
   );
 
@@ -1262,6 +1910,8 @@ export default function LandingPage() {
         {hero}
         <TrustRow />
         {verticalsSection}
+        {channelsSection}
+        {toolsSection}
         {howItWorks}
         {featuresSection}
         {comparison}

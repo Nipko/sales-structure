@@ -33,6 +33,7 @@ import {
   Settings,
   Building2,
   DollarSign,
+  CreditCard,
   PanelLeftClose,
   PanelLeft,
   ChevronDown,
@@ -135,6 +136,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3, capability: "canSeeGlobalAnalytics" },
       { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels" },
       { labelKey: "users", href: "/admin/users", icon: Users, capability: "canManageUsers" },
+      { labelKey: "billing", href: "/admin/settings/billing", icon: CreditCard, capability: "canManageBilling" },
     ],
   },
   {

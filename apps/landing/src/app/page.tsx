@@ -20,29 +20,239 @@ const SIGNUP = "https://admin.parallly-chat.cloud/signup";
 const LOGIN = "https://admin.parallly-chat.cloud/login";
 
 /* ------------------------------------------------------------------ */
+/*  Verticals (11 con color/emoji/datos diferenciados)                 */
+/* ------------------------------------------------------------------ */
+
+interface VerticalDef {
+  key: string;
+  emoji: string;
+  color: string;
+  glow: string;
+  textOnColor: string;
+  demoMessages: { from: "customer" | "ai"; text: string }[];
+  agentName: string;
+}
+
+const VERTICALS: VerticalDef[] = [
+  {
+    key: "salud", emoji: "🩺", color: "#f43f5e", glow: "rgba(244,63,94,0.35)", textOnColor: "#fff",
+    agentName: "Sofía",
+    demoMessages: [
+      { from: "customer", text: "Hola, necesito agendar una limpieza dental para esta semana 🦷" },
+      { from: "ai", text: "¡Hola! Soy Sofía, encantada de atenderte. Tenemos disponible jueves 10am, 3pm o viernes 9am. ¿Cuál te queda mejor?" },
+      { from: "customer", text: "Jueves 3pm" },
+      { from: "ai", text: "Perfecto ✅ Cita confirmada: Limpieza dental, jueves 3pm con Dr. García. Te envío recordatorio el miércoles." },
+    ],
+  },
+  {
+    key: "veterinaria", emoji: "🐶", color: "#ec4899", glow: "rgba(236,72,153,0.35)", textOnColor: "#fff",
+    agentName: "Toby",
+    demoMessages: [
+      { from: "customer", text: "¿Cuándo le toca la vacuna a Max?" },
+      { from: "ai", text: "Hola! Revisé la ficha de Max 🐶. Le toca refuerzo de antirrábica el 15 de mayo (en 12 días). ¿Te agendo?" },
+      { from: "customer", text: "Sí porfa, en la mañana" },
+      { from: "ai", text: "Listo ✅ 15 de mayo, 9:30am con Dra. Pérez. Llevá el carnet. Te recuerdo 1 día antes." },
+    ],
+  },
+  {
+    key: "restaurantes", emoji: "🍕", color: "#f97316", glow: "rgba(249,115,22,0.35)", textOnColor: "#fff",
+    agentName: "Luca",
+    demoMessages: [
+      { from: "customer", text: "Buenas! Tienen pizza margarita? Para delivery 🍕" },
+      { from: "ai", text: "¡Hola! Sí, pizza margarita personal $18.000 o familiar $32.000. Delivery 30-40 min. ¿Cuál te llevo?" },
+      { from: "customer", text: "Familiar y una gaseosa 1.5L" },
+      { from: "ai", text: "Anotado ✅ Pizza margarita familiar + gaseosa 1.5L = $35.000. ¿Confirmás dirección Calle 50 #12-34?" },
+    ],
+  },
+  {
+    key: "gimnasios", emoji: "💪", color: "#ef4444", glow: "rgba(239,68,68,0.35)", textOnColor: "#fff",
+    agentName: "Coach",
+    demoMessages: [
+      { from: "customer", text: "Hay clase de yoga mañana?" },
+      { from: "ai", text: "Sí! Yoga con Vale: 7am (4 cupos), 9am (lleno) y 6pm (8 cupos). ¿Te reservo alguna?" },
+      { from: "customer", text: "6pm" },
+      { from: "ai", text: "Reservado ✅ Yoga 6pm mañana. Te dejo recordatorio. Para cancelar respondé hasta 2h antes." },
+    ],
+  },
+  {
+    key: "inmobiliaria", emoji: "🏠", color: "#10b981", glow: "rgba(16,185,129,0.35)", textOnColor: "#fff",
+    agentName: "Carlos",
+    demoMessages: [
+      { from: "customer", text: "Busco apto en Chapinero, 3 habitaciones, hasta 800M" },
+      { from: "ai", text: "Tengo 4 opciones que cumplen. Te muestro 2: 1) Apto 95m² $750M, 3hab/2baños · 2) Apto 110m² $790M, 3hab/3baños. ¿Más info?" },
+      { from: "customer", text: "El segundo, agendamos visita?" },
+      { from: "ai", text: "Disponible mañana 10am o sábado 4pm. ¿Cuál te queda?" },
+    ],
+  },
+  {
+    key: "turismo", emoji: "🏝️", color: "#06b6d4", glow: "rgba(6,182,212,0.35)", textOnColor: "#fff",
+    agentName: "Maya",
+    demoMessages: [
+      { from: "customer", text: "Tienen tour para el sábado? Somos 4 personas" },
+      { from: "ai", text: "¡Sí! 3 opciones para sábado: 🌊 Snorkel ($120k/persona), 🪂 Parapente ($180k), 🚤 Islas ($95k). ¿Cuál te llama más?" },
+      { from: "customer", text: "Snorkel" },
+      { from: "ai", text: "Reservado para 4 ✅ Sábado 8am, recogida en hotel. Total $480k. Te paso link de pago seguro." },
+    ],
+  },
+  {
+    key: "educacion", emoji: "🎓", color: "#6366f1", glow: "rgba(99,102,241,0.35)", textOnColor: "#fff",
+    agentName: "Ana",
+    demoMessages: [
+      { from: "customer", text: "Quiero aprender inglés desde cero, qué cursos tienen?" },
+      { from: "ai", text: "Te recomiendo nuestro curso A1 Inicial (3 meses, lun-mié-vie 6pm). Próxima cohorte arranca 15 de mayo, $450k total." },
+      { from: "customer", text: "Hay opción virtual?" },
+      { from: "ai", text: "Sí! Misma cohorte tiene modalidad virtual o híbrida. ¿Te apunto a alguna?" },
+    ],
+  },
+  {
+    key: "seguros", emoji: "🛡️", color: "#3b82f6", glow: "rgba(59,130,246,0.35)", textOnColor: "#fff",
+    agentName: "Roberto",
+    demoMessages: [
+      { from: "customer", text: "Quiero cotizar seguro de auto. Renault Logan 2020" },
+      { from: "ai", text: "Para Logan 2020 tengo 3 planes: Básico $89k/mes, Plus $145k, Total $210k. ¿Tu edad y ciudad?" },
+      { from: "customer", text: "32 años, Bogotá" },
+      { from: "ai", text: "Genial. Plus es ideal para tu perfil ($145k/mes incluye colisión + asistencia). ¿Te emito la póliza?" },
+    ],
+  },
+  {
+    key: "hogar", emoji: "🔧", color: "#f59e0b", glow: "rgba(245,158,11,0.35)", textOnColor: "#fff",
+    agentName: "Iván",
+    demoMessages: [
+      { from: "customer", text: "URGENTE! Se rompió un caño y hay agua por todos lados 💧" },
+      { from: "ai", text: "Te entiendo, marco como EMERGENCIA 🚨. ¿Calle 100 #15-20? Mando técnico ahora, llega en 30-45 min." },
+      { from: "customer", text: "Sí, esa dirección" },
+      { from: "ai", text: "Despachado ✅ Carlos llega 11:15am. Cierra la llave general por mientras. Cualquier cosa avisame." },
+    ],
+  },
+  {
+    key: "fotografia", emoji: "📸", color: "#a855f7", glow: "rgba(168,85,247,0.35)", textOnColor: "#fff",
+    agentName: "Diego",
+    demoMessages: [
+      { from: "customer", text: "Hola! Cuánto vale una sesión de boda?" },
+      { from: "ai", text: "¡Hola! Tenemos 3 paquetes: Esencial $1.5M (4h, 80 fotos), Pro $2.8M (8h + video), Premium $4.5M (full day + álbum). ¿Cuándo es?" },
+      { from: "customer", text: "15 de junio. Pro suena bien" },
+      { from: "ai", text: "Disponible 15 de junio ✅ Reservo con depósito de $700k. Te paso link de pago seguro." },
+    ],
+  },
+  {
+    key: "belleza", emoji: "💅", color: "#d946ef", glow: "rgba(217,70,239,0.35)", textOnColor: "#fff",
+    agentName: "Camila",
+    demoMessages: [
+      { from: "customer", text: "Cuánto vale el semipermanente con diseño? 💅" },
+      { from: "ai", text: "Semipermanente con diseño $65.000 COP. Esta semana tengo lunes 10am, miércoles 3pm o sábado 11am. ¿Cuál preferís?" },
+      { from: "customer", text: "Sábado 11am" },
+      { from: "ai", text: "Listo ✅ Sábado 11am con Vale. Llegá 5min antes. ¿Algún diseño que te guste?" },
+    ],
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/*  SVG Icons (inline, no external deps)                                */
+/* ------------------------------------------------------------------ */
+
+const Icon = {
+  bot: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <rect x="3" y="8" width="18" height="12" rx="3" /><path d="M9 14h.01M15 14h.01M12 4v4M8 8h8" strokeLinecap="round" />
+    </svg>
+  ),
+  inbox: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  users: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  calendar: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
+    </svg>
+  ),
+  zap: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" strokeLinejoin="round" />
+    </svg>
+  ),
+  chart: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M3 3v18h18M7 14l4-4 4 4 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  book: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M4 19.5A2.5 2.5 0 016.5 17H20M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5a2.5 2.5 0 01-2.5-2.5v-15z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  layers: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" strokeLinejoin="round" />
+    </svg>
+  ),
+  fingerprint: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M12 11a3 3 0 00-3 3v4M12 7v6M9 19c0-1.5.4-3 1.5-4M15 19c0-1.5-.4-3-1.5-4M3 12a9 9 0 0118 0v3" strokeLinecap="round" />
+    </svg>
+  ),
+  mail: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" />
+    </svg>
+  ),
+  shield: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path d="M12 2L4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z" strokeLinejoin="round" />
+    </svg>
+  ),
+  lock: (cls = "w-6 h-6") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" strokeLinecap="round" />
+    </svg>
+  ),
+  check: (cls = "w-5 h-5") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+      <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  x: (cls = "w-5 h-5") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <line x1="18" y1="6" x2="6" y2="18" strokeLinecap="round" /><line x1="6" y1="6" x2="18" y2="18" strokeLinecap="round" />
+    </svg>
+  ),
+  arrow: (cls = "w-5 h-5") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  plus: (cls = "w-5 h-5") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  ),
+  minus: (cls = "w-5 h-5") => (
+    <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M5 12h14" strokeLinecap="round" />
+    </svg>
+  ),
+};
+
+/* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function Section({
-  children,
-  id,
-  className = "",
-}: {
-  children: ReactNode;
-  id?: string;
-  className?: string;
-}) {
+function Section({ children, id, className = "", noPad = false }: { children: ReactNode; id?: string; className?: string; noPad?: boolean }) {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, margin: "-80px" });
-
   return (
     <motion.section
       ref={ref}
       id={id}
-      className={`py-24 px-6 ${className}`}
-      initial={{ opacity: 0, y: 40 }}
+      className={`${noPad ? "" : "py-24"} px-6 ${className}`}
+      initial={{ opacity: 0, y: 30 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.7, ease: "easeOut" }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <div className="mx-auto max-w-6xl">{children}</div>
     </motion.section>
@@ -54,144 +264,83 @@ function CountUp({ target, suffix = "" }: { target: number; suffix?: string }) {
   const isInView = useInView(ref, { once: true });
   const count = useMotionValue(0);
   const rounded = useTransform(count, (v) => {
-    if (target >= 1000000) return (v / 1000000).toFixed(1) + "M";
-    if (target >= 1000) return Math.round(v / 100) / 10 + "";
+    if (target >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+    if (target >= 1_000) return Math.round(v / 100) / 10 + "K";
     return v % 1 === 0 ? Math.round(v).toString() : v.toFixed(1);
   });
-
   useEffect(() => {
-    if (isInView) {
-      animate(count, target, { duration: 2, ease: "easeOut" });
-    }
+    if (isInView) animate(count, target, { duration: 1.8, ease: "easeOut" });
   }, [isInView, count, target]);
-
-  return (
-    <span ref={ref}>
-      <motion.span>{rounded}</motion.span>
-      {suffix}
-    </span>
-  );
+  return <span ref={ref} className="tabular"><motion.span>{rounded}</motion.span>{suffix}</span>;
 }
 
 /* ------------------------------------------------------------------ */
-/*  WhatsApp Demo Conversations                                        */
+/*  Vertical Chat Demo (per-vertical color/agent)                      */
 /* ------------------------------------------------------------------ */
 
-interface ChatMessage {
-  from: "customer" | "ai";
-  text: string;
-}
-
-interface DemoConversation {
-  businessName: string;
-  businessEmoji: string;
-  messages: ChatMessage[];
-}
-
-const DEMO_CONVERSATIONS: DemoConversation[] = [
-  {
-    businessName: "Bella Hair",
-    businessEmoji: "\u{1F487}\u200D\u2640\uFE0F",
-    messages: [
-      { from: "customer", text: "Hola! Quiero una cita para corte y tinte para el s\u00E1bado \u{1F64F}" },
-      { from: "ai", text: "\u00A1Hola! \u{1F487}\u200D\u2640\uFE0F Con gusto te ayudo. Tenemos disponibilidad el s\u00E1bado a las 10am, 2pm y 4pm. \u00BFCu\u00E1l te funciona?" },
-      { from: "customer", text: "A las 2pm porfa" },
-      { from: "ai", text: "\u00A1Perfecto! Tu cita queda para el s\u00E1bado a las 2pm. Corte + tinte por $85.000 COP. \u00BFA nombre de qui\u00E9n?" },
-      { from: "customer", text: "Sandra L\u00F3pez" },
-      { from: "ai", text: "\u00A1Listo Sandra! \u2705 Cita confirmada. Te enviar\u00E9 un recordatorio el viernes. \u00A1Te esperamos!" },
-    ],
-  },
-  {
-    businessName: "Nails Studio",
-    businessEmoji: "\u{1F485}",
-    messages: [
-      { from: "customer", text: "Buenas! Cu\u00E1nto vale el semipermanente? \u{1F485}" },
-      { from: "ai", text: "\u00A1Hola! Gracias por escribirnos \u{1F60A} El semipermanente est\u00E1 en $45.000 COP. Si quieres dise\u00F1o personalizado son $65.000 COP. \u00BFTe gustar\u00EDa agendar?" },
-      { from: "customer", text: "Si! El de dise\u00F1o, para ma\u00F1ana tienen?" },
-      { from: "ai", text: "Ma\u00F1ana tenemos espacio a las 11am y a las 3pm. \u00BFCu\u00E1l prefieres?" },
-      { from: "customer", text: "11am" },
-      { from: "ai", text: "\u00A1Agendado! Ma\u00F1ana a las 11am, dise\u00F1o personalizado ($65.000). Recuerda llegar 5 minutos antes. \u00BFAlguna referencia de dise\u00F1o que te guste? \u{1F3A8}" },
-    ],
-  },
-];
-
-function WhatsAppChatDemo({ conversation, delayOffset }: { conversation: DemoConversation; delayOffset: number }) {
+function VerticalChatDemo({ vertical }: { vertical: VerticalDef }) {
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runAnimation = useCallback(() => {
     setVisibleCount(0);
-    const totalMessages = conversation.messages.length;
-
-    const showNext = (index: number) => {
-      if (index > totalMessages) {
-        // Pause 3 seconds after all messages, then restart
-        timerRef.current = setTimeout(() => {
-          setCycle((c) => c + 1);
-        }, 3000);
+    const total = vertical.demoMessages.length;
+    const showNext = (i: number) => {
+      if (i > total) {
+        timerRef.current = setTimeout(() => setCycle((c) => c + 1), 2500);
         return;
       }
       timerRef.current = setTimeout(() => {
-        setVisibleCount(index);
-        showNext(index + 1);
-      }, index === 0 ? delayOffset : 500);
+        setVisibleCount(i);
+        showNext(i + 1);
+      }, i === 0 ? 200 : 700);
     };
-
     showNext(1);
-  }, [conversation.messages.length, delayOffset]);
+  }, [vertical.demoMessages.length]);
 
   useEffect(() => {
     runAnimation();
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [cycle, runAnimation]);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [cycle, runAnimation, vertical.key]);
 
   return (
-    <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl flex-1 min-w-0">
-      {/* WhatsApp-style header */}
-      <div className="bg-[#075e54] px-4 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm">
-          {conversation.businessEmoji}
+    <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl w-full"
+         style={{ boxShadow: `0 0 60px ${vertical.glow}` }}>
+      {/* Header con color de vertical */}
+      <div className="px-4 py-3 flex items-center gap-3" style={{ backgroundColor: vertical.color }}>
+        <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center text-lg backdrop-blur-sm">
+          {vertical.emoji}
         </div>
         <div>
-          <p className="text-white text-sm font-medium">{conversation.businessName}</p>
-          <p className="text-green-200 text-[10px]">en l&iacute;nea</p>
+          <p className="text-white text-sm font-semibold">{vertical.agentName}</p>
+          <p className="text-white/80 text-[11px]">en línea · responde en segundos</p>
         </div>
-        <div className="ml-auto flex items-center gap-1">
-          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-green-200 text-[10px] font-medium">IA activa</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+          <span className="text-white text-[10px] font-semibold tracking-wide">IA</span>
         </div>
       </div>
 
-      {/* Chat body */}
-      <div className="bg-[#0b141a] p-3 min-h-[280px] flex flex-col gap-1.5">
-        {conversation.messages.map((msg, i) => (
+      {/* Body */}
+      <div className="bg-[#0b141a] p-4 min-h-[320px] flex flex-col gap-2">
+        {vertical.demoMessages.map((msg, i) => (
           <AnimatePresence key={`${cycle}-${i}`}>
             {i < visibleCount && (
               <motion.div
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
                 className={`flex ${msg.from === "customer" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] px-3 py-1.5 rounded-lg text-xs leading-relaxed ${
+                  className={`max-w-[82%] px-3 py-2 rounded-lg text-[13px] leading-relaxed ${
                     msg.from === "customer"
                       ? "bg-[#005c4b] text-white rounded-br-sm"
-                      : "bg-[#1f2c33] text-gray-200 rounded-bl-sm"
+                      : "bg-[#1f2c33] text-zinc-100 rounded-bl-sm"
                   }`}
                 >
-                  {msg.from === "ai" && (
-                    <span className="text-[#3897f0] text-[10px] font-semibold block mb-0.5">
-                      {conversation.businessName} (IA)
-                    </span>
-                  )}
                   {msg.text}
-                  <span className="text-[9px] text-gray-400 ml-2 float-right mt-1">
-                    {msg.from === "customer" ? "✓✓" : ""}
-                  </span>
                 </div>
               </motion.div>
             )}
@@ -199,308 +348,251 @@ function WhatsAppChatDemo({ conversation, delayOffset }: { conversation: DemoCon
         ))}
       </div>
 
-      {/* Footer badge */}
+      {/* Footer */}
       <div className="bg-surface border-t border-border px-3 py-2 flex items-center justify-center gap-1.5">
-        <svg className="w-3.5 h-3.5 text-[#3897f0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke={vertical.color} strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
         </svg>
-        <span className="text-[11px] text-[#3897f0] font-medium">Respondi&oacute; en 3 segundos</span>
+        <span className="text-[11px] font-medium" style={{ color: vertical.color }}>
+          Respondió en 3 segundos
+        </span>
       </div>
     </div>
   );
 }
 
-function DemoSection() {
+/* ------------------------------------------------------------------ */
+/*  Verticals Picker — interactive showcase                            */
+/* ------------------------------------------------------------------ */
+
+function VerticalsShowcase() {
+  const t = useTranslations("verticals");
+  const [active, setActive] = useState<string>(VERTICALS[0].key);
+  const current = VERTICALS.find(v => v.key === active) || VERTICALS[0];
+
   return (
-    <div className="flex flex-col md:flex-row gap-6">
-      {DEMO_CONVERSATIONS.map((conv, i) => (
-        <WhatsAppChatDemo key={conv.businessName} conversation={conv} delayOffset={i * 300} />
-      ))}
+    <div className="space-y-8">
+      {/* Industry pills */}
+      <div className="flex flex-wrap gap-2 justify-center">
+        {VERTICALS.map((v) => {
+          const isActive = v.key === active;
+          return (
+            <button
+              key={v.key}
+              onClick={() => setActive(v.key)}
+              className={`relative inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${
+                isActive
+                  ? "text-white border-transparent"
+                  : "bg-surface border-border text-text-secondary hover:border-border-light hover:text-text-primary"
+              }`}
+              style={isActive ? { backgroundColor: v.color, boxShadow: `0 0 24px ${v.glow}` } : {}}
+            >
+              <span className="text-base">{v.emoji}</span>
+              <span>{t(`${v.key}.name`)}</span>
+              {isActive && (
+                <motion.span
+                  layoutId="vertical-pill-glow"
+                  className="absolute inset-0 rounded-full ring-2"
+                  style={{ borderColor: v.color }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Detail: side-by-side chat demo + features */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* Chat demo (left) */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={active}
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 30 }}
+            transition={{ duration: 0.3 }}
+          >
+            <VerticalChatDemo vertical={current} />
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Features (right) */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`${active}-info`}
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -30 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-5"
+          >
+            <div>
+              <span
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold mb-3"
+                style={{ backgroundColor: `${current.color}20`, color: current.color }}
+              >
+                <span>{current.emoji}</span>
+                <span>{t(`${active}.subtitle`)}</span>
+              </span>
+              <h3 className="text-2xl font-bold mb-2">{t(`${active}.name`)}</h3>
+              <p className="text-text-secondary leading-relaxed">
+                {t(`${active}.tagline`)}
+              </p>
+            </div>
+
+            <ul className="space-y-3">
+              {[1, 2, 3, 4].map((n) => (
+                <motion.li
+                  key={n}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: n * 0.05 }}
+                  className="flex items-start gap-3"
+                >
+                  <span
+                    className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5"
+                    style={{ backgroundColor: `${current.color}20`, color: current.color }}
+                  >
+                    {Icon.check("w-3.5 h-3.5")}
+                  </span>
+                  <span className="text-text-secondary">{t(`${active}.feature${n}`)}</span>
+                </motion.li>
+              ))}
+            </ul>
+
+            <div
+              className="p-4 rounded-xl border-l-4 bg-surface/60"
+              style={{ borderColor: current.color }}
+            >
+              <p className="text-xs uppercase tracking-wider text-text-muted mb-1">
+                Agente IA recomendado
+              </p>
+              <p className="font-semibold flex items-center gap-2">
+                <span className="text-xl">{current.emoji}</span>
+                <span>{t(`${active}.agentName`)}</span>
+                <span className="text-xs text-text-muted font-normal">· Pre-configurado</span>
+              </p>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  SVG Icons (inline, no external deps)                               */
+/*  Trust Badges Row                                                   */
 /* ------------------------------------------------------------------ */
 
-const icons = {
-  clock: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"
-      />
-    </svg>
-  ),
-  users: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
-      />
-    </svg>
-  ),
-  chart: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-      />
-    </svg>
-  ),
-  bot: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
-      />
-    </svg>
-  ),
-  messageSquare: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"
-      />
-    </svg>
-  ),
-  zap: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"
-      />
-    </svg>
-  ),
-  barChart: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z"
-      />
-    </svg>
-  ),
-  shield: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
-      />
-    </svg>
-  ),
-  calendar: (
-    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-    </svg>
-  ),
-  bookOpen: (
-    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.331 0 4.512.645 6.374 1.766l.626.434.626-.434A12.318 12.318 0 0118 18c1.052 0 2.062.18 3 .512V4.262A8.967 8.967 0 0018 3.75a8.967 8.967 0 00-6 2.292z" />
-    </svg>
-  ),
-  check: (
-    <svg
-      className="w-5 h-5 text-[#3897f0]"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M4.5 12.75l6 6 9-13.5"
-      />
-    </svg>
-  ),
-  x: (
-    <svg
-      className="w-5 h-5 text-text-muted"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6 18L18 6M6 6l12 12"
-      />
-    </svg>
-  ),
-  chevronDown: (
-    <svg
-      className="w-5 h-5"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M19.5 8.25l-7.5 7.5-7.5-7.5"
-      />
-    </svg>
-  ),
-  link: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
-      />
-    </svg>
-  ),
-  cog: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"
-      />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-      />
-    </svg>
-  ),
-  rocket: (
-    <svg
-      className="w-6 h-6"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"
-      />
-    </svg>
-  ),
-};
+function TrustRow() {
+  const t = useTranslations("trust");
+  const items = [
+    {
+      key: "meta", titleKey: "metaTitle", descKey: "metaDesc",
+      icon: (
+        <svg className="w-7 h-7 text-[#0668e1]" viewBox="0 0 36 36" fill="currentColor">
+          <path d="M20.181 35.87C29.94 34.498 36 27.6 36 18.04 36 8.275 28.21 0 18 0S0 8.275 0 18.04c0 8.65 5.045 15.55 13.21 17.708 1.057.246 1.46-.43 1.46-1.07v-3.79c-3.92.84-4.74-1.6-4.74-1.6-.66-1.7-1.6-2.13-1.6-2.13-1.31-.9.1-.88.1-.88 1.45.1 2.21 1.5 2.21 1.5 1.29 2.21 3.39 1.57 4.21 1.2.13-.94.5-1.58.92-1.94-3.13-.36-6.42-1.57-6.42-6.96 0-1.54.55-2.8 1.45-3.78-.15-.36-.63-1.78.13-3.71 0 0 1.18-.38 3.87 1.44a13.46 13.46 0 0 1 7.05 0c2.69-1.82 3.87-1.44 3.87-1.44.77 1.93.29 3.35.14 3.71.9.98 1.45 2.24 1.45 3.78 0 5.4-3.3 6.6-6.44 6.94.51.44.96 1.3.96 2.62v3.88c0 .64.4 1.32 1.46 1.07Z"/>
+        </svg>
+      ),
+      badge: t("metaBadge"),
+    },
+    {
+      key: "mp", titleKey: "mpTitle", descKey: "mpDesc",
+      icon: (
+        <svg className="w-7 h-7 text-[#00b1ea]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5l-4-4 1.41-1.41L11 13.67l4.59-4.58L17 10.5l-6 6z"/>
+        </svg>
+      ),
+      badge: t("mpBadge"),
+    },
+    {
+      key: "latam", titleKey: "latamTitle", descKey: "latamDesc",
+      icon: <span className="text-3xl">🌎</span>,
+      badge: t("latamBadge"),
+    },
+    {
+      key: "enc", titleKey: "encTitle", descKey: "encDesc",
+      icon: Icon.lock("w-7 h-7 text-emerald-400"),
+      badge: "AES-256-GCM",
+    },
+  ];
+
+  return (
+    <Section id="confianza" className="bg-surface/30 border-y border-border/50">
+      <div className="text-center mb-12">
+        <h2 className="text-2xl sm:text-3xl font-bold">{t("title")}</h2>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {items.map((item, i) => (
+          <motion.div
+            key={item.key}
+            className="bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ delay: i * 0.08, duration: 0.4 }}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-xl bg-surface-elevated border border-border flex items-center justify-center flex-shrink-0">
+                {item.icon}
+              </div>
+              <h3 className="font-semibold text-text-primary leading-tight">{t(item.titleKey)}</h3>
+            </div>
+            <p className="text-sm text-text-secondary leading-relaxed mb-3">{t(item.descKey)}</p>
+            <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
+              {item.badge}
+            </span>
+          </motion.div>
+        ))}
+      </div>
+    </Section>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  FAQ Item                                                           */
 /* ------------------------------------------------------------------ */
 
-function FAQItem({
-  question,
-  answer,
-}: {
-  question: string;
-  answer: string;
-}) {
+function FAQItem({ question, answer, idx }: { question: string; answer: string; idx: number }) {
   const [open, setOpen] = useState(false);
-
   return (
-    <div className="border border-border rounded-xl overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-30px" }}
+      transition={{ delay: idx * 0.05, duration: 0.35 }}
+      className="bg-surface border border-border rounded-xl overflow-hidden"
+    >
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between p-6 text-left hover:bg-surface transition-colors"
+        className="w-full flex items-center justify-between gap-4 p-5 text-left hover:bg-surface-light/50 transition-colors cursor-pointer"
+        aria-expanded={open}
       >
-        <span className="font-medium text-text-primary pr-4">{question}</span>
-        <motion.span
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
-          className="shrink-0 text-text-secondary"
-        >
-          {icons.chevronDown}
-        </motion.span>
+        <span className="font-medium text-text-primary">{question}</span>
+        <span className="flex-shrink-0 text-text-muted">
+          {open ? Icon.minus() : Icon.plus()}
+        </span>
       </button>
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            initial={{ height: 0 }}
+            animate={{ height: "auto" }}
+            exit={{ height: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
           >
-            <div className="px-6 pb-6 text-text-secondary leading-relaxed">
-              {answer}
-            </div>
+            <div className="px-5 pb-5 text-text-secondary leading-relaxed">{answer}</div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
-/* ================================================================== */
-/*  PAGE                                                               */
-/* ================================================================== */
+/* ====================================================================
+   MAIN
+   ==================================================================== */
 
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -508,10 +600,7 @@ export default function LandingPage() {
   const t = useTranslations();
   const { locale, setLocale, localeNames } = useLang();
 
-  /* -------------------------------------------------------------- */
-  /*  Section 1 — Header                                             */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Header ---------------- */
   const header = (
     <motion.header
       className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-bg/80 backdrop-blur-xl"
@@ -520,93 +609,52 @@ export default function LandingPage() {
       transition={{ duration: 0.5 }}
     >
       <div className="mx-auto max-w-6xl flex items-center justify-between px-6 h-16">
-        {/* Logo */}
         <a href="/" className="flex items-center gap-2">
-          <img
-            src="/parallly-logo.svg"
-            alt="Parallly"
-            className="h-10 w-auto"
-          />
+          <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto" />
         </a>
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-8 text-sm text-text-secondary">
-          <a
-            href="#caracteristicas"
-            className="hover:text-text-primary transition-colors"
-          >
-            {t('nav.features')}
-          </a>
-          <a
-            href="#precios"
-            className="hover:text-text-primary transition-colors"
-          >
-            {t('nav.pricing')}
-          </a>
-          <a
-            href="#preguntas"
-            className="hover:text-text-primary transition-colors"
-          >
-            {t('nav.contact')}
-          </a>
+        <nav className="hidden md:flex items-center gap-7 text-sm text-text-secondary">
+          <a href="#verticales" className="hover:text-text-primary transition-colors">{t("nav.verticals")}</a>
+          <a href="#caracteristicas" className="hover:text-text-primary transition-colors">{t("nav.features")}</a>
+          <a href="#como-funciona" className="hover:text-text-primary transition-colors">{t("nav.howItWorks")}</a>
+          <a href="#precios" className="hover:text-text-primary transition-colors">{t("nav.pricing")}</a>
+          <a href="#preguntas" className="hover:text-text-primary transition-colors">{t("nav.contact")}</a>
         </nav>
 
-        {/* Desktop CTA */}
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3">
           <select
             value={locale}
             onChange={(e) => setLocale(e.target.value)}
-            className="bg-transparent text-sm text-white/70 border border-white/20 rounded-lg px-2 py-1 outline-none cursor-pointer"
+            className="bg-transparent text-xs text-text-secondary border border-border rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-border-light transition-colors"
           >
             {Object.entries(localeNames).map(([code, name]) => (
               <option key={code} value={code} className="text-black">{name}</option>
             ))}
           </select>
-          <a
-            href={LOGIN}
-            className="text-sm text-text-secondary hover:text-text-primary transition-colors"
-          >
-            {t('nav.login')}
+          <a href={LOGIN} className="text-sm text-text-secondary hover:text-text-primary transition-colors">
+            {t("nav.login")}
           </a>
           <a
             href={SIGNUP}
-            className="text-sm bg-[#3897f0] hover:bg-[#2b7fd4] text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            className="text-sm bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-semibold transition-colors"
           >
-            {t('nav.startFree')}
+            {t("nav.startFree")}
           </a>
         </div>
 
-        {/* Mobile burger */}
         <button
-          className="md:hidden text-text-secondary"
+          className="md:hidden text-text-secondary cursor-pointer"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           aria-label="Menu"
         >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            {mobileMenuOpen ? (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            ) : (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-              />
-            )}
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {mobileMenuOpen
+              ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              : <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />}
           </svg>
         </button>
       </div>
 
-      {/* Mobile menu */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
@@ -614,51 +662,38 @@ export default function LandingPage() {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden border-t border-border bg-bg"
+            className="md:hidden border-t border-border bg-bg overflow-hidden"
           >
             <div className="px-6 py-4 flex flex-col gap-4">
-              <a
-                href="#caracteristicas"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                {t('nav.features')}
-              </a>
-              <a
-                href="#precios"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                {t('nav.pricing')}
-              </a>
-              <a
-                href="#preguntas"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                {t('nav.contact')}
-              </a>
+              {[
+                ["#verticales", t("nav.verticals")],
+                ["#caracteristicas", t("nav.features")],
+                ["#como-funciona", t("nav.howItWorks")],
+                ["#precios", t("nav.pricing")],
+                ["#preguntas", t("nav.contact")],
+              ].map(([href, label]) => (
+                <a
+                  key={href}
+                  href={href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  {label}
+                </a>
+              ))}
               <hr className="border-border" />
               <select
                 value={locale}
                 onChange={(e) => setLocale(e.target.value)}
-                className="bg-transparent text-sm text-text-secondary border border-border rounded-lg px-2 py-1 outline-none cursor-pointer"
+                className="bg-transparent text-sm border border-border rounded-lg px-2 py-1 outline-none cursor-pointer"
               >
                 {Object.entries(localeNames).map(([code, name]) => (
                   <option key={code} value={code} className="text-black">{name}</option>
                 ))}
               </select>
-              <a
-                href={LOGIN}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                {t('nav.login')}
-              </a>
-              <a
-                href={SIGNUP}
-                className="bg-[#3897f0] hover:bg-[#2b7fd4] text-white px-4 py-2 rounded-lg font-medium text-center transition-colors"
-              >
-                {t('nav.startFree')}
+              <a href={LOGIN} className="text-text-secondary">{t("nav.login")}</a>
+              <a href={SIGNUP} className="bg-accent text-white px-4 py-2.5 rounded-lg font-semibold text-center">
+                {t("nav.startFree")}
               </a>
             </div>
           </motion.div>
@@ -667,143 +702,106 @@ export default function LandingPage() {
     </motion.header>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 2 — Hero                                                */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Hero ---------------- */
   const hero = (
-    <section className="pt-32 pb-24 px-6 overflow-hidden">
-      <div className="mx-auto max-w-6xl flex flex-col lg:flex-row items-center gap-16">
-        {/* Left — text */}
-        <motion.div
-          className="flex-1 text-center lg:text-left"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.2 }}
-        >
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
-            {t('hero.title')}
-          </h1>
-          <p className="mt-6 text-lg sm:text-xl text-text-secondary max-w-xl mx-auto lg:mx-0 leading-relaxed">
-            {t('hero.subtitle')}
-          </p>
-          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-            <a
-              href={SIGNUP}
-              className="inline-flex items-center justify-center px-8 py-4 bg-[#3897f0] hover:bg-[#2b7fd4] text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_40px_rgba(56,151,240,0.3)]"
-            >
-              {t('hero.cta')}
-            </a>
-            <a
-              href="#como-funciona"
-              className="inline-flex items-center justify-center px-8 py-4 border border-border hover:border-border-light text-text-primary rounded-xl text-lg font-medium transition-colors"
-            >
-              {t('footer.seeHow')}
-            </a>
-          </div>
-          <p className="mt-6 text-sm text-text-muted">
-            {t('hero.noCard')}
-          </p>
-        </motion.div>
+    <section className="relative pt-28 pb-20 px-6 overflow-hidden">
+      {/* Backdrop glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[800px] bg-accent/10 blur-3xl pointer-events-none" />
 
-        {/* Right — WhatsApp demo conversations */}
-        <motion.div
-          className="flex-1 w-full max-w-md"
-          initial={{ opacity: 0, x: 60 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-        >
-          <WhatsAppChatDemo conversation={DEMO_CONVERSATIONS[0]} delayOffset={200} />
-        </motion.div>
+      <div className="mx-auto max-w-6xl relative">
+        <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+          {/* Left text */}
+          <motion.div
+            className="flex-1 text-center lg:text-left"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <motion.span
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/30 text-accent text-xs font-semibold mb-6"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              {t("hero.badge")}
+            </motion.span>
+
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold leading-[1.05] tracking-tight">
+              {t.rich("hero.title", {
+                em: () => (
+                  <span className="bg-gradient-to-r from-accent via-cyan-400 to-emerald-400 bg-clip-text text-transparent">
+                    {t("hero.titleHighlight")}
+                  </span>
+                ),
+              })}
+            </h1>
+
+            <p className="mt-6 text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 leading-relaxed">
+              {t("hero.subtitle")}
+            </p>
+
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
+              <a
+                href={SIGNUP}
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_40px_rgba(56,151,240,0.35)] hover:shadow-[0_0_60px_rgba(56,151,240,0.5)] cursor-pointer"
+              >
+                {t("hero.cta")} {Icon.arrow()}
+              </a>
+              <a
+                href="#como-funciona"
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 border border-border hover:border-border-light text-text-primary rounded-xl text-base font-medium transition-colors cursor-pointer"
+              >
+                {t("hero.ctaSecondary")}
+              </a>
+            </div>
+
+            <p className="mt-5 text-xs text-text-muted">{t("hero.noCard")}</p>
+
+            <div className="mt-8 pt-6 border-t border-border/50 max-w-md mx-auto lg:mx-0">
+              <p className="text-xs text-text-muted">{t("hero.trustline")}</p>
+            </div>
+          </motion.div>
+
+          {/* Right demo */}
+          <motion.div
+            className="flex-1 w-full max-w-md"
+            initial={{ opacity: 0, x: 60 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.3 }}
+          >
+            <VerticalChatDemo vertical={VERTICALS[0]} />
+          </motion.div>
+        </div>
       </div>
     </section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 3 — Social Proof                                       */
-  /* -------------------------------------------------------------- */
-
-  const socialProof = (
-    <Section>
-      <p className="text-center text-text-muted text-sm uppercase tracking-widest mb-10">
-        {t('socialProof.trust')}
+  /* ---------------- Stats ---------------- */
+  const stats = (
+    <Section className="border-t border-border/50">
+      <p className="text-center text-text-muted text-xs uppercase tracking-widest mb-10">
+        {t("socialProof.trust")}
       </p>
-
-      {/* logos */}
-      <div className="flex flex-wrap items-center justify-center gap-8 mb-16">
-        {["TechCorp", "Ecomarket", "TurboVentas", "CloudShop", "DataPrime"].map(
-          (name) => (
-            <div
-              key={name}
-              className="px-6 py-3 rounded-lg bg-surface border border-border text-text-muted text-sm font-medium"
-            >
-              {name}
-            </div>
-          )
-        )}
-      </div>
-
-      {/* stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
-        <div>
-          <p className="text-4xl font-bold text-text-primary">
-            <CountUp target={2000000} suffix="+" />
-          </p>
-          <p className="mt-1 text-text-secondary text-sm">
-            {t('socialProof.stat1Label')}
-          </p>
-        </div>
-        <div>
-          <p className="text-4xl font-bold text-text-primary">
-            <CountUp target={4.9} suffix="/5" />
-          </p>
-          <p className="mt-1 text-text-secondary text-sm">{t('socialProof.stat2Label')}</p>
-        </div>
-        <div>
-          <p className="text-4xl font-bold text-text-primary">
-            <CountUp target={45} suffix="%" />
-          </p>
-          <p className="mt-1 text-text-secondary text-sm">
-            {t('socialProof.stat3Label')}
-          </p>
-        </div>
-      </div>
-    </Section>
-  );
-
-  /* -------------------------------------------------------------- */
-  /*  Section 4 — Problem                                            */
-  /* -------------------------------------------------------------- */
-
-  const problemCards = [
-    { icon: icons.clock, titleKey: "problem.card1" },
-    { icon: icons.users, titleKey: "problem.card2" },
-    { icon: icons.chart, titleKey: "problem.card3" },
-  ];
-
-  const problem = (
-    <Section id="problema" className="bg-surface/50">
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        {t('problem.title')}
-      </h2>
-      <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        {t('problem.subtitle')}
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {problemCards.map((card, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+        {[
+          { num: 2_000_000, suffix: "+", labelKey: "socialProof.stat1Label" },
+          { num: 4.9, suffix: "/5", labelKey: "socialProof.stat2Label" },
+          { num: 45, suffix: "%", labelKey: "socialProof.stat3Label" },
+          { num: 16, suffix: "", labelKey: "socialProof.stat4Label" },
+        ].map((s, i) => (
           <motion.div
             key={i}
-            className="bg-surface border border-border rounded-xl p-8 text-center"
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.15, duration: 0.5 }}
+            viewport={{ once: true }}
+            transition={{ delay: i * 0.08 }}
           >
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-red-500/10 text-red-400 rounded-xl mb-5">
-              {card.icon}
-            </div>
-            <p className="text-text-primary font-medium leading-relaxed">
-              {t(card.titleKey)}
+            <p className="text-3xl sm:text-4xl font-bold text-text-primary">
+              <CountUp target={s.num} suffix={s.suffix} />
+            </p>
+            <p className="mt-1.5 text-xs sm:text-sm text-text-secondary leading-tight">
+              {t(s.labelKey)}
             </p>
           </motion.div>
         ))}
@@ -811,169 +809,153 @@ export default function LandingPage() {
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 5 — Demo Conversations                                 */
-  /* -------------------------------------------------------------- */
-
-  const demoConversations = (
-    <Section id="como-funciona">
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        {t('demo.title')}
-      </h2>
-      <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        {t('demo.subtitle')}
-      </p>
-      <DemoSection />
+  /* ---------------- Verticals ---------------- */
+  const verticalsSection = (
+    <Section id="verticales">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 tracking-tight">
+          {t("verticals.title")}
+        </h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">
+          {t("verticals.subtitle")}
+        </p>
+      </div>
+      <VerticalsShowcase />
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 6 — How it Works                                       */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- How it works ---------------- */
   const steps = [
-    { num: "1", icon: icons.link, titleKey: "howItWorks.step1", descKey: "howItWorks.step1Desc" },
-    { num: "2", icon: icons.cog, titleKey: "howItWorks.step2", descKey: "howItWorks.step2Desc" },
-    { num: "3", icon: icons.rocket, titleKey: "howItWorks.step3", descKey: "howItWorks.step3Desc" },
+    { num: "1", icon: Icon.inbox(), titleKey: "step1", descKey: "step1Desc", tagKey: "step1Tag" },
+    { num: "2", icon: Icon.layers(), titleKey: "step2", descKey: "step2Desc", tagKey: "step2Tag" },
+    { num: "3", icon: Icon.zap(), titleKey: "step3", descKey: "step3Desc", tagKey: "step3Tag" },
   ];
 
   const howItWorks = (
-    <Section>
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        {t('howItWorks.sectionTitle')}
-      </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+    <Section id="como-funciona" className="bg-surface/30">
+      <div className="text-center mb-16">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+          {t("howItWorks.sectionTitle")}
+        </h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">{t("howItWorks.subtitle")}</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+        {/* Connector line entre cards en desktop */}
+        <div className="hidden md:block absolute top-12 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border-light to-transparent" />
+
         {steps.map((step, i) => (
           <motion.div
             key={i}
-            className="text-center"
+            className="relative bg-surface border border-border rounded-2xl p-7 hover:border-accent/40 transition-colors"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.15, duration: 0.5 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ delay: i * 0.12, duration: 0.5 }}
           >
-            <div className="relative inline-flex items-center justify-center w-16 h-16 bg-[#3897f0]/10 text-[#3897f0] rounded-2xl mb-6">
-              {step.icon}
-              <span className="absolute -top-2 -right-2 w-7 h-7 bg-[#3897f0] text-white text-xs font-bold rounded-full flex items-center justify-center">
-                {step.num}
+            <div className="flex items-start justify-between mb-5">
+              <div className="relative inline-flex items-center justify-center w-12 h-12 bg-accent/10 text-accent rounded-xl">
+                {step.icon}
+              </div>
+              <span className="text-xs font-mono text-accent bg-accent/10 px-2.5 py-1 rounded-full">
+                {t(`howItWorks.${step.tagKey}`)}
               </span>
             </div>
-            <h3 className="text-xl font-semibold mb-3 text-text-primary">
-              {t(step.titleKey)}
-            </h3>
-            <p className="text-text-secondary leading-relaxed">{t(step.descKey)}</p>
+            <p className="text-sm font-mono text-text-muted mb-2">PASO {step.num}</p>
+            <h3 className="text-xl font-bold mb-2.5">{t(`howItWorks.${step.titleKey}`)}</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">{t(`howItWorks.${step.descKey}`)}</p>
           </motion.div>
         ))}
       </div>
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 7 — Features                                           */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Features grid ---------------- */
   const features = [
-    { icon: icons.bot, titleKey: "features.f1Title", descKey: "features.f1Desc" },
-    { icon: icons.messageSquare, titleKey: "features.f2Title", descKey: "features.f2Desc" },
-    { icon: icons.users, titleKey: "features.f3Title", descKey: "features.f3Desc" },
-    { icon: icons.zap, titleKey: "features.f4Title", descKey: "features.f4Desc" },
-    { icon: icons.barChart, titleKey: "features.f5Title", descKey: "features.f5Desc" },
-    { icon: icons.shield, titleKey: "features.f6Title", descKey: "features.f6Desc" },
-    { icon: icons.calendar, titleKey: "features.f7Title", descKey: "features.f7Desc" },
-    { icon: icons.bookOpen, titleKey: "features.f8Title", descKey: "features.f8Desc" },
+    { icon: Icon.bot(), key: "f1" }, { icon: Icon.inbox(), key: "f2" },
+    { icon: Icon.users(), key: "f3" }, { icon: Icon.calendar(), key: "f4" },
+    { icon: Icon.zap(), key: "f5" }, { icon: Icon.chart(), key: "f6" },
+    { icon: Icon.book(), key: "f7" }, { icon: Icon.layers(), key: "f8" },
+    { icon: Icon.fingerprint(), key: "f9" }, { icon: Icon.mail(), key: "f10" },
+    { icon: Icon.shield(), key: "f11" }, { icon: Icon.lock(), key: "f12" },
   ];
 
   const featuresSection = (
-    <Section id="caracteristicas" className="bg-surface/50">
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        {t('features.title')}
-      </h2>
-      <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        {t('features.subtitle')}
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <Section id="caracteristicas">
+      <div className="text-center mb-14">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">{t("features.title")}</h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">{t("features.subtitle")}</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {features.map((f, i) => (
           <motion.div
             key={i}
-            className="bg-surface border border-border rounded-xl p-8 hover:border-[#3897f0]/30 transition-colors"
-            initial={{ opacity: 0, y: 30 }}
+            className="bg-surface border border-border rounded-2xl p-6 hover:border-accent/30 hover:bg-surface-light transition-all group"
+            initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.1, duration: 0.5 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ delay: (i % 6) * 0.06, duration: 0.4 }}
           >
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-[#3897f0]/10 text-[#3897f0] rounded-xl mb-5">
+            <div className="inline-flex items-center justify-center w-11 h-11 bg-accent/10 text-accent rounded-xl mb-4 group-hover:scale-105 transition-transform">
               {f.icon}
             </div>
-            <h3 className="text-lg font-semibold mb-2 text-text-primary">
-              {t(f.titleKey)}
-            </h3>
-            <p className="text-text-secondary text-sm leading-relaxed">
-              {t(f.descKey)}
-            </p>
+            <h3 className="text-base font-semibold mb-1.5">{t(`features.${f.key}Title`)}</h3>
+            <p className="text-text-secondary text-sm leading-relaxed">{t(`features.${f.key}Desc`)}</p>
           </motion.div>
         ))}
       </div>
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 8 — Comparison                                         */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Comparison ---------------- */
   const compRows = [
-    { labelKey: "comparison.row1", manual: false, basic: true, parallly: true },
-    { labelKey: "comparison.row2", manual: false, basic: false, parallly: true },
-    { labelKey: "comparison.row3", manual: false, basic: false, parallly: true },
-    { labelKey: "comparison.row4", manual: false, basic: false, parallly: true },
-    { labelKey: "comparison.row5", manual: true, basic: false, parallly: true },
-    { labelKey: "comparison.row6", manual: true, basic: false, parallly: true },
+    { key: "row1", manual: false, basic: true, parallly: true },
+    { key: "row2", manual: false, basic: false, parallly: true },
+    { key: "row3", manual: false, basic: false, parallly: true },
+    { key: "row4", manual: false, basic: false, parallly: true },
+    { key: "row5", manual: true, basic: false, parallly: true },
+    { key: "row6", manual: true, basic: false, parallly: true },
+    { key: "row7", manual: false, basic: false, parallly: true },
+    { key: "row8", manual: false, basic: false, parallly: true },
   ];
 
   const comparison = (
-    <Section>
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        {t('comparison.title')}
+    <Section className="bg-surface/30">
+      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-14 tracking-tight">
+        {t("comparison.title")}
       </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full max-w-3xl mx-auto">
+      <div className="overflow-x-auto -mx-6 px-6">
+        <table className="w-full max-w-3xl mx-auto text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left py-4 pr-4 text-text-secondary text-sm font-medium"></th>
-              <th className="py-4 px-4 text-text-secondary text-sm font-medium text-center">
-                {t('comparison.manual')}
-              </th>
-              <th className="py-4 px-4 text-text-secondary text-sm font-medium text-center">
-                {t('comparison.basicBots')}
-              </th>
-              <th className="py-4 px-4 text-text-primary text-sm font-semibold text-center bg-[#3897f0]/5 rounded-t-xl border-x border-t border-[#3897f0]/20">
+              <th className="text-left py-4 pr-4 text-text-secondary font-medium"></th>
+              <th className="py-4 px-4 text-text-secondary font-medium text-center">{t("comparison.manual")}</th>
+              <th className="py-4 px-4 text-text-secondary font-medium text-center">{t("comparison.basicBots")}</th>
+              <th className="py-4 px-4 text-text-primary font-bold text-center bg-accent/10 rounded-t-xl border-x border-t border-accent/30">
                 Parallly
               </th>
             </tr>
           </thead>
           <tbody>
             {compRows.map((row, i) => (
-              <tr key={i} className="border-b border-border/50">
-                <td className="py-4 pr-4 text-sm text-text-secondary">
-                  {t(row.labelKey)}
+              <tr key={i} className="border-b border-border/40">
+                <td className="py-3.5 pr-4 text-text-secondary">{t(`comparison.${row.key}`)}</td>
+                <td className="py-3.5 px-4 text-center">
+                  {row.manual ? <span className="text-emerald-400 inline-block">{Icon.check()}</span> : <span className="text-zinc-600 inline-block">{Icon.x()}</span>}
                 </td>
-                <td className="py-4 px-4 text-center">
-                  {row.manual ? icons.check : icons.x}
+                <td className="py-3.5 px-4 text-center">
+                  {row.basic ? <span className="text-emerald-400 inline-block">{Icon.check()}</span> : <span className="text-zinc-600 inline-block">{Icon.x()}</span>}
                 </td>
-                <td className="py-4 px-4 text-center">
-                  {row.basic ? icons.check : icons.x}
-                </td>
-                <td className="py-4 px-4 text-center bg-[#3897f0]/5 border-x border-[#3897f0]/20">
-                  {row.parallly ? icons.check : icons.x}
+                <td className="py-3.5 px-4 text-center bg-accent/10 border-x border-accent/30">
+                  <span className="text-emerald-400 inline-block">{Icon.check()}</span>
                 </td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td className="bg-[#3897f0]/5 border-x border-b border-[#3897f0]/20 rounded-b-xl h-2"></td>
+              <td colSpan={3}></td>
+              <td className="bg-accent/10 border-x border-b border-accent/30 rounded-b-xl h-2"></td>
             </tr>
           </tfoot>
         </table>
@@ -981,47 +963,49 @@ export default function LandingPage() {
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 9 — Testimonials                                       */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Testimonials ---------------- */
   const testimonials = [
-    { prefix: "t1", initials: "ML" },
-    { prefix: "t2", initials: "CG" },
-    { prefix: "t3", initials: "VR" },
+    { prefix: "t1", initials: "ML", color: "#f43f5e" },
+    { prefix: "t2", initials: "CG", color: "#3b82f6" },
+    { prefix: "t3", initials: "VR", color: "#f97316" },
   ];
 
   const testimonialsSection = (
-    <Section className="bg-surface/50">
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-        {t('testimonials.title')}
-      </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <Section>
+      <div className="text-center mb-14">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">{t("testimonials.title")}</h2>
+        <p className="text-text-secondary">{t("testimonials.subtitle")}</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {testimonials.map((tm, i) => (
           <motion.div
             key={i}
-            className="bg-surface border border-border rounded-xl p-8 flex flex-col"
-            initial={{ opacity: 0, y: 30 }}
+            className="bg-surface border border-border rounded-2xl p-7 flex flex-col"
+            initial={{ opacity: 0, y: 25 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.15, duration: 0.5 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ delay: i * 0.1, duration: 0.5 }}
           >
-            <p className="text-text-secondary leading-relaxed flex-1 mb-6">
-              &ldquo;{t(`testimonials.${tm.prefix}Quote`)}&rdquo;
+            <svg className="w-8 h-8 text-accent/30 mb-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+            </svg>
+            <p className="text-text-secondary leading-relaxed flex-1 mb-6 italic">
+              {t(`testimonials.${tm.prefix}Quote`)}
             </p>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#3897f0]/20 flex items-center justify-center text-[#3897f0] text-sm font-bold">
+            <div className="flex items-center gap-3 pt-4 border-t border-border/50">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                style={{ backgroundColor: tm.color }}
+              >
                 {tm.initials}
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-text-primary">
-                  {t(`testimonials.${tm.prefix}Name`)}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {t(`testimonials.${tm.prefix}Role`)}, {t(`testimonials.${tm.prefix}Company`)}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">{t(`testimonials.${tm.prefix}Name`)}</p>
+                <p className="text-xs text-text-muted truncate">
+                  {t(`testimonials.${tm.prefix}Role`)} · {t(`testimonials.${tm.prefix}Company`)}
                 </p>
               </div>
-              <span className="text-xs bg-[#3897f0]/10 text-[#3897f0] px-2.5 py-1 rounded-full font-medium">
+              <span className="text-[11px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full font-bold flex-shrink-0">
                 {t(`testimonials.${tm.prefix}Stat`)}
               </span>
             </div>
@@ -1031,332 +1015,232 @@ export default function LandingPage() {
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 10 — Pricing                                           */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Pricing ---------------- */
   const plans = [
     {
-      nameKey: "pricing.starterName",
-      priceCOP: annual ? "$199.000" : "$239.000",
-      priceUSD: annual ? "(~$49 USD)" : "(~$59 USD)",
-      period: " COP/mes",
-      descKey: "pricing.starterDesc",
-      featuresKey: "pricing.starterFeatures",
-      ctaKey: "pricing.starterCta",
-      highlighted: false,
+      nameKey: "starterName", priceCOP: annual ? "$199.000" : "$239.000", priceUSD: annual ? "~$49 USD" : "~$59 USD",
+      descKey: "starterDesc", featuresKey: "starterFeatures", ctaKey: "starterCta", highlighted: false,
     },
     {
-      nameKey: "pricing.proName",
-      priceCOP: annual ? "$499.000" : "$599.000",
-      priceUSD: annual ? "(~$119 USD)" : "(~$149 USD)",
-      period: " COP/mes",
-      descKey: "pricing.proDesc",
-      featuresKey: "pricing.proFeatures",
-      ctaKey: "pricing.proCta",
-      highlighted: true,
-      badgeKey: "pricing.popular",
+      nameKey: "proName", priceCOP: annual ? "$499.000" : "$599.000", priceUSD: annual ? "~$119 USD" : "~$149 USD",
+      descKey: "proDesc", featuresKey: "proFeatures", ctaKey: "proCta", highlighted: true, badgeKey: "popular",
     },
     {
-      nameKey: "pricing.enterpriseName",
-      priceCOP: null,
-      priceUSD: "",
-      period: "",
-      descKey: "pricing.enterpriseDesc",
-      featuresKey: "pricing.enterpriseFeatures",
-      ctaKey: "pricing.enterpriseCta",
-      highlighted: false,
+      nameKey: "enterpriseName", priceCOP: null, priceUSD: "",
+      descKey: "enterpriseDesc", featuresKey: "enterpriseFeatures", ctaKey: "enterpriseCta", highlighted: false,
     },
   ];
 
   const pricing = (
-    <Section id="precios">
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        {t('pricing.title')}
-      </h2>
-      <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
-        {t('pricing.freeTrial')}
-      </p>
+    <Section id="precios" className="bg-surface/30">
+      <div className="text-center mb-10">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">{t("pricing.title")}</h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">{t("pricing.freeTrial")}</p>
+      </div>
 
-      {/* Toggle */}
-      <div className="flex items-center justify-center gap-3 mb-16">
-        <span
-          className={`text-sm ${!annual ? "text-text-primary" : "text-text-muted"}`}
-        >
-          {t('pricing.monthly')}
+      {/* Toggle anual/mensual */}
+      <div className="flex items-center justify-center gap-3 mb-12">
+        <span className={`text-sm transition-colors ${!annual ? "text-text-primary font-medium" : "text-text-muted"}`}>
+          {t("pricing.monthly")}
         </span>
         <button
           onClick={() => setAnnual(!annual)}
-          className={`relative w-12 h-6 rounded-full transition-colors ${annual ? "bg-[#3897f0]" : "bg-border"}`}
+          className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${annual ? "bg-accent" : "bg-border-light"}`}
+          aria-label="Toggle billing cycle"
         >
           <motion.div
-            className="absolute top-0.5 w-5 h-5 bg-white rounded-full"
+            className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow"
             animate={{ left: annual ? "26px" : "2px" }}
             transition={{ type: "spring", stiffness: 500, damping: 30 }}
           />
         </button>
-        <span
-          className={`text-sm ${annual ? "text-text-primary" : "text-text-muted"}`}
-        >
-          {t('pricing.annual')}{" "}
-          <span className="text-[#3897f0] text-xs font-medium">({t('pricing.annualDiscount')})</span>
+        <span className={`text-sm transition-colors ${annual ? "text-text-primary font-medium" : "text-text-muted"}`}>
+          {t("pricing.annual")}
+          <span className="ml-1.5 text-emerald-400 text-xs font-bold">{t("pricing.annualDiscount")}</span>
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
         {plans.map((plan, i) => (
           <motion.div
             key={i}
-            className={`relative rounded-2xl p-8 border flex flex-col ${
+            className={`relative rounded-2xl p-7 border flex flex-col ${
               plan.highlighted
-                ? "bg-surface border-[#3897f0]/40 shadow-[0_0_60px_rgba(56,151,240,0.1)]"
+                ? "bg-surface border-accent/40 shadow-[0_0_60px_rgba(56,151,240,0.12)] md:-mt-4"
                 : "bg-surface border-border"
             }`}
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 25 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ delay: i * 0.1, duration: 0.5 }}
-            whileHover={{ scale: 1.02 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ delay: i * 0.08, duration: 0.45 }}
           >
             {plan.badgeKey && (
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#3897f0] text-white text-xs font-semibold px-3 py-1 rounded-full">
-                {t(plan.badgeKey)}
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full">
+                {t(`pricing.${plan.badgeKey}`)}
               </span>
             )}
-            <h3 className="text-xl font-semibold text-text-primary mb-2">
-              {t(plan.nameKey)}
-            </h3>
-            <p className="text-text-muted text-sm mb-6">{t(plan.descKey)}</p>
-            <div className="mb-6">
+            <h3 className="text-xl font-bold mb-1">{t(`pricing.${plan.nameKey}`)}</h3>
+            <p className="text-text-muted text-sm mb-5">{t(`pricing.${plan.descKey}`)}</p>
+
+            <div className="mb-6 min-h-[80px]">
               {plan.priceCOP !== null ? (
-                <div>
-                  <span className="text-3xl font-bold text-text-primary">
-                    {plan.priceCOP}
-                  </span>
-                  <span className="text-sm font-normal text-text-muted">
-                    {plan.period}
-                  </span>
-                  <p className="text-xs text-text-muted mt-1">{plan.priceUSD}</p>
-                </div>
+                <>
+                  <span className="text-4xl font-bold tabular">{plan.priceCOP}</span>
+                  <span className="text-sm text-text-muted ml-1">{t("pricing.perMonth")}</span>
+                  <p className="text-xs text-text-muted mt-1.5">{plan.priceUSD}</p>
+                </>
               ) : (
-                <span className="text-4xl font-bold text-text-primary">
-                  {t('pricing.enterprisePrice')}
-                </span>
+                <span className="text-4xl font-bold">{t("pricing.enterprisePrice")}</span>
               )}
             </div>
-            <ul className="space-y-3 mb-8 flex-1">
-              {(t.raw(plan.featuresKey) as string[]).map((f: string, fi: number) => (
-                <li
-                  key={fi}
-                  className="flex items-center gap-3 text-sm text-text-secondary"
-                >
-                  {icons.check}
-                  <span>{f}</span>
+
+            <ul className="space-y-2.5 mb-7 flex-1">
+              {(t.raw(`pricing.${plan.featuresKey}`) as string[]).map((f, fi) => (
+                <li key={fi} className="flex items-start gap-2.5 text-sm">
+                  <span className="text-accent flex-shrink-0 mt-0.5">{Icon.check("w-4 h-4")}</span>
+                  <span className="text-text-secondary">{f}</span>
                 </li>
               ))}
             </ul>
+
             <a
               href={SIGNUP}
-              className={`block text-center py-3 px-6 rounded-xl font-medium transition-colors ${
+              className={`block text-center py-3 px-6 rounded-xl font-semibold transition-colors cursor-pointer ${
                 plan.highlighted
-                  ? "bg-[#3897f0] hover:bg-[#2b7fd4] text-white"
+                  ? "bg-accent hover:bg-accent-hover text-white shadow-[0_0_30px_rgba(56,151,240,0.3)]"
                   : "bg-surface-light hover:bg-border border border-border text-text-primary"
               }`}
             >
-              {t(plan.ctaKey)}
+              {t(`pricing.${plan.ctaKey}`)}
             </a>
           </motion.div>
         ))}
       </div>
+
+      <p className="text-center text-xs text-text-muted mt-8">{t("pricing.currencyHint")}</p>
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 11 — FAQ                                               */
-  /* -------------------------------------------------------------- */
-
-  const faqs = [1, 2, 3, 4, 5, 6].map(n => ({
-    q: t(`faq.q${n}`),
-    a: t(`faq.a${n}`),
-  }));
+  /* ---------------- FAQ ---------------- */
+  const faqs = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ q: t(`faq.q${n}`), a: t(`faq.a${n}`) }));
 
   const faqSection = (
-    <Section id="preguntas" className="bg-surface/50">
-      <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-        {t('faq.title')}
-      </h2>
-      <p className="text-text-secondary text-center mb-16 max-w-2xl mx-auto">
-        {t('faq.subtitle')}
-      </p>
+    <Section id="preguntas">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">{t("faq.title")}</h2>
+        <p className="text-text-secondary">{t("faq.subtitle")}</p>
+      </div>
       <div className="max-w-3xl mx-auto space-y-3">
         {faqs.map((faq, i) => (
-          <FAQItem key={i} question={faq.q} answer={faq.a} />
+          <FAQItem key={i} idx={i} question={faq.q} answer={faq.a} />
         ))}
       </div>
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 12 — Final CTA                                         */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Final CTA ---------------- */
   const finalCTA = (
     <Section>
-      <div className="text-center relative">
-        {/* glow */}
+      <div className="relative bg-gradient-to-br from-surface via-surface to-accent/10 border border-accent/30 rounded-3xl py-16 px-6 text-center overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-96 h-96 bg-[#3897f0]/10 rounded-full blur-3xl" />
+          <div className="w-[600px] h-[600px] bg-accent/15 rounded-full blur-3xl" />
         </div>
         <div className="relative">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
-            {t('cta.title')}
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-5 tracking-tight">
+            {t("cta.title")}
           </h2>
-          <p className="text-text-secondary text-lg mb-10 max-w-xl mx-auto">
-            {t('cta.subtitle')}
+          <p className="text-text-secondary text-base sm:text-lg mb-9 max-w-xl mx-auto">
+            {t("cta.subtitle")}
           </p>
-          <a
-            href={SIGNUP}
-            className="inline-flex items-center justify-center px-10 py-5 bg-[#3897f0] hover:bg-[#2b7fd4] text-white font-semibold rounded-xl text-lg transition-colors shadow-[0_0_60px_rgba(56,151,240,0.3)]"
-          >
-            {t('cta.button')}
-          </a>
-          <p className="mt-8 text-sm text-text-muted">
-            {t('cta.guarantees')}
-          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <a
+              href={SIGNUP}
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-accent hover:bg-accent-hover text-white font-bold rounded-xl text-base transition-colors shadow-[0_0_60px_rgba(56,151,240,0.4)] cursor-pointer"
+            >
+              {t("cta.button")} {Icon.arrow()}
+            </a>
+            <a
+              href="mailto:ventas@parallly-chat.cloud"
+              className="inline-flex items-center justify-center px-8 py-4 border border-border-light hover:border-accent text-text-primary font-medium rounded-xl text-base transition-colors cursor-pointer"
+            >
+              {t("cta.secondaryButton")}
+            </a>
+          </div>
+          <p className="mt-7 text-xs text-text-muted">{t("cta.guarantees")}</p>
         </div>
       </div>
     </Section>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Section 13 — Footer                                            */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Footer ---------------- */
   const footer = (
     <footer className="border-t border-border bg-surface/30">
-      <div className="mx-auto max-w-6xl px-6 py-16">
+      <div className="mx-auto max-w-6xl px-6 py-14">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
-          {/* brand */}
           <div className="col-span-2 md:col-span-1">
-            <img
-              src="/parallly-logo.svg"
-              alt="Parallly"
-              className="h-10 w-auto mb-4"
-            />
-            <p className="text-text-muted text-sm leading-relaxed">
-              {t('footer.brandDesc')}
-            </p>
+            <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto mb-4" />
+            <p className="text-text-muted text-sm leading-relaxed">{t("footer.brandDesc")}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-[#0668e1]/10 text-[#0668e1] font-bold border border-[#0668e1]/20">
+                Meta Tech Provider
+              </span>
+              <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-[#00b1ea]/10 text-[#00b1ea] font-bold border border-[#00b1ea]/20">
+                MercadoPago
+              </span>
+            </div>
           </div>
 
-          {/* Producto */}
           <div>
-            <h4 className="text-sm font-semibold text-text-primary mb-4">
-              {t('footer.product')}
-            </h4>
+            <h4 className="text-sm font-semibold mb-4">{t("footer.product")}</h4>
             <ul className="space-y-2 text-sm text-text-muted">
-              <li>
-                <a
-                  href="#caracteristicas"
-                  className="hover:text-text-secondary transition-colors"
-                >
-                  {t('footer.features')}
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#precios"
-                  className="hover:text-text-secondary transition-colors"
-                >
-                  {t('footer.pricing')}
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#como-funciona"
-                  className="hover:text-text-secondary transition-colors"
-                >
-                  {t('footer.demo')}
-                </a>
-              </li>
+              <li><a href="#verticales" className="hover:text-text-secondary transition-colors">{t("footer.verticals")}</a></li>
+              <li><a href="#caracteristicas" className="hover:text-text-secondary transition-colors">{t("footer.features")}</a></li>
+              <li><a href="#precios" className="hover:text-text-secondary transition-colors">{t("footer.pricing")}</a></li>
+              <li><a href="#como-funciona" className="hover:text-text-secondary transition-colors">{t("footer.demo")}</a></li>
             </ul>
           </div>
 
-          {/* Empresa */}
           <div>
-            <h4 className="text-sm font-semibold text-text-primary mb-4">
-              {t('footer.company')}
-            </h4>
+            <h4 className="text-sm font-semibold mb-4">{t("footer.company")}</h4>
             <ul className="space-y-2 text-sm text-text-muted">
-              <li>
-                <a href="#" className="hover:text-text-secondary transition-colors">
-                  {t('footer.about')}
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-text-secondary transition-colors">
-                  {t('footer.blog')}
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-text-secondary transition-colors">
-                  {t('footer.contact')}
-                </a>
-              </li>
+              <li><a href="#" className="hover:text-text-secondary transition-colors">{t("footer.about")}</a></li>
+              <li><a href="#" className="hover:text-text-secondary transition-colors">{t("footer.blog")}</a></li>
+              <li><a href="mailto:soporte@parallly-chat.cloud" className="hover:text-text-secondary transition-colors">{t("footer.support")}</a></li>
+              <li><a href="mailto:ventas@parallly-chat.cloud" className="hover:text-text-secondary transition-colors">{t("footer.contact")}</a></li>
             </ul>
           </div>
 
-          {/* Legal */}
           <div>
-            <h4 className="text-sm font-semibold text-text-primary mb-4">
-              {t('footer.legal')}
-            </h4>
+            <h4 className="text-sm font-semibold mb-4">{t("footer.legal")}</h4>
             <ul className="space-y-2 text-sm text-text-muted">
-              <li>
-                <a href="/privacy" className="hover:text-text-secondary transition-colors">
-                  {t('footer.privacy')}
-                </a>
-              </li>
-              <li>
-                <a href="/terms" className="hover:text-text-secondary transition-colors">
-                  {t('footer.terms')}
-                </a>
-              </li>
-              <li>
-                <a href="/data-policy" className="hover:text-text-secondary transition-colors">
-                  {t('footer.dataPolicy')}
-                </a>
-              </li>
+              <li><a href="/privacy" className="hover:text-text-secondary transition-colors">{t("footer.privacy")}</a></li>
+              <li><a href="/terms" className="hover:text-text-secondary transition-colors">{t("footer.terms")}</a></li>
+              <li><a href="/data-policy" className="hover:text-text-secondary transition-colors">{t("footer.dataPolicy")}</a></li>
+              <li><a href="/data-deletion" className="hover:text-text-secondary transition-colors">Eliminar datos</a></li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-text-muted">
-            {t('footer.madeBy')}
-          </p>
-          <p className="text-xs text-text-muted">
-            {t('footer.copyright')}
-          </p>
+        <div className="mt-12 pt-7 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-xs text-text-muted">{t("footer.madeBy")}</p>
+          <p className="text-xs text-text-muted">{t("footer.copyright", { year: new Date().getFullYear() })}</p>
         </div>
       </div>
     </footer>
   );
 
-  /* -------------------------------------------------------------- */
-  /*  Render                                                         */
-  /* -------------------------------------------------------------- */
-
+  /* ---------------- Render ---------------- */
   return (
     <>
       {header}
       <main>
         {hero}
-        {socialProof}
-        {problem}
-        {demoConversations}
+        <TrustRow />
+        {verticalsSection}
         {howItWorks}
         {featuresSection}
         {comparison}
+        {stats}
         {testimonialsSection}
         {pricing}
         {faqSection}

@@ -1,18 +1,49 @@
 @import "tailwindcss";
 
 @theme {
+  /* ─── Brand & Surfaces ──────────────────────────────────── */
   --color-bg: #09090b;
-  --color-surface: #171717;
-  --color-surface-light: #1e1e1e;
-  --color-border: #262626;
-  --color-border-light: #333333;
+  --color-surface: #131318;
+  --color-surface-light: #1c1c22;
+  --color-surface-elevated: #25252c;
+  --color-border: #2a2a30;
+  --color-border-light: #3a3a42;
+
+  /* ─── Text ──────────────────────────────────────────────── */
   --color-text-primary: #fafafa;
   --color-text-secondary: #a1a1aa;
   --color-text-muted: #71717a;
+
+  /* ─── Brand accent (Meta blue, mantenido del v1) ─────── */
   --color-accent: #3897f0;
   --color-accent-hover: #2b7fd4;
-  --color-accent-glow: rgba(56, 151, 240, 0.15);
+  --color-accent-soft: rgba(56, 151, 240, 0.12);
+  --color-accent-glow: rgba(56, 151, 240, 0.35);
   --color-brand: #3897f0;
+
+  /* ─── Status semánticos ─────────────────────────────────── */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* ─── Per-vertical accents (animación diferenciada) ──── */
+  --color-v-salud: #f43f5e;
+  --color-v-vet: #ec4899;
+  --color-v-restaurantes: #f97316;
+  --color-v-gimnasios: #ef4444;
+  --color-v-inmobiliaria: #10b981;
+  --color-v-turismo: #06b6d4;
+  --color-v-educacion: #6366f1;
+  --color-v-seguros: #3b82f6;
+  --color-v-hogar: #f59e0b;
+  --color-v-fotografia: #a855f7;
+  --color-v-belleza: #d946ef;
+
+  /* ─── Tipografía (Plus Jakarta Sans recomendada por UI/UX skill) ── */
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* ─── Tipografía mono (números tabulares para stats/precios) ── */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html {
@@ -23,6 +54,8 @@ html {
 body {
   background-color: var(--color-bg);
   color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -33,16 +66,28 @@ body {
 }
 
 /* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* Reduced motion: respeta la preferencia del usuario */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
-::-webkit-scrollbar-track {
-  background: #09090b;
+
+/* Tabular numbers para precios y stats */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
-::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
+
+/* Subtle glass effect — usado en cards selectos */
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+  backdrop-filter: blur(8px);
 }

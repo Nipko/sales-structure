@@ -1,40 +1,43 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import LangProvider from "@/components/LangProvider";
 
-const inter = Inter({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-jakarta",
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
-  title: "Parallly — Automatiza tus ventas en WhatsApp con IA",
+  title: "Parallly — IA conversacional para vender, atender y agendar 24/7",
   description:
-    "Plataforma de IA conversacional para ventas. Automatiza WhatsApp, Instagram y Messenger. Agente IA 24/7, CRM integrado, sin código.",
+    "Conecta WhatsApp, Instagram y Messenger. Tu agente IA responde, agenda citas, califica leads y vende sin que muevas un dedo. Adaptado a 16 industrias. Hecho en LatinoAmérica.",
   keywords: [
     "WhatsApp automation",
     "ventas WhatsApp",
     "chatbot IA",
     "CRM WhatsApp",
-    "automatizar ventas",
-    "agente IA",
+    "agente IA negocios",
     "Parallly",
+    "IA conversacional",
+    "automatización ventas LatAm",
+    "Meta Tech Provider",
   ],
   openGraph: {
-    title: "Parallly — Automatiza tus ventas en WhatsApp con IA",
+    title: "Parallly — IA conversacional para tu negocio",
     description:
-      "Tu agente IA responde en segundos. Tu equipo cierra en minutos. Todo en una sola plataforma.",
+      "Tu agente IA responde en segundos, agenda citas y vende 24/7. Adaptado a 16 industrias. Pagos seguros con MercadoPago. Hecho en LatAm.",
     type: "website",
     locale: "es_LA",
     siteName: "Parallly",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Parallly — Automatiza tus ventas en WhatsApp con IA",
+    title: "Parallly — IA conversacional para tu negocio",
     description:
-      "Tu agente IA responde en segundos. Tu equipo cierra en minutos.",
+      "Conecta WhatsApp + Instagram + Messenger. IA que vende y agenda 24/7. Adaptado a tu industria.",
   },
   robots: {
     index: true,
@@ -48,14 +51,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es" className={jakarta.variable}>
       <head>
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body className={`${inter.className} antialiased`}>
-        <LangProvider>
-          {children}
-        </LangProvider>
+      <body className={`${jakarta.className} antialiased`}>
+        <LangProvider>{children}</LangProvider>
       </body>
     </html>
   );

@@ -2253,15 +2253,8 @@
       "registered": "Registered"
     },
     "modal": {
-      "title": "New user",
-      "firstName": "First name",
-      "firstNamePlaceholder": "John",
-      "lastName": "Last name",
-      "lastNamePlaceholder": "Doe",
       "email": "Email",
       "emailPlaceholder": "john@company.com",
-      "password": "Password",
-      "passwordPlaceholder": "Minimum 6 characters",
       "role": "Role",
       "tenantIdLabel": "Tenant ID (optional)",
       "tenantIdPlaceholder": "Tenant UUID",
@@ -2276,7 +2269,6 @@
       "skillTagsHint": "Only apply to agents and supervisors. Press Enter to add."
     },
     "toast": {
-      "created": "User created successfully",
       "skillsSaved": "Skills updated"
     },
     "skills": "Skills",
@@ -3776,11 +3768,12 @@
     },
     "users": {
       "title": "How to manage the team?",
-      "description": "Manage your team users. Assign roles (admin, supervisor, agent), configure skills for smart routing, and reset passwords.",
+      "description": "Invite your team by email. Each person creates their own password when accepting the invitation. Assign roles (admin, supervisor, agent) and skills for smart routing.",
       "tips": [
-        "Agents only see conversations assigned to them",
-        "Supervisors can view all conversations and reports",
-        "Skills are used to assign conversations to the most suitable agent"
+        "Click \"Send invitation\" — the person receives an email with a secure link",
+        "Invitations expire in 14 days; you can resend or revoke them from the Invitations tab",
+        "Agents only see their own conversations; supervisors see everything",
+        "Skills are used by the system to route conversations to the right agent"
       ]
     },
     "settings": {

@@ -2253,15 +2253,8 @@
       "registered": "Registrado"
     },
     "modal": {
-      "title": "Nuevo usuario",
-      "firstName": "Nombre",
-      "firstNamePlaceholder": "Juan",
-      "lastName": "Apellido",
-      "lastNamePlaceholder": "Pérez",
       "email": "Email",
       "emailPlaceholder": "juan@empresa.com",
-      "password": "Contraseña",
-      "passwordPlaceholder": "Mínimo 6 caracteres",
       "role": "Rol",
       "tenantIdLabel": "ID de empresa (opcional)",
       "tenantIdPlaceholder": "UUID de la empresa",
@@ -2276,7 +2269,6 @@
       "skillTagsHint": "Solo aplican a agentes y supervisores. Separa con Enter."
     },
     "toast": {
-      "created": "Usuario creado correctamente",
       "skillsSaved": "Habilidades actualizadas"
     },
     "skills": "Habilidades",
@@ -3776,11 +3768,12 @@
     },
     "users": {
       "title": "¿Cómo gestionar el equipo?",
-      "description": "Administra los usuarios de tu equipo. Asigna roles (admin, supervisor, agente), configura habilidades para enrutamiento inteligente, y resetea contraseñas.",
+      "description": "Invitá a tu equipo por email. Cada persona crea su propia contraseña al aceptar la invitación. Asigná roles (admin, supervisor, agente) y habilidades para enrutamiento inteligente.",
       "tips": [
-        "Los agentes solo ven las conversaciones asignadas a ellos",
-        "Los supervisores pueden ver todas las conversaciones y reportes",
-        "Las habilidades (skills) se usan para asignar conversaciones al agente más adecuado"
+        "Hacé clic en \"Enviar invitación\" — la persona recibe un email con un enlace seguro",
+        "Las invitaciones expiran en 14 días; podés reenviarlas o cancelarlas desde la pestaña Invitaciones",
+        "Los agentes solo ven sus conversaciones; los supervisores ven todo",
+        "Las habilidades (skills) sirven para que el sistema enrute conversaciones al agente correcto"
       ]
     },
     "settings": {

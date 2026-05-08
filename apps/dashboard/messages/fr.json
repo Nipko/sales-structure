@@ -2253,15 +2253,8 @@
       "registered": "Inscrit"
     },
     "modal": {
-      "title": "Nouvel utilisateur",
-      "firstName": "Prénom",
-      "firstNamePlaceholder": "Jean",
-      "lastName": "Nom",
-      "lastNamePlaceholder": "Dupont",
       "email": "Email",
       "emailPlaceholder": "jean@entreprise.com",
-      "password": "Mot de passe",
-      "passwordPlaceholder": "Minimum 6 caractères",
       "role": "Rôle",
       "tenantIdLabel": "ID de l'entreprise (optionnel)",
       "tenantIdPlaceholder": "UUID de l'entreprise",
@@ -2276,7 +2269,6 @@
       "skillTagsHint": "Ne s'appliquent qu'aux agents et superviseurs. Appuyez sur Entrée pour ajouter."
     },
     "toast": {
-      "created": "Utilisateur créé avec succès",
       "skillsSaved": "Compétences mises à jour"
     },
     "skills": "Compétences",
@@ -3776,11 +3768,12 @@
     },
     "users": {
       "title": "Comment gérer l'équipe ?",
-      "description": "Gérez les utilisateurs de votre équipe. Assignez des rôles (admin, superviseur, agent), configurez des compétences pour un routage intelligent et réinitialisez les mots de passe.",
+      "description": "Invitez votre équipe par email. Chaque personne crée son propre mot de passe en acceptant l'invitation. Assignez des rôles (admin, superviseur, agent) et des compétences pour un routage intelligent.",
       "tips": [
-        "Les agents ne voient que les conversations qui leur sont assignées",
-        "Les superviseurs peuvent voir toutes les conversations et rapports",
-        "Les compétences sont utilisées pour assigner les conversations à l'agent le plus approprié"
+        "Cliquez sur \"Envoyer l'invitation\" — la personne reçoit un email avec un lien sécurisé",
+        "Les invitations expirent dans 14 jours ; vous pouvez les renvoyer ou les annuler depuis l'onglet Invitations",
+        "Les agents ne voient que leurs conversations ; les superviseurs voient tout",
+        "Les compétences servent au système pour acheminer les conversations vers le bon agent"
       ]
     },
     "settings": {

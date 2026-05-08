@@ -2253,15 +2253,8 @@
       "registered": "Registrado"
     },
     "modal": {
-      "title": "Novo usuário",
-      "firstName": "Nome",
-      "firstNamePlaceholder": "João",
-      "lastName": "Sobrenome",
-      "lastNamePlaceholder": "Silva",
       "email": "Email",
       "emailPlaceholder": "joao@empresa.com",
-      "password": "Senha",
-      "passwordPlaceholder": "Mínimo 6 caracteres",
       "role": "Papel",
       "tenantIdLabel": "ID da empresa (opcional)",
       "tenantIdPlaceholder": "UUID da empresa",
@@ -2276,7 +2269,6 @@
       "skillTagsHint": "Aplicam-se apenas a agentes e supervisores. Pressione Enter para adicionar."
     },
     "toast": {
-      "created": "Usuário criado com sucesso",
       "skillsSaved": "Habilidades atualizadas"
     },
     "skills": "Habilidades",
@@ -3776,11 +3768,12 @@
     },
     "users": {
       "title": "Como gerenciar a equipe?",
-      "description": "Gerencie os usuários da sua equipe. Atribua funções (admin, supervisor, agente), configure habilidades para roteamento inteligente e redefina senhas.",
+      "description": "Convide sua equipe por email. Cada pessoa cria sua própria senha ao aceitar o convite. Atribua funções (admin, supervisor, agente) e habilidades para roteamento inteligente.",
       "tips": [
-        "Os agentes veem apenas as conversas atribuídas a eles",
-        "Os supervisores podem ver todas as conversas e relatórios",
-        "As habilidades são usadas para atribuir conversas ao agente mais adequado"
+        "Clique em \"Enviar convite\" — a pessoa recebe um email com um link seguro",
+        "Os convites expiram em 14 dias; você pode reenviar ou cancelar na aba Convites",
+        "Os agentes veem apenas suas conversas; os supervisores veem tudo",
+        "As habilidades servem para o sistema encaminhar conversas ao agente certo"
       ]
     },
     "settings": {

@@ -15,7 +15,7 @@ import {
     User, Shield, Bell, Palette, Building2, Globe, Clock,
     Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
     SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
-    BellRing, GitBranch, BarChart2, Plug,
+    BellRing, GitBranch, BarChart2, Plug, CalendarCheck,
 } from "lucide-react";
 
 export type Role = {
@@ -72,6 +72,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "scoringConfig", href: "/admin/settings/scoring-config", icon: BarChart2, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
             { key: "customAttributes", href: "/admin/settings/custom-attributes", icon: Database, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
             { key: "prechat", href: "/admin/settings/prechat", icon: MessageSquare, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
+            { key: "publicBooking", href: "/admin/settings/public-booking", icon: CalendarCheck, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
         ],
     },
     // ── Communication — supervisor+ (templates, macros, media, recall) ──

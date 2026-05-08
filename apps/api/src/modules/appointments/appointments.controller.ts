@@ -315,6 +315,25 @@ export class AppointmentsController {
         return { success: true, data: { cancelled } };
     }
 
+    // ── Public booking config (admin sets the link toggle) ───────
+
+    @Get(':tenantId/public-booking-config')
+    @ApiOperation({ summary: 'Get public booking toggle and customization' })
+    async getPublicBookingConfig(@Param('tenantId') tenantId: string) {
+        const data = await this.service.getPublicBookingConfig(tenantId);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/public-booking-config')
+    @ApiOperation({ summary: 'Update public booking toggle and customization' })
+    async updatePublicBookingConfig(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { enabled?: boolean; welcomeText?: string; brandColor?: string },
+    ) {
+        const data = await this.service.updatePublicBookingConfig(tenantId, body);
+        return { success: true, data };
+    }
+
     // ── Dynamic routes AFTER static ones ─────────────────────────
 
     @Get(':tenantId')

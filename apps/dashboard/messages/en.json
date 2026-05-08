@@ -699,6 +699,10 @@
         "label": "Pre-chat form",
         "description": "Data requested before starting conversation"
       },
+      "publicBooking": {
+        "label": "Public booking",
+        "description": "Public page where customers self-serve appointment booking"
+      },
       "emailTemplates": {
         "label": "Email templates",
         "description": "Confirmations, reminders, and welcomes"
@@ -4619,5 +4623,26 @@
       "ready": "Mark as ready",
       "delivered": "Mark as delivered"
     }
+  },
+  "publicBookingSettings": {
+    "title": "Public booking",
+    "subtitle": "Let your customers book appointments from a public web page without needing chat.",
+    "toggleTitle": "Enable public booking",
+    "toggleHint": "When enabled, customers can book at parallly-chat.cloud/book/{your-slug} without going through the AI agent.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "enabledStatus": "Public page active and accepting bookings",
+    "linkTitle": "Your booking link",
+    "linkHint": "Share it on your Instagram bio, WhatsApp Business profile, email signature or website.",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "preview": "Preview",
+    "showQR": "Show QR code",
+    "hideQR": "Hide QR code",
+    "customizationTitle": "Customization",
+    "customizationHint": "Welcome message and primary color of the page.",
+    "welcomeLabel": "Welcome message",
+    "welcomePlaceholder": "Hi! Book your appointment with us in just a few steps.",
+    "brandColorLabel": "Brand color"
   }
 }

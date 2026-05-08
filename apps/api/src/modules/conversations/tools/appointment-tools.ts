@@ -58,6 +58,11 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
         description: 'List upcoming appointments for the current customer.',
         parameters: { type: 'object', properties: {}, required: [] },
     },
+    {
+        name: 'send_booking_link',
+        description: 'Send the customer a link to book their appointment online (with their preferred date/time). Use when the customer wants to self-serve, or when scheduling by chat is taking too long. Returns the URL to share.',
+        parameters: { type: 'object', properties: {}, required: [] },
+    },
 ];
 
 /**

@@ -699,6 +699,10 @@
         "label": "Formulaire pré-chat",
         "description": "Données demandées avant la conversation"
       },
+      "publicBooking": {
+        "label": "Booking public",
+        "description": "Page publique pour que les clients réservent eux-mêmes"
+      },
       "emailTemplates": {
         "label": "Modèles email",
         "description": "Confirmations, rappels et bienvenues"
@@ -4619,5 +4623,26 @@
       "ready": "Marquer comme prête",
       "delivered": "Marquer comme livrée"
     }
+  },
+  "publicBookingSettings": {
+    "title": "Booking public",
+    "subtitle": "Permettez à vos clients de prendre rendez-vous sur une page web publique sans chat.",
+    "toggleTitle": "Activer booking public",
+    "toggleHint": "Quand activé, les clients peuvent réserver sur parallly-chat.cloud/book/{votre-slug} sans passer par l'agent IA.",
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "enabledStatus": "Page publique active et acceptant les réservations",
+    "linkTitle": "Votre lien de booking",
+    "linkHint": "Partagez-le dans votre bio Instagram, profil WhatsApp Business, signature email ou site web.",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "preview": "Aperçu",
+    "showQR": "Afficher le QR code",
+    "hideQR": "Masquer le QR code",
+    "customizationTitle": "Personnalisation",
+    "customizationHint": "Message de bienvenue et couleur principale de la page.",
+    "welcomeLabel": "Message de bienvenue",
+    "welcomePlaceholder": "Bonjour ! Réservez votre rendez-vous en quelques étapes.",
+    "brandColorLabel": "Couleur de marque"
   }
 }

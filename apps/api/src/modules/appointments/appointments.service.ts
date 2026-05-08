@@ -593,4 +593,52 @@ export class AppointmentsService {
 
         return results;
     }
+
+    // ── Public booking config (stored in tenant.settings.publicBooking) ─
+
+    async getPublicBookingConfig(tenantId: string): Promise<{
+        enabled: boolean;
+        welcomeText: string | null;
+        brandColor: string | null;
+        bookingUrl: string;
+        slug: string;
+    }> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { slug: true, settings: true },
+        });
+        if (!tenant) throw new BadRequestException('Tenant not found');
+        const settings = (tenant.settings as any) ?? {};
+        const pb = settings.publicBooking ?? {};
+        const baseUrl = process.env.LANDING_URL || 'https://parallly-chat.cloud';
+        return {
+            enabled: pb.enabled === true,
+            welcomeText: pb.welcomeText ?? null,
+            brandColor: settings.brandColor ?? null,
+            bookingUrl: `${baseUrl}/book/${tenant.slug}`,
+            slug: tenant.slug,
+        };
+    }
+
+    async updatePublicBookingConfig(
+        tenantId: string,
+        input: { enabled?: boolean; welcomeText?: string; brandColor?: string },
+    ) {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        if (!tenant) throw new BadRequestException('Tenant not found');
+        const settings = (tenant.settings as any) ?? {};
+        const pb = { ...(settings.publicBooking ?? {}) };
+        if (input.enabled !== undefined) pb.enabled = input.enabled;
+        if (input.welcomeText !== undefined) pb.welcomeText = input.welcomeText;
+        const next: any = { ...settings, publicBooking: pb };
+        if (input.brandColor !== undefined) next.brandColor = input.brandColor;
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { settings: next },
+        });
+        return this.getPublicBookingConfig(tenantId);
+    }
 }

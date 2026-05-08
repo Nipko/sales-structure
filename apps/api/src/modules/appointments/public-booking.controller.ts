@@ -40,10 +40,14 @@ export class PublicBookingController {
     private async resolveSchema(tenantSlug: string): Promise<{
         tenantId: string; schemaName: string;
         tenantName: string; tenantLogo: string | null; tenantColor: string | null;
+        publicBookingEnabled: boolean;
+        welcomeText: string | null;
     }> {
         const rows = await this.prisma.$queryRaw<any[]>`
             SELECT id, schema_name, company_name, logo_url,
-                   COALESCE((settings::jsonb)->>'brandColor', NULL) as brand_color
+                   COALESCE((settings::jsonb)->>'brandColor', NULL) as brand_color,
+                   COALESCE((settings::jsonb)->'publicBooking'->>'enabled', 'false')::boolean as public_booking_enabled,
+                   (settings::jsonb)->'publicBooking'->>'welcomeText' as welcome_text
             FROM tenants
             WHERE slug = ${tenantSlug} AND is_active = true
             LIMIT 1
@@ -55,21 +59,43 @@ export class PublicBookingController {
             tenantName: rows[0].company_name || tenantSlug,
             tenantLogo: rows[0].logo_url || null,
             tenantColor: rows[0].brand_color || null,
+            publicBookingEnabled: rows[0].public_booking_enabled ?? false,
+            welcomeText: rows[0].welcome_text || null,
         };
+    }
+
+    /** Throws when public booking is disabled for this tenant. */
+    private requireBookingEnabled(t: { publicBookingEnabled: boolean }): void {
+        if (!t.publicBookingEnabled) {
+            throw new BadRequestException({
+                error: 'public_booking_disabled',
+                message: 'This business has not enabled public booking yet.',
+            });
+        }
     }
 
     @Get(':tenantSlug/info')
     @ApiOperation({ summary: 'Get tenant branding info for booking page (public)' })
     async getTenantInfo(@Param('tenantSlug') tenantSlug: string) {
-        const { tenantName, tenantLogo, tenantColor } = await this.resolveSchema(tenantSlug);
-        return { success: true, data: { name: tenantName, logo: tenantLogo, color: tenantColor } };
+        const t = await this.resolveSchema(tenantSlug);
+        return {
+            success: true,
+            data: {
+                name: t.tenantName,
+                logo: t.tenantLogo,
+                color: t.tenantColor,
+                enabled: t.publicBookingEnabled,
+                welcomeText: t.welcomeText,
+            },
+        };
     }
 
     @Get(':tenantSlug/services')
     @ApiOperation({ summary: 'List active bookable services (public)' })
     async listServices(@Param('tenantSlug') tenantSlug: string) {
-        const { schemaName } = await this.resolveSchema(tenantSlug);
-        const data = await this.servicesService.list(schemaName, true);
+        const t = await this.resolveSchema(tenantSlug);
+        this.requireBookingEnabled(t);
+        const data = await this.servicesService.list(t.schemaName, true);
         return { success: true, data };
     }
 
@@ -79,8 +105,9 @@ export class PublicBookingController {
         @Param('tenantSlug') tenantSlug: string,
         @Param('serviceId') serviceId: string,
     ) {
-        const { schemaName } = await this.resolveSchema(tenantSlug);
-        const data = await this.servicesService.getById(schemaName, serviceId);
+        const t = await this.resolveSchema(tenantSlug);
+        this.requireBookingEnabled(t);
+        const data = await this.servicesService.getById(t.schemaName, serviceId);
         if (!data.isActive) throw new BadRequestException('Service not available');
         return { success: true, data };
     }
@@ -94,12 +121,13 @@ export class PublicBookingController {
     ) {
         if (!date || !serviceId) throw new BadRequestException('date and serviceId are required');
 
-        const { schemaName } = await this.resolveSchema(tenantSlug);
-        const svc = await this.servicesService.getById(schemaName, serviceId);
+        const t = await this.resolveSchema(tenantSlug);
+        this.requireBookingEnabled(t);
+        const svc = await this.servicesService.getById(t.schemaName, serviceId);
         if (!svc.isActive) throw new BadRequestException('Service not available');
 
         const rawSlots = await this.appointmentsService.getBookableSlots(
-            schemaName, date, svc.durationMinutes, svc.bufferMinutes,
+            t.schemaName, date, svc.durationMinutes, svc.bufferMinutes,
             undefined, [], svc.maxConcurrent,
         );
         const slots = rawSlots.map(s => ({ start: s.time, end: s.endTime, display: s.time }));
@@ -128,7 +156,9 @@ export class PublicBookingController {
             throw new BadRequestException('serviceId, date, startTime, customerName, and customerPhone are required');
         }
 
-        const { schemaName } = await this.resolveSchema(tenantSlug);
+        const t = await this.resolveSchema(tenantSlug);
+        this.requireBookingEnabled(t);
+        const schemaName = t.schemaName;
         const svc = await this.servicesService.getById(schemaName, body.serviceId);
         if (!svc.isActive) throw new BadRequestException('Service not available');
 

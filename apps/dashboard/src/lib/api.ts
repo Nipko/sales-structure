@@ -743,6 +743,12 @@ export const api = {
     cancelPendingDowngrade: (tenantId: string) =>
         apiPost(`/billing/${tenantId}/subscription/cancel-pending-downgrade`, {}),
 
+    // ─── Public booking config ───
+    getPublicBookingConfig: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/public-booking-config`),
+    updatePublicBookingConfig: (tenantId: string, data: { enabled?: boolean; welcomeText?: string; brandColor?: string }) =>
+        apiPost(`/appointments/${tenantId}/public-booking-config`, data),
+
     // --- Billing admin (super_admin only) ---
     refundBillingPayment: (paymentId: string, data?: { amountCents?: number; reason?: string }) =>
         apiPost(`/billing-admin/payments/${paymentId}/refund`, data || {}),

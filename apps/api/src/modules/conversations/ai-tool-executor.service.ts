@@ -74,6 +74,9 @@ export class AIToolExecutorService {
                 case 'list_customer_appointments':
                     return this.listCustomerAppointments(schemaName, contactId);
 
+                case 'send_booking_link':
+                    return this.sendBookingLink(tenantId);
+
                 case 'search_products':
                     return this.searchProducts(schemaName, args.query, args.limit, args.category);
 
@@ -947,6 +950,33 @@ export class AIToolExecutorService {
                 status: r.status,
                 customerName: r.customer_name,
             })),
+        };
+    }
+
+    /**
+     * Build the public booking URL for the tenant. Returns disabled state
+     * when the toggle is off so the AI can fall back to chat-based booking.
+     */
+    private async sendBookingLink(tenantId: string): Promise<any> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { slug: true, settings: true },
+        });
+        if (!tenant) return { error: 'Tenant not found' };
+        const settings = (tenant.settings as any) ?? {};
+        const enabled = settings.publicBooking?.enabled === true;
+        if (!enabled) {
+            return {
+                enabled: false,
+                message: 'El booking público no está activado. Contactá al equipo para que lo habilite o agendá por aquí.',
+            };
+        }
+        const baseUrl = process.env.LANDING_URL || 'https://parallly-chat.cloud';
+        const url = `${baseUrl}/book/${tenant.slug}`;
+        return {
+            enabled: true,
+            url,
+            message: `Podés agendar tu cita acá: ${url}`,
         };
     }
 

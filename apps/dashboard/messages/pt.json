@@ -699,6 +699,10 @@
         "label": "Formulário pré-chat",
         "description": "Dados solicitados antes de iniciar conversa"
       },
+      "publicBooking": {
+        "label": "Booking público",
+        "description": "Página pública para clientes agendarem sozinhos"
+      },
       "emailTemplates": {
         "label": "Templates de email",
         "description": "Confirmações, lembretes e boas-vindas"
@@ -4619,5 +4623,26 @@
       "ready": "Marcar como pronto",
       "delivered": "Marcar como entregue"
     }
+  },
+  "publicBookingSettings": {
+    "title": "Booking público",
+    "subtitle": "Permita que seus clientes agendem em uma página web sem precisar de chat.",
+    "toggleTitle": "Ativar booking público",
+    "toggleHint": "Quando ativo, clientes podem agendar em parallly-chat.cloud/book/{seu-slug} sem passar pelo agente IA.",
+    "enable": "Ativar",
+    "disable": "Desativar",
+    "enabledStatus": "Página pública ativa e aceitando reservas",
+    "linkTitle": "Link do seu booking",
+    "linkHint": "Compartilhe no Instagram bio, WhatsApp Business, assinatura de email ou website.",
+    "copy": "Copiar",
+    "copied": "Copiado!",
+    "preview": "Ver",
+    "showQR": "Mostrar QR code",
+    "hideQR": "Esconder QR code",
+    "customizationTitle": "Personalização",
+    "customizationHint": "Mensagem de boas-vindas e cor principal da página.",
+    "welcomeLabel": "Mensagem de boas-vindas",
+    "welcomePlaceholder": "Olá! Agende sua consulta em poucos passos.",
+    "brandColorLabel": "Cor da marca"
   }
 }

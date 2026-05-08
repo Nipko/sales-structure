@@ -20,15 +20,15 @@ datasource db {
 
 // ---- Tenants (Client businesses) ----
 model Tenant {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  industry    String
-  language    String   @default("es-CO")
-  schemaName  String   @unique @map("schema_name")
-  isActive    Boolean  @default(true) @map("is_active")
-  plan        String   @default("starter")
-  settings    Json     @default("{}")
+  id         String  @id @default(uuid())
+  name       String
+  slug       String  @unique
+  industry   String
+  language   String  @default("es-CO")
+  schemaName String  @unique @map("schema_name")
+  isActive   Boolean @default(true) @map("is_active")
+  plan       String  @default("starter")
+  settings   Json    @default("{}")
 
   // Billing — denormalized hot-path fields. Source of truth for full
   // subscription state is the BillingSubscription row linked via the
@@ -37,24 +37,24 @@ model Tenant {
   // request. Kept in sync by BillingService on every state transition.
   billingEmail              String?   @map("billing_email")
   billingCountry            String?   @map("billing_country")
-  subscriptionStatus        String?   @map("subscription_status")       // pending_auth|trialing|active|past_due|cancelled|expired
+  subscriptionStatus        String?   @map("subscription_status") // pending_auth|trialing|active|past_due|cancelled|expired
   trialEndsAt               DateTime? @map("trial_ends_at")
   currentPeriodEnd          DateTime? @map("current_period_end")
-  paymentProvider           String?   @map("payment_provider")           // mercadopago|stripe|mock
+  paymentProvider           String?   @map("payment_provider") // mercadopago|stripe|mock
   paymentProviderCustomerId String?   @map("payment_provider_customer_id")
 
   // Onboarding funnel tracking — used by /admin/funnel cohort analysis
-  onboardingCompletedAt     DateTime? @map("onboarding_completed_at")
-  firstMessageAt            DateTime? @map("first_message_at")
-  signupSource              String?   @map("signup_source")  // landing_page|api|partner|...
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
+  firstMessageAt        DateTime? @map("first_message_at")
+  signupSource          String?   @map("signup_source") // landing_page|api|partner|...
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  users             User[]
-  channelAccounts   ChannelAccount[]
-  subscription      BillingSubscription?
-  invitations       TenantInvitation[]
+  users           User[]
+  channelAccounts ChannelAccount[]
+  subscription    BillingSubscription?
+  invitations     TenantInvitation[]
 
   @@map("tenants")
   @@schema("public")
@@ -62,33 +62,33 @@ model Tenant {
 
 // ---- Users (Platform users: admins, agents) ----
 model User {
-  id                  String   @id @default(uuid())
-  email               String   @unique
+  id                  String    @id @default(uuid())
+  email               String    @unique
   password            String?
-  firstName           String   @map("first_name")
-  lastName            String   @map("last_name")
-  role                String   @default("tenant_agent")
-  tenantId            String?  @map("tenant_id")
-  isActive            Boolean  @default(true) @map("is_active")
-  authProvider        String   @default("email") @map("auth_provider")
-  googleId            String?  @map("google_id")
-  microsoftId         String?  @map("microsoft_id")
+  firstName           String    @map("first_name")
+  lastName            String    @map("last_name")
+  role                String    @default("tenant_agent")
+  tenantId            String?   @map("tenant_id")
+  isActive            Boolean   @default(true) @map("is_active")
+  authProvider        String    @default("email") @map("auth_provider")
+  googleId            String?   @map("google_id")
+  microsoftId         String?   @map("microsoft_id")
   picture             String?
-  emailVerified       Boolean  @default(false) @map("email_verified")
-  emailVerifyCode     String?  @map("email_verify_code")
+  emailVerified       Boolean   @default(false) @map("email_verified")
+  emailVerifyCode     String?   @map("email_verify_code")
   emailVerifyExpires  DateTime? @map("email_verify_expires")
-  onboardingCompleted Boolean  @default(false) @map("onboarding_completed")
+  onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
   phone               String?
-  jobTitle            String?  @map("job_title")
-  availabilityStatus  String   @default("offline") @map("availability_status")
-  maxCapacity         Int      @default(5) @map("max_capacity")
-  skillTags           String[] @default([]) @map("skill_tags")
+  jobTitle            String?   @map("job_title")
+  availabilityStatus  String    @default("offline") @map("availability_status")
+  maxCapacity         Int       @default(5) @map("max_capacity")
+  skillTags           String[]  @default([]) @map("skill_tags")
   lastActiveAt        DateTime? @map("last_active_at")
   lastLoginAt         DateTime? @map("last_login_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@map("users")
@@ -99,18 +99,18 @@ model User {
 model ChannelAccount {
   id            String   @id @default(uuid())
   tenantId      String   @map("tenant_id")
-  channelType   String   @map("channel_type")  // whatsapp, instagram, messenger, telegram
-  accountId     String   @map("account_id")     // Phone number / page ID / bot token
+  channelType   String   @map("channel_type") // whatsapp, instagram, messenger, telegram
+  accountId     String   @map("account_id") // Phone number / page ID / bot token
   displayName   String   @map("display_name")
-  accessToken   String   @map("access_token")   // Encrypted
-  refreshToken  String?  @map("refresh_token")  // Encrypted
+  accessToken   String   @map("access_token") // Encrypted
+  refreshToken  String?  @map("refresh_token") // Encrypted
   webhookSecret String?  @map("webhook_secret")
   isActive      Boolean  @default(true) @map("is_active")
   metadata      Json     @default("{}")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @map("updated_at")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([channelType, accountId])
   @@index([tenantId])
@@ -143,10 +143,10 @@ model AuditLog {
 model TenantInvitation {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
-  email           String                                          // lowercased, normalized
-  role            String                                          // tenant_admin | tenant_supervisor | tenant_agent
+  email           String // lowercased, normalized
+  role            String // tenant_admin | tenant_supervisor | tenant_agent
   skillTags       String[]  @default([]) @map("skill_tags")
-  token           String    @unique                               // crypto-random, used in the magic link
+  token           String    @unique // crypto-random, used in the magic link
   invitedByUserId String?   @map("invited_by_user_id")
   expiresAt       DateTime  @map("expires_at")
   acceptedAt      DateTime? @map("accepted_at")
@@ -155,7 +155,7 @@ model TenantInvitation {
   resentAt        DateTime? @map("resent_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, acceptedAt])
   @@index([email])
@@ -165,39 +165,39 @@ model TenantInvitation {
 
 // ---- WhatsApp Onboarding ----
 model WhatsappOnboarding {
-  id                      String    @id @default(uuid())
-  tenantId                String    @map("tenant_id")
-  configId                String    @map("config_id")
-  mode                    String    @default("new")      // new, existing, coexistence
-  status                  String    @default("CREATED")   // OnboardingStatus enum
-  isCoexistence           Boolean   @default(false) @map("is_coexistence")
-  coexistenceAcknowledged Boolean   @default(false) @map("coexistence_acknowledged")
+  id                      String  @id @default(uuid())
+  tenantId                String  @map("tenant_id")
+  configId                String  @map("config_id")
+  mode                    String  @default("new") // new, existing, coexistence
+  status                  String  @default("CREATED") // OnboardingStatus enum
+  isCoexistence           Boolean @default(false) @map("is_coexistence")
+  coexistenceAcknowledged Boolean @default(false) @map("coexistence_acknowledged")
 
   // Meta assets discovered
-  metaBusinessId          String?   @map("meta_business_id")
-  wabaId                  String?   @map("waba_id")
-  phoneNumberId           String?   @map("phone_number_id")
-  displayPhoneNumber      String?   @map("display_phone_number")
-  verifiedName            String?   @map("verified_name")
+  metaBusinessId     String? @map("meta_business_id")
+  wabaId             String? @map("waba_id")
+  phoneNumberId      String? @map("phone_number_id")
+  displayPhoneNumber String? @map("display_phone_number")
+  verifiedName       String? @map("verified_name")
 
   // Exchange data
-  exchangePayload         Json?     @map("exchange_payload")
+  exchangePayload Json? @map("exchange_payload")
 
   // Error tracking
-  errorCode               String?   @map("error_code")
-  errorMessage            String?   @map("error_message")
+  errorCode    String? @map("error_code")
+  errorMessage String? @map("error_message")
 
   // Who started the onboarding
-  startedByUserId         String?   @map("started_by_user_id")
+  startedByUserId String? @map("started_by_user_id")
 
   // Timestamps
-  codeReceivedAt          DateTime? @map("code_received_at")
-  exchangeCompletedAt     DateTime? @map("exchange_completed_at")
-  assetsSyncedAt          DateTime? @map("assets_synced_at")
-  webhookValidatedAt      DateTime? @map("webhook_validated_at")
-  completedAt             DateTime? @map("completed_at")
-  createdAt               DateTime  @default(now()) @map("created_at")
-  updatedAt               DateTime  @updatedAt @map("updated_at")
+  codeReceivedAt      DateTime? @map("code_received_at")
+  exchangeCompletedAt DateTime? @map("exchange_completed_at")
+  assetsSyncedAt      DateTime? @map("assets_synced_at")
+  webhookValidatedAt  DateTime? @map("webhook_validated_at")
+  completedAt         DateTime? @map("completed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@index([tenantId])
   @@index([status])
@@ -207,14 +207,14 @@ model WhatsappOnboarding {
 
 // ---- WhatsApp Credentials (encrypted) ----
 model WhatsappCredential {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  credentialType  String   @map("credential_type")     // system_user_token, app_secret
-  encryptedValue  String   @map("encrypted_value")     // AES-256-GCM encrypted
-  rotationState   String   @default("active") @map("rotation_state")  // active, rotating, revoked
-  expiresAt       DateTime? @map("expires_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  credentialType String    @map("credential_type") // system_user_token, app_secret
+  encryptedValue String    @map("encrypted_value") // AES-256-GCM encrypted
+  rotationState  String    @default("active") @map("rotation_state") // active, rotating, revoked
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@index([tenantId, credentialType])
   @@map("whatsapp_credentials")
@@ -232,25 +232,25 @@ model WhatsappCredential {
 // Provider-specific plan IDs (MercadoPago preapproval_plan_id, Stripe price_id)
 // are populated after creating the plan on each provider.
 model BillingPlan {
-  id                    String   @id @default(uuid())
-  slug                  String   @unique                                  // starter | pro | enterprise | custom
-  name                  String
-  priceUsdCents         Int      @map("price_usd_cents")
-  trialDays             Int      @default(0) @map("trial_days")
-  requiresCardForTrial  Boolean  @default(false) @map("requires_card_for_trial")
-  maxAgents             Int      @map("max_agents")
-  maxAiMessages         Int      @map("max_ai_messages")
-  features              Json     @default("{}")
-  mpPlanId              String?  @map("mp_plan_id")
-  stripePlanId          String?  @map("stripe_plan_id")
-  priceLocalOverrides   Json     @default("{}") @map("price_local_overrides")
-  isActive              Boolean  @default(true) @map("is_active")
-  sortOrder             Int      @default(0) @map("sort_order")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  id                   String   @id @default(uuid())
+  slug                 String   @unique // starter | pro | enterprise | custom
+  name                 String
+  priceUsdCents        Int      @map("price_usd_cents")
+  trialDays            Int      @default(0) @map("trial_days")
+  requiresCardForTrial Boolean  @default(false) @map("requires_card_for_trial")
+  maxAgents            Int      @map("max_agents")
+  maxAiMessages        Int      @map("max_ai_messages")
+  features             Json     @default("{}")
+  mpPlanId             String?  @map("mp_plan_id")
+  stripePlanId         String?  @map("stripe_plan_id")
+  priceLocalOverrides  Json     @default("{}") @map("price_local_overrides")
+  isActive             Boolean  @default(true) @map("is_active")
+  sortOrder            Int      @default(0) @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  subscriptions         BillingSubscription[]
-  pendingFor            BillingSubscription[] @relation("PendingPlan")
+  subscriptions BillingSubscription[]
+  pendingFor    BillingSubscription[] @relation("PendingPlan")
 
   @@map("billing_plans")
   @@schema("public")
@@ -262,35 +262,35 @@ model BillingPlan {
 // own vocabulary on read. Lifecycle transitions are orchestrated by
 // BillingService — do not mutate status directly.
 model BillingSubscription {
-  id                        String   @id @default(uuid())
-  tenantId                  String   @unique @map("tenant_id")
-  planId                    String   @map("plan_id")
-  status                    String                                     // pending_auth|trialing|active|past_due|cancelled|expired
-  provider                  String                                     // mercadopago|stripe|mock
-  providerSubscriptionId    String?  @unique @map("provider_subscription_id")
-  providerCustomerId        String?  @map("provider_customer_id")
-  trialStartedAt            DateTime? @map("trial_started_at")
-  trialEndsAt               DateTime? @map("trial_ends_at")
-  currentPeriodStart        DateTime? @map("current_period_start")
-  currentPeriodEnd          DateTime? @map("current_period_end")
-  cancelAtPeriodEnd         Boolean  @default(false) @map("cancel_at_period_end")
-  cancelledAt               DateTime? @map("cancelled_at")
-  cancellationReason        String?  @map("cancellation_reason")
+  id                     String    @id @default(uuid())
+  tenantId               String    @unique @map("tenant_id")
+  planId                 String    @map("plan_id")
+  status                 String // pending_auth|trialing|active|past_due|cancelled|expired
+  provider               String // mercadopago|stripe|mock
+  providerSubscriptionId String?   @unique @map("provider_subscription_id")
+  providerCustomerId     String?   @map("provider_customer_id")
+  trialStartedAt         DateTime? @map("trial_started_at")
+  trialEndsAt            DateTime? @map("trial_ends_at")
+  currentPeriodStart     DateTime? @map("current_period_start")
+  currentPeriodEnd       DateTime? @map("current_period_end")
+  cancelAtPeriodEnd      Boolean   @default(false) @map("cancel_at_period_end")
+  cancelledAt            DateTime? @map("cancelled_at")
+  cancellationReason     String?   @map("cancellation_reason")
   // Pending plan change — when user downgrades, we don't switch immediately.
   // We store the target plan + scheduled date and apply it when the period
   // ends (via a daily cron in BillingReconciliationProcessor). Setting these
   // also signals the dashboard to show "your plan will switch on YYYY-MM-DD".
-  pendingPlanId             String?  @map("pending_plan_id")
-  pendingPlanChangeAt       DateTime? @map("pending_plan_change_at")
-  metadata                  Json     @default("{}")
-  createdAt                 DateTime @default(now()) @map("created_at")
-  updatedAt                 DateTime @updatedAt @map("updated_at")
+  pendingPlanId          String?   @map("pending_plan_id")
+  pendingPlanChangeAt    DateTime? @map("pending_plan_change_at")
+  metadata               Json      @default("{}")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  tenant                    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan                      BillingPlan  @relation(fields: [planId], references: [id], onDelete: Restrict)
-  pendingPlan               BillingPlan? @relation("PendingPlan", fields: [pendingPlanId], references: [id], onDelete: SetNull)
-  payments                  BillingPayment[]
-  events                    BillingEvent[]
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan        BillingPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  pendingPlan BillingPlan?     @relation("PendingPlan", fields: [pendingPlanId], references: [id], onDelete: SetNull)
+  payments    BillingPayment[]
+  events      BillingEvent[]
 
   @@index([status])
   @@index([trialEndsAt])
@@ -304,16 +304,16 @@ model BillingSubscription {
 // Doubles as the idempotency store: (provider, providerEventId) must be unique
 // so a webhook redelivery is skipped on the second processing attempt.
 model BillingEvent {
-  id                    String   @id @default(uuid())
-  tenantId              String?  @map("tenant_id")
-  subscriptionId        String?  @map("subscription_id")
-  provider              String
-  providerEventId       String   @map("provider_event_id")
-  eventType             String   @map("event_type")                    // BillingEventType enum as string
-  payload               Json                                           // raw provider payload for audit
-  processedAt           DateTime @default(now()) @map("processed_at")
+  id              String   @id @default(uuid())
+  tenantId        String?  @map("tenant_id")
+  subscriptionId  String?  @map("subscription_id")
+  provider        String
+  providerEventId String   @map("provider_event_id")
+  eventType       String   @map("event_type") // BillingEventType enum as string
+  payload         Json // raw provider payload for audit
+  processedAt     DateTime @default(now()) @map("processed_at")
 
-  subscription          BillingSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  subscription BillingSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   @@unique([provider, providerEventId])
   @@index([tenantId, processedAt])
@@ -328,22 +328,22 @@ model BillingEvent {
 // invoicePdfUrl and invoiceNumber are populated by the fiscal integration
 // (Facturapi / Alegra / Quaderno) in Phase 4 — nullable until then.
 model BillingPayment {
-  id                        String   @id @default(uuid())
-  subscriptionId            String   @map("subscription_id")
-  tenantId                  String   @map("tenant_id")
-  amountCents               Int      @map("amount_cents")
-  currency                  String                                     // USD | ARS | MXN | COP | CLP | PEN | UYU | BRL
-  status                    String                                     // succeeded | failed | refunded | pending
-  provider                  String
-  providerPaymentId         String?  @unique @map("provider_payment_id")
-  paidAt                    DateTime? @map("paid_at")
-  failureReason             String?  @map("failure_reason")
-  invoiceNumber             String?  @map("invoice_number")
-  invoicePdfUrl             String?  @map("invoice_pdf_url")
-  metadata                  Json     @default("{}")
-  createdAt                 DateTime @default(now()) @map("created_at")
+  id                String    @id @default(uuid())
+  subscriptionId    String    @map("subscription_id")
+  tenantId          String    @map("tenant_id")
+  amountCents       Int       @map("amount_cents")
+  currency          String // USD | ARS | MXN | COP | CLP | PEN | UYU | BRL
+  status            String // succeeded | failed | refunded | pending
+  provider          String
+  providerPaymentId String?   @unique @map("provider_payment_id")
+  paidAt            DateTime? @map("paid_at")
+  failureReason     String?   @map("failure_reason")
+  invoiceNumber     String?   @map("invoice_number")
+  invoicePdfUrl     String?   @map("invoice_pdf_url")
+  metadata          Json      @default("{}")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
-  subscription              BillingSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscription BillingSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, createdAt])
   @@index([status])
@@ -359,24 +359,24 @@ model BillingPayment {
 // Redemption tracking is via BillingCouponRedemption — a tenant can redeem each
 // code once. maxRedemptions caps total platform-wide usage; null = unlimited.
 model BillingCoupon {
-  id                String   @id @default(uuid())
-  code              String   @unique                                // user-facing code, uppercase normalized
-  description       String?
-  type              String                                          // percent_off | amount_off | free_months
-  percentDiscount   Int?     @map("percent_discount")               // 1-100 when type=percent_off
-  amountOffCents    Int?     @map("amount_off_cents")               // when type=amount_off
-  freeMonths        Int?     @map("free_months")                    // when type=free_months
-  durationCycles    Int?     @map("duration_cycles")                // for percent_off / amount_off — null = forever
-  appliesToPlanIds  String[] @default([]) @map("applies_to_plan_ids")  // empty = any plan
-  maxRedemptions    Int?     @map("max_redemptions")                // null = unlimited
-  redemptionCount   Int      @default(0) @map("redemption_count")
-  expiresAt         DateTime? @map("expires_at")
-  isActive          Boolean  @default(true) @map("is_active")
-  createdByUserId   String?  @map("created_by_user_id")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  code             String    @unique // user-facing code, uppercase normalized
+  description      String?
+  type             String // percent_off | amount_off | free_months
+  percentDiscount  Int?      @map("percent_discount") // 1-100 when type=percent_off
+  amountOffCents   Int?      @map("amount_off_cents") // when type=amount_off
+  freeMonths       Int?      @map("free_months") // when type=free_months
+  durationCycles   Int?      @map("duration_cycles") // for percent_off / amount_off — null = forever
+  appliesToPlanIds String[]  @default([]) @map("applies_to_plan_ids") // empty = any plan
+  maxRedemptions   Int?      @map("max_redemptions") // null = unlimited
+  redemptionCount  Int       @default(0) @map("redemption_count")
+  expiresAt        DateTime? @map("expires_at")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdByUserId  String?   @map("created_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  redemptions       BillingCouponRedemption[]
+  redemptions BillingCouponRedemption[]
 
   @@index([isActive, expiresAt])
   @@map("billing_coupons")
@@ -386,15 +386,15 @@ model BillingCoupon {
 // ---- Coupon Redemptions ----
 // One row per tenant×coupon. Prevents reuse and lets us audit who redeemed what.
 model BillingCouponRedemption {
-  id                String   @id @default(uuid())
-  couponId          String   @map("coupon_id")
-  tenantId          String   @map("tenant_id")
-  subscriptionId    String?  @map("subscription_id")
-  redeemedAt        DateTime @default(now()) @map("redeemed_at")
-  cyclesRemaining   Int?     @map("cycles_remaining")               // counts down on each charge for percent/amount
-  metadata          Json     @default("{}")
+  id              String   @id @default(uuid())
+  couponId        String   @map("coupon_id")
+  tenantId        String   @map("tenant_id")
+  subscriptionId  String?  @map("subscription_id")
+  redeemedAt      DateTime @default(now()) @map("redeemed_at")
+  cyclesRemaining Int?     @map("cycles_remaining") // counts down on each charge for percent/amount
+  metadata        Json     @default("{}")
 
-  coupon            BillingCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  coupon BillingCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
 
   @@unique([couponId, tenantId])
   @@index([tenantId])
@@ -493,27 +493,27 @@ model ExchangeRate {
 // Ranking: weighted votes by lifetime MRR + recency decay + engagement bonus.
 
 model FeatureRequest {
-  id              String   @id @default(uuid())
-  title           String
-  description     String
-  status          String   @default("open")           // open|under_review|planned|in_progress|shipped|declined
-  category        String?                              // ai|integrations|analytics|crm|billing|ux|other
-  authorUserId    String   @map("author_user_id")
-  authorTenantId  String?  @map("author_tenant_id")   // null if super_admin authored
-  voteCount       Int      @default(0) @map("vote_count")            // raw count, denormalized for sort
-  weightedScore   Float    @default(0) @map("weighted_score")        // ranking score, recomputed nightly
-  commentCount    Int      @default(0) @map("comment_count")
-  embedding       Unsupported("vector(1536)")?                       // for duplicate detection
-  mergedIntoId    String?  @map("merged_into_id")                    // when admin merges duplicates
-  shippedAt       DateTime? @map("shipped_at")
-  declinedReason  String?  @map("declined_reason")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String                       @id @default(uuid())
+  title          String
+  description    String
+  status         String                       @default("open") // open|under_review|planned|in_progress|shipped|declined
+  category       String? // ai|integrations|analytics|crm|billing|ux|other
+  authorUserId   String                       @map("author_user_id")
+  authorTenantId String?                      @map("author_tenant_id") // null if super_admin authored
+  voteCount      Int                          @default(0) @map("vote_count") // raw count, denormalized for sort
+  weightedScore  Float                        @default(0) @map("weighted_score") // ranking score, recomputed nightly
+  commentCount   Int                          @default(0) @map("comment_count")
+  embedding      Unsupported("vector(1536)")? // for duplicate detection
+  mergedIntoId   String?                      @map("merged_into_id") // when admin merges duplicates
+  shippedAt      DateTime?                    @map("shipped_at")
+  declinedReason String?                      @map("declined_reason")
+  createdAt      DateTime                     @default(now()) @map("created_at")
+  updatedAt      DateTime                     @updatedAt @map("updated_at")
 
-  votes           FeatureRequestVote[]
-  comments        FeatureRequestComment[]
-  mergedInto      FeatureRequest?  @relation("MergedRequests", fields: [mergedIntoId], references: [id], onDelete: SetNull)
-  duplicates      FeatureRequest[] @relation("MergedRequests")
+  votes      FeatureRequestVote[]
+  comments   FeatureRequestComment[]
+  mergedInto FeatureRequest?         @relation("MergedRequests", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  duplicates FeatureRequest[]        @relation("MergedRequests")
 
   @@index([status, weightedScore(sort: Desc)])
   @@index([authorTenantId])
@@ -523,13 +523,13 @@ model FeatureRequest {
 }
 
 model FeatureRequestVote {
-  id              String   @id @default(uuid())
-  requestId       String   @map("request_id")
-  userId          String   @map("user_id")
-  tenantId        String?  @map("tenant_id")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  requestId String   @map("request_id")
+  userId    String   @map("user_id")
+  tenantId  String?  @map("tenant_id")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  request         FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@unique([requestId, userId])
   @@index([userId])
@@ -539,16 +539,16 @@ model FeatureRequestVote {
 }
 
 model FeatureRequestComment {
-  id              String   @id @default(uuid())
-  requestId       String   @map("request_id")
-  userId          String   @map("user_id")
-  tenantId        String?  @map("tenant_id")
-  body            String
-  isAdminReply    Boolean  @default(false) @map("is_admin_reply")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  requestId    String   @map("request_id")
+  userId       String   @map("user_id")
+  tenantId     String?  @map("tenant_id")
+  body         String
+  isAdminReply Boolean  @default(false) @map("is_admin_reply")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  request         FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId, createdAt])
   @@map("feature_request_comments")
@@ -558,10 +558,10 @@ model FeatureRequestComment {
 // Subscribers receive email notifications when status changes or admin comments.
 // Auto-subscribed on vote and on comment.
 model FeatureRequestSubscriber {
-  id          String   @id @default(uuid())
-  requestId   String   @map("request_id")
-  userId      String   @map("user_id")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  requestId String   @map("request_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([requestId, userId])
   @@map("feature_request_subscribers")
@@ -577,23 +577,23 @@ model FeatureRequestSubscriber {
 // silently refresh ahead of expiry. Field mappings + per-record correlation
 // IDs live in tenant-schema tables (crm_field_mappings, crm_external_links).
 model CrmConnection {
-  id                String   @id @default(uuid())
-  tenantId          String   @map("tenant_id")
-  provider          String                                    // hubspot|pipedrive|kommo|zoho|salesforce
-  status            String   @default("active")               // active|expired|revoked|error
-  externalAccountId String?  @map("external_account_id")      // hub_id / company_id / account domain
-  externalAccountName String? @map("external_account_name")
-  accessToken       String   @map("access_token")             // encrypted
-  refreshToken      String?  @map("refresh_token")            // encrypted
-  tokenExpiresAt    DateTime? @map("token_expires_at")
-  scopes            String[] @default([])
-  syncMode          String   @default("outbound") @map("sync_mode")  // outbound|bidirectional
-  lastSyncAt        DateTime? @map("last_sync_at")
-  lastErrorAt       DateTime? @map("last_error_at")
-  lastErrorMessage  String?  @map("last_error_message")
-  metadata          Json     @default("{}")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  provider            String // hubspot|pipedrive|kommo|zoho|salesforce
+  status              String    @default("active") // active|expired|revoked|error
+  externalAccountId   String?   @map("external_account_id") // hub_id / company_id / account domain
+  externalAccountName String?   @map("external_account_name")
+  accessToken         String    @map("access_token") // encrypted
+  refreshToken        String?   @map("refresh_token") // encrypted
+  tokenExpiresAt      DateTime? @map("token_expires_at")
+  scopes              String[]  @default([])
+  syncMode            String    @default("outbound") @map("sync_mode") // outbound|bidirectional
+  lastSyncAt          DateTime? @map("last_sync_at")
+  lastErrorAt         DateTime? @map("last_error_at")
+  lastErrorMessage    String?   @map("last_error_message")
+  metadata            Json      @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@unique([tenantId, provider])
   @@index([tenantId])
@@ -601,4 +601,3 @@ model CrmConnection {
   @@map("crm_connections")
   @@schema("public")
 }
-

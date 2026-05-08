@@ -14,6 +14,7 @@ import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
+import { InvoiceGeneratorService } from './invoice-generator.service';
 
 /**
  * Billing module — provider-agnostic subscription billing.
@@ -37,7 +38,8 @@ import { BillingReconciliationProcessor } from './processors/reconciliation.proc
         MercadoPagoAdapter,
         MercadoPagoConfigService,
         BillingReconciliationProcessor,
+        InvoiceGeneratorService,
     ],
-    exports: [BillingService, CouponsService],
+    exports: [BillingService, CouponsService, InvoiceGeneratorService],
 })
 export class BillingModule {}

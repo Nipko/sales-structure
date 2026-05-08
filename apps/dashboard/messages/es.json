@@ -3293,7 +3293,10 @@
       "storage": "Almacenamiento",
       "whatsapp_api": "API WhatsApp",
       "other": "Otros"
-    }
+    },
+    "exportCsv": "Exportar CSV",
+    "exportCostsCsv": "Exportar costos",
+    "exportProfitabilityCsv": "Exportar P&L por tenant"
   },
   "featureRequests": {
     "title": "Sugerencias",

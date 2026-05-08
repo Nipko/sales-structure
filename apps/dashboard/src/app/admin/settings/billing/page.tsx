@@ -750,8 +750,13 @@ export default function BillingPage() {
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex items-center justify-end gap-3">
-                                                {p.invoicePdfUrl ? (
-                                                    <a href={p.invoicePdfUrl} target="_blank" rel="noopener" className="text-indigo-500 hover:underline">{t("download")}</a>
+                                                {p.status === "succeeded" || p.status === "refunded" ? (
+                                                    <button
+                                                        onClick={() => api.downloadInvoice(activeTenantId!, p.id)}
+                                                        className="text-indigo-500 hover:underline bg-transparent border-none p-0 cursor-pointer text-sm"
+                                                    >
+                                                        {t("download")}
+                                                    </button>
                                                 ) : (
                                                     <span className="text-neutral-400">—</span>
                                                 )}

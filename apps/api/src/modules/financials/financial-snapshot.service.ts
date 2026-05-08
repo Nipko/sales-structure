@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
 
 @Injectable()
 export class FinancialSnapshotService {
@@ -10,6 +11,7 @@ export class FinancialSnapshotService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        private readonly llmRouter: LLMRouterService,
     ) {}
 
     /** Run on the 1st of every month at 1:00 AM — snapshot the previous month. */
@@ -108,17 +110,17 @@ export class FinancialSnapshotService {
             const tenant = sub.tenant;
             if (!tenant?.schemaName) continue;
             try {
-                const costRows: any[] = await this.prisma.$queryRawUnsafe(
-                    `SELECT COALESCE(SUM(CAST(metadata->>'llmCost' AS DECIMAL)), 0) as total_cost,
-                            COUNT(*) as msg_count
-                     FROM "${tenant.schemaName}".messages
-                     WHERE created_at >= $1 AND created_at <= $2 AND direction = 'outbound'`,
-                    monthStart,
-                    monthEnd,
-                );
-                const tenantLlmCost = Math.round(
-                    Number(costRows[0]?.total_cost || 0) * 100,
-                );
+                // LLM cost — read from Redis stats (LLMRouter.trackStats writes
+                // per-call cost in centi-USD with 90d TTL). This is the only
+                // place per-call cost is captured; messages.metadata.llmCost
+                // is not populated in the current pipeline.
+                const stats = await this.llmRouter.getStats({
+                    since: monthStart,
+                    until: monthEnd,
+                    tenantId: tenant.id,
+                });
+                // costUsd is in dollars; convert to cents (×100).
+                const tenantLlmCost = Math.round((stats.totals.costUsd || 0) * 100);
                 llmCostTotal += tenantLlmCost;
 
                 const tenantRevenue = succeeded
@@ -133,7 +135,7 @@ export class FinancialSnapshotService {
                     status: sub.status,
                     revenueCents: tenantRevenue,
                     llmCostCents: tenantLlmCost,
-                    aiMessages: Number(costRows[0]?.msg_count || 0),
+                    aiMessages: stats.totals.calls || 0,
                     conversations: 0,
                 });
             } catch (e: any) {

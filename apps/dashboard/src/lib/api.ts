@@ -749,6 +749,58 @@ export const api = {
     updatePublicBookingConfig: (tenantId: string, data: { enabled?: boolean; welcomeText?: string; brandColor?: string }) =>
         apiPost(`/appointments/${tenantId}/public-booking-config`, data),
 
+    // ─── Financials CSV export (super_admin) ───
+    downloadFinancialsCsv: async (
+        kind: "revenue" | "costs" | "tenant-profitability",
+        params?: { months?: number; month?: string },
+    ) => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const qs = new URLSearchParams();
+        if (params?.months) qs.set("months", String(params.months));
+        if (params?.month) qs.set("month", params.month);
+        const url = `${BASE_URL}/financials/export/${kind}.csv${qs.toString() ? `?${qs}` : ""}`;
+        const res = await fetch(url, {
+            method: "GET",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+            return { success: false, error: `HTTP ${res.status}` };
+        }
+        const blob = await res.blob();
+        const dlUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = dlUrl;
+        const tag = params?.month ? `-${params.month}` : "";
+        a.download = `parallly-${kind}${tag}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(dlUrl);
+        return { success: true };
+    },
+
+    // ─── Billing invoice download ───
+    downloadInvoice: async (tenantId: string, paymentId: string) => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${BASE_URL}/billing/${tenantId}/payments/${paymentId}/invoice`, {
+            method: "GET",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+            return { success: false, error: `HTTP ${res.status}` };
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `parallly-invoice-${paymentId.slice(0, 8)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true };
+    },
+
     // ─── Invitations ───
     listInvitations: (tenantId: string) => apiGet(`/tenants/${tenantId}/invitations`),
     createInvitation: (tenantId: string, data: { email: string; role: string; skillTags?: string[] }) =>

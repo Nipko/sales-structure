@@ -1,8 +1,10 @@
-import { BadRequestException, Body, Controller, Get, Logger, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Logger, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
+import { InvoiceGeneratorService } from './invoice-generator.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 /**
@@ -74,6 +76,7 @@ export class BillingController {
         private readonly prisma: PrismaService,
         private readonly billingService: BillingService,
         private readonly throttle: TenantThrottleService,
+        private readonly invoiceGenerator: InvoiceGeneratorService,
     ) {}
 
     /**
@@ -340,5 +343,25 @@ export class BillingController {
     async sync(@Param('tenantId') tenantId: string) {
         const result = await this.billingService.syncFromProvider(tenantId);
         return { success: true, data: result };
+    }
+
+    /**
+     * Download PDF invoice for a payment. Generated on demand (not persisted)
+     * until fiscal integration is wired. Tenant scope enforced via tenantId
+     * path param + JWT — service rejects mismatch.
+     */
+    @Get(':tenantId/payments/:paymentId/invoice')
+    @UseGuards(AuthGuard('jwt'))
+    async downloadInvoice(
+        @Param('tenantId') tenantId: string,
+        @Param('paymentId') paymentId: string,
+        @Res() res: Response,
+    ) {
+        const pdf = await this.invoiceGenerator.generate(tenantId, paymentId);
+        const filename = `parallly-invoice-${paymentId.slice(0, 8)}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', pdf.length.toString());
+        res.send(pdf);
     }
 }

@@ -2,7 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { DollarSign, Server, TrendingUp } from "lucide-react";
+import { DollarSign, Server, TrendingUp, Download } from "lucide-react";
+import { api } from "@/lib/api";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -44,8 +45,25 @@ export default function CostsTab({ overview, costsTrend, profitability }: Props)
     (a: any, b: any) => (a.profit || 0) - (b.profit || 0)
   );
 
+  const monthTag = new Date().toISOString().slice(0, 7);
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={() => api.downloadFinancialsCsv("costs", { months: 12 })}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+        >
+          <Download size={14} /> {t("exportCostsCsv")}
+        </button>
+        <button
+          onClick={() => api.downloadFinancialsCsv("tenant-profitability", { month: monthTag })}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+        >
+          <Download size={14} /> {t("exportProfitabilityCsv")}
+        </button>
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {kpis.map((kpi) => {

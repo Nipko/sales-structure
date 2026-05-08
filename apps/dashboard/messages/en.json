@@ -3293,7 +3293,10 @@
       "storage": "Storage",
       "whatsapp_api": "WhatsApp API",
       "other": "Other"
-    }
+    },
+    "exportCsv": "Export CSV",
+    "exportCostsCsv": "Export costs",
+    "exportProfitabilityCsv": "Export tenant P&L"
   },
   "featureRequests": {
     "title": "Feature Requests",

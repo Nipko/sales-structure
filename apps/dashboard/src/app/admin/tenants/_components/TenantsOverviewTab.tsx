@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
@@ -58,7 +58,19 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
   const tc = useTranslations("common");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<{ id: string; top: number; right: number } | null>(null);
+
+  // Close dropdown on scroll/resize so the fixed-position menu doesn't drift
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [openMenu]);
 
   const filtered = tenants.filter((tenant) => {
     const matchesSearch =
@@ -200,46 +212,24 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                     </td>
                     <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{tenant.channels}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="relative inline-block">
-                        <button
-                          onClick={() => setOpenMenu(openMenu === tenant.id ? null : tenant.id)}
-                          className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-neutral-500"
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
-                        {openMenu === tenant.id && (
-                          <>
-                            <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
-                            <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
-                              <Link
-                                href={`/admin/tenants/${tenant.id}`}
-                                className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 no-underline"
-                                onClick={() => setOpenMenu(null)}
-                              >
-                                <Eye size={14} /> {t("actions.view")}
-                              </Link>
-                              <button
-                                onClick={() => { onEdit(tenant); setOpenMenu(null); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-left"
-                              >
-                                <Edit size={14} /> {t("actions.edit")}
-                              </button>
-                              <button
-                                onClick={() => { onSuspend(tenant); setOpenMenu(null); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-left"
-                              >
-                                <Ban size={14} /> {t("actions.suspend")}
-                              </button>
-                              <button
-                                onClick={() => { onImpersonate(tenant); setOpenMenu(null); }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-left"
-                              >
-                                <UserCheck size={14} /> {t("actions.impersonate")}
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          if (openMenu?.id === tenant.id) {
+                            setOpenMenu(null);
+                            return;
+                          }
+                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                          setOpenMenu({
+                            id: tenant.id,
+                            top: rect.bottom + 4,
+                            right: window.innerWidth - rect.right,
+                          });
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-neutral-500"
+                        aria-label={t("actions.view")}
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -253,6 +243,48 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
           )}
         </div>
       </div>
+
+      {/* Action menu — fixed-position so it escapes the table's overflow context */}
+      {openMenu && (() => {
+        const tenant = tenants.find((t2) => t2.id === openMenu.id);
+        if (!tenant) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
+            <div
+              className="fixed z-50 w-48 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl py-1"
+              style={{ top: openMenu.top, right: openMenu.right }}
+            >
+              <Link
+                href={`/admin/tenants/${tenant.id}`}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 no-underline"
+                onClick={() => setOpenMenu(null)}
+              >
+                <Eye size={14} /> {t("actions.view")}
+              </Link>
+              <button
+                onClick={() => { onEdit(tenant); setOpenMenu(null); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-left"
+              >
+                <Edit size={14} /> {t("actions.edit")}
+              </button>
+              <button
+                onClick={() => { onImpersonate(tenant); setOpenMenu(null); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-left"
+              >
+                <UserCheck size={14} /> {t("actions.impersonate")}
+              </button>
+              <div className="my-1 border-t border-neutral-200 dark:border-neutral-700" />
+              <button
+                onClick={() => { onSuspend(tenant); setOpenMenu(null); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer bg-transparent border-none text-left"
+              >
+                <Ban size={14} /> {t("actions.suspend")}
+              </button>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

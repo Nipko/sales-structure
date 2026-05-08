@@ -617,38 +617,128 @@
   },
   "settings": {
     "sections": {
-      "account": { "title": "Minha conta", "description": "Seu perfil, segurança e preferências pessoais" },
-      "company": { "title": "Empresa", "description": "Identidade e configuração do negócio" },
-      "operations": { "title": "Operação", "description": "Pipeline, scoring, atributos e formulários" },
-      "communication": { "title": "Comunicação", "description": "Templates de email, macros, banco de mídias e recall" },
-      "integrations": { "title": "Integrações e alertas", "description": "CRM externo e notificações do sistema" },
-      "aiAdvanced": { "title": "IA avançada", "description": "Provedores LLM e configuração do router IA" },
-      "platform": { "title": "Plataforma", "description": "Configuração avançada de canais e tenants" }
+      "account": {
+        "title": "Minha conta",
+        "description": "Seu perfil, segurança e preferências pessoais"
+      },
+      "company": {
+        "title": "Empresa",
+        "description": "Identidade e configuração do negócio"
+      },
+      "operations": {
+        "title": "Operação",
+        "description": "Pipeline, scoring, atributos e formulários"
+      },
+      "communication": {
+        "title": "Comunicação",
+        "description": "Templates de email, macros, banco de mídias e recall"
+      },
+      "integrations": {
+        "title": "Integrações e alertas",
+        "description": "CRM externo e notificações do sistema"
+      },
+      "aiAdvanced": {
+        "title": "IA avançada",
+        "description": "Provedores LLM e configuração do router IA"
+      },
+      "platform": {
+        "title": "Plataforma",
+        "description": "Configuração avançada de canais e tenants"
+      }
     },
     "items": {
-      "profile": { "label": "Perfil", "description": "Nome, email, avatar e dados pessoais" },
-      "security": { "label": "Segurança", "description": "Senha e autenticação 2FA" },
-      "notifications": { "label": "Notificações", "description": "Alertas por categoria e canal" },
-      "appearance": { "label": "Aparência", "description": "Tema claro, escuro ou automático" },
-      "companyGeneral": { "label": "Dados gerais", "description": "Nome, indústria, logo e descrição" },
-      "businessInfo": { "label": "Info comercial", "description": "Dados para emails e comunicações oficiais" },
-      "policies": { "label": "Políticas", "description": "Envios, devoluções, garantias que o agente cita" },
-      "localization": { "label": "Localização", "description": "Fuso, moeda, idioma e formato de data" },
-      "businessHours": { "label": "Horário de atendimento", "description": "Dias, horas e mensagem fora de horário" },
-      "pipelineStages": { "label": "Etapas do pipeline", "description": "Configure as etapas e fluxo" },
-      "scoringConfig": { "label": "Lead scoring", "description": "Pesos e regras de qualificação" },
-      "customAttributes": { "label": "Atributos personalizados", "description": "Campos dinâmicos para contatos e leads" },
-      "prechat": { "label": "Formulário pré-chat", "description": "Dados solicitados antes de iniciar conversa" },
-      "emailTemplates": { "label": "Templates de email", "description": "Confirmações, lembretes e boas-vindas" },
-      "macros": { "label": "Macros", "description": "Sequências de ações rápidas para agentes" },
-      "mediaBank": { "label": "Banco de mídias", "description": "Imagens, logos e galerias compartilhadas" },
-      "recall": { "label": "Recall automático", "description": "Lembretes de revisita por inatividade" },
-      "crmIntegrations": { "label": "CRM externo", "description": "Conecte HubSpot, Salesforce ou Pipedrive" },
-      "alerts": { "label": "Alertas do sistema", "description": "Regras de notificação à equipe" },
-      "aiProviders": { "label": "Provedores LLM", "description": "API keys de OpenAI, Anthropic, Google e outros" },
-      "aiConfig": { "label": "Config IA", "description": "Modelo padrão, tier e comportamento" },
-      "channelConfig": { "label": "Config de canais", "description": "Credenciais e números de telefone" },
-      "advanced": { "label": "Avançado", "description": "Nome, limites e features da plataforma" }
+      "profile": {
+        "label": "Perfil",
+        "description": "Nome, email, avatar e dados pessoais"
+      },
+      "security": {
+        "label": "Segurança",
+        "description": "Senha e autenticação 2FA"
+      },
+      "notifications": {
+        "label": "Notificações",
+        "description": "Alertas por categoria e canal"
+      },
+      "appearance": {
+        "label": "Aparência",
+        "description": "Tema claro, escuro ou automático"
+      },
+      "companyGeneral": {
+        "label": "Dados gerais",
+        "description": "Nome, indústria, logo e descrição"
+      },
+      "businessInfo": {
+        "label": "Info comercial",
+        "description": "Dados para emails e comunicações oficiais"
+      },
+      "policies": {
+        "label": "Políticas",
+        "description": "Envios, devoluções, garantias que o agente cita"
+      },
+      "localization": {
+        "label": "Localização",
+        "description": "Fuso, moeda, idioma e formato de data"
+      },
+      "businessHours": {
+        "label": "Horário de atendimento",
+        "description": "Dias, horas e mensagem fora de horário"
+      },
+      "pipelineStages": {
+        "label": "Etapas do pipeline",
+        "description": "Configure as etapas e fluxo"
+      },
+      "scoringConfig": {
+        "label": "Lead scoring",
+        "description": "Pesos e regras de qualificação"
+      },
+      "customAttributes": {
+        "label": "Atributos personalizados",
+        "description": "Campos dinâmicos para contatos e leads"
+      },
+      "prechat": {
+        "label": "Formulário pré-chat",
+        "description": "Dados solicitados antes de iniciar conversa"
+      },
+      "emailTemplates": {
+        "label": "Templates de email",
+        "description": "Confirmações, lembretes e boas-vindas"
+      },
+      "macros": {
+        "label": "Macros",
+        "description": "Sequências de ações rápidas para agentes"
+      },
+      "mediaBank": {
+        "label": "Banco de mídias",
+        "description": "Imagens, logos e galerias compartilhadas"
+      },
+      "recall": {
+        "label": "Recall automático",
+        "description": "Lembretes de revisita por inatividade"
+      },
+      "crmIntegrations": {
+        "label": "CRM externo",
+        "description": "Conecte HubSpot, Salesforce ou Pipedrive"
+      },
+      "alerts": {
+        "label": "Alertas do sistema",
+        "description": "Regras de notificação à equipe"
+      },
+      "aiProviders": {
+        "label": "Provedores LLM",
+        "description": "API keys de OpenAI, Anthropic, Google e outros"
+      },
+      "aiConfig": {
+        "label": "Config IA",
+        "description": "Modelo padrão, tier e comportamento"
+      },
+      "channelConfig": {
+        "label": "Config de canais",
+        "description": "Credenciais e números de telefone"
+      },
+      "advanced": {
+        "label": "Avançado",
+        "description": "Nome, limites e features da plataforma"
+      }
     },
     "title": "Configuracoes",
     "subtitle": "Gerencie sua conta, empresa, canais e ferramentas",
@@ -810,20 +900,6 @@
     "backToSettings": "Configurações",
     "connectionError": "Erro de conexão",
     "saveError": "Erro ao salvar",
-    "sections": {
-      "account": "Minha Conta",
-      "accountDesc": "Seu perfil, segurança e preferências pessoais",
-      "company": "Empresa",
-      "companyDesc": "Configuração do workspace e organização",
-      "tools": "Ferramentas",
-      "toolsDesc": "Atributos, macros, formulários e modelos",
-      "channels": "Canais",
-      "channelsDesc": "Configuração de WhatsApp, Instagram, Messenger e Telegram",
-      "ai": "IA e Modelos",
-      "aiDesc": "Provedores de linguagem e configuração do router IA",
-      "platform": "Plataforma",
-      "platformDesc": "Configuração avançada da plataforma"
-    },
     "pages": {
       "profile": "Perfil",
       "profileDesc": "Nome, email, avatar e dados pessoais",
@@ -2446,7 +2522,22 @@
       "servicios": "Servicos",
       "salud": "Saude",
       "educacion": "Educação",
-      "otro": "Outro"
+      "otro": "Outro",
+      "education": "Educação",
+      "veterinaria": "Veterinária",
+      "gimnasios": "Academias e Fitness",
+      "seguros": "Seguros",
+      "servicios_hogar": "Serviços para casa",
+      "pet_services": "Serviços para pets",
+      "fotografia": "Fotografia / Eventos",
+      "retail": "Varejo / Comércio",
+      "technology": "Tecnologia",
+      "servicios_profesionales": "Serviços profissionais",
+      "restaurantes": "Restaurantes / Gastronomia",
+      "inmobiliaria": "Imobiliária",
+      "automotriz": "Automotivo",
+      "finanzas": "Finanças / Banco",
+      "moda_belleza": "Moda / Beleza"
     },
     "languages": {
       "es-CO": "Espanhol (CO)",
@@ -3531,77 +3622,137 @@
     "inbox": {
       "title": "Como funciona a Caixa de Entrada?",
       "description": "Aqui você vê todas as conversas dos seus clientes em tempo real. As mensagens chegam do WhatsApp, Instagram, Messenger e Telegram em um só lugar. Você pode responder, atribuir a um agente ou deixar a IA cuidar.",
-      "tips": ["Use os filtros para ver apenas suas conversas ou as não atribuídas", "Conversas com handoff aparecem com um badge laranja", "Clique no painel direito para ver os dados do contato"]
+      "tips": [
+        "Use os filtros para ver apenas suas conversas ou as não atribuídas",
+        "Conversas com handoff aparecem com um badge laranja",
+        "Clique no painel direito para ver os dados do contato"
+      ]
     },
     "contacts": {
       "title": "Como gerenciar contatos?",
       "description": "Seu CRM centraliza todos os contatos que interagiram com o seu negócio. Você pode criar leads, editar informações, atribuir etapas e usar filtros avançados para segmentar.",
-      "tips": ["Use o botão 'Filtros avançados' para pesquisar por score, data ou tags", "Clique em um contato para ver o detalhe completo com linha do tempo", "As ações em massa permitem mudar de etapa ou adicionar tags a vários contatos"]
+      "tips": [
+        "Use o botão 'Filtros avançados' para pesquisar por score, data ou tags",
+        "Clique em um contato para ver o detalhe completo com linha do tempo",
+        "As ações em massa permitem mudar de etapa ou adicionar tags a vários contatos"
+      ]
     },
     "pipeline": {
       "title": "Como funciona o Funil?",
       "description": "O funil de vendas visualiza em qual etapa cada oportunidade está. Arraste os cartões entre colunas para mover negócios. As etapas são configuráveis nas Configurações.",
-      "tips": ["Arraste um cartão para uma etapa terminal para solicitar aprovação", "Cartões com badge amarelo estão aguardando aprovação", "Personalize as etapas em Configurações → Ferramentas → Etapas do funil"]
+      "tips": [
+        "Arraste um cartão para uma etapa terminal para solicitar aprovação",
+        "Cartões com badge amarelo estão aguardando aprovação",
+        "Personalize as etapas em Configurações → Ferramentas → Etapas do funil"
+      ]
     },
     "appointments": {
       "title": "Como gerenciar compromissos?",
       "description": "Agende compromissos, configure serviços com duração e preço, gerencie a disponibilidade da sua equipe e conecte calendários externos (Google/Microsoft).",
-      "tips": ["Configure seus serviços com preço e duração para que o agente de IA possa agendar automaticamente", "Conecte o Google Agenda para sincronização bidirecional de compromissos", "Os lembretes são enviados automaticamente 24h e 1h antes"]
+      "tips": [
+        "Configure seus serviços com preço e duração para que o agente de IA possa agendar automaticamente",
+        "Conecte o Google Agenda para sincronização bidirecional de compromissos",
+        "Os lembretes são enviados automaticamente 24h e 1h antes"
+      ]
     },
     "properties": {
       "title": "Como gerenciar propriedades?",
       "description": "Gerencie seus apartamentos de aluguel por temporada. Adicione fotos, comodidades, preços e regras. Sincronize a disponibilidade com Airbnb e Booking.com usando iCal.",
-      "tips": ["O calendário é a visualização principal — mostra disponibilidade em verde, reservas em vermelho e bloqueios externos em laranja", "Cole a URL do iCal do Airbnb/Booking para sincronizar automaticamente a cada 30 minutos", "Copie sua URL de exportação e cole no Airbnb/Booking para que vejam suas reservas diretas"]
+      "tips": [
+        "O calendário é a visualização principal — mostra disponibilidade em verde, reservas em vermelho e bloqueios externos em laranja",
+        "Cole a URL do iCal do Airbnb/Booking para sincronizar automaticamente a cada 30 minutos",
+        "Copie sua URL de exportação e cole no Airbnb/Booking para que vejam suas reservas diretas"
+      ]
     },
     "broadcast": {
       "title": "Como enviar campanhas?",
       "description": "Envie mensagens em massa para seus contatos via WhatsApp usando templates aprovados pela Meta. Segmente seu público por tags, etapa ou segmentos salvos.",
-      "tips": ["Você só pode enviar templates aprovados pela Meta (não mensagens livres)", "Programe o envio para uma data e hora específica", "Monitore as métricas: enviados, entregues, lidos, com falha"]
+      "tips": [
+        "Você só pode enviar templates aprovados pela Meta (não mensagens livres)",
+        "Programe o envio para uma data e hora específica",
+        "Monitore as métricas: enviados, entregues, lidos, com falha"
+      ]
     },
     "automation": {
       "title": "Como criar automações?",
       "description": "Crie regras que rodam automaticamente quando um evento ocorre. Por exemplo: quando um lead quente chega, atribuir a um agente específico. Ou quando não há resposta em 4 horas, enviar acompanhamento.",
-      "tips": ["Cada regra tem: gatilho (quando), condições (se) e ações (então)", "As automações de nutrição enviam acompanhamentos a leads que não respondem", "Você pode ativar/desativar regras sem excluí-las"]
+      "tips": [
+        "Cada regra tem: gatilho (quando), condições (se) e ações (então)",
+        "As automações de nutrição enviam acompanhamentos a leads que não respondem",
+        "Você pode ativar/desativar regras sem excluí-las"
+      ]
     },
     "agent": {
       "title": "Como configurar o Agente de IA?",
       "description": "Seu agente de IA responde automaticamente às mensagens dos seus clientes. Configure nome, personalidade, regras, tópicos proibidos e canais atribuídos. Use templates pré-criados para sua indústria.",
-      "tips": ["Cada canal (WhatsApp, Instagram, etc.) pode ter um agente diferente", "O agente respeita as regras e tópicos proibidos que você configurar", "Teste seu agente na seção de Teste antes de ativá-lo"]
+      "tips": [
+        "Cada canal (WhatsApp, Instagram, etc.) pode ter um agente diferente",
+        "O agente respeita as regras e tópicos proibidos que você configurar",
+        "Teste seu agente na seção de Teste antes de ativá-lo"
+      ]
     },
     "knowledge": {
       "title": "Como funciona a Base de Conhecimento?",
       "description": "A base de conhecimento alimenta o agente de IA com informações sobre o seu negócio. Faça upload de documentos, crie FAQs e defina políticas. O agente pesquisa aqui antes de responder.",
-      "tips": ["As FAQs são a maneira mais rápida de ensinar o agente", "Os documentos são processados com IA (RAG) para respostas contextuais", "Quanto mais informações você carregar, melhor será a resposta do agente"]
+      "tips": [
+        "As FAQs são a maneira mais rápida de ensinar o agente",
+        "Os documentos são processados com IA (RAG) para respostas contextuais",
+        "Quanto mais informações você carregar, melhor será a resposta do agente"
+      ]
     },
     "analyticsV2": {
       "title": "Como ler as Análises?",
       "description": "As análises mostram o desempenho do seu negócio: conversas, resolução por IA, campanhas, CSAT e mais. Use os filtros de data para diferentes períodos.",
-      "tips": ["A guia 'IA & Bot' mostra quantas conversas a IA resolveu sem intervenção humana", "A guia 'CRM' vincula às análises de funil e velocidade do pipeline", "Exporte relatórios em CSV pelo botão de download"]
+      "tips": [
+        "A guia 'IA & Bot' mostra quantas conversas a IA resolveu sem intervenção humana",
+        "A guia 'CRM' vincula às análises de funil e velocidade do pipeline",
+        "Exporte relatórios em CSV pelo botão de download"
+      ]
     },
     "channels": {
       "title": "Como conectar canais?",
       "description": "Conecte seus canais de mensagens para receber e responder mensagens pela plataforma. WhatsApp usa Embedded Signup, Instagram e Messenger usam OAuth, Telegram usa Token de Bot.",
-      "tips": ["WhatsApp requer uma conta WhatsApp Business", "Instagram requer uma conta profissional conectada a uma página do Facebook", "Cada canal pode ter um agente de IA diferente atribuído"]
+      "tips": [
+        "WhatsApp requer uma conta WhatsApp Business",
+        "Instagram requer uma conta profissional conectada a uma página do Facebook",
+        "Cada canal pode ter um agente de IA diferente atribuído"
+      ]
     },
     "users": {
       "title": "Como gerenciar a equipe?",
       "description": "Gerencie os usuários da sua equipe. Atribua funções (admin, supervisor, agente), configure habilidades para roteamento inteligente e redefina senhas.",
-      "tips": ["Os agentes veem apenas as conversas atribuídas a eles", "Os supervisores podem ver todas as conversas e relatórios", "As habilidades são usadas para atribuir conversas ao agente mais adequado"]
+      "tips": [
+        "Os agentes veem apenas as conversas atribuídas a eles",
+        "Os supervisores podem ver todas as conversas e relatórios",
+        "As habilidades são usadas para atribuir conversas ao agente mais adequado"
+      ]
     },
     "settings": {
       "title": "O que posso configurar?",
       "description": "As configurações são organizadas em 5 seções: Conta (seu perfil e segurança), Empresa (informações e horários), Ferramentas (atributos, macros, templates), IA (provedores e configuração) e Avançado (alertas e integrações).",
-      "tips": ["Em 'Empresa' configure seu horário de atendimento — o agente o respeita", "Em 'Ferramentas' personalize as etapas do pipeline e o scoring de leads", "Em 'IA' configure qual modelo LLM usar (GPT-4, Claude, Gemini, etc.)"]
+      "tips": [
+        "Em 'Empresa' configure seu horário de atendimento — o agente o respeita",
+        "Em 'Ferramentas' personalize as etapas do pipeline e o scoring de leads",
+        "Em 'IA' configure qual modelo LLM usar (GPT-4, Claude, Gemini, etc.)"
+      ]
     },
     "tenants": {
       "title": "Painel Super Admin",
       "description": "Gerencie todos os tenants da plataforma. Veja métricas de saúde, atividade, configuração de IA e status de faturamento de cada empresa.",
-      "tips": ["O Health Score (0-100) indica o quão bem configurado está cada tenant", "Use 'Personificar' para ver a plataforma como se fosse o tenant", "A guia 'Atividade' mostra mensagens, conversas e handoffs"]
+      "tips": [
+        "O Health Score (0-100) indica o quão bem configurado está cada tenant",
+        "Use 'Personificar' para ver a plataforma como se fosse o tenant",
+        "A guia 'Atividade' mostra mensagens, conversas e handoffs"
+      ]
     },
     "financials": {
       "title": "O que as Finanças mostram?",
       "description": "Métricas financeiras da plataforma: MRR, ARR, churn, LTV e rentabilidade por tenant. Visível apenas para super administradores.",
-      "tips": ["O MRR é calculado das assinaturas ativas (não trials)", "A guia 'Custos' mostra infraestrutura + custos de LLM por tenant", "Gere snapshots mensais para rastreamento histórico"]
+      "tips": [
+        "O MRR é calculado das assinaturas ativas (não trials)",
+        "A guia 'Custos' mostra infraestrutura + custos de LLM por tenant",
+        "Gere snapshots mensais para rastreamento histórico"
+      ]
     }
   },
   "tours": {
@@ -4237,7 +4388,9 @@
   "serviceRequests": {
     "title": "Solicitações de serviço",
     "subtitle": "Despacho de serviços para casa — encanamento, elétrica, dedetização, limpeza.",
-    "filterAll": "Todas", "filterActive": "Ativas", "filterEmergency": "Emergências",
+    "filterAll": "Todas",
+    "filterActive": "Ativas",
+    "filterEmergency": "Emergências",
     "noRequests": "Sem solicitações",
     "anonymous": "Cliente sem nome",
     "advance": "Avançar",
@@ -4253,40 +4406,89 @@
     "title": "Seguros",
     "subtitle": "Catálogo de planos, cotações, apólices emitidas e sinistros.",
     "addPlan": "Criar plano",
-    "plansTab": "Planos", "quotesTab": "Cotações", "policiesTab": "Apólices", "claimsTab": "Sinistros",
-    "noPlans": "Sem planos no catálogo", "noQuotes": "Sem cotações", "noPolicies": "Sem apólices emitidas", "noClaims": "Sem sinistros",
+    "plansTab": "Planos",
+    "quotesTab": "Cotações",
+    "policiesTab": "Apólices",
+    "claimsTab": "Sinistros",
+    "noPlans": "Sem planos no catálogo",
+    "noQuotes": "Sem cotações",
+    "noPolicies": "Sem apólices emitidas",
+    "noClaims": "Sem sinistros",
     "deletePlanConfirm": "Excluir este plano?",
-    "premiumRange": "Prêmio mensal", "maxCoverage": "Cobertura máxima", "deductible": "Franquia", "ageRange": "Faixa etária",
-    "applicant": "Solicitante", "yearsOld": "anos", "plan": "Plano",
-    "monthlyPremium": "Prêmio mensal", "validUntil": "Válido até", "status": "Status",
-    "policyNumber": "Nº apólice", "policyholder": "Segurado", "nextPayment": "Próximo pagamento",
-    "claimNumber": "Nº sinistro", "incidentType": "Tipo", "filedAt": "Aberto", "claimed": "Reclamado",
-    "newPlan": "Novo plano", "editPlan": "Editar plano",
-    "planName": "Nome do plano", "description": "Descrição",
-    "premiumMin": "Prêmio mín.", "premiumMax": "Prêmio máx.",
-    "minAge": "Idade mín.", "maxAge": "Idade máx."
+    "premiumRange": "Prêmio mensal",
+    "maxCoverage": "Cobertura máxima",
+    "deductible": "Franquia",
+    "ageRange": "Faixa etária",
+    "applicant": "Solicitante",
+    "yearsOld": "anos",
+    "plan": "Plano",
+    "monthlyPremium": "Prêmio mensal",
+    "validUntil": "Válido até",
+    "status": "Status",
+    "policyNumber": "Nº apólice",
+    "policyholder": "Segurado",
+    "nextPayment": "Próximo pagamento",
+    "claimNumber": "Nº sinistro",
+    "incidentType": "Tipo",
+    "filedAt": "Aberto",
+    "claimed": "Reclamado",
+    "newPlan": "Novo plano",
+    "editPlan": "Editar plano",
+    "planName": "Nome do plano",
+    "description": "Descrição",
+    "premiumMin": "Prêmio mín.",
+    "premiumMax": "Prêmio máx.",
+    "minAge": "Idade mín.",
+    "maxAge": "Idade máx."
   },
   "courses": {
     "title": "Cursos e turmas",
     "subtitle": "Catálogo de cursos, turmas programadas e matrículas de estudantes.",
-    "addCourse": "Criar curso", "addCohort": "Turma",
-    "coursesTab": "Cursos", "cohortsTab": "Turmas", "enrollmentsTab": "Matrículas",
-    "noCourses": "Sem cursos no catálogo", "noCohorts": "Sem turmas programadas", "noEnrollments": "Sem matrículas registradas",
+    "addCourse": "Criar curso",
+    "addCohort": "Turma",
+    "coursesTab": "Cursos",
+    "cohortsTab": "Turmas",
+    "enrollmentsTab": "Matrículas",
+    "noCourses": "Sem cursos no catálogo",
+    "noCohorts": "Sem turmas programadas",
+    "noEnrollments": "Sem matrículas registradas",
     "deleteCourseConfirm": "Remover este curso? Turmas existentes não são afetadas.",
     "cancelCohortConfirm": "Cancelar esta turma? Matrículas ficam abertas para reembolso.",
-    "weeks": "semanas", "hours": "horas",
-    "course": "Curso", "instructor": "Instrutor", "schedule": "Horário", "starts": "Início", "seats": "Vagas", "status": "Status",
-    "student": "Aluno", "payment": "Pagamento", "progress": "Progresso", "enrolledAt": "Matriculado",
-    "newCourse": "Novo curso", "editCourse": "Editar curso",
-    "courseName": "Nome do curso", "description": "Descrição",
-    "subject": "Matéria", "level": "Nível",
-    "durationHoursPlaceholder": "Horas", "durationWeeksPlaceholder": "Semanas",
-    "price": "Preço", "certificationPlaceholder": "Certificação",
-    "newCohort": "Nova turma", "cohortCodePlaceholder": "Código (ex. 2026-A2-MANHÃ)",
-    "instructorPlaceholder": "Instrutor", "schedulePlaceholder": "Horário (ex. Seg-Qua 18h-20h)",
-    "startsAt": "Início", "endsAt": "Término", "capacity": "Capacidade", "room": "Sala",
+    "weeks": "semanas",
+    "hours": "horas",
+    "course": "Curso",
+    "instructor": "Instrutor",
+    "schedule": "Horário",
+    "starts": "Início",
+    "seats": "Vagas",
+    "status": "Status",
+    "student": "Aluno",
+    "payment": "Pagamento",
+    "progress": "Progresso",
+    "enrolledAt": "Matriculado",
+    "newCourse": "Novo curso",
+    "editCourse": "Editar curso",
+    "courseName": "Nome do curso",
+    "description": "Descrição",
+    "subject": "Matéria",
+    "level": "Nível",
+    "durationHoursPlaceholder": "Horas",
+    "durationWeeksPlaceholder": "Semanas",
+    "price": "Preço",
+    "certificationPlaceholder": "Certificação",
+    "newCohort": "Nova turma",
+    "cohortCodePlaceholder": "Código (ex. 2026-A2-MANHÃ)",
+    "instructorPlaceholder": "Instrutor",
+    "schedulePlaceholder": "Horário (ex. Seg-Qua 18h-20h)",
+    "startsAt": "Início",
+    "endsAt": "Término",
+    "capacity": "Capacidade",
+    "room": "Sala",
     "cohortStatus": {
-      "open": "Aberta", "full": "Lotada", "cancelled": "Cancelada", "finished": "Finalizada"
+      "open": "Aberta",
+      "full": "Lotada",
+      "cancelled": "Cancelada",
+      "finished": "Finalizada"
     }
   },
   "memberships": {

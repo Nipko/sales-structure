@@ -749,6 +749,9 @@ export const api = {
     updatePublicBookingConfig: (tenantId: string, data: { enabled?: boolean; welcomeText?: string; brandColor?: string }) =>
         apiPost(`/appointments/${tenantId}/public-booking-config`, data),
 
+    getFinancialsForecast: (monthsAhead = 6, monthsHistory = 6) =>
+        apiGet(`/financials/forecast?monthsAhead=${monthsAhead}&monthsHistory=${monthsHistory}`),
+
     // ─── Financials CSV export (super_admin) ───
     downloadFinancialsCsv: async (
         kind: "revenue" | "costs" | "tenant-profitability",

@@ -36,10 +36,11 @@ export default function FinancialsPage() {
   const [churnTrend, setChurnTrend] = useState<any[]>([]);
   const [costsTrend, setCostsTrend] = useState<any[]>([]);
   const [profitability, setProfitability] = useState<any[]>([]);
+  const [forecast, setForecast] = useState<any>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [overviewRes, mrrRes, trialRes, revenueRes, churnRes, costsRes, profitRes] =
+    const [overviewRes, mrrRes, trialRes, revenueRes, churnRes, costsRes, profitRes, forecastRes] =
       await Promise.allSettled([
         api.getFinancialsOverview(),
         api.getMrrTrend(),
@@ -48,6 +49,7 @@ export default function FinancialsPage() {
         api.getChurnTrend(),
         api.getCostsTrend(),
         api.getTenantProfitability(),
+        api.getFinancialsForecast(6, 6),
       ]);
 
     if (overviewRes.status === "fulfilled" && overviewRes.value.success)
@@ -64,6 +66,8 @@ export default function FinancialsPage() {
       setCostsTrend(costsRes.value.data ?? []);
     if (profitRes.status === "fulfilled" && profitRes.value.success)
       setProfitability(profitRes.value.data ?? []);
+    if (forecastRes.status === "fulfilled" && forecastRes.value.success)
+      setForecast(forecastRes.value.data ?? null);
 
     setLoading(false);
   }, []);
@@ -108,7 +112,7 @@ export default function FinancialsPage() {
       )}
 
       {!loading && activeTab === "overview" && (
-        <OverviewTab overview={overview} mrrTrend={mrrTrend} />
+        <OverviewTab overview={overview} mrrTrend={mrrTrend} forecast={forecast} />
       )}
 
       {!loading && activeTab === "revenue" && (

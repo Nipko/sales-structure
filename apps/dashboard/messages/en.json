@@ -3296,7 +3296,20 @@
     },
     "exportCsv": "Export CSV",
     "exportCostsCsv": "Export costs",
-    "exportProfitabilityCsv": "Export tenant P&L"
+    "exportProfitabilityCsv": "Export tenant P&L",
+    "forecast": {
+      "title": "MRR Forecast",
+      "subtitle": "{history} months of history · R² fit {rSquared}%",
+      "historical": "Historical",
+      "projected": "Projected",
+      "confidenceBand": "95% band",
+      "momGrowth": "MoM growth",
+      "in3Months": "In 3 months",
+      "in6Months": "In 6 months",
+      "confidence": "Confidence",
+      "insufficientTitle": "Forecast not available yet",
+      "insufficientBody": "We need at least {need} monthly snapshots for a meaningful projection; we have {have}."
+    }
   },
   "featureRequests": {
     "title": "Feature Requests",

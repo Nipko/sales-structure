@@ -173,6 +173,23 @@ export class BillingReconciliationProcessor {
     }
 
     /**
+     * Daily at 02:30 — apply scheduled plan downgrades whose effective
+     * date has passed. Tenants who downgrade keep their higher tier
+     * features until period end, then this cron flips planId.
+     */
+    @Cron('30 2 * * *')
+    async applyPendingDowngrades() {
+        try {
+            const result = await this.billingService.applyPendingPlanChanges();
+            if (result.applied > 0) {
+                this.logger.log(`[Reconcile] Applied ${result.applied} pending plan changes`);
+            }
+        } catch (err: any) {
+            this.logger.error(`[Reconcile] applyPendingDowngrades failed: ${err.message}`);
+        }
+    }
+
+    /**
      * Daily at 09:00 — fire billing.trial.ending_soon for every tenant whose
      * trial ends in 72–96 hours. That 24-hour window (instead of an exact
      * "3 days before") absorbs clock skew and makes missed runs self-healing

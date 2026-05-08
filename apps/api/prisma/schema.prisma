@@ -221,6 +221,7 @@ model BillingPlan {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   subscriptions         BillingSubscription[]
+  pendingFor            BillingSubscription[] @relation("PendingPlan")
 
   @@map("billing_plans")
   @@schema("public")
@@ -246,12 +247,19 @@ model BillingSubscription {
   cancelAtPeriodEnd         Boolean  @default(false) @map("cancel_at_period_end")
   cancelledAt               DateTime? @map("cancelled_at")
   cancellationReason        String?  @map("cancellation_reason")
+  // Pending plan change — when user downgrades, we don't switch immediately.
+  // We store the target plan + scheduled date and apply it when the period
+  // ends (via a daily cron in BillingReconciliationProcessor). Setting these
+  // also signals the dashboard to show "your plan will switch on YYYY-MM-DD".
+  pendingPlanId             String?  @map("pending_plan_id")
+  pendingPlanChangeAt       DateTime? @map("pending_plan_change_at")
   metadata                  Json     @default("{}")
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 
   tenant                    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan                      BillingPlan  @relation(fields: [planId], references: [id], onDelete: Restrict)
+  pendingPlan               BillingPlan? @relation("PendingPlan", fields: [pendingPlanId], references: [id], onDelete: SetNull)
   payments                  BillingPayment[]
   events                    BillingEvent[]
 

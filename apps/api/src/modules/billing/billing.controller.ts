@@ -181,6 +181,15 @@ export class BillingController {
             };
         }
 
+        // Pending plan change (scheduled downgrade) info — UI shows banner
+        let pendingPlan: any = null;
+        if ((sub as any).pendingPlanId) {
+            pendingPlan = await this.prisma.billingPlan.findUnique({
+                where: { id: (sub as any).pendingPlanId },
+                select: { id: true, slug: true, name: true, priceUsdCents: true },
+            });
+        }
+
         return {
             success: true,
             data: {
@@ -196,6 +205,9 @@ export class BillingController {
                 cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
                 cancelledAt: sub.cancelledAt,
                 cancellationReason: sub.cancellationReason,
+                pendingPlanId: (sub as any).pendingPlanId ?? null,
+                pendingPlanChangeAt: (sub as any).pendingPlanChangeAt ?? null,
+                pendingPlan,
                 payments: recentPayments,
             },
             billingCountry: tenant?.billingCountry ?? null,
@@ -283,6 +295,14 @@ export class BillingController {
     @UseGuards(AuthGuard('jwt'))
     async resume(@Param('tenantId') tenantId: string) {
         await this.billingService.resumeSubscription(tenantId);
+        return { success: true };
+    }
+
+    /** Cancel a previously scheduled downgrade (user changed mind). */
+    @Post(':tenantId/subscription/cancel-pending-downgrade')
+    @UseGuards(AuthGuard('jwt'))
+    async cancelPendingDowngrade(@Param('tenantId') tenantId: string) {
+        await this.billingService.cancelPendingDowngrade(tenantId);
         return { success: true };
     }
 

@@ -54,6 +54,9 @@ interface Subscription {
     cancelAtPeriodEnd: boolean;
     cancelledAt?: string | null;
     cancellationReason?: string | null;
+    pendingPlanId?: string | null;
+    pendingPlanChangeAt?: string | null;
+    pendingPlan?: { id: string; slug: string; name: string; priceUsdCents: number } | null;
     payments: Payment[];
 }
 
@@ -257,6 +260,18 @@ export default function BillingPage() {
         }
     };
 
+    const handleCancelDowngrade = async () => {
+        if (!activeTenantId) return;
+        try {
+            const res = await api.cancelPendingDowngrade(activeTenantId);
+            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+            setToast(t("downgradeCancelled"));
+            await load();
+        } catch (err: any) {
+            setError(err?.message || t("actionFailed"));
+        }
+    };
+
     const handlePause = async () => {
         if (!activeTenantId) return;
         const reason = window.prompt(t("pauseReasonPrompt") || "Reason (optional):");
@@ -404,6 +419,29 @@ export default function BillingPage() {
                         <p className="mt-4 text-xs text-amber-700 dark:text-amber-400">
                             {t("scheduledCancelNotice", { date: formatDate(subscription.currentPeriodEnd, locale) })}
                         </p>
+                    )}
+
+                    {subscription.pendingPlan && subscription.pendingPlanChangeAt && (
+                        <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-start gap-3">
+                            <Clock size={14} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                                    {t("pendingDowngradeTitle", {
+                                        plan: subscription.pendingPlan.name,
+                                        date: formatDate(subscription.pendingPlanChangeAt, locale),
+                                    })}
+                                </p>
+                                <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
+                                    {t("pendingDowngradeHint")}
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleCancelDowngrade}
+                                className="text-[11px] font-semibold px-2 py-1 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-700 dark:text-blue-300 transition-colors flex-shrink-0"
+                            >
+                                {t("pendingDowngradeCancel")}
+                            </button>
+                        </div>
                     )}
 
                     {(() => {

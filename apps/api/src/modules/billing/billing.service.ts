@@ -201,6 +201,17 @@ export class BillingService {
             throw new BadRequestException({ error: 'same_plan', message: 'Tenant is already on this plan.' });
         }
 
+        // Detect upgrade vs downgrade by comparing prices in USD cents.
+        // A downgrade goes through a different path: we don't cancel + recreate
+        // immediately (which would force the user to pay again). Instead we
+        // schedule the change for currentPeriodEnd and the daily cron applies
+        // it. The user keeps the higher-tier features until then.
+        const currentPlan = await this.prisma.billingPlan.findUnique({ where: { id: sub.planId } });
+        const isDowngrade = (currentPlan?.priceUsdCents ?? 0) > newPlan.priceUsdCents;
+        if (isDowngrade) {
+            return this.scheduleDowngrade(tenantId, sub.id, newPlan.id);
+        }
+
         const provider = this.providerFactory.getByName(sub.provider);
         const tenantForCountry = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
@@ -269,6 +280,120 @@ export class BillingService {
         this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, tenantId, sub.id, { fromPlan: sub.planId, toPlan: newPlan.id });
         this.logger.log(`[Billing] Tenant ${tenantId} changed plan to ${newPlan.slug}`);
         return { ...sub, planId: newPlan.id };
+    }
+
+    /**
+     * Schedule a downgrade for the next billing cycle. Doesn't touch the
+     * provider — the user keeps their higher tier features until period end,
+     * then the daily cron (applyPendingPlanChanges) flips planId.
+     */
+    private async scheduleDowngrade(tenantId: string, subscriptionId: string, targetPlanId: string) {
+        const sub = await this.prisma.billingSubscription.findUnique({ where: { id: subscriptionId } });
+        if (!sub) throw new NotFoundException({ error: 'subscription_not_found' });
+
+        // Effective date: end of current period if present, otherwise +30 days.
+        const effectiveAt = sub.currentPeriodEnd
+            ?? new Date(Date.now() + 30 * 86_400_000);
+
+        const updated = await this.prisma.billingSubscription.update({
+            where: { id: subscriptionId },
+            data: {
+                pendingPlanId: targetPlanId,
+                pendingPlanChangeAt: effectiveAt,
+            },
+        });
+
+        this.logger.log(`[Billing] Tenant ${tenantId} scheduled downgrade to plan ${targetPlanId} effective ${effectiveAt.toISOString()}`);
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId,
+                action: 'subscription_downgrade_scheduled',
+                resource: `billing_subscriptions/${sub.id}`,
+                details: {
+                    fromPlanId: sub.planId,
+                    toPlanId: targetPlanId,
+                    effectiveAt: effectiveAt.toISOString(),
+                },
+            },
+        });
+
+        return {
+            ...updated,
+            scheduled: true,
+            effectiveAt: effectiveAt.toISOString(),
+        };
+    }
+
+    /**
+     * Cancel a pending downgrade (user changed their mind before period end).
+     */
+    async cancelPendingDowngrade(tenantId: string): Promise<void> {
+        const sub = await this.requireSubscription(tenantId);
+        if (!sub.pendingPlanId) {
+            throw new BadRequestException({ error: 'no_pending_change' });
+        }
+        await this.prisma.billingSubscription.update({
+            where: { id: sub.id },
+            data: { pendingPlanId: null, pendingPlanChangeAt: null },
+        });
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId,
+                action: 'subscription_downgrade_cancelled',
+                resource: `billing_subscriptions/${sub.id}`,
+                details: {},
+            },
+        });
+        this.logger.log(`[Billing] Tenant ${tenantId} cancelled pending downgrade`);
+    }
+
+    /**
+     * Cron-callable: apply all pending plan changes whose effective date
+     * has passed. For MercadoPago, this currently only flips the local
+     * planId — the next charge cycle will pick up the new plan via the
+     * provider's normal recurring schedule. If we ever need same-cycle
+     * provider sync, this is the place to add it.
+     */
+    async applyPendingPlanChanges(): Promise<{ applied: number }> {
+        const now = new Date();
+        const due = await this.prisma.billingSubscription.findMany({
+            where: {
+                pendingPlanChangeAt: { lte: now },
+                pendingPlanId: { not: null },
+            },
+            take: 500,
+        });
+
+        let applied = 0;
+        for (const sub of due) {
+            try {
+                await this.prisma.billingSubscription.update({
+                    where: { id: sub.id },
+                    data: {
+                        planId: sub.pendingPlanId!,
+                        pendingPlanId: null,
+                        pendingPlanChangeAt: null,
+                    },
+                });
+                await this.redis.del(`tenant_plan:${sub.tenantId}`);
+                this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
+                    fromPlan: sub.planId, toPlan: sub.pendingPlanId, scheduled: true,
+                });
+                await this.prisma.auditLog.create({
+                    data: {
+                        tenantId: sub.tenantId,
+                        action: 'subscription_downgrade_applied',
+                        resource: `billing_subscriptions/${sub.id}`,
+                        details: { fromPlanId: sub.planId, toPlanId: sub.pendingPlanId },
+                    },
+                });
+                applied++;
+            } catch (e: any) {
+                this.logger.error(`[Billing] Failed to apply pending change for ${sub.id}: ${e.message}`);
+            }
+        }
+        if (applied > 0) this.logger.log(`[Billing] Applied ${applied} pending plan changes`);
+        return { applied };
     }
 
     // -------------------------------------------------------------------------

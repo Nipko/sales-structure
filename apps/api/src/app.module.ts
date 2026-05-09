@@ -115,6 +115,10 @@ import llmConfig from './config/llm.config';
                 transport: process.env.NODE_ENV !== 'production'
                     ? { target: 'pino-pretty', options: { colorize: true, singleLine: true } }
                     : undefined,
+                redact: {
+                    paths: ['req.headers.authorization', 'req.headers.cookie'],
+                    censor: '[REDACTED]',
+                },
                 autoLogging: {
                     ignore: (req: any) => ['/api/v1/health', '/docs', '/admin/queues'].some(p => req.url?.startsWith(p)),
                 },

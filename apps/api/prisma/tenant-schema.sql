@@ -2132,6 +2132,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."courses" (
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "subject" VARCHAR(100);
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "level" VARCHAR(50);
 CREATE INDEX IF NOT EXISTS "idx_courses_subject" ON "{{SCHEMA_NAME}}"."courses" ("subject", "level") WHERE "is_active" = true;
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."course_cohorts" (

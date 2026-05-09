@@ -37,7 +37,7 @@ export class OffboardingController {
     }
 
     @Get(':tenantId/status')
-    @Roles('super_admin')
+    @Roles('super_admin', 'tenant_admin')
     @ApiOperation({ summary: 'Get offboarding status for a tenant' })
     async getStatus(@Param('tenantId') tenantId: string) {
         const status = await this.offboardingService.getOffboardingStatus(tenantId);

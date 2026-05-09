@@ -457,9 +457,13 @@ export class EmailTemplatesService {
         to: string,
         variables: Record<string, string>,
     ): Promise<boolean> {
-        const template = await this.getBySlug(schemaName, slug);
+        let template = await this.getBySlug(schemaName, slug);
         if (!template) {
-            this.logger.warn(`Template "${slug}" not found — email not sent`);
+            await this.seedDefaults(schemaName);
+            template = await this.getBySlug(schemaName, slug);
+        }
+        if (!template) {
+            this.logger.warn(`Template "${slug}" not found after seeding — email not sent`);
             return false;
         }
 

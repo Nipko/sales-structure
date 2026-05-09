@@ -12,7 +12,7 @@ import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000;  // 60 minutes
 const WARNING_BEFORE_MS = 2 * 60 * 1000; // 2 minutes before timeout
 const WARNING_SECONDS = 120;              // 2 min countdown
-const PROACTIVE_REFRESH_MS = 12 * 60 * 1000; // Refresh at ~12 min (access token is 15 min)
+const PROACTIVE_REFRESH_MS = 10 * 60 * 1000; // Refresh at 10 min (access token is 15 min)
 
 // ============================================
 // Types

@@ -571,7 +571,8 @@ export class ChannelManagementController {
         const igUserId: string = String(shortData.user_id || shortData.data?.[0]?.user_id || '');
 
         if (!shortToken) {
-            this.logger.warn(`Instagram short-lived token exchange failed: ${JSON.stringify(shortData)}`);
+            const { access_token: _s, ...safeShort } = shortData;
+            this.logger.warn(`Instagram short-lived token exchange failed: ${JSON.stringify(safeShort)}`);
             throw new BadRequestException('Instagram token exchange failed');
         }
 
@@ -586,7 +587,8 @@ export class ChannelManagementController {
         );
         const longData = await longRes.json() as any;
         if (!longData.access_token) {
-            this.logger.warn(`Instagram long-lived token exchange failed: ${JSON.stringify(longData)}`);
+            const { access_token: _l, ...safeLong } = longData;
+            this.logger.warn(`Instagram long-lived token exchange failed: ${JSON.stringify(safeLong)}`);
             throw new BadRequestException('Instagram long-lived token exchange failed');
         }
 

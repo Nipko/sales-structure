@@ -95,6 +95,43 @@ export class AnalyticsService {
         );
     }
 
+    async getOverviewStats(tenantId: string) {
+        const schemaName = await this.getSchemaName(tenantId);
+        const today = new Date().toISOString().split('T')[0];
+
+        let recentActivity: any[] = [];
+        if (schemaName) {
+            try {
+                recentActivity = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT
+                        c.channel_type AS event_type,
+                        COALESCE(ct.name, ct.external_id, 'Desconocido') AS tenant_name,
+                        CASE
+                            WHEN c.status = 'waiting_human' THEN 'handoff'
+                            WHEN c.status = 'resolved' THEN 'resolved'
+                            ELSE 'conversation'
+                        END AS type,
+                        c.updated_at AS created_at
+                     FROM conversations c
+                     LEFT JOIN contacts ct ON ct.id = c.contact_id
+                     ORDER BY c.updated_at DESC LIMIT 15`,
+                );
+            } catch { /* schema may lack tables */ }
+        }
+
+        const modelNames = ['gpt-4o', 'gpt-4o-mini', 'gemini-flash', 'gemini-pro', 'deepseek', 'grok', 'claude-sonnet'];
+        const modelUsage = (await Promise.all(
+            modelNames.map(async (model, i) => {
+                const count = parseInt(
+                    await this.redis.get(`analytics:${tenantId}:${today}:model:${model}`) || '0',
+                );
+                return { model, tier: `Tier ${i + 1}`, count };
+            }),
+        )).filter(m => m.count > 0);
+
+        return { recentActivity, modelUsage };
+    }
+
     /**
      * Get dashboard metrics for a tenant (Redis fast path + DB fallback)
      */

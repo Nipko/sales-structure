@@ -153,7 +153,7 @@ export class ChannelsController {
                         `https://graph.instagram.com/v21.0/${normalized.contactId}?fields=name,username,profile_pic&access_token=${token.accessToken}`,
                     );
                     const profileBody = await profileRes.json() as any;
-                    this.logger.log(`[IG Profile] ${normalized.contactId} → status=${profileRes.status} data=${JSON.stringify(profileBody)}`);
+                    this.logger.log(`[IG Profile] ${normalized.contactId} → status=${profileRes.status} name=${profileBody.name || ''} username=${profileBody.username || ''}`);
                     if (profileRes.ok && !profileBody.error) {
                         const username = profileBody.username || '';
                         const displayName = profileBody.name
@@ -246,7 +246,7 @@ export class ChannelsController {
                         `https://graph.facebook.com/v21.0/${normalized.contactId}?fields=name,profile_pic&access_token=${token.accessToken}`,
                     );
                     const fbProfileBody = await profileRes.json() as any;
-                    this.logger.log(`[FB Profile] ${normalized.contactId} → status=${profileRes.status} data=${JSON.stringify(fbProfileBody)}`);
+                    this.logger.log(`[FB Profile] ${normalized.contactId} → status=${profileRes.status} name=${fbProfileBody.name || ''}`);
                     if (profileRes.ok && !fbProfileBody.error) {
                         const profileData = {
                             contactName: fbProfileBody.name || fbProfileBody.first_name || '',

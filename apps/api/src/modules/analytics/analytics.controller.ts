@@ -24,6 +24,12 @@ export class AnalyticsController {
         return { success: true, data };
     }
 
+    @Get('overview/:tenantId')
+    async getOverviewStats(@Param('tenantId') tenantId: string) {
+        const data = await this.analyticsService.getOverviewStats(tenantId);
+        return { success: true, data };
+    }
+
     @Get('dashboard/:tenantId')
     async getDashboard(@Param('tenantId') tenantId: string) {
         const data = await this.analyticsService.getDashboardMetrics(tenantId);

@@ -8,8 +8,10 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
 // ============================================
-// Core fetch with auth
+// Core fetch with auth + refresh mutex
 // ============================================
+
+let refreshPromise: Promise<string | null> | null = null;
 
 async function authFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
@@ -28,14 +30,12 @@ async function authFetch(endpoint: string, options: RequestInit = {}): Promise<R
         headers,
     });
 
-    // If 401, try token refresh
     if (res.status === 401 && token) {
         const refreshed = await refreshAccessToken();
         if (refreshed) {
             headers["Authorization"] = `Bearer ${refreshed}`;
             return fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
         }
-        // Refresh failed → logout
         if (typeof window !== "undefined") {
             localStorage.clear();
             window.location.href = "/login";
@@ -46,6 +46,17 @@ async function authFetch(endpoint: string, options: RequestInit = {}): Promise<R
 }
 
 async function refreshAccessToken(): Promise<string | null> {
+    if (refreshPromise) return refreshPromise;
+
+    refreshPromise = doRefresh();
+    try {
+        return await refreshPromise;
+    } finally {
+        refreshPromise = null;
+    }
+}
+
+async function doRefresh(): Promise<string | null> {
     const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
     if (!refreshToken) return null;
 
@@ -61,7 +72,6 @@ async function refreshAccessToken(): Promise<string | null> {
         const data = await res.json();
         if (data.success && data.data.accessToken) {
             localStorage.setItem("accessToken", data.data.accessToken);
-            // Refresh token rotation: store new refresh token if provided
             if (data.data.refreshToken) {
                 localStorage.setItem("refreshToken", data.data.refreshToken);
             }

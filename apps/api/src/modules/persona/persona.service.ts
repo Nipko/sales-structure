@@ -194,6 +194,7 @@ export class PersonaService {
         if (behavior?.requiredFields && Object.keys(behavior.requiredFields).length > 0 && !appointmentsEnabled) {
             lines.push('  <required_information>');
             for (const [context, fields] of Object.entries(behavior.requiredFields)) {
+                if (!Array.isArray(fields)) continue;
                 lines.push(`    <context name="${context}">`);
                 fields.forEach((f) => {
                     lines.push(`      <field name="${f.field}">${f.question}</field>`);

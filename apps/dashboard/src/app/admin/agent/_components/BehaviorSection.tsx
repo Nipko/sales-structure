@@ -106,7 +106,11 @@ type RequiredField = { field: string; question: string };
 
 function RequiredFieldsSection({ config, onChange }: BehaviorSectionProps) {
   const t = useTranslations("agent.behaviorSection.requiredFields");
-  const fields = (config.behavior.requiredFields || {}) as Record<string, RequiredField[]>;
+  const rawFields = (config.behavior.requiredFields || {}) as Record<string, any>;
+  const fields: Record<string, RequiredField[]> = {};
+  for (const [k, v] of Object.entries(rawFields)) {
+    if (Array.isArray(v)) fields[k] = v;
+  }
   const contexts = Object.keys(fields);
 
   const updateContextName = (oldName: string, newName: string) => {

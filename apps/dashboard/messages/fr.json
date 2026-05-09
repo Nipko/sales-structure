@@ -2922,8 +2922,20 @@
       "instagram": "Instagram DM — Idéal pour le retail et la mode",
       "messenger": "Messenger — Connectez votre page Facebook",
       "telegram": "Telegram — Populaire dans les communautés tech",
-      "integrations": "Intégrations disponibles",
-      "comingSoon": "Bientôt disponible"
+      "capabilitiesTitle": "Outils disponibles",
+      "capabilitiesSubtitle": "Activez ce dont vous avez besoin — modifiable à tout moment",
+      "cap_appointments": "Prise de rendez-vous",
+      "cap_appointments_desc": "Votre agent prend, annule et reprogramme les rendez-vous",
+      "cap_catalog": "Catalogue de produits",
+      "cap_catalog_desc": "Consulte le stock, les prix et recommande des produits",
+      "cap_crm": "CRM et prospects",
+      "cap_crm_desc": "Capture les coordonnées et qualifie les prospects",
+      "cap_knowledge": "Base de connaissances",
+      "cap_knowledge_desc": "Répond à partir de vos documents (RAG)",
+      "cap_faqs": "Questions fréquentes",
+      "cap_faqs_desc": "Répond automatiquement aux questions courantes",
+      "cap_offers": "Offres et promotions",
+      "cap_offers_desc": "Partage les offres actives et codes promo"
     },
     "completion": {
       "title": "Votre agent {name} est prêt !",

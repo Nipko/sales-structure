@@ -103,6 +103,17 @@ export class PersonaController {
             if (body.customizations.tone) config.persona.personality.tone = body.customizations.tone;
             if (body.customizations.afterHoursMessage) config.hours.afterHoursMessage = body.customizations.afterHoursMessage;
             if (body.customizations.schedule) config.hours.schedule = body.customizations.schedule;
+            if (Array.isArray(body.customizations.enabledCapabilities)) {
+                if (!config.tools) config.tools = {};
+                for (const cap of body.customizations.enabledCapabilities) {
+                    if (cap === 'appointments') config.tools.appointments = { ...(config.tools.appointments || {}), enabled: true, canBook: true, canCancel: true };
+                    else if (cap === 'catalog') config.tools.catalog = { enabled: true };
+                    else if (cap === 'crm') config.tools.crm = { enabled: true };
+                    else if (cap === 'knowledge') { config.tools.knowledge = { enabled: true }; config.rag = { ...(config.rag || {}), enabled: true }; }
+                    else if (cap === 'faqs') config.tools.faqs = { enabled: true };
+                    else if (cap === 'offers') config.tools.offers = { enabled: true };
+                }
+            }
         }
 
         // Replace placeholders

@@ -30,11 +30,13 @@ const CHANNELS = [
     { id: "telegram", key: "telegram", color: "#0088CC" },
 ];
 
-const INTEGRATIONS = [
-    { name: "Shopify", icon: "🛒" },
-    { name: "WooCommerce", icon: "🏪" },
-    { name: "Google Sheets", icon: "📊" },
-    { name: "Zapier", icon: "⚡" },
+const CAPABILITIES = [
+    { id: "appointments", icon: Calendar, toolKey: "appointments" },
+    { id: "catalog", icon: ShoppingCart, toolKey: "catalog" },
+    { id: "crm", icon: Target, toolKey: "crm" },
+    { id: "knowledge", icon: BookOpen, toolKey: "knowledge" },
+    { id: "faqs", icon: Headphones, toolKey: "faqs" },
+    { id: "offers", icon: Zap, toolKey: "offers" },
 ];
 
 function getToolBadges(tmpl: any): string[] {
@@ -62,6 +64,7 @@ export default function SetupWizardPage() {
     const [tone, setTone] = useState("amigable");
     const [is247, setIs247] = useState(true);
     const [selectedChannels, setSelectedChannels] = useState<string[]>(["whatsapp"]);
+    const [enabledCapabilities, setEnabledCapabilities] = useState<string[]>([]);
 
     useEffect(() => {
         if (!tenantId) return;
@@ -89,6 +92,12 @@ export default function SetupWizardPage() {
         );
     };
 
+    const toggleCapability = (id: string) => {
+        setEnabledCapabilities(prev =>
+            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+        );
+    };
+
     const handleFinish = async () => {
         if (!tenantId || !selectedTemplate) {
             await handleSkip();
@@ -99,7 +108,7 @@ export default function SetupWizardPage() {
         try {
             const result = await api.applySetupTemplate(tenantId, {
                 templateId: selectedTemplate.id,
-                customizations: { agentName, greeting, tone },
+                customizations: { agentName, greeting, tone, enabledCapabilities },
                 selectedChannels,
             });
             templateApplied = !!(result as any)?.success;
@@ -349,16 +358,35 @@ export default function SetupWizardPage() {
                         </div>
 
                         <div className="mt-8 max-w-lg">
-                            <p className="text-[13px] text-muted-foreground font-medium mb-3">{t("channels.integrations")}</p>
-                            <div className="flex flex-wrap gap-2">
-                                {INTEGRATIONS.map(int => (
-                                    <div key={int.name} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] text-[12px] text-muted-foreground">
-                                        <span>{int.icon}</span> {int.name}
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium ml-1">
-                                            {t("channels.comingSoon")}
-                                        </span>
-                                    </div>
-                                ))}
+                            <p className="text-[13px] text-foreground font-semibold mb-1">{t("channels.capabilitiesTitle")}</p>
+                            <p className="text-[12px] text-muted-foreground mb-4">{t("channels.capabilitiesSubtitle")}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {CAPABILITIES.map(cap => {
+                                    const Icon = cap.icon;
+                                    const isEnabled = enabledCapabilities.includes(cap.id);
+                                    return (
+                                        <button
+                                            key={cap.id}
+                                            onClick={() => toggleCapability(cap.id)}
+                                            className={`flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${
+                                                isEnabled
+                                                    ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10"
+                                                    : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
+                                            }`}
+                                        >
+                                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                                isEnabled ? "bg-indigo-500/15 text-indigo-500" : "bg-neutral-100 dark:bg-white/10 text-muted-foreground"
+                                            }`}>
+                                                <Icon size={18} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-foreground">{t(`channels.cap_${cap.id}`)}</p>
+                                                <p className="text-[11px] text-muted-foreground leading-snug">{t(`channels.cap_${cap.id}_desc`)}</p>
+                                            </div>
+                                            {isEnabled && <Check size={16} className="text-indigo-500 shrink-0" />}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>

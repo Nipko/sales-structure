@@ -76,11 +76,24 @@ export function IdentitySection({ config, onChange }: IdentitySectionProps) {
           onChange={e => onChange({ industry: e.target.value })}
         >
           <option value="general">{t("industryGeneral")}</option>
-          <option value="tourism">{t("industryTourism")}</option>
+          <option value="turismo">{t("industryTourism")}</option>
           <option value="education">{t("industryEducation")}</option>
-          <option value="ecommerce">{t("industryEcommerce")}</option>
-          <option value="health">{t("industryHealth")}</option>
-          <option value="services">{t("industryServices")}</option>
+          <option value="salud">{t("industryHealth")}</option>
+          <option value="veterinaria">{t("industryVeterinaria")}</option>
+          <option value="retail">{t("industryRetail")}</option>
+          <option value="technology">{t("industryTechnology")}</option>
+          <option value="servicios_profesionales">{t("industryServiciosProfesionales")}</option>
+          <option value="restaurantes">{t("industryRestaurantes")}</option>
+          <option value="inmobiliaria">{t("industryInmobiliaria")}</option>
+          <option value="automotriz">{t("industryAutomotriz")}</option>
+          <option value="finanzas">{t("industryFinanzas")}</option>
+          <option value="moda_belleza">{t("industryModaBelleza")}</option>
+          <option value="gimnasios">{t("industryGimnasios")}</option>
+          <option value="seguros">{t("industrySeguros")}</option>
+          <option value="servicios_hogar">{t("industryServiciosHogar")}</option>
+          <option value="pet_services">{t("industryPetServices")}</option>
+          <option value="fotografia">{t("industryFotografia")}</option>
+          <option value="otro">{t("industryOtro")}</option>
         </select>
       </div>
     </div>

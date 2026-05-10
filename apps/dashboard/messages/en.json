@@ -38,7 +38,8 @@
     "accountSuspendedDesc": "Your account has been deactivated. Contact support to reactivate.",
     "cancelAccount": "Cancel account",
     "cancelAccountConfirm": "Are you sure? This action will deactivate your account at the end of the billing period.",
-    "copied": "Copied",
+    "copy": "Copy",
+    "copied": "Copied!",
     "disconnectChannel": {
       "title": "Disconnect {channel}",
       "confirm": "Disconnect",

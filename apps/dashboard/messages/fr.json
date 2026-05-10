@@ -38,7 +38,8 @@
     "accountSuspendedDesc": "Votre compte a ete desactive. Contactez le support pour le reactiver.",
     "cancelAccount": "Annuler le compte",
     "cancelAccountConfirm": "Etes-vous sur? Cette action desactivera votre compte a la fin de la periode de facturation.",
-    "copied": "Copie",
+    "copy": "Copier",
+    "copied": "Copié !",
     "disconnectChannel": {
       "title": "Deconnecter {channel}",
       "confirm": "Deconnecter",

@@ -253,11 +253,21 @@ function TwoFactorSettings() {
         }
     };
 
-    const copyBackupCodes = () => {
-        navigator.clipboard.writeText(backupCodes.join("\n")).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        });
+    const copyBackupCodes = async () => {
+        try {
+            await navigator.clipboard.writeText(backupCodes.join("\n"));
+        } catch {
+            const ta = document.createElement("textarea");
+            ta.value = backupCodes.join("\n");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+        }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
 
     return (

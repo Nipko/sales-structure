@@ -38,7 +38,8 @@
     "accountSuspendedDesc": "Sua conta foi desativada. Entre em contato com o suporte para reativar.",
     "cancelAccount": "Cancelar conta",
     "cancelAccountConfirm": "Tem certeza? Esta acao desativara sua conta no final do periodo de faturamento.",
-    "copied": "Copiado",
+    "copy": "Copiar",
+    "copied": "Copiado!",
     "disconnectChannel": {
       "title": "Desconectar {channel}",
       "confirm": "Desconectar",

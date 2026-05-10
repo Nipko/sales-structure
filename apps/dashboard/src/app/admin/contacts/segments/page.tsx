@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import {
     Users, Plus, X, ArrowLeft, Filter, Calendar, Check, Eye,
 } from "lucide-react";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 
 interface Segment { id: string; name: string; description: string; filter_rules: FilterRule[]; contact_count: number; created_at: string; }
 interface FilterRule { field: string; operator: string; value: string; }
@@ -31,6 +33,7 @@ export default function SegmentsPage() {
     const [viewingSegment, setViewingSegment] = useState<Segment | null>(null);
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [contactsLoading, setContactsLoading] = useState(false);
+    const { canCreate, getLimit } = usePlanLimits();
 
     const FIELDS = [
         { value: "stage", label: t("fields.stage") },
@@ -179,11 +182,12 @@ export default function SegmentsPage() {
                         <p className="text-[13px] text-muted-foreground m-0">{t("subtitle")}</p>
                     </div>
                 </div>
-                <button onClick={openCreate} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold">
+                <button onClick={openCreate} disabled={!canCreate("segments", segments.length)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
                     <Plus size={16} /> {t("newSegment")}
                 </button>
             </div>
 
+            <UpgradeBanner current={segments.length} limit={getLimit("segments")} resourceLabel="segmentos" />
             <div className="flex flex-col gap-3">
                 {loading ? (
                     <div className="p-10 text-center text-muted-foreground">{t("loading")}</div>

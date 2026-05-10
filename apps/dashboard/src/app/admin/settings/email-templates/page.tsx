@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 import {
   Mail,
   Plus,
@@ -194,6 +196,7 @@ export default function EmailTemplatesPage() {
   const t = useTranslations('emailTemplates');
     const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
+  const { canCreate, getLimit } = usePlanLimits();
 
   // State
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -484,7 +487,8 @@ export default function EmailTemplatesPage() {
           </button>
           <button
             onClick={startCreate}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity"
+            disabled={!canCreate("emailTemplates", templates.length)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={16} /> Create template
           </button>
@@ -500,6 +504,7 @@ export default function EmailTemplatesPage() {
             editorOpen ? "w-[300px] min-w-[300px]" : "w-full"
           )}
         >
+          <UpgradeBanner current={templates.length} limit={getLimit("emailTemplates")} resourceLabel="plantillas de email" />
           {loading ? (
             <div className="p-10 text-center text-muted-foreground">Loading...</div>
           ) : templates.length === 0 ? (
@@ -508,7 +513,8 @@ export default function EmailTemplatesPage() {
               <p className="text-muted-foreground text-sm mb-4">No templates created</p>
               <button
                 onClick={startCreate}
-                className="px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold"
+                disabled={!canCreate("emailTemplates", templates.length)}
+                className="px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Create first template
               </button>

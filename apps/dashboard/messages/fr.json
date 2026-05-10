@@ -126,7 +126,9 @@
       "aiConfig": "Config IA",
       "channelsPhone": "Connexions manuelles",
       "platformAdvanced": "Avancé",
-      "personalSettings": "Mes paramètres"
+      "personalSettings": "Mes paramètres",
+      "analyticsOverview": "Vue d'ensemble",
+      "agentAnalytics": "Performance des agents"
     }
   },
   "topbar": {
@@ -2217,7 +2219,9 @@
       "titlePlaceholder": "FAQ du cours...",
       "contentLabel": "Contenu texte",
       "contentPlaceholder": "Collez le contenu du document..."
-    }
+    },
+    "limitReachedTitle": "Limite de documents atteinte",
+    "limitReachedDesc": "Vous avez atteint la limite de documents de connaissances de votre plan actuel. Mettez à niveau pour en ajouter davantage."
   },
   "identity": {
     "title": "Identité",
@@ -3230,7 +3234,10 @@
       "max_redemptions_reached": "Ce code a atteint son maximum d'utilisations.",
       "plan_not_eligible": "Ce code ne s'applique pas à votre plan actuel.",
       "already_redeemed": "Vous avez déjà utilisé ce code."
-    }
+    },
+    "limitReached": "Vous avez atteint la limite de {limit} {resource} de votre plan actuel ({current}/{limit}).",
+    "upgradePlan": "Améliorer le plan",
+    "cancel": "Annuler"
   },
   "couponsPage": {
     "title": "Codes promo",

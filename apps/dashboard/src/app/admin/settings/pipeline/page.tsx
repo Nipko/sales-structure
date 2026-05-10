@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import {
     GripVertical, Plus, Trash2, Save, Loader2, Settings, Eye, EyeOff,
 } from "lucide-react";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 
 interface PipelineStage {
     id?: string;
@@ -38,6 +40,7 @@ export default function PipelineSettingsPage() {
     const t = useTranslations("pipelineSettings");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
+    const { canCreate, getLimit } = usePlanLimits();
 
     const [stages, setStages] = useState<PipelineStage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -155,6 +158,8 @@ export default function PipelineSettingsPage() {
                 icon={Settings}
             />
 
+            <UpgradeBanner current={stages.length} limit={getLimit("pipelineStages")} resourceLabel="etapas de pipeline" />
+
             <div className="bg-card border border-border rounded-xl overflow-hidden">
                 {/* Header row */}
                 <div className="grid grid-cols-[40px_1fr_80px_100px_80px_40px] gap-2 px-4 py-3 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -233,7 +238,8 @@ export default function PipelineSettingsPage() {
                 {/* Add stage button */}
                 <button
                     onClick={addStage}
-                    className="w-full px-4 py-3 flex items-center justify-center gap-1.5 text-sm text-indigo-500 bg-transparent border-none cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
+                    disabled={!canCreate("pipelineStages", stages.length)}
+                    className="w-full px-4 py-3 flex items-center justify-center gap-1.5 text-sm text-indigo-500 bg-transparent border-none cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Plus size={14} /> {t("addStage")}
                 </button>

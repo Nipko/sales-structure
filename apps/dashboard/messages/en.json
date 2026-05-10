@@ -126,7 +126,9 @@
       "aiConfig": "AI config",
       "channelsPhone": "Manual connections",
       "platformAdvanced": "Advanced",
-      "personalSettings": "My settings"
+      "personalSettings": "My settings",
+      "analyticsOverview": "Overview",
+      "agentAnalytics": "Agent performance"
     }
   },
   "topbar": {
@@ -2217,7 +2219,9 @@
       "titlePlaceholder": "Course FAQ...",
       "contentLabel": "Text content",
       "contentPlaceholder": "Paste document content..."
-    }
+    },
+    "limitReachedTitle": "Document limit reached",
+    "limitReachedDesc": "You have reached the knowledge document limit on your current plan. Upgrade to add more."
   },
   "identity": {
     "title": "Identity",
@@ -3230,7 +3234,10 @@
       "max_redemptions_reached": "This coupon reached its maximum redemptions.",
       "plan_not_eligible": "This coupon doesn't apply to your current plan.",
       "already_redeemed": "You've already redeemed this coupon."
-    }
+    },
+    "limitReached": "You've reached the limit of {limit} {resource} on your current plan ({current}/{limit}).",
+    "upgradePlan": "Upgrade plan",
+    "cancel": "Cancel"
   },
   "couponsPage": {
     "title": "Promo coupons",

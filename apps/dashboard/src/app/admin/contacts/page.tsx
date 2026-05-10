@@ -9,6 +9,8 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +56,7 @@ export default function ContactsPage() {
     const tEmpty = useTranslations("verticalEmptyStates");
     const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
+    const { canCreate, getLimit } = usePlanLimits();
     const { activeTenantId } = useTenant();
     const router = useRouter();
     const [contacts, setContacts] = useState<any[]>([]);
@@ -175,6 +178,7 @@ export default function ContactsPage() {
     });
 
     const totalValue = contacts.reduce((sum, contact) => sum + Number(contact.lifetimeValue || 0), 0);
+    const totalCount = contacts.length;
 
     const handleImport = async () => {
         if (!activeTenantId || !csvContent.trim()) return;
@@ -248,8 +252,12 @@ export default function ContactsPage() {
                             <Download size={16} /> {t('export')}
                         </Button>
                         <button
-                            onClick={() => setShowCreateModal(true)}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect"
+                            onClick={() => {
+                                if (!canCreate("maxContacts", totalCount)) return;
+                                setShowCreateModal(true);
+                            }}
+                            disabled={!canCreate("maxContacts", totalCount)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <UserPlus size={16} /> {tc("create")}
                         </button>
@@ -455,6 +463,12 @@ export default function ContactsPage() {
                     </div>
                 </div>
             )}
+
+            <UpgradeBanner
+                current={totalCount}
+                limit={getLimit("maxContacts")}
+                resourceLabel="contactos"
+            />
 
             {/* Table */}
             <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">

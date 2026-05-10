@@ -126,7 +126,9 @@
       "aiConfig": "Configuración IA",
       "channelsPhone": "Conexiones manuales",
       "platformAdvanced": "Avanzado",
-      "personalSettings": "Mi configuración"
+      "personalSettings": "Mi configuración",
+      "analyticsOverview": "Vista general",
+      "agentAnalytics": "Rendimiento de agentes"
     }
   },
   "topbar": {
@@ -2217,7 +2219,9 @@
       "titlePlaceholder": "FAQ del curso...",
       "contentLabel": "Contenido de texto",
       "contentPlaceholder": "Pega el contenido del documento..."
-    }
+    },
+    "limitReachedTitle": "Límite de documentos alcanzado",
+    "limitReachedDesc": "Has llegado al límite de documentos de conocimiento en tu plan actual. Mejora tu plan para añadir más."
   },
   "identity": {
     "title": "Identidad",
@@ -3230,7 +3234,10 @@
       "max_redemptions_reached": "Este cupón llegó al máximo de canjes.",
       "plan_not_eligible": "Este cupón no aplica a tu plan actual.",
       "already_redeemed": "Ya canjeaste este cupón antes."
-    }
+    },
+    "limitReached": "Has alcanzado el límite de {limit} {resource} en tu plan actual ({current}/{limit}).",
+    "upgradePlan": "Mejorar plan",
+    "cancel": "Cancelar"
   },
   "couponsPage": {
     "title": "Cupones promocionales",

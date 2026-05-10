@@ -126,7 +126,9 @@
       "aiConfig": "Config IA",
       "channelsPhone": "Conexões manuais",
       "platformAdvanced": "Avançado",
-      "personalSettings": "Minhas configurações"
+      "personalSettings": "Minhas configurações",
+      "analyticsOverview": "Visão geral",
+      "agentAnalytics": "Desempenho de agentes"
     }
   },
   "topbar": {
@@ -2217,7 +2219,9 @@
       "titlePlaceholder": "FAQ do curso...",
       "contentLabel": "Conteúdo de texto",
       "contentPlaceholder": "Cole o conteúdo do documento..."
-    }
+    },
+    "limitReachedTitle": "Limite de documentos atingido",
+    "limitReachedDesc": "Você atingiu o limite de documentos de conhecimento no seu plano atual. Faça upgrade para adicionar mais."
   },
   "identity": {
     "title": "Identidade",
@@ -3230,7 +3234,10 @@
       "max_redemptions_reached": "Este cupom atingiu o máximo de resgates.",
       "plan_not_eligible": "Este cupom não se aplica ao seu plano atual.",
       "already_redeemed": "Você já resgatou este cupom antes."
-    }
+    },
+    "limitReached": "Você atingiu o limite de {limit} {resource} no seu plano atual ({current}/{limit}).",
+    "upgradePlan": "Melhorar plano",
+    "cancel": "Cancelar"
   },
   "couponsPage": {
     "title": "Cupons promocionais",

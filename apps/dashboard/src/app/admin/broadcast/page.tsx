@@ -7,7 +7,9 @@ import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { UpgradeBanner } from "@/components/ui/upgrade-banner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -31,6 +33,7 @@ export default function BroadcastPage() {
     const { user } = useAuth();
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
+    const { canCreate, getLimit } = usePlanLimits();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -98,7 +101,16 @@ export default function BroadcastPage() {
                     icon={Megaphone}
                     badge={<DataSourceBadge isLive={false} />}
                     action={
-                        <button onClick={() => setShowNewCampaign(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                        <button
+                            onClick={() => setShowNewCampaign(true)}
+                            disabled={!canCreate("broadcastCampaigns", campaigns.length)}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm press-effect",
+                                canCreate("broadcastCampaigns", campaigns.length)
+                                    ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 cursor-pointer hover:opacity-90"
+                                    : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                            )}
+                        >
                             <Plus size={16} /> {tc("create")}
                         </button>
                     }
@@ -131,6 +143,13 @@ export default function BroadcastPage() {
                         </div>
                     ))}
                 </div>
+
+                {/* Plan limit banner */}
+                <UpgradeBanner
+                    current={campaigns.length}
+                    limit={getLimit("broadcastCampaigns")}
+                    resourceLabel="campañas de broadcast"
+                />
 
                 {/* Campaign List */}
                 <div className="flex flex-col gap-3">

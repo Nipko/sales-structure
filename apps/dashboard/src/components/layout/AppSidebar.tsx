@@ -58,6 +58,9 @@ import {
   PawPrint,
   Camera,
   Tag,
+  Package,
+  ShoppingCart,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 
@@ -115,6 +118,8 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticals: ["veterinaria", "salud"], capability: "canEditPipeline" },
       { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticals: ["veterinaria", "pet_services"], capability: "canHandleConversations" },
       { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticals: ["fotografia"], capability: "canEditPipeline" },
+      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticals: ["retail", "restaurantes"], capability: "canEditPipeline" },
+      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticals: ["retail", "restaurantes"], capability: "canHandleConversations" },
     ],
   },
   {
@@ -136,8 +141,18 @@ const tenantSections: NavSectionDef[] = [
   {
     titleKey: "management",
     items: [
-      { labelKey: "analytics", href: "/admin/analytics-v2", icon: BarChart3, capability: "canSeeGlobalAnalytics" },
+      {
+        labelKey: "analytics",
+        icon: BarChart3,
+        capability: "canSeeGlobalAnalytics",
+        children: [
+          { labelKey: "analyticsOverview", href: "/admin/analytics-v2" },
+          { labelKey: "crmAnalytics", href: "/admin/crm-analytics" },
+          { labelKey: "agentAnalytics", href: "/admin/agent-analytics" },
+        ]
+      },
       { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels" },
+      { labelKey: "compliance", href: "/admin/compliance", icon: Shield, capability: "canManageBilling" },
       { labelKey: "users", href: "/admin/users", icon: Users, capability: "canManageUsers" },
       { labelKey: "billing", href: "/admin/settings/billing", icon: CreditCard, capability: "canManageBilling" },
     ],
@@ -190,6 +205,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>({
     crm: true,
     automation: true,
+    analytics: true,
   });
 
   const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);

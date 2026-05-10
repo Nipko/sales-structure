@@ -2,6 +2,8 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +26,8 @@ export default function KnowledgePage() {
     const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
+    const { canCreate, getLimit } = usePlanLimits();
+    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const [tab, setTab] = useState<Tab>("library");
     const [resources, setResources] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -70,7 +74,10 @@ export default function KnowledgePage() {
                 subtitle={t('subtitle')}
                 icon={BookOpen}
                 action={tab === "library" ? (
-                    <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect">
+                    <button
+                        onClick={() => canCreate("knowledgeArticles", resources.length) ? setShowModal(true) : setShowUpgradeModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect"
+                    >
                         <Plus size={16} /> {tc("create")}
                     </button>
                 ) : undefined}
@@ -96,6 +103,11 @@ export default function KnowledgePage() {
 
             {tab === "library" && (
                 <div className="flex flex-col gap-3">
+                    <UpgradeBanner
+                        current={resources.length}
+                        limit={getLimit("knowledgeArticles")}
+                        resourceLabel="documentos de conocimiento"
+                    />
                     {resources.map(r => {
                         const Icon = iconMap[r.type] || FileText;
                         return (
@@ -155,6 +167,13 @@ export default function KnowledgePage() {
                     </div>
                 </div>
             )}
+
+            <UpgradeModal
+                open={showUpgradeModal}
+                onClose={() => setShowUpgradeModal(false)}
+                title={t("limitReachedTitle")}
+                description={t("limitReachedDesc")}
+            />
 
             {showModal && (
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>

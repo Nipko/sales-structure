@@ -2,6 +2,8 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
@@ -93,9 +95,11 @@ export default function AutomationPage() {
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
+    const { canCreate, getLimit } = usePlanLimits();
 
     // -- State --
     const [rules, setRules] = useState<any[]>([]);
+    const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<string | null>(null);
 
@@ -226,6 +230,10 @@ export default function AutomationPage() {
 
     // -- Open new wizard --
     function openNewWizard() {
+        if (!canCreate("automationRules", rules.length)) {
+            setUpgradeModalOpen(true);
+            return;
+        }
         setRuleForm(emptyRuleForm());
         setEditingRuleId(null);
         setWizardStep(0);
@@ -333,6 +341,13 @@ export default function AutomationPage() {
                         );
                     })}
                 </div>
+
+                {/* Plan limit banner */}
+                <UpgradeBanner
+                    current={rules.length}
+                    limit={getLimit("automationRules")}
+                    resourceLabel="reglas de automatización"
+                />
 
                 {/* Rules list */}
                 {loading ? (
@@ -477,6 +492,14 @@ export default function AutomationPage() {
                         {toast}
                     </div>
                 )}
+
+                {/* Upgrade modal */}
+                <UpgradeModal
+                    open={upgradeModalOpen}
+                    onClose={() => setUpgradeModalOpen(false)}
+                    title="Límite de reglas alcanzado"
+                    description={`Tu plan actual permite hasta ${getLimit("automationRules") ?? "—"} reglas de automatización. Actualiza tu plan para crear más.`}
+                />
             </div>
         );
     }

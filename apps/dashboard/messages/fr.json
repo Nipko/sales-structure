@@ -1592,6 +1592,21 @@
     "rejected": "Rejeté avec succès",
     "newDeal": "Nouvelle opportunité",
     "dealCreated": "Opportunité créée",
+    "dealNotFound": "Opportunité non trouvée",
+    "backToPipeline": "Retour au pipeline",
+    "dealDetail": {
+      "value": "Valeur",
+      "probability": "Probabilité",
+      "daysInStage": "Jours dans l'étape",
+      "score": "Score",
+      "info": "Informations",
+      "stage": "Étape",
+      "status": "Statut",
+      "closeDate": "Date de clôture prévue",
+      "contact": "Contact",
+      "leadScore": "Score du lead",
+      "history": "Historique des étapes"
+    },
     "dealForm": {
       "contact": "Contact",
       "selectContact": "Sélectionner un contact...",

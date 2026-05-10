@@ -180,6 +180,7 @@ export class BillingService {
 
         // Redis plan cache may be stale — invalidate so next throttle check sees the new state
         await this.redis.del(`tenant_plan:${tenant.id}`);
+        await this.redis.del(`sub_status:${tenant.id}`);
 
         // Emit both subscription.created and trial.started (trial.started only if trialDays > 0)
         this.emit(BillingEventType.SUBSCRIPTION_CREATED, tenant.id, subscription.id);
@@ -276,6 +277,7 @@ export class BillingService {
             },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
 
         this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, tenantId, sub.id, { fromPlan: sub.planId, toPlan: newPlan.id });
         this.logger.log(`[Billing] Tenant ${tenantId} changed plan to ${newPlan.slug}`);
@@ -376,6 +378,7 @@ export class BillingService {
                     },
                 });
                 await this.redis.del(`tenant_plan:${sub.tenantId}`);
+        await this.redis.del(`sub_status:${sub.tenantId}`);
                 this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
                     fromPlan: sub.planId, toPlan: sub.pendingPlanId, scheduled: true,
                 });
@@ -426,6 +429,7 @@ export class BillingService {
             data: { subscriptionStatus: newStatus },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
 
         this.emit(BillingEventType.SUBSCRIPTION_CANCELLED, tenantId, sub.id, { immediate: !!opts.immediate, reason: opts.reason });
         this.logger.log(`[Billing] Tenant ${tenantId} cancelled subscription (immediate=${!!opts.immediate})`);
@@ -472,6 +476,7 @@ export class BillingService {
             data: { subscriptionStatus: SubscriptionStatus.PAST_DUE },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
 
         await this.prisma.auditLog.create({
             data: {
@@ -521,6 +526,7 @@ export class BillingService {
             data: { subscriptionStatus: restoredStatus },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
 
         await this.prisma.auditLog.create({
             data: {
@@ -569,6 +575,7 @@ export class BillingService {
                 data: { subscriptionStatus: remoteStatus },
             });
             await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
 
             await this.prisma.auditLog.create({
                 data: {
@@ -620,6 +627,7 @@ export class BillingService {
             },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
         this.logger.log(`[Billing] Extended trial for tenant ${tenantId} by ${months} months`);
     }
 
@@ -755,6 +763,7 @@ export class BillingService {
             },
         });
         await this.redis.del(`tenant_plan:${input.tenantId}`);
+        await this.redis.del(`sub_status:${input.tenantId}`);
 
         await this.prisma.auditLog.create({
             data: {
@@ -864,7 +873,10 @@ export class BillingService {
             }
         });
 
-        if (sub) await this.redis.del(`tenant_plan:${sub.tenantId}`);
+        if (sub) {
+            await this.redis.del(`tenant_plan:${sub.tenantId}`);
+            await this.redis.del(`sub_status:${sub.tenantId}`);
+        }
 
         // Re-emit via EventEmitter2 so rest of the platform (emails, analytics,
         // feature gates) can react without coupling to BillingService.

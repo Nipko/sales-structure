@@ -1,7 +1,8 @@
-import { Controller, Get, Param, Query, Headers, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Param, Query, Headers, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 /**
  * BI API: External-facing analytics endpoints authenticated via API key.
@@ -16,6 +17,7 @@ export class BIApiController {
     constructor(
         private prisma: PrismaService,
         private dashboardAnalytics: DashboardAnalyticsService,
+        private throttle: TenantThrottleService,
     ) { }
 
     private async validateApiKey(apiKey: string | undefined): Promise<string> {
@@ -30,6 +32,10 @@ export class BIApiController {
         });
 
         if (!tenant) throw new UnauthorizedException('Invalid API key');
+
+        const enabled = await this.throttle.isFeatureEnabled(tenant.id, 'biApi');
+        if (!enabled) throw new ForbiddenException('BI API is not available on your current plan. Upgrade to access this feature.');
+
         return tenant.id;
     }
 

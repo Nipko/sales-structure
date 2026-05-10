@@ -356,6 +356,7 @@ export default function PipelinePage() {
                                             draggable
                                             onDragStart={() => setDraggedDeal(deal.id)}
                                             onDragEnd={() => { setDraggedDeal(null); setDragOverStage(null); }}
+                                            onClick={() => { if (!draggedDeal) router.push(`/admin/pipeline/${deal.id}`); }}
                                             className={cn(
                                                 "p-3 rounded-[10px] bg-background cursor-grab transition-all duration-150",
                                                 draggedDeal === deal.id

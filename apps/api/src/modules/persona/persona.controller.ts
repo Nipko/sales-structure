@@ -237,6 +237,12 @@ export class PersonaController {
         @Body() body: any,
         @Req() req: any,
     ) {
+        if (body.editorMode === 'prompt' && body.customPrompt) {
+            const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
+            if (!enabled) {
+                return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
+            }
+        }
         const createdBy = req.user?.sub || req.user?.id || 'unknown';
         const yamlContent = yaml.dump(body, { lineWidth: -1 });
         const config = await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
@@ -278,6 +284,10 @@ export class PersonaController {
     @Post(':tenantId/agents')
     @ApiOperation({ summary: 'Create a new agent persona' })
     async createAgent(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
+        if (body.configJson?.editorMode === 'prompt' && body.configJson?.customPrompt) {
+            const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
+            if (!enabled) return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
+        }
         const agent = await this.personaService.createAgent(tenantId, {
             name: body.name,
             templateId: body.templateId,
@@ -293,6 +303,10 @@ export class PersonaController {
     @Put(':tenantId/agents/:agentId')
     @ApiOperation({ summary: 'Update an existing agent persona' })
     async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+        if (body.configJson?.editorMode === 'prompt' && body.configJson?.customPrompt) {
+            const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customPrompt');
+            if (!enabled) return { success: false, message: 'El prompt personalizado no está disponible en tu plan actual.' };
+        }
         const agent = await this.personaService.updateAgent(tenantId, agentId, body);
         return { success: true, data: agent };
     }
@@ -314,6 +328,10 @@ export class PersonaController {
     @Post(':tenantId/agents/:agentId/save-template')
     @ApiOperation({ summary: 'Save an agent config as a reusable template' })
     async saveAsTemplate(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any, @Req() req: any) {
+        const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customTemplates');
+        if (!enabled) {
+            return { success: false, message: 'Las plantillas personalizadas no están disponibles en tu plan actual. Mejora tu plan para acceder.' };
+        }
         const template = await this.personaService.saveAsTemplate(tenantId, agentId, body.name, body.description, req.user?.email);
         return { success: true, data: template };
     }

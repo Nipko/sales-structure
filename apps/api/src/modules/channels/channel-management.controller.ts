@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +7,7 @@ import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.serv
 import { ChannelTokenService } from './channel-token.service';
 import { TelegramAdapter } from './telegram/telegram.adapter';
 import { SmsAdapter } from './sms/sms.adapter';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -24,6 +25,7 @@ export class ChannelManagementController {
         private channelToken: ChannelTokenService,
         private telegramAdapter: TelegramAdapter,
         private smsAdapter: SmsAdapter,
+        private throttle: TenantThrottleService,
     ) {}
 
     @Get('overview')
@@ -762,6 +764,12 @@ export class ChannelManagementController {
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        const channels: string[] = features.channels || [];
+        if (!channels.includes('sms')) {
+            throw new ForbiddenException('El canal SMS no está disponible en tu plan actual. Mejora a Enterprise para acceder.');
+        }
 
         const { accountSid, authToken, phoneNumber, displayName } = body;
         if (!accountSid || !authToken || !phoneNumber) {

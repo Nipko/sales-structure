@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ComplianceService } from './compliance.service';
 import { AuditService } from './audit.service';
 import { AnalyticsService } from './analytics.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -14,6 +15,7 @@ export class AnalyticsController {
         private analyticsService: AnalyticsService,
         private complianceService: ComplianceService,
         private auditService: AuditService,
+        private throttle: TenantThrottleService,
     ) {}
 
     // ---- Dashboard Endpoints ----
@@ -136,6 +138,9 @@ export class AnalyticsController {
         @Query('page') page?: string,
         @Query('limit') limit?: string,
     ) {
+        const enabled = await this.throttle.isFeatureEnabled(tenantId, 'auditLog');
+        if (!enabled) throw new ForbiddenException('El registro de auditoría no está disponible en tu plan actual.');
+
         const logs = await this.auditService.getLogs(tenantId, {
             action, resourceType, resourceId, actorId,
             page: parseInt(page || '1'),

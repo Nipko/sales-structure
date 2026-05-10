@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
+import { SubscriptionGuard } from './common/guards/subscription.guard';
 import { LoggerModule } from 'nestjs-pino';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -80,8 +81,8 @@ import llmConfig from './config/llm.config';
 
 @Module({
     providers: [
-        // Sentry captures all unhandled exceptions globally
         { provide: APP_FILTER, useClass: SentryGlobalFilter },
+        { provide: APP_GUARD, useClass: SubscriptionGuard },
     ],
     imports: [
         // Sentry module (must be first)

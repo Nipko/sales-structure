@@ -1592,6 +1592,21 @@
     "rejected": "Rejected successfully",
     "newDeal": "New deal",
     "dealCreated": "Deal created",
+    "dealNotFound": "Deal not found",
+    "backToPipeline": "Back to pipeline",
+    "dealDetail": {
+      "value": "Value",
+      "probability": "Probability",
+      "daysInStage": "Days in stage",
+      "score": "Score",
+      "info": "Information",
+      "stage": "Stage",
+      "status": "Status",
+      "closeDate": "Expected close date",
+      "contact": "Contact",
+      "leadScore": "Lead score",
+      "history": "Stage history"
+    },
     "dealForm": {
       "contact": "Contact",
       "selectContact": "Select a contact...",

@@ -317,6 +317,32 @@ export class BillingController {
     @UseGuards(AuthGuard('jwt'))
     async getUsage(@Param('tenantId') tenantId: string) {
         const aiMessages = await this.throttle.getAiMessageUsage(tenantId);
+
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
+        let conversations = 0;
+        let activeAgents = 0;
+        if (tenant?.schemaName) {
+            const monthStart = `${aiMessages.monthKey}-01`;
+            try {
+                const [convRows] = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(
+                    `SELECT COUNT(*) as count FROM "${tenant.schemaName}".conversations WHERE created_at >= $1::date`,
+                    monthStart,
+                );
+                conversations = Number(convRows?.count ?? 0);
+            } catch { /* noop */ }
+            try {
+                const [agentRows] = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(
+                    `SELECT COUNT(*) as count FROM "${tenant.schemaName}".agent_personas WHERE is_active = true`,
+                );
+                activeAgents = Number(agentRows?.count ?? 0);
+            } catch { /* noop */ }
+        }
+
+        const planRow = await this.prisma.billingPlan.findUnique({
+            where: { slug: aiMessages.plan },
+            select: { maxAgents: true },
+        });
+
         return {
             success: true,
             data: {
@@ -328,6 +354,9 @@ export class BillingController {
                     monthKey: aiMessages.monthKey,
                     plan: aiMessages.plan,
                 },
+                conversations,
+                activeAgents,
+                maxAgents: planRow?.maxAgents ?? null,
             },
         };
     }

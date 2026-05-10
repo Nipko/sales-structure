@@ -116,6 +116,9 @@ export default function BillingPage() {
         percent: number;
         monthKey: string;
         plan: string;
+        conversations?: number;
+        activeAgents?: number;
+        maxAgents?: number | null;
     } | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
@@ -142,7 +145,15 @@ export default function BillingPage() {
                 api.getBillingUsage(activeTenantId),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
-            if (usageRes?.success) setUsage(((usageRes.data as any)?.aiMessages) ?? null);
+            if (usageRes?.success) {
+                const d = usageRes.data as any;
+                setUsage(d?.aiMessages ? {
+                    ...d.aiMessages,
+                    conversations: d.conversations,
+                    activeAgents: d.activeAgents,
+                    maxAgents: d.maxAgents,
+                } : null);
+            }
         } catch (err: any) {
             setError(err?.message || t("loadError"));
         } finally {
@@ -589,6 +600,27 @@ export default function BillingPage() {
                             )}
                         </>
                     )}
+
+                    {(usage.conversations !== undefined || usage.activeAgents !== undefined) && (
+                        <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800 grid grid-cols-2 gap-4">
+                            {usage.conversations !== undefined && (
+                                <div>
+                                    <p className="text-xs uppercase text-neutral-500 tracking-wider">{t("usageConversations")}</p>
+                                    <p className="mt-1 text-lg font-bold text-neutral-900 dark:text-neutral-100">{usage.conversations.toLocaleString()}</p>
+                                    <p className="text-[11px] text-neutral-400">{t("usageThisMonth")}</p>
+                                </div>
+                            )}
+                            {usage.activeAgents !== undefined && (
+                                <div>
+                                    <p className="text-xs uppercase text-neutral-500 tracking-wider">{t("usageAgents")}</p>
+                                    <p className="mt-1 text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                                        {usage.activeAgents}{usage.maxAgents ? ` / ${usage.maxAgents}` : ""}
+                                    </p>
+                                    <p className="text-[11px] text-neutral-400">{t("usageActiveAgents")}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </section>
             )}
 
@@ -628,6 +660,7 @@ export default function BillingPage() {
                         .filter((p) => p.slug !== "custom")
                         .map((plan) => {
                             const isCurrent = subscription?.planId === plan.id;
+                            const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents;
                             const Icon = PLAN_ICON[plan.slug] ?? Zap;
                             return (
                                 <div
@@ -665,20 +698,37 @@ export default function BillingPage() {
                                         )}
                                     </ul>
                                     <button
-                                        onClick={() => handleUpgrade(plan.slug)}
+                                        onClick={() => {
+                                            if (isDowngrade && subscription) {
+                                                const ok = window.confirm(t("confirmDowngrade", {
+                                                    plan: plan.name,
+                                                    date: formatDate(subscription.currentPeriodEnd, locale),
+                                                }));
+                                                if (!ok) return;
+                                            }
+                                            handleUpgrade(plan.slug);
+                                        }}
                                         disabled={isCurrent || action !== null}
                                         className={cn(
                                             "mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                                             isCurrent
                                                 ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 cursor-default"
-                                                : "bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-60",
+                                                : isDowngrade
+                                                    ? "bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-60"
+                                                    : "bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-60",
                                         )}
                                     >
                                         {action === "upgrade" && targetPlan === plan.slug ? t("loading") :
                                          isCurrent ? t("currentPlanLabel") :
-                                         subscription ? t("changeToPlan", { name: plan.name }) :
+                                         isDowngrade ? t("downgradeToPlan", { name: plan.name }) :
+                                         subscription ? t("upgradeToPlan", { name: plan.name }) :
                                          t("startTrial")}
                                     </button>
+                                    {isDowngrade && !isCurrent && (
+                                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 text-center">
+                                            {t("downgradeScheduledHint")}
+                                        </p>
+                                    )}
                                 </div>
                             );
                         })}

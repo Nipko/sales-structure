@@ -47,6 +47,14 @@ export default function LoginPage() {
     const sessionExpired = searchParams.get("expired") === "1";
     const sessionKicked = searchParams.get("kicked") === "1";
 
+    useEffect(() => {
+        if (searchParams.get("requires2FA") === "true") {
+            const token = searchParams.get("twoFAToken") || "";
+            const method = searchParams.get("twoFactorMethod") || "totp";
+            if (token) setTwoFAState({ token, method });
+        }
+    }, [searchParams]);
+
     const handleGoogleCallback = useCallback(
         async (response: { credential: string }) => {
             setError("");

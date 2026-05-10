@@ -896,6 +896,12 @@ export class AuthService {
         }
     }
 
+    async get2FAStatus(userId: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { twoFactorEnabled: true, twoFactorMethod: true } });
+        if (!user) throw new NotFoundException('User not found');
+        return { enabled: user.twoFactorEnabled, method: user.twoFactorMethod };
+    }
+
     async setup2FA(userId: string) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
@@ -1003,12 +1009,7 @@ export class AuthService {
         if (!user) throw new NotFoundException('User not found');
 
         const code = String(Math.floor(100000 + Math.random() * 900000));
-        const expires = new Date(Date.now() + 5 * 60 * 1000);
-
-        await this.prisma.user.update({
-            where: { id: userId },
-            data: { emailVerifyCode: code, emailVerifyExpires: expires },
-        });
+        await this.redis.set(`2fa:email:${userId}`, code, 300);
 
         await this.emailService.send({
             to: user.email,
@@ -1021,6 +1022,13 @@ export class AuthService {
 
     async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false) {
         const userId = this.verify2FAToken(twoFAToken);
+
+        const attemptKey = `2fa:attempts:${userId}`;
+        const attempts = parseInt(await this.redis.get(attemptKey) || '0', 10);
+        if (attempts >= 5) {
+            throw new BadRequestException('Too many failed attempts. Please wait 15 minutes and try again.');
+        }
+
         const user = await this.prisma.user.findUnique({
             where: { id: userId },
             include: { tenant: true },
@@ -1034,15 +1042,10 @@ export class AuthService {
             const t = new TOTP({ secret: Secret.fromBase32(user.twoFactorSecret) });
             valid = t.validate({ token: code, window: 1 }) !== null;
         } else if (method === 'email') {
-            if (!user.emailVerifyCode || !user.emailVerifyExpires ||
-                user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
-                valid = false;
-            } else {
+            const storedCode = await this.redis.get(`2fa:email:${userId}`);
+            if (storedCode && storedCode === code) {
                 valid = true;
-                await this.prisma.user.update({
-                    where: { id: userId },
-                    data: { emailVerifyCode: null, emailVerifyExpires: null },
-                });
+                await this.redis.del(`2fa:email:${userId}`);
             }
         } else if (method === 'backup') {
             const normalized = code.toUpperCase().replace(/\s/g, '');
@@ -1062,9 +1065,12 @@ export class AuthService {
         }
 
         if (!valid) {
+            await this.redis.set(attemptKey, String(attempts + 1), 900);
+            this.logger.warn(`[2FA] Failed attempt ${attempts + 1}/5 for user ${user.email} (method: ${method})`);
             throw new BadRequestException('Invalid or expired code');
         }
 
+        await this.redis.del(attemptKey);
         const sid = await this.createSession(user.id, user.tenantId || undefined);
         const payload: JwtPayload = {
             sub: user.id,

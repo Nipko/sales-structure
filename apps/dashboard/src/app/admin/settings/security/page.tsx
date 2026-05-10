@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -170,25 +170,14 @@ function TwoFactorSettings() {
     const [copied, setCopied] = useState(false);
     const [checkingStatus, setCheckingStatus] = useState(true);
 
-    // Check current 2FA status on mount
-    useState(() => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem("accessToken") : null;
-        if (token) {
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                // We check via a lightweight call
-            } catch { /* noop */ }
-        }
-        // Use user from localStorage
-        const savedUser = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
-        if (savedUser) {
-            try {
-                const u = JSON.parse(savedUser);
-                setIs2FAEnabled(!!u.twoFactorEnabled);
-            } catch { /* noop */ }
-        }
-        setCheckingStatus(false);
-    });
+    useEffect(() => {
+        api.get2FAStatus().then((res: any) => {
+            if (res.success && res.data) {
+                setIs2FAEnabled(res.data.enabled);
+            }
+            setCheckingStatus(false);
+        }).catch(() => setCheckingStatus(false));
+    }, []);
 
     const handleSetup = async () => {
         setLoading(true);

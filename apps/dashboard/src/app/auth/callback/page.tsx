@@ -8,6 +8,13 @@ export default function AuthCallbackPage() {
     const searchParams = useSearchParams();
 
     useEffect(() => {
+        if (searchParams.get("requires2FA") === "true") {
+            const twoFAToken = searchParams.get("twoFAToken") || "";
+            const method = searchParams.get("twoFactorMethod") || "totp";
+            window.location.href = `/login?requires2FA=true&twoFAToken=${encodeURIComponent(twoFAToken)}&twoFactorMethod=${encodeURIComponent(method)}`;
+            return;
+        }
+
         const accessToken = searchParams.get("accessToken");
         const refreshToken = searchParams.get("refreshToken");
         const userStr = searchParams.get("user");
@@ -16,7 +23,6 @@ export default function AuthCallbackPage() {
             localStorage.setItem("accessToken", accessToken);
             localStorage.setItem("refreshToken", refreshToken);
 
-            // Determine redirect based on user state
             let redirectPath = "/admin";
             if (userStr) {
                 try {

@@ -435,6 +435,15 @@ export class AuthController {
 
     // ── 2FA ──────────────────────────────────────────────────────
 
+    @Get('2fa/status')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'Get current 2FA status' })
+    async get2FAStatus(@Request() req: any) {
+        const user = await this.authService.get2FAStatus(req.user.id);
+        return { success: true, data: user };
+    }
+
     @Post('2fa/setup')
     @UseGuards(AuthGuard('jwt'))
     @ApiBearerAuth()

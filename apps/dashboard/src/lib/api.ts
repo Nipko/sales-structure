@@ -100,6 +100,7 @@ export const api = {
         apiPost("/auth/reset-password", { email, code, newPassword }),
     changePassword: (currentPassword: string, newPassword: string) =>
         apiPost("/auth/change-password", { currentPassword, newPassword }),
+    get2FAStatus: () => apiGet("/auth/2fa/status"),
     setup2FA: () => apiPost("/auth/2fa/setup", {}),
     verifySetup2FA: (code: string) => apiPost("/auth/2fa/verify-setup", { code }),
     disable2FA: (password: string) => apiPost("/auth/2fa/disable", { password }),

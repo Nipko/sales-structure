@@ -280,13 +280,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ email, password, rememberMe, force }),
             });
 
-            const data = await res.json();
-
-            if (res.status === 409 && data?.error === "session_conflict") {
+            if (res.status === 409) {
                 pendingLoginRef.current = { type: 'email', email, password, rememberMe };
                 setShowSessionConflict(true);
                 return { success: false, error: "session_conflict" };
             }
+
+            const data = await res.json();
 
             if (!res.ok || !data.success) {
                 return { success: false, error: data.message || "Invalid credentials" };
@@ -316,13 +316,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 body: JSON.stringify({ idToken, rememberMe, force }),
             });
 
-            const data = await res.json();
-
-            if (res.status === 409 && data?.error === "session_conflict") {
+            if (res.status === 409) {
                 pendingLoginRef.current = { type: 'google', idToken, rememberMe };
                 setShowSessionConflict(true);
                 return { success: false, error: "session_conflict" };
             }
+
+            const data = await res.json();
 
             if (!res.ok || !data.success) {
                 return { success: false, error: data.message || "Error logging in with Google" };

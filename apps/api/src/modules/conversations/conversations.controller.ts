@@ -1,7 +1,8 @@
-import { Controller, Post, Body, Param, UseGuards, Logger, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Logger, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConversationsService } from './conversations.service';
+import { PreChatService } from './pre-chat.service';
 import { NormalizedMessage } from '@parallext/shared';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -14,7 +15,27 @@ import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 export class ConversationsController {
     private readonly logger = new Logger(ConversationsController.name);
 
-    constructor(private conversationsService: ConversationsService) { }
+    constructor(
+        private conversationsService: ConversationsService,
+        private preChatService: PreChatService,
+    ) { }
+
+    @Get('prechat-form/:tenantId')
+    @ApiOperation({ summary: 'Get active pre-chat form for a tenant' })
+    async getPrechatForm(@Param('tenantId') tenantId: string) {
+        const form = await this.preChatService.getActiveForm(tenantId);
+        return { success: true, data: form };
+    }
+
+    @Post('prechat-form/:tenantId')
+    @ApiOperation({ summary: 'Save pre-chat form configuration' })
+    async savePrechatForm(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { is_active: boolean; greeting_message?: string; fields: any[] },
+    ) {
+        const form = await this.preChatService.saveForm(tenantId, body);
+        return { success: true, data: form };
+    }
 
     @Post('test-message')
     @ApiOperation({ summary: 'Simulate an inbound message for testing' })

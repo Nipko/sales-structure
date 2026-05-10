@@ -10,6 +10,7 @@ import { LanguageDetectorService } from './language-detector.service';
 import { AgentTestService } from './agent-test.service';
 import { AgentTestController } from './agent-test.controller';
 import { IntentInterpreterService } from './intent-interpreter.service';
+import { PreChatService } from './pre-chat.service';
 import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
@@ -72,7 +73,7 @@ import { HomeServicesModule } from '../home-services/home-services.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
     controllers: [ConversationsController, AgentTestController],
     exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService],
 })

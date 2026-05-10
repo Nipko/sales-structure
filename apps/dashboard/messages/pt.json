@@ -4739,13 +4739,18 @@
     "lastNamePlaceholder": "Seu sobrenome",
     "passwordLabel": "Senha",
     "passwordPlaceholder": "Mínimo 8 caracteres",
-    "passwordHint": "Criaremos sua conta com esta senha.",
     "acceptButton": "Aceitar e criar conta",
     "goToLogin": "Ir para login",
     "firstNameRequired": "Nome é obrigatório",
     "passwordTooShort": "A senha deve ter no mínimo 8 caracteres",
+    "passwordTooWeak": "A senha não atende a todos os requisitos de segurança",
     "acceptFailed": "Não conseguimos completar o convite",
     "expiresOn": "Este convite expira em {date}",
+    "roles": {
+      "tenant_admin": "Administrador",
+      "tenant_supervisor": "Supervisor",
+      "tenant_agent": "Agente"
+    },
     "reason": {
       "not_found": {
         "title": "Convite não encontrado",

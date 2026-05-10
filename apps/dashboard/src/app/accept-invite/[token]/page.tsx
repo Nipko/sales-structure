@@ -6,7 +6,8 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { motion } from "motion/react";
-import { Building2, Loader2, AlertTriangle, CheckCircle, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Building2, Loader2, AlertTriangle, CheckCircle, ArrowRight } from "lucide-react";
+import PasswordInput, { isPasswordValid } from "@/components/PasswordInput";
 
 interface InvitationData {
     valid: boolean;
@@ -21,12 +22,6 @@ interface InvitationData {
     };
 }
 
-const ROLE_LABEL: Record<string, string> = {
-    tenant_admin: "Administrador",
-    tenant_supervisor: "Supervisor",
-    tenant_agent: "Agente",
-};
-
 export default function AcceptInvitePage() {
     const router = useRouter();
     const { token } = useParams<{ token: string }>();
@@ -37,7 +32,6 @@ export default function AcceptInvitePage() {
     const [loading, setLoading] = useState(true);
     const [accepting, setAccepting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showPassword, setShowPassword] = useState(false);
 
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
@@ -58,7 +52,7 @@ export default function AcceptInvitePage() {
     async function handleAccept() {
         setError(null);
         if (!firstName.trim()) return setError(t("firstNameRequired"));
-        if (password.length < 8) return setError(t("passwordTooShort"));
+        if (!isPasswordValid(password)) return setError(t("passwordTooWeak"));
 
         setAccepting(true);
         try {
@@ -110,7 +104,7 @@ export default function AcceptInvitePage() {
     }
 
     const inv = data.invitation!;
-    const roleLabel = ROLE_LABEL[inv.role] || inv.role;
+    const roleLabel = t(`roles.${inv.role}`);
 
     return (
         <div className="min-h-screen flex items-center justify-center px-6 py-10 bg-neutral-50 dark:bg-neutral-950">
@@ -182,25 +176,13 @@ export default function AcceptInvitePage() {
                     <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
                         {t("passwordLabel")} <span className="text-red-500">*</span>
                     </label>
-                    <div className="relative">
-                        <input
-                            type={showPassword ? "text" : "password"}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder={t("passwordPlaceholder")}
-                            className="w-full px-3 py-2 pr-10 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
-                        >
-                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                    </div>
-                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                        {t("passwordHint")}
-                    </p>
+                    <PasswordInput
+                        value={password}
+                        onChange={setPassword}
+                        placeholder={t("passwordPlaceholder")}
+                        showValidation
+                        showGenerator
+                    />
                 </div>
 
                 {error && (
@@ -211,7 +193,7 @@ export default function AcceptInvitePage() {
 
                 <button
                     onClick={handleAccept}
-                    disabled={accepting || !firstName || password.length < 8}
+                    disabled={accepting || !firstName || !isPasswordValid(password)}
                     className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg font-semibold inline-flex items-center justify-center gap-2 transition-colors"
                 >
                     {accepting && <Loader2 className="w-4 h-4 animate-spin" />}

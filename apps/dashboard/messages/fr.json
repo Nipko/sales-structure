@@ -4739,13 +4739,18 @@
     "lastNamePlaceholder": "Votre nom",
     "passwordLabel": "Mot de passe",
     "passwordPlaceholder": "Au moins 8 caractères",
-    "passwordHint": "Nous créerons votre compte avec ce mot de passe.",
     "acceptButton": "Accepter et créer le compte",
     "goToLogin": "Aller à la connexion",
     "firstNameRequired": "Le prénom est requis",
     "passwordTooShort": "Le mot de passe doit avoir au moins 8 caractères",
+    "passwordTooWeak": "Le mot de passe ne répond pas à toutes les exigences de sécurité",
     "acceptFailed": "Nous n'avons pas pu compléter l'invitation",
     "expiresOn": "Cette invitation expire le {date}",
+    "roles": {
+      "tenant_admin": "Administrateur",
+      "tenant_supervisor": "Superviseur",
+      "tenant_agent": "Agent"
+    },
     "reason": {
       "not_found": {
         "title": "Invitation introuvable",

@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { emailLayout, actionButton } from '../email/email-layouts';
+import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
 
 const TOKEN_BYTES = 32;
 const DEFAULT_TTL_DAYS = 14;
@@ -223,9 +223,7 @@ export class InvitationsService {
         if (invitation.revokedAt) throw new BadRequestException({ error: 'revoked' });
         if (invitation.expiresAt < new Date()) throw new BadRequestException({ error: 'expired' });
 
-        if (!input.password || input.password.length < 8) {
-            throw new BadRequestException({ error: 'weak_password', message: 'Password must be at least 8 characters.' });
-        }
+        this.validatePasswordStrength(input.password);
 
         const existingUser = await this.prisma.user.findUnique({
             where: { email: invitation.email },
@@ -271,6 +269,18 @@ export class InvitationsService {
             },
         });
 
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: invitation.tenantId },
+            select: { name: true },
+        });
+        this.email.send({
+            to: invitation.email,
+            subject: `Bienvenido a ${tenant?.name || 'Parallly'}`,
+            html: welcomeTeamMemberEmail(input.firstName, tenant?.name || 'Parallly', this.roleLabel(invitation.role)),
+        }).catch((err) => {
+            this.logger.error(`[Invitations] Failed to send welcome email to ${invitation.email}: ${err.message}`);
+        });
+
         return { userId: user.id, tenantId: invitation.tenantId, role: invitation.role };
     }
 
@@ -292,37 +302,32 @@ export class InvitationsService {
             day: 'numeric', month: 'long', year: 'numeric',
         });
 
-        const intro = input.inviterName
-            ? `<strong>${input.inviterName}</strong> te invitó a unirte a <strong>${input.tenantName}</strong> en Parallly como <strong>${roleLabel}</strong>.`
-            : `Te invitaron a unirte a <strong>${input.tenantName}</strong> en Parallly como <strong>${roleLabel}</strong>.`;
-
-        const tenantLogoBlock = input.tenantLogoUrl
-            ? `<div style="text-align:center;margin:0 0 18px;">
-                 <img src="${input.tenantLogoUrl}" alt="${input.tenantName}" height="48" style="height:48px;border-radius:8px;" />
-               </div>`
-            : '';
-
-        const html = emailLayout(`
-            ${tenantLogoBlock}
-            <h1 style="margin:0 0 12px;font-size:22px;color:#111;">¡Te estamos esperando!</h1>
-            <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">${intro}</p>
-            <p style="margin:0 0 8px;font-size:15px;color:#444;line-height:1.6;">
-                Hacé click abajo para aceptar la invitación y crear tu cuenta. Solo te tomará un minuto.
-            </p>
-            ${actionButton('Aceptar invitación', acceptUrl)}
-            <p style="margin:18px 0 0;font-size:13px;color:#777;text-align:center;">
-                Este enlace expira el <strong>${expiresText}</strong>.
-            </p>
-            <p style="margin:8px 0 0;font-size:12px;color:#999;text-align:center;">
-                Si no esperabas esta invitación, podés ignorar este correo.
-            </p>
-        `);
+        const html = invitationEmail({
+            inviterName: input.inviterName,
+            tenantName: input.tenantName,
+            tenantLogoUrl: input.tenantLogoUrl,
+            roleLabel,
+            acceptUrl,
+            expiresText,
+        });
 
         await this.email.send({
             to: input.email,
             subject: `Te invitaron a unirte a ${input.tenantName} en Parallly`,
             html,
         });
+    }
+
+    private validatePasswordStrength(password: string): void {
+        const errors: string[] = [];
+        if (!password || password.length < 8) errors.push('Minimum 8 characters');
+        if (!/[A-Z]/.test(password || '')) errors.push('At least 1 uppercase letter');
+        if (!/[a-z]/.test(password || '')) errors.push('At least 1 lowercase letter');
+        if (!/[0-9]/.test(password || '')) errors.push('At least 1 number');
+        if (!/[^A-Za-z0-9]/.test(password || '')) errors.push('At least 1 special character');
+        if (errors.length > 0) {
+            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
+        }
     }
 
     private roleLabel(role: string): string {

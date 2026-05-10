@@ -4739,13 +4739,18 @@
     "lastNamePlaceholder": "Tu apellido",
     "passwordLabel": "Contraseña",
     "passwordPlaceholder": "Mínimo 8 caracteres",
-    "passwordHint": "Crearemos tu cuenta con esta contraseña.",
     "acceptButton": "Aceptar y crear cuenta",
     "goToLogin": "Ir al login",
     "firstNameRequired": "El nombre es obligatorio",
     "passwordTooShort": "La contraseña debe tener al menos 8 caracteres",
+    "passwordTooWeak": "La contraseña no cumple todos los requisitos de seguridad",
     "acceptFailed": "No pudimos completar la invitación",
     "expiresOn": "Esta invitación expira el {date}",
+    "roles": {
+      "tenant_admin": "Administrador",
+      "tenant_supervisor": "Supervisor",
+      "tenant_agent": "Agente"
+    },
     "reason": {
       "not_found": {
         "title": "Invitación no encontrada",

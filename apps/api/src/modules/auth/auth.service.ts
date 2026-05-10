@@ -188,6 +188,18 @@ export class AuthService {
         return true;
     }
 
+    private validatePasswordStrength(password: string): void {
+        const errors: string[] = [];
+        if (!password || password.length < 8) errors.push('Minimum 8 characters');
+        if (!/[A-Z]/.test(password)) errors.push('At least 1 uppercase letter');
+        if (!/[a-z]/.test(password)) errors.push('At least 1 lowercase letter');
+        if (!/[0-9]/.test(password)) errors.push('At least 1 number');
+        if (!/[^A-Za-z0-9]/.test(password)) errors.push('At least 1 special character');
+        if (errors.length > 0) {
+            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
+        }
+    }
+
     async register(data: {
         email: string;
         password: string;
@@ -204,6 +216,8 @@ export class AuthService {
         if (existing) {
             throw new ConflictException('Email already registered');
         }
+
+        this.validatePasswordStrength(data.password);
 
         // Enforce seats limit for tenant user creation
         if (data.tenantId) {
@@ -257,6 +271,8 @@ export class AuthService {
         if (existingUser) {
             throw new ConflictException('Email already registered');
         }
+
+        this.validatePasswordStrength(data.password);
 
         const hashedPassword = await bcrypt.hash(data.password, 12);
 
@@ -468,6 +484,8 @@ export class AuthService {
         if (!user) {
             throw new NotFoundException('User not found');
         }
+
+        this.validatePasswordStrength(newPassword);
 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
@@ -692,16 +710,7 @@ export class AuthService {
     // ── Password setup ────────────────────────────────────────────
 
     async setupPassword(userId: string, password: string) {
-        const errors: string[] = [];
-        if (password.length < 8) errors.push('Minimum 8 characters');
-        if (!/[A-Z]/.test(password)) errors.push('At least 1 uppercase letter');
-        if (!/[a-z]/.test(password)) errors.push('At least 1 lowercase letter');
-        if (!/[0-9]/.test(password)) errors.push('At least 1 number');
-        if (!/[^A-Za-z0-9]/.test(password)) errors.push('At least 1 special character');
-
-        if (errors.length > 0) {
-            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
-        }
+        this.validatePasswordStrength(password);
 
         const hashedPassword = await bcrypt.hash(password, 12);
         const user = await this.prisma.user.update({
@@ -792,17 +801,7 @@ export class AuthService {
             throw new BadRequestException('Invalid or expired code');
         }
 
-        // Validate password strength
-        const errors: string[] = [];
-        if (newPassword.length < 8) errors.push('Minimum 8 characters');
-        if (!/[A-Z]/.test(newPassword)) errors.push('At least 1 uppercase letter');
-        if (!/[a-z]/.test(newPassword)) errors.push('At least 1 lowercase letter');
-        if (!/[0-9]/.test(newPassword)) errors.push('At least 1 number');
-        if (!/[^A-Za-z0-9]/.test(newPassword)) errors.push('At least 1 special character');
-
-        if (errors.length > 0) {
-            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
-        }
+        this.validatePasswordStrength(newPassword);
 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
         await this.prisma.user.update({
@@ -890,16 +889,7 @@ export class AuthService {
             throw new UnauthorizedException('Current password is incorrect');
         }
 
-        const errors: string[] = [];
-        if (newPassword.length < 8) errors.push('Minimum 8 characters');
-        if (!/[A-Z]/.test(newPassword)) errors.push('At least 1 uppercase letter');
-        if (!/[a-z]/.test(newPassword)) errors.push('At least 1 lowercase letter');
-        if (!/[0-9]/.test(newPassword)) errors.push('At least 1 number');
-        if (!/[^A-Za-z0-9]/.test(newPassword)) errors.push('At least 1 special character');
-
-        if (errors.length > 0) {
-            throw new BadRequestException({ message: 'Password does not meet requirements', errors });
-        }
+        this.validatePasswordStrength(newPassword);
 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
         await this.prisma.user.update({

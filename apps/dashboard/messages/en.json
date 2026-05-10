@@ -1589,7 +1589,19 @@
     "rejectReason": "Rejection reason",
     "approvalRequired": "Approval is required to move to this stage",
     "approved": "Approved successfully",
-    "rejected": "Rejected successfully"
+    "rejected": "Rejected successfully",
+    "newDeal": "New deal",
+    "dealCreated": "Deal created",
+    "dealForm": {
+      "contact": "Contact",
+      "selectContact": "Select a contact...",
+      "title": "Title",
+      "titlePlaceholder": "Product X sale",
+      "value": "Value ($)",
+      "stage": "Stage",
+      "notes": "Notes",
+      "notesPlaceholder": "Additional notes..."
+    }
   },
   "automation": {
     "title": "Automation",
@@ -1726,7 +1738,11 @@
       "preview": "Message preview",
       "previewEmpty": "Your message will appear here...",
       "schedule": "Schedule",
-      "saveDraft": "Save draft"
+      "saveDraft": "Save draft",
+      "audienceLabel": "Audience",
+      "allContacts": "All contacts",
+      "segment": "Segment",
+      "selectSegment": "Select a segment..."
     },
     "subtitle": "Mass campaigns and template messages"
   },

@@ -47,6 +47,10 @@ export default function PipelinePage() {
     const [rejectModal, setRejectModal] = useState<{ dealId: string } | null>(null);
     const [rejectReason, setRejectReason] = useState("");
     const [approvalLoading, setApprovalLoading] = useState(false);
+    const [showCreateDeal, setShowCreateDeal] = useState(false);
+    const [dealForm, setDealForm] = useState({ contactId: "", title: "", value: "", stageId: "", notes: "" });
+    const [dealCreating, setDealCreating] = useState(false);
+    const [contacts, setContacts] = useState<any[]>([]);
 
     const canApprove = hasRole('super_admin', 'tenant_admin', 'tenant_supervisor');
 
@@ -132,6 +136,42 @@ export default function PipelinePage() {
         }
     };
 
+    const openCreateDeal = async () => {
+        setShowCreateDeal(true);
+        if (activeTenantId) {
+            const res = await api.fetch(`/crm/leads/${activeTenantId}?limit=200`);
+            if (res?.success && Array.isArray(res.data)) setContacts(res.data);
+        }
+        if (stages.length > 0 && !dealForm.stageId) {
+            setDealForm(f => ({ ...f, stageId: stages[0].id }));
+        }
+    };
+
+    const handleCreateDeal = async () => {
+        if (!activeTenantId || !dealForm.contactId || !dealForm.title || !dealForm.stageId) return;
+        setDealCreating(true);
+        try {
+            await api.createDeal(activeTenantId, {
+                contactId: dealForm.contactId,
+                title: dealForm.title,
+                value: Number(dealForm.value) || 0,
+                stageId: dealForm.stageId,
+                notes: dealForm.notes || undefined,
+            });
+            setDealForm({ contactId: "", title: "", value: "", stageId: "", notes: "" });
+            setShowCreateDeal(false);
+            const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
+            if (json.success && json.data) setKanban(json.data);
+            setToast(t('dealCreated'));
+            setTimeout(() => setToast(null), 2000);
+        } catch {
+            setToast(tc('errorSaving'));
+            setTimeout(() => setToast(null), 2000);
+        } finally {
+            setDealCreating(false);
+        }
+    };
+
     // Load kanban from CRM API (opportunities grouped by stage)
     useEffect(() => {
         async function load() {
@@ -182,6 +222,12 @@ export default function PipelinePage() {
                     action={
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-muted-foreground">{forecast.dealCount} {t('deals')}</span>
+                            <button
+                                onClick={openCreateDeal}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity press-effect"
+                            >
+                                <Plus size={14} /> {t('newDeal')}
+                            </button>
                             <button
                                 onClick={() => router.push('/admin/settings/pipeline')}
                                 className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
@@ -413,6 +459,96 @@ export default function PipelinePage() {
                     </div>
                 )}
             </div>
+
+            {/* Create Deal Modal */}
+            {showCreateDeal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateDeal(false)}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-[460px] shadow-xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-semibold">{t('newDeal')}</h3>
+                            <button onClick={() => setShowCreateDeal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={18} /></button>
+                        </div>
+                        <div className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('dealForm.contact')}</label>
+                                <select
+                                    value={dealForm.contactId}
+                                    onChange={e => setDealForm(f => ({ ...f, contactId: e.target.value }))}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                >
+                                    <option value="">{t('dealForm.selectContact')}</option>
+                                    {contacts.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.first_name || ''} {c.last_name || ''} {c.phone ? `(${c.phone})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('dealForm.title')}</label>
+                                <input
+                                    value={dealForm.title}
+                                    onChange={e => setDealForm(f => ({ ...f, title: e.target.value }))}
+                                    placeholder={t('dealForm.titlePlaceholder')}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('dealForm.value')}</label>
+                                    <input
+                                        type="number"
+                                        value={dealForm.value}
+                                        onChange={e => setDealForm(f => ({ ...f, value: e.target.value }))}
+                                        placeholder="0"
+                                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('dealForm.stage')}</label>
+                                    <select
+                                        value={dealForm.stageId}
+                                        onChange={e => setDealForm(f => ({ ...f, stageId: e.target.value }))}
+                                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                    >
+                                        {stages.map((s: any) => (
+                                            <option key={s.id} value={s.id}>
+                                                {KNOWN_STAGE_KEYS.includes(s.id) ? tc(`stages.${s.id}`) : s.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('dealForm.notes')}</label>
+                                <textarea
+                                    value={dealForm.notes}
+                                    onChange={e => setDealForm(f => ({ ...f, notes: e.target.value }))}
+                                    placeholder={t('dealForm.notesPlaceholder')}
+                                    rows={2}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none resize-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-5">
+                            <button
+                                onClick={() => setShowCreateDeal(false)}
+                                className="px-4 py-2 rounded-lg border border-border text-sm cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            >
+                                {tc('cancel')}
+                            </button>
+                            <button
+                                onClick={handleCreateDeal}
+                                disabled={dealCreating || !dealForm.contactId || !dealForm.title}
+                                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm cursor-pointer hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {dealCreating && <Loader2 size={14} className="animate-spin" />}
+                                {tc('create')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Approval Request Modal */}
             {approvalModal && (

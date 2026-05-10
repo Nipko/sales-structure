@@ -41,7 +41,7 @@ export class BroadcastController {
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         const [{ cnt }] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT COUNT(*)::int AS cnt FROM broadcast_campaigns WHERE created_at >= $1::timestamptz`,
+            `SELECT COUNT(*)::int AS cnt FROM campaigns WHERE created_at >= $1::timestamptz`,
             [monthStart],
         );
         await this.throttle.enforcePlanLimit(tenantId, 'broadcastCampaigns', Number(cnt || 0), 'campañas de broadcast este mes');

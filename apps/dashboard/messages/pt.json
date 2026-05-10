@@ -1589,7 +1589,19 @@
     "rejectReason": "Motivo da rejeição",
     "approvalRequired": "Aprovação necessária para mover para esta etapa",
     "approved": "Aprovado com sucesso",
-    "rejected": "Rejeitado com sucesso"
+    "rejected": "Rejeitado com sucesso",
+    "newDeal": "Nova oportunidade",
+    "dealCreated": "Oportunidade criada",
+    "dealForm": {
+      "contact": "Contato",
+      "selectContact": "Selecione um contato...",
+      "title": "Título",
+      "titlePlaceholder": "Venda do produto X",
+      "value": "Valor ($)",
+      "stage": "Etapa",
+      "notes": "Notas",
+      "notesPlaceholder": "Notas adicionais..."
+    }
   },
   "automation": {
     "title": "Automação",
@@ -1726,7 +1738,11 @@
       "preview": "Pré-visualização da mensagem",
       "previewEmpty": "Sua mensagem aparecerá aqui...",
       "schedule": "Agendar",
-      "saveDraft": "Salvar rascunho"
+      "saveDraft": "Salvar rascunho",
+      "audienceLabel": "Audiência",
+      "allContacts": "Todos os contatos",
+      "segment": "Segmento",
+      "selectSegment": "Selecione um segmento..."
     },
     "subtitle": "Campanhas em massa e mensagens com modelos"
   },

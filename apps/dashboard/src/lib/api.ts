@@ -345,7 +345,7 @@ export const api = {
     getCampaigns(tenantId: string) {
         return apiGet<any[]>(`/broadcast/campaigns/${tenantId}`);
     },
-    createCampaign(tenantId: string, data: { name: string; channel: string; template: string; targetAudience: string }) {
+    createCampaign(tenantId: string, data: { name: string; channel: string; template: string; targetAudience: string; scheduledAt?: string }) {
         return apiPost<{ id: string }>(`/broadcast/campaigns/${tenantId}`, data);
     },
     sendCampaign(tenantId: string, campaignId: string) {

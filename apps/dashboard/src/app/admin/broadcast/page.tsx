@@ -55,6 +55,9 @@ export default function BroadcastPage() {
     const [newCampaign, setNewCampaign] = useState({ name: "", channel: "whatsapp", template: "", targetAudience: "all", scheduledAt: "" });
     const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
     const [toast, setToast] = useState<string | null>(null);
+    const [segments, setSegments] = useState<any[]>([]);
+    const [audienceType, setAudienceType] = useState<"all" | "segment">("all");
+    const [selectedSegmentId, setSelectedSegmentId] = useState("");
 
     const stats = {
         total: campaigns.length,
@@ -64,15 +67,29 @@ export default function BroadcastPage() {
         totalReplies: campaigns.reduce((s, c) => s + c.repliedCount, 0),
     };
 
+    const openNewCampaign = async () => {
+        setShowNewCampaign(true);
+        if (activeTenantId) {
+            const res = await api.getSegments(activeTenantId);
+            if (res?.success) setSegments(res.data || []);
+        }
+    };
+
     const handleCreateCampaign = async () => {
         if (!activeTenantId) return;
         if (!newCampaign.name || !newCampaign.template) return;
 
+        const audience = audienceType === "segment" && selectedSegmentId
+            ? JSON.stringify({ segmentId: selectedSegmentId })
+            : "all";
+
         setCreating(true);
-        const res = await api.createCampaign(activeTenantId, newCampaign);
+        const res = await api.createCampaign(activeTenantId, { ...newCampaign, targetAudience: audience });
         if (res?.success) {
             setCreating(false);
             setNewCampaign({ name: "", channel: "whatsapp", template: "", targetAudience: "all", scheduledAt: "" });
+            setAudienceType("all");
+            setSelectedSegmentId("");
             loadCampaigns();
             setShowNewCampaign(false);
             setToast("Campaign created successfully");
@@ -102,7 +119,7 @@ export default function BroadcastPage() {
                     badge={<DataSourceBadge isLive={false} />}
                     action={
                         <button
-                            onClick={() => setShowNewCampaign(true)}
+                            onClick={openNewCampaign}
                             disabled={!canCreate("broadcastCampaigns", campaigns.length)}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm press-effect",
@@ -248,6 +265,49 @@ export default function BroadcastPage() {
                                 {t('modal.templateLabel')} <span className="font-normal">{t('modal.templateHint')}</span>
                             </label>
                             <textarea value={newCampaign.template} onChange={e => setNewCampaign(p => ({ ...p, template: e.target.value }))} placeholder={t('modal.templatePlaceholder')} rows={4} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                        </div>
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('modal.audienceLabel')}</label>
+                            <div className="flex gap-2 mb-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setAudienceType("all"); setSelectedSegmentId(""); }}
+                                    className={cn(
+                                        "flex-1 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer",
+                                        audienceType === "all"
+                                            ? "border-primary bg-primary/10 text-primary"
+                                            : "border-border bg-transparent text-muted-foreground"
+                                    )}
+                                >
+                                    <Users size={14} className="inline mr-1.5" /> {t('modal.allContacts')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAudienceType("segment")}
+                                    className={cn(
+                                        "flex-1 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer",
+                                        audienceType === "segment"
+                                            ? "border-primary bg-primary/10 text-primary"
+                                            : "border-border bg-transparent text-muted-foreground"
+                                    )}
+                                >
+                                    <Target size={14} className="inline mr-1.5" /> {t('modal.segment')}
+                                </button>
+                            </div>
+                            {audienceType === "segment" && (
+                                <select
+                                    value={selectedSegmentId}
+                                    onChange={e => setSelectedSegmentId(e.target.value)}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                >
+                                    <option value="">{t('modal.selectSegment')}</option>
+                                    {segments.map(s => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.name} ({s.contact_count ?? 0} {vt.customerNounPlural})
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
                         </div>
                         <div className="mb-3.5">
                             <label className="block text-xs font-semibold text-muted-foreground mb-1">{t('modal.sendDateLabel')}</label>

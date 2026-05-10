@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { Cron } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -72,21 +73,26 @@ export class BroadcastService {
             recipientPhones: data.recipientPhones || null,
         };
 
+        const status = data.scheduledAt ? 'scheduled' : 'draft';
+        const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null;
+
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `INSERT INTO campaigns (
                 id, name, channel, wa_template_name, status,
-                target_audience, metadata, created_at, updated_at
+                target_audience, metadata, scheduled_at, created_at, updated_at
             ) VALUES (
-                gen_random_uuid(), $1, $2, $3, 'draft',
-                $4, $5, NOW(), NOW()
+                gen_random_uuid(), $1, $2, $3, $4,
+                $5, $6, $7::timestamptz, NOW(), NOW()
             ) RETURNING id`,
             [
                 data.name,
                 data.channel || 'whatsapp',
                 data.templateName,
+                status,
                 data.targetAudience || 'all',
                 JSON.stringify(metadata),
+                scheduledAt,
             ],
         );
 
@@ -134,9 +140,9 @@ export class BroadcastService {
 
         const campaign = campaigns[0];
 
-        if (campaign.status !== 'draft' && campaign.status !== 'paused') {
+        if (campaign.status !== 'draft' && campaign.status !== 'paused' && campaign.status !== 'scheduled') {
             throw new BadRequestException(
-                `Campaign cannot be launched from status "${campaign.status}". Must be draft or paused.`,
+                `Campaign cannot be launched from status "${campaign.status}". Must be draft, paused or scheduled.`,
             );
         }
 
@@ -240,6 +246,7 @@ export class BroadcastService {
             deliveredCount: parseInt(c.delivered_count || '0'),
             readCount: parseInt(c.read_count || '0'),
             failedCount: parseInt(c.failed_count || '0'),
+            scheduledAt: c.scheduled_at?.toISOString?.() || c.scheduled_at || null,
             startsAt: c.starts_at?.toISOString?.() || c.starts_at || null,
             endsAt: c.ends_at?.toISOString?.() || c.ends_at || null,
             createdAt: c.created_at?.toISOString?.() || c.created_at,
@@ -345,6 +352,42 @@ export class BroadcastService {
     }
 
     // ================================================================
+    // CRON — auto-launch scheduled campaigns
+    // ================================================================
+    @Cron('* * * * *')
+    async launchScheduledCampaigns() {
+        try {
+            const tenants = await this.prisma.$queryRaw<any[]>`
+                SELECT id, schema_name FROM tenants WHERE is_active = true
+            `;
+
+            for (const tenant of tenants || []) {
+                const schema = tenant.schema_name;
+                try {
+                    const due = await this.prisma.executeInTenantSchema<any[]>(
+                        schema,
+                        `SELECT id FROM campaigns
+                         WHERE status = 'scheduled' AND scheduled_at <= NOW()`,
+                    );
+
+                    for (const campaign of due || []) {
+                        try {
+                            await this.launchCampaign(tenant.id, campaign.id);
+                            this.logger.log(`Auto-launched scheduled campaign ${campaign.id} for tenant ${tenant.id}`);
+                        } catch (err: any) {
+                            this.logger.warn(`Failed to auto-launch campaign ${campaign.id}: ${err.message}`);
+                        }
+                    }
+                } catch {
+                    // Schema may not have campaigns table yet
+                }
+            }
+        } catch (err: any) {
+            this.logger.error(`launchScheduledCampaigns cron failed: ${err.message}`);
+        }
+    }
+
+    // ================================================================
     // PRIVATE HELPERS
     // ================================================================
 
@@ -374,9 +417,37 @@ export class BroadcastService {
             return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
         }
 
-        // Option 3: tag-based filter — audience is a JSON string like {"tags": ["vip", "prospect"]}
+        // Option 3: JSON filter — tags or segmentId
         try {
             const filter = JSON.parse(audience);
+
+            // 3a: segment-based targeting
+            if (filter.segmentId) {
+                const segs = await this.prisma.executeInTenantSchema<any[]>(
+                    schema,
+                    `SELECT filter_rules FROM contact_segments WHERE id = $1::uuid`,
+                    [filter.segmentId],
+                );
+                if (segs?.length) {
+                    const rules = typeof segs[0].filter_rules === 'string'
+                        ? JSON.parse(segs[0].filter_rules)
+                        : segs[0].filter_rules;
+
+                    const { whereClause, params } = this.buildFilterSQL(rules);
+                    const phoneCond = whereClause
+                        ? `WHERE ${whereClause} AND phone IS NOT NULL AND phone != ''`
+                        : `WHERE phone IS NOT NULL AND phone != ''`;
+
+                    const contacts = await this.prisma.executeInTenantSchema<any[]>(
+                        schema,
+                        `SELECT id, phone FROM leads ${phoneCond}`,
+                        params,
+                    );
+                    return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+                }
+            }
+
+            // 3b: tag-based filter — {"tags": ["vip", "prospect"]}
             if (filter.tags?.length) {
                 const contacts = await this.prisma.executeInTenantSchema<any[]>(
                     schema,
@@ -396,6 +467,40 @@ export class BroadcastService {
             `SELECT id, phone FROM contacts WHERE phone IS NOT NULL AND phone != ''`,
         );
         return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+    }
+
+    private buildFilterSQL(rules: any[]): { whereClause: string; params: any[] } {
+        if (!rules || rules.length === 0) return { whereClause: '', params: [] };
+
+        const conditions: string[] = [];
+        const params: any[] = [];
+        let n = 1;
+
+        for (const rule of rules) {
+            const column = rule.field?.startsWith('metadata.')
+                ? `metadata->>'${rule.field.replace('metadata.', '')}'`
+                : rule.field;
+            if (!column) continue;
+
+            switch (rule.operator) {
+                case 'eq':    conditions.push(`${column} = $${n++}`); params.push(rule.value); break;
+                case 'neq':   conditions.push(`${column} != $${n++}`); params.push(rule.value); break;
+                case 'gt':    conditions.push(`${column} > $${n++}`); params.push(rule.value); break;
+                case 'gte':   conditions.push(`${column} >= $${n++}`); params.push(rule.value); break;
+                case 'lt':    conditions.push(`${column} < $${n++}`); params.push(rule.value); break;
+                case 'lte':   conditions.push(`${column} <= $${n++}`); params.push(rule.value); break;
+                case 'contains': conditions.push(`${column} ILIKE $${n++}`); params.push(`%${rule.value}%`); break;
+                case 'in':
+                    if (Array.isArray(rule.value)) {
+                        const ph = rule.value.map(() => `$${n++}`).join(', ');
+                        conditions.push(`${column} IN (${ph})`);
+                        params.push(...rule.value);
+                    }
+                    break;
+            }
+        }
+
+        return { whereClause: conditions.join(' AND '), params };
     }
 
     private async ensureBroadcastTables(schema: string): Promise<void> {
@@ -424,9 +529,13 @@ export class BroadcastService {
                     ON "${schema}".campaign_recipients(campaign_id, status);
             `);
 
+            // Ensure scheduled_at column exists on campaigns
+            await this.prisma.$queryRawUnsafe(`
+                ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+            `);
+
             await this.redis.set(cacheKey, 'true', 86400);
         } catch (error: any) {
-            // Table may already exist — that's fine
             if (!error.message?.includes('already exists')) {
                 this.logger.warn(`Could not create broadcast tables in ${schema}: ${error.message}`);
             }

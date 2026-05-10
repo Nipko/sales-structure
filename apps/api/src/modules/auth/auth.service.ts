@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { TOTP, Secret } from 'otpauth';
+import * as QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RedisService } from '../redis/redis.service';
@@ -30,6 +32,8 @@ const REFRESH_TTL_DEFAULT = 8 * 60 * 60;       // 8 hours (one work shift)
 const REFRESH_TTL_REMEMBER = 14 * 24 * 60 * 60; // 14 days
 
 const SESSION_TTL = 360; // 6 min — refreshed by activity ping (frontend sends every 5 min)
+const TWO_FA_TOKEN_TTL = 300; // 5 min — temporary token for 2FA verification
+const BACKUP_CODE_COUNT = 10;
 
 @Injectable()
 export class AuthService {
@@ -352,6 +356,17 @@ export class AuthService {
         // Enforce single-session + tenant session limits
         await this.enforceSessionPolicy(user, force);
 
+        // 2FA check — return temporary token instead of full session
+        if (user.twoFactorEnabled) {
+            const twoFAToken = this.generate2FAToken(user.id);
+            return {
+                requires2FA: true,
+                twoFAToken,
+                twoFactorMethod: user.twoFactorMethod || 'totp',
+                user: { email: user.email, firstName: user.firstName },
+            };
+        }
+
         // Update last login
         await this.prisma.user.update({
             where: { id: user.id },
@@ -373,6 +388,7 @@ export class AuthService {
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
         return {
+            requires2FA: false,
             accessToken,
             refreshToken,
             user: {
@@ -583,6 +599,17 @@ export class AuthService {
             await this.enforceSessionPolicy(user, force);
         }
 
+        // 2FA check (skip for new users — they just registered)
+        if (!isNewUser && user.twoFactorEnabled) {
+            const twoFAToken = this.generate2FAToken(user.id);
+            return {
+                requires2FA: true,
+                twoFAToken,
+                twoFactorMethod: user.twoFactorMethod || 'totp',
+                user: { email: user.email, firstName: user.firstName },
+            };
+        }
+
         await this.prisma.user.update({
             where: { id: user.id },
             data: { lastLoginAt: new Date() },
@@ -602,6 +629,7 @@ export class AuthService {
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
         return {
+            requires2FA: false,
             accessToken,
             refreshToken,
             user: {
@@ -677,6 +705,16 @@ export class AuthService {
             await this.enforceSessionPolicy(user, force);
         }
 
+        if (!isNewUser && user.twoFactorEnabled) {
+            const twoFAToken = this.generate2FAToken(user.id);
+            return {
+                requires2FA: true,
+                twoFAToken,
+                twoFactorMethod: user.twoFactorMethod || 'totp',
+                user: { email: user.email, firstName: user.firstName },
+            };
+        }
+
         await this.prisma.user.update({
             where: { id: user.id },
             data: { lastLoginAt: new Date() },
@@ -693,6 +731,7 @@ export class AuthService {
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
         return {
+            requires2FA: false,
             accessToken, refreshToken,
             user: {
                 id: user.id, email: user.email,
@@ -823,14 +862,148 @@ export class AuthService {
         return { message: 'Password reset successfully' };
     }
 
-    // ── 2FA (email-based) ─────────────────────────────────────────
+    // ── 2FA ───────────────────────────────────────────────────────
 
-    async send2FACode(userId: string) {
+    private generateBackupCodes(): string[] {
+        return Array.from({ length: BACKUP_CODE_COUNT }, () =>
+            crypto.randomBytes(4).toString('hex').toUpperCase(),
+        );
+    }
+
+    private async hashBackupCodes(codes: string[]): Promise<string[]> {
+        return Promise.all(codes.map(c => bcrypt.hash(c, 10)));
+    }
+
+    private generate2FAToken(userId: string): string {
+        return this.jwtService.sign(
+            { sub: userId, purpose: '2fa' },
+            {
+                secret: this.configService.get<string>('auth.jwtSecret'),
+                expiresIn: `${TWO_FA_TOKEN_TTL}s`,
+            },
+        );
+    }
+
+    verify2FAToken(token: string): string {
+        try {
+            const decoded = this.jwtService.verify(token, {
+                secret: this.configService.get<string>('auth.jwtSecret'),
+            });
+            if (decoded.purpose !== '2fa') throw new Error();
+            return decoded.sub;
+        } catch {
+            throw new UnauthorizedException('Invalid or expired 2FA token');
+        }
+    }
+
+    async setup2FA(userId: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        if (user.twoFactorEnabled) {
+            throw new BadRequestException('2FA is already enabled');
+        }
+
+        const secretObj = new Secret();
+        const secret = secretObj.base32;
+        const totp = new TOTP({ issuer: 'Parallly', label: user.email, secret: secretObj });
+        const otpauthUrl = totp.toString();
+        const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { twoFactorSecret: secret },
+        });
+
+        return { secret, otpauthUrl, qrCodeDataUrl };
+    }
+
+    async verifySetup2FA(userId: string, code: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        if (user.twoFactorEnabled) {
+            throw new BadRequestException('2FA is already enabled');
+        }
+        if (!user.twoFactorSecret) {
+            throw new BadRequestException('Run setup first');
+        }
+
+        const verifyTotp = new TOTP({ secret: Secret.fromBase32(user.twoFactorSecret) });
+        const isValid = verifyTotp.validate({ token: code, window: 1 }) !== null;
+        if (!isValid) {
+            throw new BadRequestException('Invalid code. Make sure your authenticator app is synced.');
+        }
+
+        const backupCodes = this.generateBackupCodes();
+        const hashedCodes = await this.hashBackupCodes(backupCodes);
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                twoFactorEnabled: true,
+                twoFactorMethod: 'totp',
+                backupCodes: hashedCodes,
+            },
+        });
+
+        this.logger.log(`[2FA] Enabled TOTP for user ${user.email}`);
+        return { backupCodes };
+    }
+
+    async disable2FA(userId: string, password: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        if (!user.twoFactorEnabled) {
+            throw new BadRequestException('2FA is not enabled');
+        }
+
+        if (user.password) {
+            const valid = await bcrypt.compare(password, user.password);
+            if (!valid) throw new UnauthorizedException('Incorrect password');
+        }
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: {
+                twoFactorEnabled: false,
+                twoFactorSecret: null,
+                twoFactorMethod: null,
+                backupCodes: [],
+            },
+        });
+
+        this.logger.log(`[2FA] Disabled for user ${user.email}`);
+        return { message: '2FA disabled' };
+    }
+
+    async regenerateBackupCodes(userId: string, password: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        if (!user.twoFactorEnabled) {
+            throw new BadRequestException('2FA is not enabled');
+        }
+
+        if (user.password) {
+            const valid = await bcrypt.compare(password, user.password);
+            if (!valid) throw new UnauthorizedException('Incorrect password');
+        }
+
+        const backupCodes = this.generateBackupCodes();
+        const hashedCodes = await this.hashBackupCodes(backupCodes);
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { backupCodes: hashedCodes },
+        });
+
+        return { backupCodes };
+    }
+
+    async send2FAEmail(userId: string) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
         const code = String(Math.floor(100000 + Math.random() * 900000));
-        const expires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+        const expires = new Date(Date.now() + 5 * 60 * 1000);
 
         await this.prisma.user.update({
             where: { id: userId },
@@ -843,35 +1016,83 @@ export class AuthService {
             html: twoFactorEmail(user.firstName, code),
         });
 
-        return { message: '2FA code sent' };
+        return { message: '2FA code sent to email' };
     }
 
-    async verify2FACode(userId: string, code: string) {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false) {
+        const userId = this.verify2FAToken(twoFAToken);
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: { tenant: true },
+        });
         if (!user) throw new NotFoundException('User not found');
 
-        if (!user.emailVerifyCode || !user.emailVerifyExpires ||
-            user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
-            throw new BadRequestException('Invalid or expired 2FA code');
+        let valid = false;
+
+        if (method === 'totp') {
+            if (!user.twoFactorSecret) throw new BadRequestException('TOTP not configured');
+            const t = new TOTP({ secret: Secret.fromBase32(user.twoFactorSecret) });
+            valid = t.validate({ token: code, window: 1 }) !== null;
+        } else if (method === 'email') {
+            if (!user.emailVerifyCode || !user.emailVerifyExpires ||
+                user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
+                valid = false;
+            } else {
+                valid = true;
+                await this.prisma.user.update({
+                    where: { id: userId },
+                    data: { emailVerifyCode: null, emailVerifyExpires: null },
+                });
+            }
+        } else if (method === 'backup') {
+            const normalized = code.toUpperCase().replace(/\s/g, '');
+            for (let i = 0; i < user.backupCodes.length; i++) {
+                const match = await bcrypt.compare(normalized, user.backupCodes[i]);
+                if (match) {
+                    valid = true;
+                    const updated = [...user.backupCodes];
+                    updated.splice(i, 1);
+                    await this.prisma.user.update({
+                        where: { id: userId },
+                        data: { backupCodes: updated },
+                    });
+                    break;
+                }
+            }
         }
 
-        await this.prisma.user.update({
-            where: { id: user.id },
-            data: { emailVerifyCode: null, emailVerifyExpires: null },
-        });
+        if (!valid) {
+            throw new BadRequestException('Invalid or expired code');
+        }
 
-        // Generate full tokens now that 2FA is passed
         const sid = await this.createSession(user.id, user.tenantId || undefined);
-
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
             role: user.role as UserRole,
             tenantId: user.tenantId || undefined,
         };
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { sid });
-        return { accessToken, refreshToken };
+        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+
+        return {
+            accessToken,
+            refreshToken,
+            user: {
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                tenantId: user.tenantId,
+                tenantName: user.tenant?.name,
+                picture: user.picture,
+                hasPassword: !!user.password,
+                emailVerified: user.emailVerified,
+                onboardingCompleted: effectiveOnboarding,
+            },
+        };
     }
 
     // ── Change password (authenticated) ──────────────────────────

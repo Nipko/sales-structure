@@ -100,8 +100,13 @@ export const api = {
         apiPost("/auth/reset-password", { email, code, newPassword }),
     changePassword: (currentPassword: string, newPassword: string) =>
         apiPost("/auth/change-password", { currentPassword, newPassword }),
-    send2FA: () => apiPost("/auth/send-2fa", {}),
-    verify2FA: (code: string) => apiPost("/auth/verify-2fa", { code }),
+    setup2FA: () => apiPost("/auth/2fa/setup", {}),
+    verifySetup2FA: (code: string) => apiPost("/auth/2fa/verify-setup", { code }),
+    disable2FA: (password: string) => apiPost("/auth/2fa/disable", { password }),
+    verify2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe?: boolean) =>
+        apiPost("/auth/2fa/verify", { twoFAToken, code, method, rememberMe }),
+    send2FAEmail: (twoFAToken: string) => apiPost("/auth/2fa/send-email", { twoFAToken }),
+    regenerateBackupCodes: (password: string) => apiPost("/auth/2fa/backup-codes", { password }),
 
     setupPassword: (password: string) =>
         apiPost("/auth/setup-password", { password }),

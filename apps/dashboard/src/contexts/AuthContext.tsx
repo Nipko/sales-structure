@@ -38,12 +38,18 @@ interface GoogleLoginResult {
     success: boolean;
     error?: string;
     redirect?: string;
+    requires2FA?: boolean;
+    twoFAToken?: string;
+    twoFactorMethod?: string;
 }
 
 interface LoginResult {
     success: boolean;
     error?: string;
     redirect?: string;
+    requires2FA?: boolean;
+    twoFAToken?: string;
+    twoFactorMethod?: string;
 }
 
 interface AuthContextType {
@@ -53,6 +59,8 @@ interface AuthContextType {
     verticalConfig: any | null;
     login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
     googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
+    complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe?: boolean) => Promise<LoginResult>;
+    send2FAEmailFallback: (twoFAToken: string) => Promise<boolean>;
     logout: () => void;
     hasRole: (...roles: string[]) => boolean;
 }
@@ -292,6 +300,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return { success: false, error: data.message || "Invalid credentials" };
             }
 
+            if (data.data.requires2FA) {
+                return {
+                    success: false,
+                    requires2FA: true,
+                    twoFAToken: data.data.twoFAToken,
+                    twoFactorMethod: data.data.twoFactorMethod,
+                };
+            }
+
             localStorage.setItem("accessToken", data.data.accessToken);
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
@@ -328,6 +345,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return { success: false, error: data.message || "Error logging in with Google" };
             }
 
+            if (data.data.requires2FA) {
+                return {
+                    success: false,
+                    requires2FA: true,
+                    twoFAToken: data.data.twoFAToken,
+                    twoFactorMethod: data.data.twoFactorMethod,
+                };
+            }
+
             localStorage.setItem("accessToken", data.data.accessToken);
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
@@ -343,6 +369,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return { success: false, error: "Connection error con el servidor" };
         }
     }, [getRedirectPath, fetchVerticalConfig]);
+
+    const complete2FALogin = useCallback(async (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false): Promise<LoginResult> => {
+        try {
+            const res = await fetch(`${API_URL}/auth/2fa/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ twoFAToken, code, method, rememberMe }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                return { success: false, error: data.message || "Invalid code" };
+            }
+
+            localStorage.setItem("accessToken", data.data.accessToken);
+            localStorage.setItem("refreshToken", data.data.refreshToken);
+            localStorage.setItem("user", JSON.stringify(data.data.user));
+
+            setUser(data.data.user);
+
+            if (data.data.user.tenantId) {
+                fetchVerticalConfig(data.data.user.tenantId);
+            }
+
+            return { success: true, redirect: getRedirectPath(data.data.user) };
+        } catch {
+            return { success: false, error: "Connection error" };
+        }
+    }, [getRedirectPath, fetchVerticalConfig]);
+
+    const send2FAEmailFallback = useCallback(async (twoFAToken: string): Promise<boolean> => {
+        try {
+            const res = await fetch(`${API_URL}/auth/2fa/send-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ twoFAToken }),
+            });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    }, []);
 
     const performLogout = useCallback((expired = false, kicked = false) => {
         const refreshToken = localStorage.getItem("refreshToken");
@@ -411,6 +480,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 verticalConfig,
                 login,
                 googleLogin,
+                complete2FALogin,
+                send2FAEmailFallback,
                 logout,
                 hasRole,
             }}

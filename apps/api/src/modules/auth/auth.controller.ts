@@ -211,9 +211,19 @@ export class AuthController {
         try {
             const microsoftUser = await this.microsoftAuth.exchangeCode(code);
             const result = await this.authService.microsoftLogin(microsoftUser, state === 'remember');
+
+            if (result.requires2FA) {
+                const params = new URLSearchParams({
+                    requires2FA: 'true',
+                    twoFAToken: result.twoFAToken!,
+                    twoFactorMethod: result.twoFactorMethod || 'totp',
+                });
+                return res.redirect(`${dashboardUrl}/login?${params}`);
+            }
+
             const params = new URLSearchParams({
-                accessToken: result.accessToken,
-                refreshToken: result.refreshToken,
+                accessToken: result.accessToken!,
+                refreshToken: result.refreshToken!,
                 user: JSON.stringify(result.user),
             });
             return res.redirect(`${dashboardUrl}/auth/callback?${params}`);
@@ -423,25 +433,62 @@ export class AuthController {
         return { success: true, data: result };
     }
 
-    // ── 2FA (email-based) ────────────────────────────────────────
+    // ── 2FA ──────────────────────────────────────────────────────
 
-    @Post('send-2fa')
+    @Post('2fa/setup')
     @UseGuards(AuthGuard('jwt'))
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Send 2FA code via email' })
-    async send2FA(@Request() req: any) {
-        await this.authService.send2FACode(req.user.id);
+    @ApiOperation({ summary: 'Generate TOTP secret and QR code for 2FA setup' })
+    async setup2FA(@Request() req: any) {
+        const result = await this.authService.setup2FA(req.user.id);
+        return { success: true, data: result };
+    }
+
+    @Post('2fa/verify-setup')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verify first TOTP code to activate 2FA' })
+    async verifySetup2FA(@Request() req: any, @Body() body: { code: string }) {
+        const result = await this.authService.verifySetup2FA(req.user.id, body.code);
+        return { success: true, data: result };
+    }
+
+    @Post('2fa/disable')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Disable 2FA (requires password)' })
+    async disable2FA(@Request() req: any, @Body() body: { password: string }) {
+        const result = await this.authService.disable2FA(req.user.id, body.password);
+        return { success: true, data: result };
+    }
+
+    @Post('2fa/verify')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Verify 2FA code during login (public — uses twoFAToken)' })
+    async verify2FA(@Body() body: { twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup'; rememberMe?: boolean }) {
+        const result = await this.authService.verify2FA(body.twoFAToken, body.code, body.method, body.rememberMe);
+        return { success: true, data: result };
+    }
+
+    @Post('2fa/send-email')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Send 2FA fallback code via email (public — uses twoFAToken)' })
+    async send2FAEmail(@Body() body: { twoFAToken: string }) {
+        const userId = this.authService.verify2FAToken(body.twoFAToken);
+        await this.authService.send2FAEmail(userId);
         return { success: true };
     }
 
-    @Post('verify-2fa')
+    @Post('2fa/backup-codes')
     @UseGuards(AuthGuard('jwt'))
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Verify 2FA code and get full tokens' })
-    async verify2FA(@Request() req: any, @Body() body: { code: string }) {
-        const result = await this.authService.verify2FACode(req.user.id, body.code);
+    @ApiOperation({ summary: 'Regenerate backup codes (requires password)' })
+    async regenerateBackupCodes(@Request() req: any, @Body() body: { password: string }) {
+        const result = await this.authService.regenerateBackupCodes(req.user.id, body.password);
         return { success: true, data: result };
     }
 }

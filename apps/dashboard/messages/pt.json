@@ -958,7 +958,19 @@
       "passwordUpdated": "Senha atualizada",
       "twoFactor": "Autenticação de dois fatores (2FA)",
       "twoFactorDesc": "Proteja sua conta com um código adicional ao fazer login",
-      "comingSoon": "Em breve",
+      "twoFactorActive": "Ativado",
+      "enable2FA": "Ativar autenticação de dois fatores",
+      "disable2FA": "Desativar 2FA",
+      "regenBackupCodes": "Regenerar códigos de backup",
+      "scanQR": "Escaneie este código QR com seu aplicativo de autenticação (Google Authenticator, Authy, 1Password, etc.)",
+      "manualEntry": "Ou insira esta chave manualmente:",
+      "enterCode": "Insira o código de 6 dígitos do seu app",
+      "activateButton": "Ativar 2FA",
+      "invalidCode": "Código inválido. Verifique se seu app está sincronizado.",
+      "backupWarning": "Salve estes códigos de backup em um lugar seguro. Cada código só pode ser usado uma vez. Se você perder acesso ao seu app de autenticação, estes códigos são a única forma de acessar sua conta.",
+      "backupSaved": "Já salvei",
+      "disableConfirm": "Para desativar a autenticação de dois fatores, insira sua senha.",
+      "confirmWithPassword": "Senha",
       "passwordsMatch": "As senhas coincidem",
       "val8chars": "Pelo menos 8 caracteres",
       "valUppercase": "Pelo menos 1 letra maiuscula",
@@ -4769,5 +4781,21 @@
         "description": "Os convites duram 14 dias. Peça ao admin um novo."
       }
     }
+  },
+  "twoFactor": {
+    "title": "Verificação de dois fatores",
+    "totpDescription": "Insira o código de 6 dígitos do seu aplicativo de autenticação.",
+    "emailDescription": "Enviamos um código de verificação para {email}.",
+    "backupDescription": "Insira um dos seus códigos de backup.",
+    "invalidCode": "Código inválido ou expirado",
+    "verify": "Verificar",
+    "verifying": "Verificando...",
+    "useEmail": "Enviar código por email",
+    "resendEmail": "Reenviar código por email",
+    "sendingEmail": "Enviando...",
+    "useAuthenticator": "Usar app de autenticação",
+    "useBackupCode": "Usar código de backup",
+    "backupPlaceholder": "Código de backup",
+    "backToLogin": "Voltar ao login"
   }
 }

@@ -958,7 +958,19 @@
       "passwordUpdated": "Mot de passe mis à jour",
       "twoFactor": "Authentification à deux facteurs (2FA)",
       "twoFactorDesc": "Protégez votre compte avec un code supplémentaire à la connexion",
-      "comingSoon": "Bientôt disponible",
+      "twoFactorActive": "Activé",
+      "enable2FA": "Activer l'authentification à deux facteurs",
+      "disable2FA": "Désactiver le 2FA",
+      "regenBackupCodes": "Régénérer les codes de secours",
+      "scanQR": "Scannez ce code QR avec votre application d'authentification (Google Authenticator, Authy, 1Password, etc.)",
+      "manualEntry": "Ou entrez cette clé manuellement :",
+      "enterCode": "Entrez le code à 6 chiffres de votre application",
+      "activateButton": "Activer le 2FA",
+      "invalidCode": "Code invalide. Vérifiez que votre application est synchronisée.",
+      "backupWarning": "Sauvegardez ces codes de secours dans un endroit sûr. Chaque code ne peut être utilisé qu'une seule fois. Si vous perdez l'accès à votre application d'authentification, ces codes sont le seul moyen d'accéder à votre compte.",
+      "backupSaved": "Je les ai sauvegardés",
+      "disableConfirm": "Pour désactiver l'authentification à deux facteurs, entrez votre mot de passe.",
+      "confirmWithPassword": "Mot de passe",
       "passwordsMatch": "Les mots de passe correspondent",
       "val8chars": "Au moins 8 caracteres",
       "valUppercase": "Au moins 1 lettre majuscule",
@@ -4769,5 +4781,21 @@
         "description": "Les invitations durent 14 jours. Demandez à l'admin une nouvelle."
       }
     }
+  },
+  "twoFactor": {
+    "title": "Vérification à deux facteurs",
+    "totpDescription": "Entrez le code à 6 chiffres de votre application d'authentification.",
+    "emailDescription": "Nous avons envoyé un code de vérification à {email}.",
+    "backupDescription": "Entrez l'un de vos codes de secours.",
+    "invalidCode": "Code invalide ou expiré",
+    "verify": "Vérifier",
+    "verifying": "Vérification...",
+    "useEmail": "Envoyer le code par email",
+    "resendEmail": "Renvoyer le code par email",
+    "sendingEmail": "Envoi...",
+    "useAuthenticator": "Utiliser l'application d'authentification",
+    "useBackupCode": "Utiliser un code de secours",
+    "backupPlaceholder": "Code de secours",
+    "backToLogin": "Retour à la connexion"
   }
 }

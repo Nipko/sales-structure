@@ -77,6 +77,10 @@ model User {
   emailVerified       Boolean   @default(false) @map("email_verified")
   emailVerifyCode     String?   @map("email_verify_code")
   emailVerifyExpires  DateTime? @map("email_verify_expires")
+  twoFactorEnabled    Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret     String?   @map("two_factor_secret")
+  twoFactorMethod     String?   @map("two_factor_method")
+  backupCodes         String[]  @default([]) @map("backup_codes")
   onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
   phone               String?
   jobTitle            String?   @map("job_title")

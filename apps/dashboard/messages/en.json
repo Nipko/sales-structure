@@ -958,7 +958,19 @@
       "passwordUpdated": "Password updated",
       "twoFactor": "Two-Factor Authentication (2FA)",
       "twoFactorDesc": "Protect your account with an additional code at login",
-      "comingSoon": "Coming Soon",
+      "twoFactorActive": "Active",
+      "enable2FA": "Enable two-factor authentication",
+      "disable2FA": "Disable 2FA",
+      "regenBackupCodes": "Regenerate backup codes",
+      "scanQR": "Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.)",
+      "manualEntry": "Or enter this key manually:",
+      "enterCode": "Enter the 6-digit code from your app",
+      "activateButton": "Activate 2FA",
+      "invalidCode": "Invalid code. Make sure your app is synced.",
+      "backupWarning": "Save these backup codes in a safe place. Each code can only be used once. If you lose access to your authenticator app, these codes are the only way to access your account.",
+      "backupSaved": "I've saved them",
+      "disableConfirm": "To disable two-factor authentication, enter your password.",
+      "confirmWithPassword": "Password",
       "passwordsMatch": "Passwords match",
       "val8chars": "At least 8 characters",
       "valUppercase": "At least 1 uppercase letter",
@@ -4769,5 +4781,21 @@
         "description": "Invitations last 14 days. Ask the admin to send you a new one."
       }
     }
+  },
+  "twoFactor": {
+    "title": "Two-factor verification",
+    "totpDescription": "Enter the 6-digit code from your authenticator app.",
+    "emailDescription": "We sent a verification code to {email}.",
+    "backupDescription": "Enter one of your backup codes.",
+    "invalidCode": "Invalid or expired code",
+    "verify": "Verify",
+    "verifying": "Verifying...",
+    "useEmail": "Send code via email",
+    "resendEmail": "Resend code via email",
+    "sendingEmail": "Sending...",
+    "useAuthenticator": "Use authenticator app",
+    "useBackupCode": "Use backup code",
+    "backupPlaceholder": "Backup code",
+    "backToLogin": "Back to login"
   }
 }

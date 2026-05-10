@@ -9,6 +9,7 @@ import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import TwoFactorVerification from "@/components/TwoFactorVerification";
 
 const GOOGLE_CLIENT_ID =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -38,8 +39,9 @@ export default function LoginPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [googleReady, setGoogleReady] = useState(false);
+    const [twoFAState, setTwoFAState] = useState<{ token: string; method: string; email?: string } | null>(null);
     const googleHiddenRef = useRef<HTMLDivElement>(null);
-    const { login, googleLogin } = useAuth();
+    const { login, googleLogin, complete2FALogin, send2FAEmailFallback } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const sessionExpired = searchParams.get("expired") === "1";
@@ -50,7 +52,9 @@ export default function LoginPage() {
             setError("");
             setIsGoogleLoading(true);
             const result = await googleLogin(response.credential, rememberMe);
-            if (result.success && result.redirect) {
+            if (result.requires2FA && result.twoFAToken) {
+                setTwoFAState({ token: result.twoFAToken, method: result.twoFactorMethod || 'totp', email });
+            } else if (result.success && result.redirect) {
                 router.push(result.redirect);
             } else if (result.error !== "session_conflict") {
                 setError(result.error || t('googleLoginError'));
@@ -106,7 +110,9 @@ export default function LoginPage() {
 
         const result = await login(email, password, rememberMe);
 
-        if (result.success) {
+        if (result.requires2FA && result.twoFAToken) {
+            setTwoFAState({ token: result.twoFAToken, method: result.twoFactorMethod || 'totp', email });
+        } else if (result.success) {
             router.push(result.redirect || "/admin");
         } else if (result.error !== "session_conflict") {
             setError(result.error || t('loginError'));
@@ -142,6 +148,18 @@ export default function LoginPage() {
 
                 {/* Login Card */}
                 <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                    {twoFAState ? (
+                        <TwoFactorVerification
+                            twoFAToken={twoFAState.token}
+                            twoFactorMethod={twoFAState.method}
+                            userEmail={twoFAState.email}
+                            rememberMe={rememberMe}
+                            onVerify={complete2FALogin}
+                            onSendEmail={send2FAEmailFallback}
+                            onBack={() => setTwoFAState(null)}
+                            onSuccess={(redirect) => router.push(redirect)}
+                        />
+                    ) : (<>
                     <h1 className="text-2xl font-semibold text-foreground mb-1">
                         {t('login')}
                     </h1>
@@ -298,6 +316,7 @@ export default function LoginPage() {
                             {isSubmitting ? t('submitting') : t('login')}
                         </button>
                     </form>
+                    </>)}
                 </div>
 
                 {/* Signup Link */}

@@ -958,7 +958,19 @@
       "passwordUpdated": "Contraseña actualizada",
       "twoFactor": "Autenticación de dos factores (2FA)",
       "twoFactorDesc": "Protege tu cuenta con un código adicional al iniciar sesión",
-      "comingSoon": "Próximamente",
+      "twoFactorActive": "Activado",
+      "enable2FA": "Activar autenticación de dos factores",
+      "disable2FA": "Desactivar 2FA",
+      "regenBackupCodes": "Regenerar códigos de respaldo",
+      "scanQR": "Escaneá este código QR con tu aplicación de autenticación (Google Authenticator, Authy, 1Password, etc.)",
+      "manualEntry": "O ingresá esta clave manualmente:",
+      "enterCode": "Ingresá el código de 6 dígitos de tu app",
+      "activateButton": "Activar 2FA",
+      "invalidCode": "Código inválido. Verificá que tu app esté sincronizada.",
+      "backupWarning": "Guardá estos códigos de respaldo en un lugar seguro. Cada código solo se puede usar una vez. Si perdés acceso a tu app de autenticación, estos códigos son la única forma de ingresar a tu cuenta.",
+      "backupSaved": "Ya los guardé",
+      "disableConfirm": "Para desactivar la autenticación de dos factores, ingresá tu contraseña.",
+      "confirmWithPassword": "Contraseña",
       "passwordsMatch": "Las contrasenas coinciden",
       "val8chars": "Al menos 8 caracteres",
       "valUppercase": "Al menos 1 letra mayuscula",
@@ -4769,5 +4781,21 @@
         "description": "Las invitaciones duran 14 días. Pedile al administrador que te envíe una nueva."
       }
     }
+  },
+  "twoFactor": {
+    "title": "Verificación de dos factores",
+    "totpDescription": "Ingresá el código de 6 dígitos de tu app de autenticación.",
+    "emailDescription": "Enviamos un código de verificación a {email}.",
+    "backupDescription": "Ingresá uno de tus códigos de respaldo.",
+    "invalidCode": "Código inválido o expirado",
+    "verify": "Verificar",
+    "verifying": "Verificando...",
+    "useEmail": "Enviar código por email",
+    "resendEmail": "Reenviar código por email",
+    "sendingEmail": "Enviando...",
+    "useAuthenticator": "Usar app de autenticación",
+    "useBackupCode": "Usar código de respaldo",
+    "backupPlaceholder": "Código de respaldo",
+    "backToLogin": "Volver al inicio de sesión"
   }
 }

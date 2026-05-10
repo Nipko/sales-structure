@@ -19,6 +19,7 @@ export default function SettingsHub() {
         canManageBilling: role.canManageBilling,
         isSupervisor: role.isSupervisor,
         canManagePlatform: role.canManagePlatform,
+        isSuperAdminPlatformMode: role.isSuperAdmin && !role.impersonating,
     });
 
     return (

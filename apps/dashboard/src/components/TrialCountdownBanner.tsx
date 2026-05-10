@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Sparkles, AlertTriangle, X } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +20,11 @@ import { cn } from "@/lib/utils";
 export default function TrialCountdownBanner() {
     const t = useTranslations("trialBanner");
     const { activeTenantId } = useTenant();
+    const { isSuperAdmin, impersonating } = useRole();
     const [daysLeft, setDaysLeft] = useState<number | null>(null);
     const [dismissed, setDismissed] = useState(false);
+
+    if (isSuperAdmin && !impersonating) return null;
 
     useEffect(() => {
         if (!activeTenantId) return;

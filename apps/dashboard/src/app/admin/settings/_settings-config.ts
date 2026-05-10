@@ -22,6 +22,7 @@ export type Role = {
     canManageBilling: boolean;
     isSupervisor: boolean;
     canManagePlatform: boolean;
+    isSuperAdminPlatformMode: boolean;
 };
 
 export interface SettingItem {
@@ -51,10 +52,10 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "appearance", href: "/admin/settings/appearance", icon: Palette, iconColor: "text-purple-500", iconBg: "bg-purple-500/10" },
         ],
     },
-    // ── Company — admin only (tenant-wide identity) ──
+    // ── Company — admin only (tenant-wide identity), hidden for super_admin in platform mode ──
     {
         key: "company",
-        visible: (r) => r.canManageBilling,
+        visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
         items: [
             { key: "companyGeneral", href: "/admin/settings/company", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
             { key: "businessInfo", href: "/admin/settings/business-info", icon: Info, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
@@ -63,10 +64,10 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "businessHours", href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10" },
         ],
     },
-    // ── Operations — supervisor+ (workflows like pipeline, scoring, custom fields) ──
+    // ── Operations — supervisor+ but hidden for super_admin in platform mode ──
     {
         key: "operations",
-        visible: (r) => r.isSupervisor,
+        visible: (r) => r.isSupervisor && !r.isSuperAdminPlatformMode,
         items: [
             { key: "pipelineStages", href: "/admin/settings/pipeline", icon: GitBranch, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
             { key: "scoringConfig", href: "/admin/settings/scoring-config", icon: BarChart2, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
@@ -75,10 +76,10 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "publicBooking", href: "/admin/settings/public-booking", icon: CalendarCheck, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
         ],
     },
-    // ── Communication — supervisor+ (templates, macros, media, recall) ──
+    // ── Communication — supervisor+ but hidden for super_admin in platform mode ──
     {
         key: "communication",
-        visible: (r) => r.isSupervisor,
+        visible: (r) => r.isSupervisor && !r.isSuperAdminPlatformMode,
         items: [
             { key: "emailTemplates", href: "/admin/settings/email-templates", icon: Mail, iconColor: "text-purple-500", iconBg: "bg-purple-500/10" },
             { key: "macros", href: "/admin/settings/macros", icon: Zap, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
@@ -86,10 +87,10 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "recall", href: "/admin/settings/recall", icon: RotateCcw, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10", visible: (r) => r.canManageBilling },
         ],
     },
-    // ── Integrations & alerts — admin only ──
+    // ── Integrations & alerts — admin only, hidden for super_admin in platform mode ──
     {
         key: "integrations",
-        visible: (r) => r.canManageBilling,
+        visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
         items: [
             { key: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
             { key: "alerts", href: "/admin/settings/alerts", icon: BellRing, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },

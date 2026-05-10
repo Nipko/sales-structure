@@ -171,21 +171,6 @@ const platformSections: NavSectionDef[] = [
     ],
   },
   {
-    titleKey: "platformConfig",
-    items: [
-      {
-        labelKey: "aiModels",
-        icon: Brain,
-        children: [
-          { labelKey: "llmProviders", href: "/admin/settings/ai-providers" },
-          { labelKey: "aiConfig", href: "/admin/settings/ai-config" },
-        ]
-      },
-      { labelKey: "channelsPhone", href: "/admin/settings/channels", icon: Radio },
-      { labelKey: "platformAdvanced", href: "/admin/settings/platform", icon: Settings },
-    ],
-  },
-  {
     titleKey: "config",
     items: [
       { labelKey: "personalSettings", href: "/admin/settings", icon: Settings },
@@ -204,7 +189,6 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>({
     crm: true,
     automation: true,
-    aiModels: true,
   });
 
   const pathname = usePathname();

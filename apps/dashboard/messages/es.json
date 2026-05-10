@@ -124,7 +124,7 @@
       "aiModels": "Modelos de IA",
       "llmProviders": "Proveedores LLM",
       "aiConfig": "Configuración IA",
-      "channelsPhone": "Canales (teléfonos)",
+      "channelsPhone": "Conexiones manuales",
       "platformAdvanced": "Avanzado",
       "personalSettings": "Mi configuración"
     }

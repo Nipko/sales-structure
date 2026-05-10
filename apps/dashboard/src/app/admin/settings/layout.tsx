@@ -22,6 +22,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         canManageBilling: role.canManageBilling,
         isSupervisor: role.isSupervisor,
         canManagePlatform: role.canManagePlatform,
+        isSuperAdminPlatformMode: role.isSuperAdmin && !role.impersonating,
     });
 
     const isActive = (href: string) =>

@@ -92,6 +92,9 @@ export const api = {
     login: (email: string, password: string) =>
         apiPost("/auth/login", { email, password }),
 
+    exchangeOAuthCode: (code: string) =>
+        apiPost("/auth/exchange-code", { code }),
+
     googleLogin: (idToken: string) =>
         apiPost("/auth/google", { idToken }),
     forgotPassword: (email: string) =>

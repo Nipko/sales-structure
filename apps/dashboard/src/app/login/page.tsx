@@ -49,9 +49,14 @@ export default function LoginPage() {
 
     useEffect(() => {
         if (searchParams.get("requires2FA") === "true") {
-            const token = searchParams.get("twoFAToken") || "";
-            const method = searchParams.get("twoFactorMethod") || "totp";
-            if (token) setTwoFAState({ token, method });
+            try {
+                const raw = sessionStorage.getItem("pending2FA");
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed.token) setTwoFAState({ token: parsed.token, method: parsed.method || "totp" });
+                    sessionStorage.removeItem("pending2FA");
+                }
+            } catch { /* noop */ }
         }
     }, [searchParams]);
 

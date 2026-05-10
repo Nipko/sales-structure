@@ -33,6 +33,7 @@ const REFRESH_TTL_REMEMBER = 14 * 24 * 60 * 60; // 14 days
 
 const SESSION_TTL = 360; // 6 min — refreshed by activity ping (frontend sends every 5 min)
 const TWO_FA_TOKEN_TTL = 300; // 5 min — temporary token for 2FA verification
+const EXCHANGE_CODE_TTL = 60; // 60s — one-time code for OAuth redirect token exchange
 const BACKUP_CODE_COUNT = 10;
 
 @Injectable()
@@ -91,6 +92,23 @@ export class AuthService {
         }, refreshTtl);
 
         return { accessToken, refreshToken };
+    }
+
+    async createExchangeCode(data: {
+        accessToken?: string; refreshToken?: string; user?: any;
+        requires2FA?: boolean; twoFAToken?: string; twoFactorMethod?: string;
+    }): Promise<string> {
+        const code = crypto.randomBytes(32).toString('hex');
+        await this.redis.setJson(`oauth_exchange:${code}`, data, EXCHANGE_CODE_TTL);
+        return code;
+    }
+
+    async redeemExchangeCode(code: string): Promise<any> {
+        const key = `oauth_exchange:${code}`;
+        const data = await this.redis.getJson(key);
+        if (!data) throw new UnauthorizedException('Invalid or expired exchange code');
+        await this.redis.del(key);
+        return data;
     }
 
     /**

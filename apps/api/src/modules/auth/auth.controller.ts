@@ -86,6 +86,14 @@ export class AuthController {
         private configService: ConfigService,
     ) { }
 
+    @Post('exchange-code')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Exchange a one-time OAuth code for session tokens' })
+    async exchangeCode(@Body() body: { code: string }) {
+        const data = await this.authService.redeemExchangeCode(body.code);
+        return { success: true, data };
+    }
+
     @Post('login')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login with email and password' })
@@ -212,21 +220,13 @@ export class AuthController {
             const microsoftUser = await this.microsoftAuth.exchangeCode(code);
             const result = await this.authService.microsoftLogin(microsoftUser, state === 'remember', true);
 
-            if (result.requires2FA) {
-                const params = new URLSearchParams({
-                    requires2FA: 'true',
-                    twoFAToken: result.twoFAToken!,
-                    twoFactorMethod: result.twoFactorMethod || 'totp',
-                });
-                return res.redirect(`${dashboardUrl}/login?${params}`);
-            }
+            const exchangeCode = await this.authService.createExchangeCode(
+                result.requires2FA
+                    ? { requires2FA: true, twoFAToken: result.twoFAToken, twoFactorMethod: result.twoFactorMethod || 'totp' }
+                    : { accessToken: result.accessToken, refreshToken: result.refreshToken, user: result.user },
+            );
 
-            const params = new URLSearchParams({
-                accessToken: result.accessToken!,
-                refreshToken: result.refreshToken!,
-                user: JSON.stringify(result.user),
-            });
-            return res.redirect(`${dashboardUrl}/auth/callback?${params}`);
+            return res.redirect(`${dashboardUrl}/auth/callback?code=${exchangeCode}`);
         } catch (error: any) {
             return res.redirect(`${dashboardUrl}/login?error=${encodeURIComponent(error.message || 'Microsoft auth failed')}`);
         }

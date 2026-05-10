@@ -411,10 +411,10 @@ export class VerticalsService {
                 const a = f.answer[lang] || f.answer['es'];
                 await this.prisma.executeInTenantSchema(
                     schemaName,
-                    `INSERT INTO faqs (tenant_id, question, answer, category, is_published)
-                     VALUES ($1::uuid, $2, $3, $4, true)
+                    `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
+                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
                      ON CONFLICT DO NOTHING`,
-                    [tenantId, q, a, f.category],
+                    [q, a, f.category],
                 );
             }
             this.logger.debug(`Seeded ${faqs.length} tours-specific FAQs`);
@@ -541,10 +541,10 @@ export class VerticalsService {
                 const a = f.answer[lang] || f.answer['es'];
                 await this.prisma.executeInTenantSchema(
                     schemaName,
-                    `INSERT INTO faqs (tenant_id, question, answer, category, is_published)
-                     VALUES ($1::uuid, $2, $3, $4, true)
+                    `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
+                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
                      ON CONFLICT DO NOTHING`,
-                    [tenantId, q, a, f.category],
+                    [q, a, f.category],
                 );
             }
             this.logger.debug(`Seeded ${faqs.length} dental-specific FAQs`);
@@ -642,10 +642,10 @@ export class VerticalsService {
                 const a = f.answer[lang] || f.answer['es'];
                 await this.prisma.executeInTenantSchema(
                     schemaName,
-                    `INSERT INTO faqs (tenant_id, question, answer, category, is_published)
-                     VALUES ($1::uuid, $2, $3, $4, true)
+                    `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
+                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
                      ON CONFLICT DO NOTHING`,
-                    [tenantId, q, a, f.category],
+                    [q, a, f.category],
                 );
             }
             this.logger.debug(`Seeded ${faqs.length} inmobiliaria-specific FAQs`);

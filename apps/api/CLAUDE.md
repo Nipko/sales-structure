@@ -1,7 +1,7 @@
 # API Service — Claude Code Context
 
 ## Overview
-NestJS 10 backend with 40 modules. Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 58 modules. Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 

@@ -2,7 +2,7 @@
 
 ## What is this project?
 Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and SMS.
-Monorepo with 4 NestJS/Next.js apps, deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Monorepo with 4 NestJS/Next.js apps (58 API modules, 78 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
 
 ## Architecture (high-level)
 
@@ -101,7 +101,7 @@ See `.env.example`. Critical:
 
 - Landing: https://parallly-chat.cloud (static, nginx, 4-lang i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js)
-- API: https://api.parallly-chat.cloud (NestJS, 40 modules)
+- API: https://api.parallly-chat.cloud (NestJS, 58 modules)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
@@ -118,7 +118,8 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | Topic | File |
 |-------|------|
 | **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience** | `docs/architecture-detail.md` |
-| **40 modules table + key files for common tasks (~80 entries) + dashboard pages (60+) + cron jobs** | `docs/modules-reference.md` |
+| **58 modules reference + all endpoints + 78 dashboard pages + 6 BullMQ queues + 28 cron jobs** | `docs/modules-reference.md` |
+| **Platform audit (May 2026): functionality inventory, i18n gaps, industry scorecard, vertical matrix, improvement roadmap** | `docs/platform-audit-2026-05.md` |
 | **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system** | `docs/analytics-billing-reference.md` |
 | **Historical changelog (Session entries, navigation redesigns, security fixes, UX overhauls)** | `docs/CHANGELOG.md` |
 | **Vertical adaptation strategy** | `docs/vertical-strategy.md` |

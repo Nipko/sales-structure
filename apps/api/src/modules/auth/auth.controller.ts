@@ -210,7 +210,7 @@ export class AuthController {
         const dashboardUrl = this.configService.get('DASHBOARD_URL', 'https://admin.parallly-chat.cloud');
         try {
             const microsoftUser = await this.microsoftAuth.exchangeCode(code);
-            const result = await this.authService.microsoftLogin(microsoftUser, state === 'remember');
+            const result = await this.authService.microsoftLogin(microsoftUser, state === 'remember', true);
 
             if (result.requires2FA) {
                 const params = new URLSearchParams({

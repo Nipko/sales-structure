@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sheet,
@@ -191,6 +192,8 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     automation: true,
   });
 
+  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
+
   const pathname = usePathname();
   const { user, verticalConfig } = useAuth();
   const roleCtx = useRole();
@@ -225,6 +228,20 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const itemOrder = useTenantTree
     ? (verticalConfig?.sidebar?.itemOrder as string[] | undefined)
     : undefined;
+
+  useEffect(() => {
+    if (!user?.tenantId || !useTenantTree) return;
+    (async () => {
+      try {
+        const res = await api.getBusinessInfo(user.tenantId!);
+        if (res.success && res.data?.logoUrl) {
+          const base = (process.env.NEXT_PUBLIC_API_URL || "")
+            .replace(/\/api\/v1\/?$/, "");
+          setCompanyLogoUrl(base + res.data.logoUrl);
+        }
+      } catch { /* non-critical */ }
+    })();
+  }, [user?.tenantId, useTenantTree]);
 
   const isActive = useCallback((href?: string) => {
     if (!href) return false;
@@ -349,14 +366,18 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-3 py-3 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className={cn(
-              "w-8 h-8 rounded-lg border flex items-center justify-center shrink-0",
+              "w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 overflow-hidden",
               useTenantTree
                 ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20"
                 : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
             )}>
-              <Building2 size={16} className={useTenantTree
-                ? "text-indigo-600 dark:text-indigo-400"
-                : "text-amber-600 dark:text-amber-400"} />
+              {useTenantTree && companyLogoUrl ? (
+                <img src={companyLogoUrl} alt="" className="w-full h-full object-contain p-0.5" />
+              ) : (
+                <Building2 size={16} className={useTenantTree
+                  ? "text-indigo-600 dark:text-indigo-400"
+                  : "text-amber-600 dark:text-amber-400"} />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-bold text-foreground truncate">

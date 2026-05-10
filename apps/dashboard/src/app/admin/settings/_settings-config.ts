@@ -57,8 +57,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
         key: "company",
         visible: (r) => r.canManageBilling && !r.isSuperAdminPlatformMode,
         items: [
-            { key: "companyGeneral", href: "/admin/settings/company", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
-            { key: "businessInfo", href: "/admin/settings/business-info", icon: Info, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+            { key: "businessInfo", href: "/admin/settings/business-info", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
             { key: "policies", href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
             { key: "localization", href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "businessHours", href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10" },

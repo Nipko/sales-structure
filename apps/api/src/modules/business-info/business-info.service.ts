@@ -151,7 +151,33 @@ export class BusinessInfoService {
         ) as any[];
 
         await this.invalidateCache(tenantId);
+        await this.syncToTenantSettings(tenantId, input);
         return this.rowToIdentity(tenantId, rows[0]);
+    }
+
+    private async syncToTenantSettings(tenantId: string, input: UpsertBusinessIdentityInput): Promise<void> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            });
+            const current = (tenant?.settings ?? {}) as Record<string, any>;
+            const merged = {
+                ...current,
+                companyName: input.companyName,
+                website: input.website ?? current.website,
+                industry: input.industry ?? current.industry,
+                phone: input.phone ?? current.phone,
+                supportEmail: input.email ?? current.supportEmail,
+                socialLinks: input.socialLinks ?? current.socialLinks,
+            };
+            await this.prisma.tenant.update({
+                where: { id: tenantId },
+                data: { settings: merged as any },
+            });
+        } catch (e: any) {
+            this.logger.warn(`syncToTenantSettings failed (non-fatal): ${e.message}`);
+        }
     }
 
     /** Public endpoint lookup by tenant slug (no auth). */

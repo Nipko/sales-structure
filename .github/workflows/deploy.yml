@@ -208,6 +208,7 @@ jobs:
           PROD_SMTP_PORT: ${{ secrets.SMTP_PORT }}
           PROD_SMTP_USER: ${{ secrets.SMTP_USER }}
           PROD_SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          PROD_SMTP_FROM: ${{ secrets.SMTP_FROM }}
           PROD_BULL_BOARD_TOKEN: ${{ secrets.BULL_BOARD_TOKEN }}
           PROD_GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
           PROD_JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
@@ -251,7 +252,7 @@ jobs:
             PROD_OPENAI_API_KEY,PROD_ANTHROPIC_API_KEY,PROD_GOOGLE_AI_KEY,PROD_XAI_API_KEY,PROD_DEEPSEEK_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,
-            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,
+            PROD_SMTP_HOST,PROD_SMTP_PORT,PROD_SMTP_USER,PROD_SMTP_PASS,PROD_SMTP_FROM,
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
@@ -349,7 +350,7 @@ jobs:
             echo "SMTP_PORT=${PROD_SMTP_PORT:-587}" >> .env
             echo "SMTP_USER=${PROD_SMTP_USER}" >> .env
             echo "SMTP_PASS=${PROD_SMTP_PASS}" >> .env
-            echo "SMTP_FROM=Parallly <${PROD_SMTP_USER}>" >> .env
+            echo "SMTP_FROM=${PROD_SMTP_FROM:-Parallly <${PROD_SMTP_USER}>}" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             echo "CLOUDFLARE_TUNNEL_TOKEN=${PROD_TUNNEL_TOKEN}" >> .env
             echo "# Observability" >> .env

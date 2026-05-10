@@ -324,17 +324,17 @@ export class BillingController {
         if (tenant?.schemaName) {
             const monthStart = `${aiMessages.monthKey}-01`;
             try {
-                const [convRows] = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(
+                const convResult = await this.prisma.$queryRawUnsafe(
                     `SELECT COUNT(*) as count FROM "${tenant.schemaName}".conversations WHERE created_at >= $1::date`,
                     monthStart,
-                );
-                conversations = Number(convRows?.count ?? 0);
+                ) as any[];
+                conversations = Number(convResult[0]?.count ?? 0);
             } catch { /* noop */ }
             try {
-                const [agentRows] = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(
+                const agentResult = await this.prisma.$queryRawUnsafe(
                     `SELECT COUNT(*) as count FROM "${tenant.schemaName}".agent_personas WHERE is_active = true`,
-                );
-                activeAgents = Number(agentRows?.count ?? 0);
+                ) as any[];
+                activeAgents = Number(agentResult[0]?.count ?? 0);
             } catch { /* noop */ }
         }
 

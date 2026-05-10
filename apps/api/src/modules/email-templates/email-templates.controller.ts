@@ -5,13 +5,19 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { EmailTemplatesService } from './email-templates.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('email-templates')
 @Controller('email-templates')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class EmailTemplatesController {
-    constructor(private service: EmailTemplatesService) {}
+    constructor(
+        private service: EmailTemplatesService,
+        private throttle: TenantThrottleService,
+        private prisma: PrismaService,
+    ) {}
 
     @Get(':tenantId')
     @ApiOperation({ summary: 'List all email templates' })
@@ -38,6 +44,9 @@ export class EmailTemplatesController {
         @Body() body: { name: string; slug: string; subject: string; bodyHtml: string; bodyJson?: any; variables?: string[] },
         @CurrentUser() user: any,
     ) {
+        const cnt = await this.prisma.executeInTenantSchema<any[]>(user.schemaName,
+            `SELECT COUNT(*)::int AS c FROM email_templates WHERE is_active = true`);
+        await this.throttle.enforcePlanLimit(tenantId, 'emailTemplates', cnt?.[0]?.c || 0, 'plantillas de email');
         const data = await this.service.create(user.schemaName, body);
         return { success: true, data };
     }

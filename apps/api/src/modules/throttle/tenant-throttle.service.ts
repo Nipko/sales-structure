@@ -3,31 +3,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 /**
- * Plan-based rate limiting for multi-tenant automation fairness.
+ * Plan-based rate limiting and feature gating for multi-tenant fairness.
  *
- * Prevents any single tenant from monopolizing shared queues.
- * Limits are enforced per hour using Redis sliding windows.
+ * Rate limits (per-hour sliding windows) are hardcoded here because they
+ * are operational knobs, not customer-facing features.
  *
- * Plans:
- *   starter    →   50 automation/h,   200 outbound/h
- *   pro        →  500 automation/h,  2000 outbound/h
- *   enterprise → 5000 automation/h, 20000 outbound/h
- *
- * Override mechanism:
- * super_admin can set per-tenant overrides at `tenant.settings.quotaOverrides`
- * to bump any limit above the plan default — useful for enterprise tenants
- * with traffic spikes or for testing without changing pricing tier. Pass
- * -1 to mean unlimited; omit a key to fall back to the plan default.
+ * Feature limits (resource counts, boolean flags) are read from the
+ * billing_plans table — the seed file is the single source of truth.
  */
 
 type ActionType = 'automation' | 'outbound' | 'broadcast';
 
 interface PlanLimits {
-    automation: number;   // max automation jobs per hour
-    outbound: number;     // max outbound messages per hour
-    broadcast: number;    // max broadcast messages per hour
-    priority: number;     // BullMQ job priority (1=highest)
-    maxPendingJobs: number; // max jobs queued per tenant
+    automation: number;
+    outbound: number;
+    broadcast: number;
+    priority: number;
+    maxPendingJobs: number;
 }
 
 export interface QuotaOverrides {
@@ -38,7 +30,6 @@ export interface QuotaOverrides {
     maxPendingJobs?: number;
     maxAgents?: number;
     maxCalendars?: number;
-    /** Optional metadata for the audit trail */
     reason?: string;
     setBy?: string;
     setAt?: string;
@@ -50,16 +41,10 @@ const PLAN_LIMITS: Record<string, PlanLimits> = {
     enterprise: { automation: 5000, outbound: 20000, broadcast: 50000,  priority: 1, maxPendingJobs: 1000 },
 };
 
-const PLAN_FEATURES: Record<string, { maxAgents: number; maxCalendars: number; templates: boolean; customPrompt: boolean }> = {
-    starter:    { maxAgents: 1,  maxCalendars: 1,   templates: false, customPrompt: false },
-    pro:        { maxAgents: 3,  maxCalendars: 3,   templates: true,  customPrompt: true },
-    enterprise: { maxAgents: 10, maxCalendars: 10,  templates: true,  customPrompt: true },
-    custom:     { maxAgents: 999, maxCalendars: 999, templates: true, customPrompt: true },
-};
-
 const DEFAULT_PLAN = 'starter';
-const WINDOW_SECONDS = 3600; // 1 hour
-const PLAN_CACHE_TTL = 300;  // 5 minutes
+const WINDOW_SECONDS = 3600;
+const PLAN_CACHE_TTL = 300;
+const FEATURES_CACHE_TTL = 300;
 
 @Injectable()
 export class TenantThrottleService {
@@ -70,9 +55,6 @@ export class TenantThrottleService {
         private readonly redis: RedisService,
     ) {}
 
-    /**
-     * Resolve effective limits for a tenant (plan defaults merged with overrides).
-     */
     private async resolveLimits(tenantId: string): Promise<{ plan: string; limits: PlanLimits; overrides: QuotaOverrides }> {
         const plan = await this.getTenantPlan(tenantId);
         const planDefaults = PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN];
@@ -84,17 +66,12 @@ export class TenantThrottleService {
             priority: overrides.priority ?? planDefaults.priority,
             maxPendingJobs: overrides.maxPendingJobs ?? planDefaults.maxPendingJobs,
         };
-        // -1 means unlimited — convert to Infinity for safe comparisons
         for (const k of ['automation', 'outbound', 'broadcast', 'maxPendingJobs'] as const) {
             if (merged[k] === -1) merged[k] = Number.POSITIVE_INFINITY;
         }
         return { plan, limits: merged, overrides };
     }
 
-    /**
-     * Check if a tenant has exceeded their rate limit for a given action.
-     * Returns true if the action should be BLOCKED.
-     */
     async isLimited(tenantId: string, action: ActionType): Promise<boolean> {
         const { plan, limits } = await this.resolveLimits(tenantId);
         const limit = limits[action];
@@ -115,25 +92,16 @@ export class TenantThrottleService {
         return false;
     }
 
-    /**
-     * Get the BullMQ job priority for a tenant based on their plan + overrides.
-     */
     async getPriority(tenantId: string): Promise<number> {
         const { limits } = await this.resolveLimits(tenantId);
         return limits.priority;
     }
 
-    /**
-     * Get max pending jobs allowed for a tenant.
-     */
     async getMaxPendingJobs(tenantId: string): Promise<number> {
         const { limits } = await this.resolveLimits(tenantId);
         return limits.maxPendingJobs;
     }
 
-    /**
-     * Get current usage count for a tenant + action in the current window.
-     */
     async getUsage(tenantId: string, action: ActionType): Promise<{ current: number; limit: number; plan: string; overridden: boolean }> {
         const { plan, limits, overrides } = await this.resolveLimits(tenantId);
         const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
@@ -147,26 +115,58 @@ export class TenantThrottleService {
     }
 
     /**
-     * Get plan feature limits (max agents, templates, custom prompt) merged
-     * with tenant overrides.
+     * Read all plan features from billing_plans table, merged with tenant
+     * overrides. Cached in Redis for 5 minutes per tenant.
+     *
+     * Returns a flat object with all feature keys from the seed.
+     * Callers should access specific keys (e.g. result.maxAgents).
      */
-    async getPlanFeatures(tenantId: string): Promise<typeof PLAN_FEATURES[string]> {
+    async getPlanFeatures(tenantId: string): Promise<Record<string, any>> {
+        const cacheKey = `plan_features:${tenantId}`;
+        const cached = await this.redis.getJson(cacheKey);
+        if (cached) {
+            const overrides = await this.getQuotaOverrides(tenantId);
+            return this.applyOverrides(cached as Record<string, any>, overrides);
+        }
+
         const plan = await this.getTenantPlan(tenantId);
-        const base = PLAN_FEATURES[plan] || PLAN_FEATURES.starter;
+        const row = await this.prisma.billingPlan.findUnique({
+            where: { slug: plan },
+            select: { maxAgents: true, maxAiMessages: true, features: true },
+        });
+
+        const features = (row?.features ?? {}) as Record<string, any>;
+        const base: Record<string, any> = {
+            ...features,
+            maxAgents: row?.maxAgents ?? 1,
+            maxAiMessages: row?.maxAiMessages ?? 0,
+        };
+
+        await this.redis.setJson(cacheKey, base, FEATURES_CACHE_TTL);
+
         const overrides = await this.getQuotaOverrides(tenantId);
+        return this.applyOverrides(base, overrides);
+    }
+
+    private applyOverrides(base: Record<string, any>, overrides: QuotaOverrides): Record<string, any> {
         return {
+            ...base,
             maxAgents: overrides.maxAgents ?? base.maxAgents,
             maxCalendars: overrides.maxCalendars ?? base.maxCalendars,
-            templates: base.templates,
-            customPrompt: base.customPrompt,
         };
+    }
+
+    /**
+     * Check if a boolean feature flag is enabled for this tenant's plan.
+     * Returns false if the key doesn't exist.
+     */
+    async isFeatureEnabled(tenantId: string, featureKey: string): Promise<boolean> {
+        const features = await this.getPlanFeatures(tenantId);
+        return features[featureKey] === true;
     }
 
     // ── Quota override management (super_admin) ────────────────────
 
-    /**
-     * Read tenant's quota overrides from settings.quotaOverrides JSONB.
-     */
     async getQuotaOverrides(tenantId: string): Promise<QuotaOverrides> {
         try {
             const tenant = await this.prisma.tenant.findUnique({
@@ -180,10 +180,6 @@ export class TenantThrottleService {
         }
     }
 
-    /**
-     * Persist quota overrides for a tenant. Pass an empty object to clear all.
-     * Invalidates the plan cache so the new limits take effect immediately.
-     */
     async setQuotaOverrides(tenantId: string, overrides: QuotaOverrides, setBy?: string): Promise<QuotaOverrides> {
         const existing = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
@@ -195,9 +191,6 @@ export class TenantThrottleService {
             setBy: setBy || 'super_admin',
             setAt: new Date().toISOString(),
         };
-        // Strip undefined/null entries (except metadata) so toggling back to
-        // plan default is a clean delete, not a stored 'undefined' that
-        // confuses the merge logic.
         for (const k of ['automation', 'outbound', 'broadcast', 'priority', 'maxPendingJobs', 'maxAgents', 'maxCalendars'] as const) {
             if (stamped[k] === null || stamped[k] === undefined || (typeof stamped[k] === 'number' && Number.isNaN(stamped[k] as any))) {
                 delete stamped[k];
@@ -208,28 +201,19 @@ export class TenantThrottleService {
             where: { id: tenantId },
             data: { settings },
         });
-        // Invalidate plan cache (which is implicitly the limits cache)
         await this.redis.del(`tenant_plan:${tenantId}`);
+        await this.redis.del(`plan_features:${tenantId}`);
         return stamped;
     }
 
     /**
-     * Resolve a granular per-resource limit from billing_plans.features (the
-     * source of truth populated by the seed). Returns Infinity for -1
-     * (unlimited) so callers can compare with `>=`.
-     *
-     * Falls back to 0 if the plan row does not exist yet, which keeps fresh
-     * installs safe — enforcePlanLimit then rejects every create call until
-     * seed-billing-plans.js runs. That is preferable to silently letting
-     * unlimited resources through in a half-initialised deploy.
+     * Resolve a granular per-resource limit from billing_plans.features.
+     * Returns Infinity for -1 (unlimited).
+     * Falls back to 0 if the key doesn't exist (safe default — blocks creation
+     * until seed runs, which is better than silently allowing unlimited).
      */
     async getPlanLimit(tenantId: string, limitKey: string): Promise<number> {
-        const plan = await this.getTenantPlan(tenantId);
-        const row = await this.prisma.billingPlan.findUnique({
-            where: { slug: plan },
-            select: { features: true },
-        });
-        const features = (row?.features ?? {}) as Record<string, unknown>;
+        const features = await this.getPlanFeatures(tenantId);
         const raw = features[limitKey];
         if (typeof raw !== 'number') return 0;
         return raw === -1 ? Number.POSITIVE_INFINITY : raw;
@@ -237,9 +221,7 @@ export class TenantThrottleService {
 
     /**
      * Generic quota guard. Throws 403 with { error: 'plan_limit_reached', ... }
-     * when the current count has already reached the plan's allowed maximum.
-     * Use from any resource-creation path (services, automation rules,
-     * broadcasts, etc.) to replicate the maxAgents pattern.
+     * when the current count has reached the plan's allowed maximum.
      */
     async enforcePlanLimit(tenantId: string, limitKey: string, currentCount: number, resourceLabel?: string): Promise<void> {
         const { ForbiddenException } = await import('@nestjs/common');
@@ -259,24 +241,7 @@ export class TenantThrottleService {
     }
 
     // ── AI message monthly quota ───────────────────────────────────
-    //
-    // Plans cap monthly AI message volume (BillingPlan.maxAiMessages):
-    //   starter    →   5,000/mes
-    //   pro        →  25,000/mes
-    //   enterprise → 100,000/mes
-    //   custom     → unlimited (-1)
-    //
-    // Counters live in Redis with monthly key `ai_msg:{tenantId}:{YYYY-MM}`
-    // and a 35-day TTL so the next cycle naturally resets. We never block
-    // the conversation pipeline outright when over quota — instead the
-    // caller decides what to do (typically: send a fallback reply and
-    // skip the LLM call).
 
-    /**
-     * Get current AI-message usage for the running calendar month.
-     * Returns { used, limit, remaining, percent, monthKey }.
-     * `limit` is Infinity for unlimited plans; remaining is null in that case.
-     */
     async getAiMessageUsage(tenantId: string): Promise<{
         used: number;
         limit: number;
@@ -301,26 +266,15 @@ export class TenantThrottleService {
         return { used, limit, remaining, percent, monthKey, plan };
     }
 
-    /**
-     * Increment counter atomically. Sets TTL on first write so old months
-     * vanish without manual cleanup. Returns the new used count.
-     */
     async incrementAiMessageCount(tenantId: string, by = 1): Promise<number> {
         const key = `ai_msg:${tenantId}:${this.currentMonthKey()}`;
         const newCount = await this.redis.incrBy(key, by);
-        // First write of the month — set TTL so Redis evicts the bucket
-        // a few days into the next month (35d covers month-end edge cases).
         if (newCount === by) {
             await this.redis.expire(key, 35 * 24 * 60 * 60);
         }
         return newCount;
     }
 
-    /**
-     * Returns true if the tenant has remaining AI-message quota for the
-     * current month. Cheap call — uses the cached counter and plan slug.
-     * Never blocks: it's the caller's job to decide what to do when false.
-     */
     async hasAiMessageQuota(tenantId: string): Promise<boolean> {
         const { used, limit } = await this.getAiMessageUsage(tenantId);
         if (!Number.isFinite(limit)) return true;
@@ -337,7 +291,7 @@ export class TenantThrottleService {
     /**
      * Resolve tenant plan with Redis caching (5 min TTL).
      */
-    private async getTenantPlan(tenantId: string): Promise<string> {
+    async getTenantPlan(tenantId: string): Promise<string> {
         const cacheKey = `tenant_plan:${tenantId}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return cached;

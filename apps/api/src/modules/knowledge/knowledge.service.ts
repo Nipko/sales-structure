@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import OpenAI from 'openai';
 
 /** Approximate max characters per chunk (~500 tokens at ~4 chars/token) */
@@ -20,6 +21,7 @@ export class KnowledgeService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly configService: ConfigService,
+        private readonly throttle: TenantThrottleService,
     ) {
         this.openai = new OpenAI({
             apiKey: this.configService.get<string>('OPENAI_API_KEY') || '',
@@ -33,6 +35,11 @@ export class KnowledgeService {
         file: { name: string; content: string; mimeType?: string },
     ) {
         const schema = await this.tenantSchema(tenantId);
+
+        const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int AS c FROM knowledge_documents WHERE status != 'deleted'`);
+        await this.throttle.enforcePlanLimit(tenantId, 'knowledgeArticles', cnt?.[0]?.c || 0, 'documentos de conocimiento');
+
         this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId}`);
 
         // 1. Create document record

@@ -13,6 +13,7 @@ import { ImportExportService } from './services/import-export/import-export.serv
 import { CrmAnalyticsService } from './services/crm-analytics/crm-analytics.service';
 import { CrmInsightsService } from './services/crm-insights/crm-insights.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -34,6 +35,7 @@ export class CrmController {
         private crmAnalytics: CrmAnalyticsService,
         private crmInsights: CrmInsightsService,
         private prisma: PrismaService,
+        private throttle: TenantThrottleService,
     ) {}
 
     // ---- Kanban (Pipeline Board using Opportunities) ----
@@ -105,6 +107,10 @@ export class CrmController {
         @Param('tenantId') tenantId: string,
         @Body() body: Record<string, any>,
     ) {
+        const schema = await this.getSchema(tenantId);
+        const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int AS c FROM leads WHERE is_archived = false`);
+        await this.throttle.enforcePlanLimit(tenantId, 'maxContacts', cnt?.[0]?.c || 0, 'contactos');
         const lead = await this.leadsRepo.createLead(tenantId, body);
         return { success: true, data: lead };
     }
@@ -340,6 +346,10 @@ export class CrmController {
 
     @Post('custom-attributes/:tenantId')
     async createCustomAttribute(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const schema = await this.getSchema(tenantId);
+        const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int AS c FROM custom_attribute_definitions WHERE is_active = true`);
+        await this.throttle.enforcePlanLimit(tenantId, 'customAttributes', cnt?.[0]?.c || 0, 'atributos personalizados');
         const data = await this.customAttrs.createDefinition(tenantId, body);
         return { success: true, data };
     }
@@ -387,6 +397,10 @@ export class CrmController {
 
     @Post('segments/:tenantId')
     async createSegment(@Param('tenantId') tenantId: string, @Body() body: any) {
+        const schema = await this.getSchema(tenantId);
+        const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int AS c FROM contact_segments`);
+        await this.throttle.enforcePlanLimit(tenantId, 'segments', cnt?.[0]?.c || 0, 'segmentos');
         const data = await this.segmentsService.createSegment(tenantId, body);
         return { success: true, data };
     }
@@ -626,6 +640,9 @@ export class CrmController {
         @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean },
     ) {
         const schema = await this.getSchema(tenantId);
+        const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE tenant_id = $1::uuid`, [tenantId]);
+        await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', cnt?.[0]?.c || 0, 'etapas de pipeline');
         const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
             `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal)

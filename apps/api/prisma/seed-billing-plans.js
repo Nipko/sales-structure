@@ -14,9 +14,22 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-// Decisions confirmed in docs/billing-plan.md Section 7.
-// Starter = self-serve entry; Pro = SMB sweet spot; Enterprise = teams + SSO;
-// Custom = sales-led agencies/resellers, manual admin provisioning only.
+// ──────────────────────────────────────────────────────────────
+// DEFINITIVE PLAN MATRIX — single source of truth (May 2026)
+//
+// Top-level columns: maxAgents, maxAiMessages (on BillingPlan model)
+// Everything else lives in `features` JSONB.
+//
+// Numeric limits:  -1 = unlimited (converted to Infinity at runtime)
+// Boolean flags:   true/false
+// String values:   kept as-is (e.g. llmTier)
+// Arrays:          kept as-is (e.g. channels)
+//
+// enforcePlanLimit() reads features[key] from this table.
+// PLAN_LIMITS (rate limits) stay hardcoded in tenant-throttle.service.ts
+// because they are per-hour sliding windows, not resource counts.
+// ──────────────────────────────────────────────────────────────
+
 const PLANS = [
     {
         slug: 'starter',
@@ -28,18 +41,45 @@ const PLANS = [
         maxAiMessages: 5_000,
         sortOrder: 1,
         features: {
+            // ── Resource limits ──
             seats: 3,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
+            maxCalendars: 1,
+            maxContacts: 500,
+            maxProperties: 2,
             automationRules: 5,
             broadcastCampaigns: 3,
             appointmentsServices: 2,
             knowledgeArticles: 20,
-            whatsappCreditUsdCents: 1000,
+            customAttributes: 5,
+            emailTemplates: 4,
+            pipelineStages: 5,
+            segments: 3,
+            mediaStorageMb: 100,
+            externalCrm: 0,
+            outboundWebhooks: 0,
+
+            // ── Channel access ──
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
+
+            // ── AI & engagement ──
+            llmTier: 'tier_3',
             customPrompt: false,
             customTemplates: false,
+            aiInsights: false,
+            recall: false,
+
+            // ── Operational ──
+            scheduledReports: false,
+            dataRetentionDays: 180,
+            whatsappCreditUsdCents: 1000,
+
+            // ── Enterprise features ──
             sso: false,
             auditLog: false,
             biApi: false,
+            customDomainKb: false,
+            whiteLabel: false,
+            prioritySupport: false,
         },
     },
     {
@@ -52,18 +92,45 @@ const PLANS = [
         maxAiMessages: 25_000,
         sortOrder: 2,
         features: {
+            // ── Resource limits ──
             seats: 5,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
+            maxCalendars: 3,
+            maxContacts: 5_000,
+            maxProperties: 10,
             automationRules: -1,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
-            whatsappCreditUsdCents: 2500,
+            customAttributes: 20,
+            emailTemplates: 20,
+            pipelineStages: 15,
+            segments: 15,
+            mediaStorageMb: 1024,
+            externalCrm: 1,
+            outboundWebhooks: 3,
+
+            // ── Channel access ──
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
+
+            // ── AI & engagement ──
+            llmTier: 'tier_2',
             customPrompt: true,
             customTemplates: true,
+            aiInsights: true,
+            recall: true,
+
+            // ── Operational ──
+            scheduledReports: true,
+            dataRetentionDays: 365,
+            whatsappCreditUsdCents: 2500,
+
+            // ── Enterprise features ──
             sso: false,
             auditLog: false,
             biApi: true,
+            customDomainKb: false,
+            whiteLabel: false,
+            prioritySupport: false,
         },
     },
     {
@@ -76,18 +143,44 @@ const PLANS = [
         maxAiMessages: 100_000,
         sortOrder: 3,
         features: {
+            // ── Resource limits ──
             seats: -1,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+            maxCalendars: 10,
+            maxContacts: 50_000,
+            maxProperties: 50,
             automationRules: -1,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
-            whatsappCreditUsdCents: 0,
+            customAttributes: -1,
+            emailTemplates: -1,
+            pipelineStages: -1,
+            segments: -1,
+            mediaStorageMb: 10_240,
+            externalCrm: -1,
+            outboundWebhooks: -1,
+
+            // ── Channel access ──
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+
+            // ── AI & engagement ──
+            llmTier: 'tier_1',
             customPrompt: true,
             customTemplates: true,
+            aiInsights: true,
+            recall: true,
+
+            // ── Operational ──
+            scheduledReports: true,
+            dataRetentionDays: 730,
+            whatsappCreditUsdCents: 0,
+
+            // ── Enterprise features ──
             sso: true,
             auditLog: true,
             biApi: true,
+            customDomainKb: true,
+            whiteLabel: false,
             prioritySupport: true,
         },
     },
@@ -101,17 +194,44 @@ const PLANS = [
         maxAiMessages: -1,
         sortOrder: 4,
         features: {
+            // ── Resource limits ──
             seats: -1,
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+            maxCalendars: -1,
+            maxContacts: -1,
+            maxProperties: -1,
             automationRules: -1,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
+            customAttributes: -1,
+            emailTemplates: -1,
+            pipelineStages: -1,
+            segments: -1,
+            mediaStorageMb: -1,
+            externalCrm: -1,
+            outboundWebhooks: -1,
+
+            // ── Channel access ──
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+
+            // ── AI & engagement ──
+            llmTier: 'tier_1',
             customPrompt: true,
             customTemplates: true,
+            aiInsights: true,
+            recall: true,
+
+            // ── Operational ──
+            scheduledReports: true,
+            dataRetentionDays: -1,
+            whatsappCreditUsdCents: 0,
+
+            // ── Enterprise features ──
             sso: true,
             auditLog: true,
             biApi: true,
+            customDomainKb: true,
+            whiteLabel: true,
             prioritySupport: true,
             salesLed: true,
             multiTenantSubAccounts: true,
@@ -138,7 +258,7 @@ async function main() {
                     isActive: true,
                 },
             });
-            console.log(`  Updated ${plan.slug} (USD $${(plan.priceUsdCents / 100).toFixed(2)}, ${plan.trialDays}d trial)`);
+            console.log(`  Updated ${plan.slug} (USD $${(plan.priceUsdCents / 100).toFixed(2)}, ${plan.trialDays}d trial, ${Object.keys(plan.features).length} features)`);
         } else {
             await prisma.billingPlan.create({
                 data: {
@@ -154,7 +274,7 @@ async function main() {
                     isActive: true,
                 },
             });
-            console.log(`  Created ${plan.slug} (USD $${(plan.priceUsdCents / 100).toFixed(2)}, ${plan.trialDays}d trial)`);
+            console.log(`  Created ${plan.slug} (USD $${(plan.priceUsdCents / 100).toFixed(2)}, ${plan.trialDays}d trial, ${Object.keys(plan.features).length} features)`);
         }
     }
     console.log('Done.');

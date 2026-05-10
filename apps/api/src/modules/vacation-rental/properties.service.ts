@@ -30,16 +30,11 @@ export class PropertiesService {
     }
 
     async create(tenantId: string, schemaName: string, data: any): Promise<any> {
-        // Plan-gate: check property limit
-        const planFeatures = this.throttle.getPlanFeatures(tenantId);
-        const maxProperties = (planFeatures as any)?.maxProperties || 2;
         const existing = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT COUNT(*)::int as cnt FROM properties WHERE is_active = true`,
         );
-        if ((existing?.[0]?.cnt || 0) >= maxProperties) {
-            throw new BadRequestException(`Property limit reached (max ${maxProperties} for your plan)`);
-        }
+        await this.throttle.enforcePlanLimit(tenantId, 'maxProperties', existing?.[0]?.cnt || 0, 'propiedades');
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,

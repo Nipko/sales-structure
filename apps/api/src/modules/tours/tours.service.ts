@@ -40,20 +40,13 @@ export class ToursService {
     }
 
     async createPackage(tenantId: string, schemaName: string, data: any): Promise<any> {
-        // Plan-gate: tours share the property cap (vacation-rental + tours = total catalog)
-        const planFeatures = this.throttle.getPlanFeatures(tenantId);
-        const maxItems = (planFeatures as any)?.maxProperties || 2;
         const used = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT
                 (SELECT COUNT(*) FROM properties WHERE is_active = true)::int +
                 (SELECT COUNT(*) FROM tour_packages WHERE is_active = true)::int AS cnt`,
         );
-        if ((used?.[0]?.cnt || 0) >= maxItems) {
-            throw new BadRequestException(
-                `Catalog limit reached (max ${maxItems} for your plan, properties + tours combined)`,
-            );
-        }
+        await this.throttle.enforcePlanLimit(tenantId, 'maxProperties', used?.[0]?.cnt || 0, 'propiedades + tours');
 
         if (!data.name) throw new BadRequestException('name is required');
         const durationType = data.durationType === 'days' ? 'days' : 'hours';

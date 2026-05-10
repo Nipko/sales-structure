@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { google, calendar_v3 } from 'googleapis';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { Client as GraphClient } from '@microsoft/microsoft-graph-client';
@@ -48,6 +49,7 @@ export class CalendarIntegrationService {
         private prisma: PrismaService,
         private redis: RedisService,
         private config: ConfigService,
+        private throttle: TenantThrottleService,
     ) {
         const key = config.get<string>('ENCRYPTION_KEY', '');
         this.encryptionKey = Buffer.from(key.padEnd(64, '0').slice(0, 64), 'hex');
@@ -123,7 +125,10 @@ export class CalendarIntegrationService {
         const encrypted = this.encrypt(tokens.refresh_token);
         const id = crypto.randomUUID();
 
-        // Insert new integration (multi-calendar: no upsert)
+        const calCount = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT COUNT(*)::int AS c FROM calendar_integrations WHERE is_active = true`);
+        await this.throttle.enforcePlanLimit(tenantId, 'maxCalendars', calCount?.[0]?.c || 0, 'calendarios');
+
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, label, assignment_type, assignment_id, connected_at, updated_at)
              VALUES ($1::uuid, $2::uuid, 'google', $3, 'primary', $4, $5, $6, $7, NOW(), NOW())`,
@@ -160,7 +165,10 @@ export class CalendarIntegrationService {
         const encrypted = this.encrypt(cacheContent);
         const id = crypto.randomUUID();
 
-        // Insert new integration (multi-calendar: no upsert)
+        const calCount = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT COUNT(*)::int AS c FROM calendar_integrations WHERE is_active = true`);
+        await this.throttle.enforcePlanLimit(tenantId, 'maxCalendars', calCount?.[0]?.c || 0, 'calendarios');
+
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, label, assignment_type, assignment_id, connected_at, updated_at)
              VALUES ($1::uuid, $2::uuid, 'microsoft', $3, 'primary', $4, $5, $6, $7, NOW(), NOW())`,

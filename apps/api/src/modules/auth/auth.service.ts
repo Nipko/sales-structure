@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -11,18 +11,30 @@ import { PersonaService } from '../persona/persona.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { BillingService } from '../billing/billing.service';
 import { VerticalsService } from '../verticals/verticals.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
     welcomeEmail, passwordChangedEmail,
 } from '../email/email-layouts';
 
+interface SessionData {
+    sid: string;
+    tenantId?: string;
+    loginAt: number;
+    lastActivity: number;
+}
+
 // Refresh token TTLs (seconds)
 const REFRESH_TTL_DEFAULT = 8 * 60 * 60;       // 8 hours (one work shift)
 const REFRESH_TTL_REMEMBER = 14 * 24 * 60 * 60; // 14 days
 
+const SESSION_TTL = 360; // 6 min — refreshed by activity ping (frontend sends every 5 min)
+
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         private prisma: PrismaService,
         private jwtService: JwtService,
@@ -34,6 +46,7 @@ export class AuthService {
         private businessInfoService: BusinessInfoService,
         private billingService: BillingService,
         private verticalsService: VerticalsService,
+        private throttleService: TenantThrottleService,
     ) { }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -44,9 +57,11 @@ export class AuthService {
      */
     private async generateTokens(
         payload: JwtPayload,
-        options: { rememberMe?: boolean } = {},
+        options: { rememberMe?: boolean; sid?: string } = {},
     ): Promise<{ accessToken: string; refreshToken: string }> {
-        const accessToken = this.jwtService.sign(payload, {
+        const tokenPayload = options.sid ? { ...payload, sid: options.sid } : payload;
+
+        const accessToken = this.jwtService.sign(tokenPayload, {
             secret: this.configService.get<string>('auth.jwtSecret'),
             expiresIn: this.configService.get<string>('auth.jwtExpiration', '15m'),
         });
@@ -56,7 +71,7 @@ export class AuthService {
 
         const tokenId = crypto.randomUUID();
         const refreshToken = this.jwtService.sign(
-            { ...payload, tid: tokenId },
+            { ...tokenPayload, tid: tokenId },
             {
                 secret: this.configService.get<string>('auth.jwtRefreshSecret'),
                 expiresIn: refreshExpiresIn,
@@ -98,6 +113,81 @@ export class AuthService {
         } while (cursor !== '0');
     }
 
+    // ── Session management ─────────────────────────────────────
+
+    private async createSession(userId: string, tenantId?: string): Promise<string> {
+        const sid = crypto.randomUUID();
+        const session: SessionData = {
+            sid,
+            tenantId: tenantId || undefined,
+            loginAt: Date.now(),
+            lastActivity: Date.now(),
+        };
+        await this.redis.setJson(`session:${userId}`, session, SESSION_TTL);
+        if (tenantId) {
+            await this.redis.sadd(`tenant_sessions:${tenantId}`, userId);
+        }
+        return sid;
+    }
+
+    private async destroySession(userId: string): Promise<void> {
+        const session = await this.redis.getJson<SessionData>(`session:${userId}`);
+        await this.redis.del(`session:${userId}`);
+        if (session?.tenantId) {
+            await this.redis.srem(`tenant_sessions:${session.tenantId}`, userId);
+        }
+    }
+
+    private async cleanStaleTenantSessions(tenantId: string): Promise<void> {
+        const members = await this.redis.smembers(`tenant_sessions:${tenantId}`);
+        for (const userId of members) {
+            const exists = await this.redis.get(`session:${userId}`);
+            if (!exists) {
+                await this.redis.srem(`tenant_sessions:${tenantId}`, userId);
+            }
+        }
+    }
+
+    private async enforceSessionPolicy(user: { id: string; role: string; tenantId: string | null }, force: boolean): Promise<void> {
+        if (user.role === 'super_admin') return;
+
+        const existing = await this.redis.getJson<SessionData>(`session:${user.id}`);
+        if (existing && !force) {
+            throw new ConflictException({
+                error: 'session_conflict',
+                message: 'Ya hay una sesión activa para esta cuenta',
+                activeSession: { loginAt: existing.loginAt },
+            });
+        }
+
+        if (user.tenantId) {
+            await this.cleanStaleTenantSessions(user.tenantId);
+            const currentCount = await this.redis.scard(`tenant_sessions:${user.tenantId}`);
+            const seatsLimit = await this.throttleService.getPlanLimit(user.tenantId, 'seats');
+            const isReplacingOwnSession = !!existing;
+            if (!isReplacingOwnSession && currentCount >= seatsLimit) {
+                throw new ForbiddenException({
+                    error: 'tenant_session_limit',
+                    message: `Tu empresa ha alcanzado el límite de sesiones concurrentes (${Number.isFinite(seatsLimit) ? seatsLimit : '∞'})`,
+                    currentCount,
+                    maxAllowed: Number.isFinite(seatsLimit) ? seatsLimit : null,
+                });
+            }
+        }
+
+        if (force && existing) {
+            await this.revokeAllUserSessions(user.id);
+            await this.destroySession(user.id);
+        }
+    }
+
+    async activityPing(userId: string): Promise<boolean> {
+        const exists = await this.redis.get(`session:${userId}`);
+        if (!exists) return false;
+        await this.redis.expire(`session:${userId}`, SESSION_TTL);
+        return true;
+    }
+
     async register(data: {
         email: string;
         password: string;
@@ -115,7 +205,14 @@ export class AuthService {
             throw new ConflictException('Email already registered');
         }
 
-        // Hash password
+        // Enforce seats limit for tenant user creation
+        if (data.tenantId) {
+            const currentUsers = await this.prisma.user.count({
+                where: { tenantId: data.tenantId, isActive: true },
+            });
+            await this.throttleService.enforcePlanLimit(data.tenantId, 'seats', currentUsers, 'usuarios');
+        }
+
         const hashedPassword = await bcrypt.hash(data.password, 12);
 
         // Create user
@@ -183,20 +280,21 @@ export class AuthService {
             },
         });
 
-        // Generate JWT tokens — user is authenticated but not onboarded
+        // Create session + generate tokens
+        const sid = await this.createSession(user.id);
+
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
             role: user.role as UserRole,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload);
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { sid });
 
-        // Auto-send verification email
         try {
             await this.sendVerificationEmail(user.id);
         } catch (error) {
-            console.error(`[Signup] Failed to send verification email:`, error);
+            this.logger.error(`[Signup] Failed to send verification email: ${error}`);
         }
 
         return {
@@ -216,7 +314,7 @@ export class AuthService {
         };
     }
 
-    async login(email: string, password: string, rememberMe = false) {
+    async login(email: string, password: string, rememberMe = false, force = false) {
         const user = await this.prisma.user.findUnique({
             where: { email },
             include: { tenant: true },
@@ -235,13 +333,18 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
+        // Enforce single-session + tenant session limits
+        await this.enforceSessionPolicy(user, force);
+
         // Update last login
         await this.prisma.user.update({
             where: { id: user.id },
             data: { lastLoginAt: new Date() },
         });
 
-        // Generate tokens
+        // Create session and generate tokens
+        const sid = await this.createSession(user.id, user.tenantId || undefined);
+
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
@@ -249,7 +352,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
@@ -286,7 +389,16 @@ export class AuthService {
             throw new UnauthorizedException('Invalid or expired refresh token');
         }
 
-        const { sub: userId, tid: tokenId } = decoded;
+        const { sub: userId, tid: tokenId, sid: tokenSid } = decoded;
+
+        // Verify active session if the token had one
+        if (tokenSid) {
+            const session = await this.redis.getJson<SessionData>(`session:${userId}`);
+            if (!session || session.sid !== tokenSid) {
+                throw new UnauthorizedException('Session expired — please log in again');
+            }
+        }
+
         if (!tokenId) {
             // Legacy token without tid — still allow but don't rotate
             const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -296,7 +408,8 @@ export class AuthService {
                 sub: user.id, email: user.email,
                 role: user.role as UserRole, tenantId: user.tenantId || undefined,
             };
-            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload);
+            const session = await this.redis.getJson<SessionData>(`session:${userId}`);
+            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: session?.sid });
             return { accessToken, refreshToken: newRefresh };
         }
 
@@ -305,25 +418,26 @@ export class AuthService {
         const stored = await this.redis.getJson<{ rememberMe?: boolean }>(redisKey);
 
         if (!stored) {
-            // Token was already used or revoked — possible replay attack
-            // Revoke ALL sessions for this user as a safety measure
             await this.revokeAllUserSessions(userId);
+            await this.destroySession(userId);
             throw new UnauthorizedException('Token reuse detected — all sessions revoked');
         }
 
         // Revoke the old token
         await this.revokeRefreshToken(userId, tokenId);
 
-        // Issue new pair
+        // Issue new pair with current session ID
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user || !user.isActive) throw new UnauthorizedException('Invalid token');
 
+        const session = await this.redis.getJson<SessionData>(`session:${userId}`);
         const payload: JwtPayload = {
             sub: user.id, email: user.email,
             role: user.role as UserRole, tenantId: user.tenantId || undefined,
         };
         const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, {
             rememberMe: stored.rememberMe,
+            sid: session?.sid,
         });
 
         return { accessToken, refreshToken: newRefresh };
@@ -340,6 +454,7 @@ export class AuthService {
             if (decoded.tid) {
                 await this.revokeRefreshToken(decoded.sub, decoded.tid);
             }
+            await this.destroySession(decoded.sub);
         } catch {
             // Token already expired or invalid — nothing to revoke
         }
@@ -383,19 +498,28 @@ export class AuthService {
             throw new UnauthorizedException('User not found or inactive');
         }
 
+        // Session validation: verify the JWT's session ID matches the active session.
+        // Skip for super_admin and legacy tokens without sid (backward compat).
+        if (user.role !== 'super_admin' && payload.sid) {
+            const session = await this.redis.getJson<SessionData>(`session:${user.id}`);
+            if (!session || session.sid !== payload.sid) {
+                throw new UnauthorizedException('session_expired');
+            }
+        }
+
         return {
             id: user.id,
             email: user.email,
             role: user.role,
             tenantId: user.tenantId,
             isActive: user.isActive,
-            schemaName: user.tenant?.schemaName, // Flattened for controllers
+            schemaName: user.tenant?.schemaName,
         };
     }
 
     // ── Google OAuth ──────────────────────────────────────────────
 
-    async googleLogin(idToken: string, rememberMe = false) {
+    async googleLogin(idToken: string, rememberMe = false, force = false) {
         const googleUser = await this.googleAuthService.verifyIdToken(idToken);
 
         // Find existing user by email or googleId
@@ -409,8 +533,9 @@ export class AuthService {
             include: { tenant: true },
         });
 
+        const isNewUser = !user;
+
         if (!user) {
-            // Create new user with Google auth — no password, no tenant yet
             user = await this.prisma.user.create({
                 data: {
                     email: googleUser.email,
@@ -419,13 +544,12 @@ export class AuthService {
                     authProvider: 'google',
                     googleId: googleUser.googleId,
                     picture: googleUser.picture,
-                    emailVerified: true, // Google verifies emails
+                    emailVerified: true,
                     role: 'tenant_admin',
                 },
                 include: { tenant: true },
             });
         } else if (user.authProvider === 'email' && !user.googleId) {
-            // Link Google account to existing email user
             user = await this.prisma.user.update({
                 where: { id: user.id },
                 data: {
@@ -436,13 +560,18 @@ export class AuthService {
             });
         }
 
-        // Update last login
+        // Enforce session policy (skip for brand-new users)
+        if (!isNewUser) {
+            await this.enforceSessionPolicy(user, force);
+        }
+
         await this.prisma.user.update({
             where: { id: user.id },
             data: { lastLoginAt: new Date() },
         });
 
-        // Generate tokens
+        const sid = await this.createSession(user.id, user.tenantId || undefined);
+
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
@@ -450,9 +579,8 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
 
-        // super_admin and users with tenant are always "onboarded"
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
         return {
@@ -480,7 +608,7 @@ export class AuthService {
         microsoftId: string; email: string;
         firstName: string; lastName: string; displayName: string;
         picture?: string;
-    }, rememberMe = false) {
+    }, rememberMe = false, force = false) {
         let user = await this.prisma.user.findFirst({
             where: {
                 OR: [
@@ -490,6 +618,8 @@ export class AuthService {
             },
             include: { tenant: true },
         });
+
+        const isNewUser = !user;
 
         if (!user) {
             const firstName = microsoftUser.firstName || microsoftUser.displayName.split(' ')[0] || '';
@@ -518,7 +648,6 @@ export class AuthService {
                 include: { tenant: true },
             });
         } else if (microsoftUser.picture && microsoftUser.picture !== user.picture) {
-            // Refresh the stored picture on subsequent logins so it stays fresh.
             user = await this.prisma.user.update({
                 where: { id: user.id },
                 data: { picture: microsoftUser.picture },
@@ -526,17 +655,23 @@ export class AuthService {
             });
         }
 
+        if (!isNewUser) {
+            await this.enforceSessionPolicy(user, force);
+        }
+
         await this.prisma.user.update({
             where: { id: user.id },
             data: { lastLoginAt: new Date() },
         });
+
+        const sid = await this.createSession(user.id, user.tenantId || undefined);
 
         const payload: JwtPayload = {
             sub: user.id, email: user.email,
             role: user.role as UserRole, tenantId: user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
         return {
@@ -727,6 +862,8 @@ export class AuthService {
         });
 
         // Generate full tokens now that 2FA is passed
+        const sid = await this.createSession(user.id, user.tenantId || undefined);
+
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
@@ -734,7 +871,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload);
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { sid });
         return { accessToken, refreshToken };
     }
 
@@ -772,6 +909,7 @@ export class AuthService {
 
         // Revoke all sessions — user must re-login with new password
         await this.revokeAllUserSessions(userId);
+        await this.destroySession(userId);
 
         this.emailService.send({
             to: user.email,
@@ -985,7 +1123,15 @@ export class AuthService {
             console.error(`[Onboarding] Failed to create billing subscription for "${result.tenant.schemaName}":`, error);
         }
 
-        // 8. Generate new JWT tokens (now includes tenantId)
+        // 8. Update session with tenantId + generate new JWT tokens
+        const existingSession = await this.redis.getJson<SessionData>(`session:${result.user.id}`);
+        const sid = existingSession?.sid || await this.createSession(result.user.id, result.user.tenantId || undefined);
+        if (existingSession && result.user.tenantId) {
+            existingSession.tenantId = result.user.tenantId;
+            await this.redis.setJson(`session:${result.user.id}`, existingSession, SESSION_TTL);
+            await this.redis.sadd(`tenant_sessions:${result.user.tenantId}`, result.user.id);
+        }
+
         const payload: JwtPayload = {
             sub: result.user.id,
             email: result.user.email,
@@ -993,7 +1139,7 @@ export class AuthService {
             tenantId: result.user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload);
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { sid });
 
         return {
             accessToken,

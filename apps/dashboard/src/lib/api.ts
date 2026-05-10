@@ -38,7 +38,7 @@ async function authFetch(endpoint: string, options: RequestInit = {}): Promise<R
         }
         if (typeof window !== "undefined") {
             localStorage.clear();
-            window.location.href = "/login";
+            window.location.href = "/login?kicked=1";
         }
     }
 

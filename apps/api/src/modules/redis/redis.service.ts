@@ -117,6 +117,14 @@ export class RedisService implements OnModuleDestroy {
         return this.client.smembers(key);
     }
 
+    async srem(key: string, member: string): Promise<number> {
+        return this.client.srem(key, member);
+    }
+
+    async scard(key: string): Promise<number> {
+        return this.client.scard(key);
+    }
+
     // ---- Rate Limiting ----
 
     async incrementRateLimit(key: string, windowSeconds: number): Promise<number> {

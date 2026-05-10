@@ -43,6 +43,7 @@ export default function LoginPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const sessionExpired = searchParams.get("expired") === "1";
+    const sessionKicked = searchParams.get("kicked") === "1";
 
     const handleGoogleCallback = useCallback(
         async (response: { credential: string }) => {
@@ -51,7 +52,7 @@ export default function LoginPage() {
             const result = await googleLogin(response.credential, rememberMe);
             if (result.success && result.redirect) {
                 router.push(result.redirect);
-            } else {
+            } else if (result.error !== "session_conflict") {
                 setError(result.error || t('googleLoginError'));
             }
             setIsGoogleLoading(false);
@@ -107,7 +108,7 @@ export default function LoginPage() {
 
         if (result.success) {
             router.push(result.redirect || "/admin");
-        } else {
+        } else if (result.error !== "session_conflict") {
             setError(result.error || t('loginError'));
         }
         setIsSubmitting(false);
@@ -148,10 +149,15 @@ export default function LoginPage() {
                         {t('enterCredentials')}
                     </p>
 
-                    {/* Session expired notice */}
-                    {sessionExpired && !error && (
+                    {/* Session expired / kicked notice */}
+                    {sessionExpired && !sessionKicked && !error && (
                         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-[13px]">
                             <AlertCircle size={16} /> {t('sessionExpired')}
+                        </div>
+                    )}
+                    {sessionKicked && !error && (
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-[13px]">
+                            <AlertCircle size={16} /> {t('sessionKicked')}
                         </div>
                     )}
 

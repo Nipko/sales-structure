@@ -280,6 +280,7 @@ export interface JwtPayload {
     email: string;
     role: UserRole;
     tenantId?: string;
+    sid?: string;
     iat?: number;
     exp?: number;
 }

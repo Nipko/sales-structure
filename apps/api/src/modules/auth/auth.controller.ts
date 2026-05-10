@@ -20,6 +20,9 @@ class LoginDto {
 
     @IsOptional()
     rememberMe?: boolean;
+
+    @IsOptional()
+    force?: boolean;
 }
 
 class RegisterDto {
@@ -87,7 +90,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login with email and password' })
     async login(@Body() dto: LoginDto) {
-        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe);
+        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe, dto.force);
         return { success: true, data: result };
     }
 
@@ -166,14 +169,24 @@ export class AuthController {
         return { success: true, data: user };
     }
 
+    @Post('activity-ping')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Keep session alive — frontend sends this every 5 minutes' })
+    async activityPing(@Request() req: any) {
+        const alive = await this.authService.activityPing(req.user.id);
+        return { success: true, data: { alive } };
+    }
+
     @Post('google')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login or register with Google OAuth' })
-    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean }) {
+    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean }) {
         if (!body.idToken) {
             throw new BadRequestException('idToken is required');
         }
-        const result = await this.authService.googleLogin(body.idToken, body.rememberMe);
+        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force);
         return { success: true, data: result };
     }
 

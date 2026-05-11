@@ -21,8 +21,8 @@ export default function manifest(): MetadataRoute.Manifest {
             { src: '/icon-maskable-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
         ],
         shortcuts: [
-            { name: 'Inbox', url: '/admin/inbox', icons: [{ src: '/icon-192x192.png', sizes: '192x192' }] },
-            { name: 'Contactos', url: '/admin/contacts', icons: [{ src: '/icon-192x192.png', sizes: '192x192' }] },
+            { name: 'Inbox', url: '/admin/inbox', icons: [{ src: '/icon-192x192.svg', sizes: '192x192', type: 'image/svg+xml' }] },
+            { name: 'Contactos', url: '/admin/contacts', icons: [{ src: '/icon-192x192.svg', sizes: '192x192', type: 'image/svg+xml' }] },
         ],
     };
 }

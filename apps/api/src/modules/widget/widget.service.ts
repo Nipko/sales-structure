@@ -75,7 +75,7 @@ export class WidgetService implements OnModuleInit {
         const cached = await this.redis.get(`widget:config:${widgetId}`);
         if (cached) return JSON.parse(cached);
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT wc.*, t.slug as tenant_slug, t.name as tenant_name
              FROM public.widget_configs wc
              JOIN public.tenants t ON t.id = wc.tenant_id
@@ -90,7 +90,7 @@ export class WidgetService implements OnModuleInit {
     }
 
     async listWidgets(tenantId: string): Promise<any[]> {
-        return this.prisma.$queryRawUnsafe<any[]>(
+        return this.prisma.$queryRawUnsafe(
             `SELECT * FROM public.widget_configs WHERE tenant_id = $1::uuid ORDER BY created_at DESC`,
             tenantId,
         );
@@ -98,7 +98,7 @@ export class WidgetService implements OnModuleInit {
 
     async createWidget(tenantId: string, data: any): Promise<any> {
         const widgetId = 'wgt_' + crypto.randomBytes(6).toString('hex');
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.widget_configs (tenant_id, widget_id, name, primary_color, position, welcome_message, agent_name, pre_chat_enabled, pre_chat_fields, allowed_domains, locale)
              VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::text[], $11)
              RETURNING *`,
@@ -117,7 +117,7 @@ export class WidgetService implements OnModuleInit {
     }
 
     async updateWidget(tenantId: string, widgetConfigId: string, data: any): Promise<any> {
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `UPDATE public.widget_configs
              SET name = COALESCE($3, name),
                  primary_color = COALESCE($4, primary_color),
@@ -152,7 +152,7 @@ export class WidgetService implements OnModuleInit {
     }
 
     async deleteWidget(tenantId: string, widgetConfigId: string): Promise<void> {
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `DELETE FROM public.widget_configs WHERE id = $1::uuid AND tenant_id = $2::uuid RETURNING widget_id`,
             widgetConfigId, tenantId,
         );
@@ -170,7 +170,7 @@ export class WidgetService implements OnModuleInit {
         phone?: string;
         page?: string;
     }): Promise<{ sessionId: string; token: string }> {
-        const existing = await this.prisma.$queryRawUnsafe<any[]>(
+        const existing: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, conversation_id, token FROM public.widget_sessions
              WHERE visitor_id = $1 AND widget_config_id = $2::uuid AND last_seen_at > NOW() - interval '90 days'
              ORDER BY last_seen_at DESC LIMIT 1`,
@@ -187,7 +187,7 @@ export class WidgetService implements OnModuleInit {
         }
 
         const token = this.generateToken(crypto.randomUUID(), widgetConfig.tenant_id, widgetConfig.widget_id);
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.widget_sessions (widget_config_id, tenant_id, visitor_id, visitor_name, visitor_email, visitor_phone, page_url, token)
              VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
              RETURNING id`,
@@ -201,7 +201,7 @@ export class WidgetService implements OnModuleInit {
     async getSessionByToken(token: string): Promise<any> {
         try {
             const decoded = jwt.verify(token, this.jwtSecret) as any;
-            const rows = await this.prisma.$queryRawUnsafe<any[]>(
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT ws.*, wc.tenant_id, wc.widget_id
                  FROM public.widget_sessions ws
                  JOIN public.widget_configs wc ON wc.id = ws.widget_config_id

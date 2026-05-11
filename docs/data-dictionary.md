@@ -1,6 +1,6 @@
 # Parallly Platform — Data Dictionary
 
-> Version 5.0 | April 22, 2026
+> Version 6.0 | May 10, 2026
 > Updates: Add this document whenever DB schema changes are made.
 
 ---
@@ -64,7 +64,7 @@ parallext_engine (database)
 
 ---
 
-## TENANT SCHEMA (65+ tables per tenant)
+## TENANT SCHEMA (77+ tables per tenant)
 
 ### Core Messaging
 
@@ -199,6 +199,38 @@ parallext_engine (database)
 | `email_templates` | Email templates | name, subject, body_html, variables |
 | `broadcast_templates` | Mass messaging templates | name, channel, content |
 
+### E-commerce Integration
+
+| Table | Purpose | Key columns |
+|-------|---------|-------------|
+| `ecommerce_products` | Synced product catalog from external providers | external_id, provider, title, price_cents, currency, variants (JSONB), status. UNIQUE(external_id, provider) |
+| `abandoned_carts` | Cart recovery tracking | external_id, provider, contact_id, items (JSONB), total_cents, checkout_url, status, recovery_sent_at, recovered_at |
+
+### Channel Manager (Vacation Rental)
+
+| Table | Purpose | Key columns |
+|-------|---------|-------------|
+| `cm_listings` | Synced property listings from channel managers | external_id, provider, name, address, max_guests, base_price_cents, property_id, last_synced_at. UNIQUE(external_id, provider) |
+| `cm_reservations` | Guest reservations from channel managers | listing_id (FK cm_listings), external_id, provider, guest_name, check_in, check_out, total_cents, status, source, contact_id. UNIQUE(external_id, provider) |
+| `cm_availability` | Per-date availability and pricing | listing_id (FK cm_listings), date, is_available, price_cents, min_nights. UNIQUE(listing_id, date) |
+
+### Staff Management
+
+| Table | Purpose | Key columns |
+|-------|---------|-------------|
+| `staff_members` | Service staff / practitioners | name, email, phone, role, specialties (TEXT[]), active |
+| `staff_schedules` | Weekly recurring availability per staff | staff_id (FK staff_members), day_of_week (0-6), start_time, end_time |
+| `staff_service_links` | Staff-to-service assignment | staff_id (FK staff_members), service_id. UNIQUE(staff_id, service_id) |
+| `staff_breaks` | One-off staff unavailability blocks | staff_id (FK staff_members), date, start_time, end_time, reason |
+
+### Automotive / Vehicles
+
+| Table | Purpose | Key columns |
+|-------|---------|-------------|
+| `vehicles` | Vehicle inventory | make, model, year, vin, mileage, fuel_type, transmission, price_cents, features (TEXT[]), photos (TEXT[]), status (default 'available'), sold_at, sold_price_cents |
+| `vehicle_inquiries` | Customer interest in a vehicle | vehicle_id (FK vehicles), contact_id, message, status (default 'new') |
+| `test_drives` | Scheduled test drives | vehicle_id (FK vehicles), contact_id, scheduled_date, scheduled_time, status (default 'scheduled'), notes |
+
 ---
 
 ## Table Count Summary
@@ -206,8 +238,8 @@ parallext_engine (database)
 | Schema | Tables | Managed by |
 |--------|--------|-----------|
 | Public | 7 | Prisma migrations |
-| Per tenant | 65+ | tenant-schema.sql (CREATE IF NOT EXISTS) |
-| **Total per tenant** | **72+** | |
+| Per tenant | 77+ | tenant-schema.sql (CREATE IF NOT EXISTS) |
+| **Total per tenant** | **84+** | |
 
 ---
 
@@ -220,3 +252,7 @@ parallext_engine (database)
 | 2026-04-20 | Extended companies table | companies (new columns) |
 | 2026-04-20 | Added WhatsApp templates | whatsapp_templates |
 | 2026-04-22 | Added missing tables | campaign_recipients, product_categories, stock_movements, order_items |
+| 2026-05-10 | Added e-commerce integration | ecommerce_products, abandoned_carts |
+| 2026-05-10 | Added channel manager (vacation rental) | cm_listings, cm_reservations, cm_availability |
+| 2026-05-10 | Added staff management | staff_members, staff_schedules, staff_service_links, staff_breaks |
+| 2026-05-10 | Added automotive / vehicles | vehicles, vehicle_inquiries, test_drives |

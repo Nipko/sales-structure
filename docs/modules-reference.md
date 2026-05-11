@@ -1,12 +1,12 @@
 # Modules Reference
 
-Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, and 28 cron jobs.
+Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, and 28 cron jobs.
 
 **Last updated:** May 2026 — full audit
 
 ---
 
-## API Modules (58 total)
+## API Modules (67 total)
 
 ### Infrastructure (5 modules)
 
@@ -46,7 +46,7 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
 
 ---
 
-### Auth & Tenants (5 modules)
+### Auth & Tenants (6 modules)
 
 #### 6. auth
 - **Purpose:** Authentication, authorization, session management, OAuth, 2FA
@@ -157,6 +157,24 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `0 3 * * *` — graceEnforcer: past_due >7d → offboard
   - `0 4 * * *` — archiveCleaner: drop schemas inactive >90d
   - `0 5 * * *` — purgeStaleInactiveChannels: clean stale channel credentials
+
+#### 10b. saml-sso (in auth/)
+- **Purpose:** SAML/SSO enterprise authentication with JIT user provisioning
+- **Services:** `saml.service.ts`
+- **Strategy:** `multi-saml.strategy.ts` (Passport MultiSaml with `getSamlOptions` callback)
+- **Controller:** `saml.controller.ts`
+- **Endpoints:**
+  - `GET /auth/saml/check` — Check if SSO is forced for email domain
+  - `GET /auth/saml/login` — Initiate SAML login flow
+  - `POST /auth/saml/acs` — Assertion Consumer Service (SAML callback)
+  - `GET /auth/saml/metadata/:tenantId` — SP metadata XML (public)
+  - `GET /auth/saml/config` — Get SAML config (tenant_admin, authenticated)
+  - `PUT /auth/saml/config` — Update SAML config (tenant_admin, authenticated)
+- **Key features:**
+  - Config stored in `tenant.settings.saml`
+  - Domain-based tenant lookup with Redis cache
+  - JIT (Just-In-Time) user provisioning on first SAML login
+  - `isSsoForced()` to enforce SSO-only login per tenant
 
 ---
 
@@ -499,7 +517,7 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
 
 ---
 
-### Billing & Finance (3 modules)
+### Billing & Finance (4 modules)
 
 #### 26. billing
 - **Purpose:** Subscription lifecycle, MercadoPago integration, invoices, coupons
@@ -558,6 +576,19 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `GET /financials/export/costs.csv` — Export costs CSV
   - `GET /financials/export/tenant-profitability.csv` — Export P&L CSV
 - **Cron:** `0 1 1 * *` — generateMonthlySnapshot: 1st of month @1AM
+
+#### 27b. stripe-adapter (in billing/)
+- **Purpose:** Stripe payment provider adapter (alternative to MercadoPago)
+- **Services:** `stripe.adapter.ts` (implements `IPaymentProvider`)
+- **Factory:** `payment-provider.factory.ts` — routes between Stripe and MercadoPago based on tenant config
+- **Controller:** None (consumed via PaymentProviderFactory)
+- **Key methods:**
+  - `createCustomer()` — Create Stripe customer
+  - `createSubscription()` — Create recurring subscription
+  - `cancelSubscription()` — Cancel active subscription
+  - `createCheckoutSession()` — Generate Stripe Checkout URL
+  - `constructWebhookEvent()` — Verify + parse Stripe webhook (signature validation)
+- **Notes:** Tenant config determines which provider is active. Both Stripe and MercadoPago implement the same `IPaymentProvider` interface
 
 ---
 
@@ -880,7 +911,7 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
 
 ---
 
-### Vertical-Specific Modules (12 modules)
+### Vertical-Specific Modules (14 modules)
 
 #### 45. vacation-rental (Turismo)
 - **Purpose:** Properties, iCal sync, bookings, calendar blocks
@@ -1078,11 +1109,145 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `PUT /photography/:tenantId/sessions/:id` — Update
   - `PUT /photography/:tenantId/sessions/:id/deliver` — Mark as delivered
 
+#### 56. staff-scheduling (in verticals/)
+- **Purpose:** Staff member management, scheduling, service linking, break management, availability checking
+- **Services:** `staff-scheduling.service.ts`
+- **Controller:** `staff-scheduling.controller.ts`
+- **Per-tenant tables:** `staff_members`, `staff_schedules`, `staff_service_links`, `staff_breaks`
+- **Endpoints:**
+  - `GET /staff/:tenantId` — List staff with schedule/service aggregation
+  - `POST /staff/:tenantId` — Create staff member
+  - `PUT /staff/:tenantId/:staffId` — Update staff member
+  - `DELETE /staff/:tenantId/:staffId` — Delete staff member
+  - `PUT /staff/:tenantId/:staffId/schedule` — Set weekly schedule
+  - `POST /staff/:tenantId/:staffId/services` — Link services to staff
+  - `DELETE /staff/:tenantId/:staffId/services/:serviceId` — Unlink service
+  - `GET /staff/:tenantId/:staffId/breaks` — List breaks
+  - `POST /staff/:tenantId/:staffId/breaks` — Add break
+  - `DELETE /staff/:tenantId/breaks/:breakId` — Remove break
+  - `GET /staff/:tenantId/:staffId/availability` — Check availability
+- **Key features:**
+  - Availability check considers service links, day schedules, breaks, and existing appointment conflicts
+  - Schedule/service aggregation in list queries
+
+#### 57. vehicle-inventory (in verticals/)
+- **Purpose:** Vehicle stock management for automotive verticals (dealerships, rentals)
+- **Services:** `vehicle-inventory.service.ts`
+- **Controller:** `vehicle-inventory.controller.ts`
+- **Per-tenant tables:** `vehicles`, `vehicle_inquiries`, `test_drives`
+- **Endpoints:**
+  - `GET /vehicles/:tenantId` — List vehicles
+  - `POST /vehicles/:tenantId` — Create vehicle
+  - `GET /vehicles/:tenantId/:vehicleId` — Detail
+  - `PUT /vehicles/:tenantId/:vehicleId` — Update (dynamic SET clause)
+  - `DELETE /vehicles/:tenantId/:vehicleId` — Delete vehicle
+  - `POST /vehicles/:tenantId/:vehicleId/mark-sold` — Mark as sold (sold_at, price, buyer)
+  - `POST /vehicles/:tenantId/:vehicleId/test-drive` — Schedule test drive (conflict detection)
+  - `GET /vehicles/:tenantId/search` — AI-oriented search (budget, category, fuel filters)
+  - `GET /vehicles/:tenantId/stats` — Inventory statistics
+- **Key features:**
+  - Full CRUD with dynamic SET clause for partial updates
+  - `markSold()` records sold_at timestamp, final price, and buyer info
+  - `scheduleTestDrive()` with time conflict detection
+  - AI-oriented search endpoint with budget/category/fuel type filters
+  - `getInventoryStats()` for dashboard KPIs
+
 ---
 
-### Other (3 modules)
+### Other (7 modules)
 
-#### 56. feature-requests
+#### 58. customer-portal
+- **Purpose:** Customer-facing portal with magic-link authentication and read-only access
+- **Services:** `customer-portal.service.ts`
+- **Controller:** `customer-portal.controller.ts`
+- **Auth:** Magic-link (6-digit code, Redis 10min TTL, 5-attempt brute-force protection). JWT with `type: 'customer'`. Controller validates `X-Portal-Token` header
+- **Endpoints:**
+  - `POST /customer-portal/auth/request` — Request magic-link code
+  - `POST /customer-portal/auth/verify` — Verify code and get JWT
+  - `GET /customer-portal/profile` — Customer profile (read-only)
+  - `GET /customer-portal/conversations` — Customer conversations (read-only)
+  - `GET /customer-portal/appointments` — Customer appointments (read-only)
+  - `GET /customer-portal/orders` — Customer orders (read-only)
+- **Key features:**
+  - 6-digit magic-link code with Redis TTL (10 minutes)
+  - Brute-force protection (max 5 attempts per code)
+  - Read-only endpoints — customers cannot modify data through portal
+  - Separate JWT type (`customer`) from admin/agent tokens
+
+#### 59. white-label
+- **Purpose:** Per-tenant branding customization (logos, colors, domains, CSS)
+- **Services:** `white-label.service.ts`
+- **Controller:** `white-label.controller.ts`
+- **Config fields:** brandName, logoUrl, faviconUrl, primaryColor, accentColor, customDomain, customCss, footerText, hidePoweredBy
+- **Endpoints:**
+  - `GET /white-label/:tenantId` — Get branding config (tenant_admin)
+  - `PUT /white-label/:tenantId` — Update branding config (tenant_admin)
+  - `GET /white-label/public/slug/:slug` — Public lookup by tenant slug (no auth)
+  - `GET /white-label/public/domain` — Public lookup by custom domain (no auth)
+- **Key features:**
+  - Plan-gated to Custom plan only
+  - Public lookup by slug or custom domain with Redis cache
+  - `hidePoweredBy` flag removes platform branding
+  - Custom CSS injection for full UI control
+
+#### 60. ecommerce
+- **Purpose:** E-commerce product sync (Shopify + WooCommerce) and cart abandonment tracking
+- **Services:** `ecommerce.service.ts`
+- **Controller:** `ecommerce.controller.ts`
+- **Lazy tables:** `ecommerce_products`, `abandoned_carts` (created on first use per tenant)
+- **Endpoints:**
+  - `GET /ecommerce/:tenantId/config` — Get integration config
+  - `PUT /ecommerce/:tenantId/config` — Update integration config
+  - `POST /ecommerce/:tenantId/sync` — Trigger product sync from provider
+  - `GET /ecommerce/:tenantId/products` — List synced products
+  - `GET /ecommerce/:tenantId/products/search` — AI-oriented product search
+- **Key features:**
+  - Shopify Admin API integration
+  - WooCommerce REST API integration
+  - Lazy table creation (tables created per tenant on first use)
+  - Cart abandonment tracking
+  - AI-oriented search endpoint for conversational product lookup
+
+#### 61. channel-manager
+- **Purpose:** Channel management integration (Hostaway) for vacation rental distribution
+- **Services:** `channel-manager.service.ts`
+- **Controller:** `channel-manager.controller.ts`
+- **Lazy tables:** `cm_listings`, `cm_reservations`, `cm_availability` (created on first use per tenant)
+- **Endpoints:**
+  - `GET /channel-manager/:tenantId/config` — Get config
+  - `PUT /channel-manager/:tenantId/config` — Update config
+  - `GET /channel-manager/:tenantId/listings` — List managed listings
+  - `POST /channel-manager/:tenantId/listings` — Create listing
+  - `GET /channel-manager/:tenantId/reservations` — List reservations
+  - `POST /channel-manager/:tenantId/reservations` — Create reservation
+  - `GET /channel-manager/:tenantId/availability` — Availability calendar (date series)
+  - `POST /channel-manager/:tenantId/sync/hostaway` — Sync from Hostaway
+- **Key features:**
+  - Hostaway OAuth integration
+  - Reservation conflict detection
+  - Availability calendar with date series generation
+  - Lazy table creation per tenant
+
+#### 62. widget
+- **Purpose:** Embeddable JavaScript chat widget for websites
+- **Services:** `widget.service.ts`
+- **Gateway:** `widget.gateway.ts` (WebSocket for real-time chat)
+- **Controller:** `widget-public.controller.ts`
+- **Endpoints:**
+  - `GET /widget/:tenantId/config` — Get widget config (authenticated)
+  - `PUT /widget/:tenantId/config` — Update widget config (authenticated)
+  - `GET /widget/public/:tenantId/config` — Public widget config (no auth, CORS)
+  - `POST /widget/public/:tenantId/conversation` — Start or resume conversation (no auth)
+  - `GET /widget/public/:tenantId/conversation/:conversationId/messages` — Get messages (no auth)
+- **WebSocket Events:** Real-time message delivery for embedded chat
+- **Config fields:** bubble color, position (bottom-left/bottom-right), welcome message, pre-chat form toggle
+- **Key features:**
+  - Cross-origin embed with CORS configuration
+  - WebSocket gateway for real-time chat
+  - Conversation management (create + resume)
+  - Customizable bubble appearance and position
+
+#### 63. feature-requests
 - **Purpose:** User feature requests with voting, comments, AI signal extraction
 - **Services:** `feature-requests.service.ts`
 - **Controller:** `feature-requests.controller.ts`
@@ -1102,7 +1267,7 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `EVERY_DAY_AT_3AM` — recomputeRanking: re-rank by score/recency
   - `EVERY_DAY_AT_4AM` — extractConversationalSignals: mine conversations for implicit feature requests
 
-#### 57. meta-compliance
+#### 64. meta-compliance
 - **Purpose:** Meta (Facebook) GDPR data deletion callbacks
 - **Services:** `meta-compliance.service.ts`
 - **Controller:** `meta-compliance.controller.ts`
@@ -1111,7 +1276,7 @@ Complete reference for all 58 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `POST /meta/data-deletion-request` — Request deletion
   - `GET /meta/data-deletion/status` — Status
 
-#### 58. carla
+#### 65. carla
 - **Purpose:** AI profile management (legacy/internal)
 - **Services:** `carla.service.ts`
 - **Controller:** `carla.controller.ts`

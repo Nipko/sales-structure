@@ -39,7 +39,7 @@ export class ChannelManagerService {
     ) {}
 
     async ensureTables(schemaName: string): Promise<void> {
-        const exists = await this.prisma.$queryRawUnsafe<any[]>(
+        const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'cm_listings'`,
             schemaName,
         );
@@ -159,7 +159,7 @@ export class ChannelManagerService {
         basePriceCents?: number; currency?: string; propertyId?: string;
     }): Promise<any> {
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".cm_listings
             (external_id, provider, name, address, check_in_time, check_out_time,
              max_guests, base_price_cents, currency, property_id)
@@ -183,7 +183,7 @@ export class ChannelManagerService {
     }): Promise<any> {
         await this.ensureTables(schemaName);
 
-        const conflicts = await this.prisma.$queryRawUnsafe<any[]>(`
+        const conflicts: any[] = await this.prisma.$queryRawUnsafe(`
             SELECT 1 FROM "${schemaName}".cm_reservations
             WHERE listing_id = $1::uuid AND status = 'confirmed'
             AND check_in < $3::date AND check_out > $2::date
@@ -191,7 +191,7 @@ export class ChannelManagerService {
 
         if (conflicts.length > 0) throw new BadRequestException('Dates conflict with existing reservation');
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".cm_reservations
             (listing_id, provider, guest_name, guest_email, guest_phone,
              check_in, check_out, guests, total_cents, currency, source, notes)

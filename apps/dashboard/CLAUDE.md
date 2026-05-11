@@ -63,6 +63,8 @@ src/
       tenants/[tenantId]/ — Tenant detail (4 tabs: Info/Users/Channels/Billing + impersonation)
       financials/       — SaaS financial metrics (5 tabs: Overview/Revenue/Customers/Costs/Settings)
       settings/billing/ — Tenant billing (plan info, countdown, actions, payment history)
+      settings/security/ — 2FA + SSO configuration (SAML IdP settings, force-SSO toggle, SP metadata download)
+      automation/_components/FlowBuilder.tsx — Visual automation builder using @xyflow/react (React Flow canvas with trigger, condition, action, delay nodes)
       ... (65+ pages total)
   components/
     layout/TopBar.tsx       — Breadcrumbs, theme toggle, notification bell (7 categories), tenant selector, user menu
@@ -98,6 +100,11 @@ src/
 - i18n: next-intl with 4 languages (es/en/pt/fr), cookie-based locale switching, 0 hardcoded strings
 - Multi-agent: Agent list → template picker → agent editor with channel assignment
 - Pipeline stage labels: use `tc('stages.{key}')` from common namespace (not hardcoded)
+
+## New Features (May 2026)
+- **Visual Automation Builder**: React Flow canvas (@xyflow/react), toggleable with existing 4-step wizard, same data format. Trigger, condition, action, delay node types
+- **Handoff summary banner**: Orange banner in inbox showing AI-generated conversation summary when agent opens handed-off conversation
+- **SSO in login**: Debounced domain check on email input, SSO button when domain matches, forced-SSO warning
 
 ## CRM Features (Apr 27, 2026)
 - **Lead edit**: pencil icon on lead detail → inline edit (name, email, phone, stage, VIP, tags)

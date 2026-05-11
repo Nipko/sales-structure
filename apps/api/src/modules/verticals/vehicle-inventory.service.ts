@@ -8,7 +8,7 @@ export class VehicleInventoryService {
     constructor(private readonly prisma: PrismaService) {}
 
     async ensureTables(schemaName: string): Promise<void> {
-        const exists = await this.prisma.$queryRawUnsafe<any[]>(
+        const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'vehicles'`,
             schemaName,
         );
@@ -113,13 +113,13 @@ export class VehicleInventoryService {
         const offset = filters?.offset || 0;
 
         const countParams = [...params];
-        const countResult = await this.prisma.$queryRawUnsafe<any[]>(
+        const countResult: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT COUNT(*)::int as total FROM "${schemaName}".vehicles ${where}`,
             ...countParams,
         );
 
         params.push(limit, offset);
-        const items = await this.prisma.$queryRawUnsafe<any[]>(
+        const items: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".vehicles ${where}
              ORDER BY is_featured DESC, created_at DESC
              LIMIT $${idx++} OFFSET $${idx++}`,
@@ -130,7 +130,7 @@ export class VehicleInventoryService {
     }
 
     async getVehicle(schemaName: string, vehicleId: string): Promise<any> {
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".vehicles WHERE id = $1::uuid`,
             vehicleId,
         );
@@ -147,7 +147,7 @@ export class VehicleInventoryService {
         description?: string; location?: string; isFeatured?: boolean;
     }): Promise<any> {
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".vehicles (
                 make, model, year, trim_level, vin, license_plate, color,
                 fuel_type, transmission, mileage_km, condition, price_cents,
@@ -193,7 +193,7 @@ export class VehicleInventoryService {
         sets.push('updated_at = now()');
         params.push(vehicleId);
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `UPDATE "${schemaName}".vehicles SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
             ...params,
         );
@@ -202,7 +202,7 @@ export class VehicleInventoryService {
     }
 
     async markSold(schemaName: string, vehicleId: string, soldPriceCents: number, buyerContactId?: string): Promise<any> {
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             UPDATE "${schemaName}".vehicles
             SET status = 'sold', sold_at = CURRENT_DATE, sold_price_cents = $2, buyer_contact_id = $3::uuid, updated_at = now()
             WHERE id = $1::uuid
@@ -214,7 +214,7 @@ export class VehicleInventoryService {
 
     async getInventoryStats(schemaName: string): Promise<any> {
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             SELECT
                 COUNT(*)::int as total,
                 COUNT(*) FILTER (WHERE status = 'available')::int as available,
@@ -234,7 +234,7 @@ export class VehicleInventoryService {
     }): Promise<any> {
         await this.ensureTables(schemaName);
 
-        const conflict = await this.prisma.$queryRawUnsafe<any[]>(`
+        const conflict: any[] = await this.prisma.$queryRawUnsafe(`
             SELECT 1 FROM "${schemaName}".test_drives
             WHERE vehicle_id = $1::uuid AND scheduled_date = $2::date AND scheduled_time = $3::time
             AND status NOT IN ('cancelled', 'completed')
@@ -242,7 +242,7 @@ export class VehicleInventoryService {
 
         if (conflict.length > 0) throw new BadRequestException('Test drive slot already booked');
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".test_drives (vehicle_id, contact_name, contact_phone, scheduled_date, scheduled_time, notes)
             VALUES ($1::uuid, $2, $3, $4::date, $5::time, $6)
             RETURNING *

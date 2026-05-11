@@ -1,7 +1,7 @@
 # API Service — Claude Code Context
 
 ## Overview
-NestJS 10 backend with 58 modules. Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 
@@ -232,6 +232,47 @@ await this.prisma.executeInTenantSchema(schemaName,
 |------|---------|---------|
 | `20 * * * *` | AppointmentRemindersService | Auto-complete appointments ended 2+ hours ago |
 | `*/2 * * * *` | AgentAvailabilityService | Escalate stale handoffs (>5 min no response → supervisor alert) |
+
+## New modules (May 2026)
+
+### Customer Portal Module
+- `customer-portal/customer-portal.service.ts` — Magic-link auth: 6-digit code (Redis, 10min TTL, 5-attempt brute-force), JWT with type:'customer'
+- `customer-portal/customer-portal.controller.ts` — Public: request-access, verify. Authenticated via X-Portal-Token: profile, conversations, appointments, orders
+
+### White Label Module
+- `white-label/white-label.service.ts` — Per-tenant branding config (brandName, logoUrl, colors, customDomain, customCss, hidePoweredBy). Plan-gated to Custom plan. Public lookup by slug/domain with Redis cache
+- `white-label/white-label.controller.ts` — GET/PUT config (tenant_admin), GET public/slug/:slug, GET public/domain
+
+### E-commerce Module
+- `ecommerce/ecommerce.service.ts` — Shopify Admin API + WooCommerce REST API product sync. Lazy tables: ecommerce_products, abandoned_carts. Cart abandonment tracking. AI product search
+- `ecommerce/ecommerce.controller.ts` — GET/PUT config, POST sync, GET products, GET products/search
+
+### Channel Manager Module
+- `channel-manager/channel-manager.service.ts` — Hostaway OAuth integration. Lazy tables: cm_listings, cm_reservations, cm_availability. Reservation conflict detection. Availability calendar with date series
+- `channel-manager/channel-manager.controller.ts` — GET/PUT config, CRUD listings, CRUD reservations, GET availability, POST sync/hostaway
+
+### SAML/SSO (in auth module)
+- `auth/saml.service.ts` — Config CRUD in tenant.settings.saml, domain-based tenant lookup (Redis cache), JIT user provisioning, isSsoForced()
+- `auth/saml.strategy.ts` — MultiSamlStrategy with per-tenant IdP config via getSamlOptions callback
+- `auth/saml.controller.ts` — Public: check, login, acs, metadata/:tenantId. Authenticated: GET/PUT config
+
+### Stripe Billing Adapter (in billing module)
+- `billing/adapters/stripe.adapter.ts` — IPaymentProvider for Stripe: createCustomer, createSubscription, cancelSubscription, createCheckoutSession, constructWebhookEvent
+- `billing/payment-provider.factory.ts` — Routes between Stripe and MercadoPago based on tenant config
+
+### Staff Scheduling (in verticals module)
+- `verticals/staff-scheduling.service.ts` — Lazy tables: staff_members, staff_schedules, staff_service_links, staff_breaks. Availability check with service/schedule/break/appointment conflict resolution
+- `verticals/staff-scheduling.controller.ts` — CRUD under /staff/:tenantId, schedule, services, breaks, availability
+
+### Vehicle Inventory (in verticals module)
+- `verticals/vehicle-inventory.service.ts` — Lazy tables: vehicles, vehicle_inquiries, test_drives. Full CRUD, markSold(), scheduleTestDrive() with conflict detection, AI search, stats
+- `verticals/vehicle-inventory.controller.ts` — CRUD under /vehicles/:tenantId, sold, test-drives, search, stats
+
+### Web Chat Widget
+- `widget/widget.service.ts` — Config CRUD, conversation management for embeddable chat
+- `widget/widget.gateway.ts` — WebSocket gateway for real-time widget chat
+- `widget/widget-public.controller.ts` — Public endpoints for widget embed, CORS configured
+- `widget/widget.module.ts` — Imports for WebSocket + HTTP
 
 ## Redis Keys (API-specific)
 ```

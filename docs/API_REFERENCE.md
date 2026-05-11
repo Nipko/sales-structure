@@ -1,7 +1,7 @@
 # 🗂️ Estructura de la API — Parallext Engine
 
 > Referencia rápida de todos los módulos y endpoints del backend.
-> Actualizado: Marzo 29, 2026
+> Actualizado: Mayo 10, 2026
 
 ---
 
@@ -24,6 +24,14 @@
 | Handoff | `modules/handoff/` | 2 | Escalation triggers, EventEmitter2 |
 | Broadcast | `modules/broadcast/` | 4 | Campañas masivas, BullMQ rate-limited |
 | Health | `modules/health/` | 1 | Health check |
+| Customer Portal | `modules/customer-portal/` | 6 | Portal de autoservicio para clientes (OTP auth) |
+| White Label | `modules/white-label/` | 4 | Branding personalizado por tenant |
+| E-commerce | `modules/ecommerce/` | 5 | Catálogo de productos, sync con proveedores |
+| Channel Manager | `modules/channel-manager/` | 8 | Listings, reservaciones, disponibilidad (turismo) |
+| Staff Scheduling | `modules/staff/` | 8 | Personal, horarios, servicios, disponibilidad |
+| Vehicle Inventory | `modules/vehicles/` | 8 | Inventario vehicular, test drives, búsqueda IA |
+| SAML/SSO | `modules/auth/saml/` | 6 | Enterprise SSO via SAML 2.0 |
+| Widget | `modules/widget/` | 6 | Web chat widget embebible |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -171,6 +179,89 @@
 | GET | /compliance/opt-outs/:tenantId/stats | JWT | Opt-out statistics |
 | PUT | /compliance/opt-outs/:tenantId/:id/confirm | JWT | Confirm opt-out |
 | PUT | /compliance/opt-outs/:tenantId/:id/reject | JWT | Reject (false positive) |
+
+## Customer Portal (`/customer-portal`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /customer-portal/request-access | Public | Request access — body: `{tenantId, phone/email}` → sends 6-digit OTP |
+| POST | /customer-portal/verify | Public | Verify OTP — body: `{tenantId, phone/email, code}` → returns JWT |
+| GET | /customer-portal/profile | X-Portal-Token | Get contact profile |
+| GET | /customer-portal/conversations | X-Portal-Token | List conversations |
+| GET | /customer-portal/appointments | X-Portal-Token | List appointments |
+| GET | /customer-portal/orders | X-Portal-Token | List orders |
+
+## White Label (`/white-label`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /white-label/config | JWT (tenant_admin) | Get branding config |
+| PUT | /white-label/config | JWT (tenant_admin) | Update branding config |
+| GET | /white-label/public/slug/:slug | Public | Lookup tenant by slug |
+| GET | /white-label/public/domain?domain= | Public | Lookup tenant by custom domain |
+
+## E-commerce (`/ecommerce`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /ecommerce/config | JWT (tenant_admin) | Get e-commerce config |
+| PUT | /ecommerce/config | JWT (tenant_admin) | Update config — body: `Partial<EcommerceConfig>` |
+| POST | /ecommerce/sync | JWT (tenant_admin) | Sync products from provider |
+| GET | /ecommerce/products?status=&search=&limit=&offset= | JWT | List products (paginated, filterable) |
+| GET | /ecommerce/products/search?search=&maxPrice=&category= | JWT | AI-powered product search |
+
+## Channel Manager (`/channel-manager`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /channel-manager/config | JWT (tenant_admin) | Get channel manager config |
+| PUT | /channel-manager/config | JWT (tenant_admin) | Update config |
+| GET | /channel-manager/listings | JWT | List all listings |
+| POST | /channel-manager/listings | JWT | Create listing |
+| GET | /channel-manager/reservations?listingId=&status=&fromDate=&toDate= | JWT | List reservations (filterable) |
+| POST | /channel-manager/reservations | JWT | Create reservation (conflict detection) |
+| GET | /channel-manager/availability?listingId=&from=&to= | JWT | Availability calendar |
+| POST | /channel-manager/sync/hostaway | JWT (tenant_admin) | Sync from Hostaway |
+
+## Staff Scheduling (`/staff/:tenantId`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /staff/:tenantId | JWT | List staff with schedules |
+| POST | /staff/:tenantId | JWT | Create staff member |
+| PUT | /staff/:tenantId/:staffId | JWT | Update staff member |
+| DELETE | /staff/:tenantId/:staffId | JWT | Delete staff member |
+| PUT | /staff/:tenantId/:staffId/schedule | JWT | Set weekly schedule |
+| PUT | /staff/:tenantId/:staffId/services | JWT | Link services to staff |
+| POST | /staff/:tenantId/:staffId/breaks | JWT | Add break |
+| GET | /staff/:tenantId/available?serviceId=&date=&time= | JWT | Check availability |
+
+## Vehicle Inventory (`/vehicles/:tenantId`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /vehicles/:tenantId | JWT | List vehicles |
+| POST | /vehicles/:tenantId | JWT | Create vehicle |
+| PUT | /vehicles/:tenantId/:vehicleId | JWT | Update vehicle |
+| DELETE | /vehicles/:tenantId/:vehicleId | JWT | Delete vehicle |
+| PUT | /vehicles/:tenantId/:vehicleId/sold | JWT | Mark vehicle as sold |
+| GET | /vehicles/:tenantId/stats | JWT | Inventory statistics |
+| POST | /vehicles/:tenantId/test-drives | JWT | Schedule test drive |
+| GET | /vehicles/:tenantId/search?query=&maxBudget=&category=&fuelType= | JWT | AI-powered vehicle search |
+
+## SAML/SSO (`/auth/saml`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /auth/saml/check?email= | Public | Check if email domain has SSO configured |
+| GET | /auth/saml/login?tenantId= | Public | Redirect to IdP login |
+| POST | /auth/saml/acs | Public | ACS callback from IdP |
+| GET | /auth/saml/metadata/:tenantId | Public | SP metadata XML |
+| GET | /auth/saml/config | JWT (tenant_admin) | Get SAML config |
+| PUT | /auth/saml/config | JWT (tenant_admin) | Update SAML config |
+
+## Widget (`/widget`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /widget/config/:tenantId | Public | Get widget config for embed |
+| POST | /widget/conversations | Public | Create widget conversation |
+| POST | /widget/conversations/:id/messages | Public | Send message in widget conversation |
+| GET | /widget/conversations/:id/messages | Public | Get messages for widget conversation |
+| GET | /widget/admin/config | JWT (tenant_admin) | Get widget admin config |
+| PUT | /widget/admin/config | JWT (tenant_admin) | Update widget admin config |
 
 ---
 

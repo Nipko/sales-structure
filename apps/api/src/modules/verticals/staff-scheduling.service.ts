@@ -12,7 +12,7 @@ export class StaffSchedulingService {
     ) {}
 
     async ensureTables(schemaName: string): Promise<void> {
-        const exists = await this.prisma.$queryRawUnsafe<any[]>(
+        const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'staff_members'`,
             schemaName,
         );
@@ -96,7 +96,7 @@ export class StaffSchedulingService {
         role?: string; specialties?: string[];
     }): Promise<any> {
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".staff_members (name, email, phone, role, specialties)
             VALUES ($1, $2, $3, $4, $5::text[])
             RETURNING *
@@ -125,7 +125,7 @@ export class StaffSchedulingService {
         sets.push('updated_at = now()');
         params.push(staffId);
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
             `UPDATE "${schemaName}".staff_members SET ${sets.join(', ')} WHERE id = $${idx}::uuid RETURNING *`,
             ...params,
         );
@@ -200,7 +200,7 @@ export class StaffSchedulingService {
     async addBreak(schemaName: string, staffId: string, data: {
         date: string; startTime: string; endTime: string; reason?: string;
     }): Promise<any> {
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".staff_breaks (staff_id, date, start_time, end_time, reason)
             VALUES ($1::uuid, $2::date, $3::time, $4::time, $5)
             RETURNING *

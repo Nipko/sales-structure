@@ -50,7 +50,7 @@ export class PushService implements OnModuleInit {
     async sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
         if (!this.enabled) return 0;
 
-        const subs = await this.prisma.$queryRawUnsafe<any[]>(
+        const subs: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT endpoint, keys FROM public.push_subscriptions WHERE user_id = $1::uuid`,
             userId,
         );
@@ -78,7 +78,7 @@ export class PushService implements OnModuleInit {
     async sendToTenantRole(tenantId: string, role: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
         if (!this.enabled) return 0;
 
-        const users = await this.prisma.$queryRawUnsafe<any[]>(
+        const users: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT ps.endpoint, ps.keys
              FROM public.push_subscriptions ps
              JOIN public.users u ON u.id = ps.user_id

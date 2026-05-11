@@ -66,7 +66,7 @@ export class EcommerceService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
-        const exists = await this.prisma.$queryRawUnsafe<any[]>(
+        const exists: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'ecommerce_products'`,
             schemaName,
         );
@@ -233,13 +233,13 @@ export class EcommerceService {
         const limit = filters?.limit || 50;
         const offset = filters?.offset || 0;
 
-        const countResult = await this.prisma.$queryRawUnsafe<any[]>(
+        const countResult: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT COUNT(*)::int as total FROM "${schemaName}".ecommerce_products ${where}`,
             ...params,
         );
 
         params.push(limit, offset);
-        const items = await this.prisma.$queryRawUnsafe<any[]>(
+        const items: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".ecommerce_products ${where}
              ORDER BY synced_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
             ...params,
@@ -254,7 +254,7 @@ export class EcommerceService {
         currency?: string; checkoutUrl?: string;
     }): Promise<any> {
         await this.ensureTables(schemaName);
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(`
+        const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".abandoned_carts
             (external_id, provider, contact_phone, contact_email, items, total_cents, currency, checkout_url)
             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)

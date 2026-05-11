@@ -33,7 +33,11 @@ import {
     Zap,
     BarChart3,
     Shield,
+    Boxes,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const FlowBuilder = dynamic(() => import("./_components/FlowBuilder"), { ssr: false });
 
 // Trigger/condition/action definitions
 // Labels are in Spanish as reference data — displayed via i18n lookup in component
@@ -108,6 +112,10 @@ export default function AutomationPage() {
     const [wizardStep, setWizardStep] = useState(0);
     const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
     const [ruleForm, setRuleForm] = useState(emptyRuleForm());
+
+    // Flow Builder
+    const [flowBuilderOpen, setFlowBuilderOpen] = useState(false);
+    const [flowBuilderRule, setFlowBuilderRule] = useState<any | null>(null);
 
     // Executions
     const [selectedRuleExecs, setSelectedRuleExecs] = useState<any[] | null>(null);
@@ -240,6 +248,42 @@ export default function AutomationPage() {
         setWizardOpen(true);
     }
 
+    // -- Flow Builder --
+    function openFlowBuilder(rule?: any) {
+        if (!rule && !canCreate("automationRules", rules.length)) {
+            setUpgradeModalOpen(true);
+            return;
+        }
+        setFlowBuilderRule(rule || null);
+        setFlowBuilderOpen(true);
+    }
+
+    async function handleFlowSave(data: { name: string; trigger_type: string; conditions: any[]; actions: any[]; active: boolean }) {
+        if (!activeTenantId) return;
+        const payload = {
+            name: data.name,
+            trigger_type: data.trigger_type,
+            conditions_json: data.conditions,
+            actions_json: data.actions,
+            active: data.active,
+        };
+        try {
+            if (flowBuilderRule?.id) {
+                await api.updateRule(activeTenantId, flowBuilderRule.id, payload);
+                showToast(t("toast.ruleUpdated"));
+            } else {
+                await api.createRule(activeTenantId, payload);
+                showToast(t("toast.ruleCreated"));
+            }
+            setFlowBuilderOpen(false);
+            setFlowBuilderRule(null);
+            loadRules();
+        } catch (err) {
+            console.error(err);
+            showToast(t("errorSaving"));
+        }
+    }
+
     // -- Condition helpers --
     function addCondition() {
         setRuleForm(prev => ({
@@ -295,6 +339,26 @@ export default function AutomationPage() {
     };
 
     // ============================
+    //  RENDER: Flow Builder
+    // ============================
+    if (flowBuilderOpen) {
+        return (
+            <div className="text-foreground">
+                <PageHeader
+                    title={t('title')}
+                    subtitle={t('visualBuilder')}
+                    icon={Boxes}
+                />
+                <FlowBuilder
+                    rule={flowBuilderRule}
+                    onSave={handleFlowSave}
+                    onCancel={() => { setFlowBuilderOpen(false); setFlowBuilderRule(null); }}
+                />
+            </div>
+        );
+    }
+
+    // ============================
     //  RENDER: Rules List
     // ============================
     if (!wizardOpen) {
@@ -306,9 +370,14 @@ export default function AutomationPage() {
                     subtitle={t('rules')}
                     icon={Workflow}
                     action={
-                        <Button onClick={openNewWizard} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:opacity-90 gap-2 press-effect">
-                            <Plus size={18} /> {t('newRule')}
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button onClick={() => openFlowBuilder()} variant="outline" className="gap-2 press-effect border-indigo-500/30 text-indigo-500 hover:bg-indigo-500/10">
+                                <Boxes size={18} /> {t('visualBuilder')}
+                            </Button>
+                            <Button onClick={openNewWizard} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:opacity-90 gap-2 press-effect">
+                                <Plus size={18} /> {t('newRule')}
+                            </Button>
+                        </div>
                     }
                 />
 
@@ -410,12 +479,22 @@ export default function AutomationPage() {
                                                 )} />
                                             </button>
 
-                                            {/* Edit */}
+                                            {/* Edit (wizard) */}
                                             <button
                                                 onClick={() => handleEdit(rule)}
                                                 className="bg-transparent border-none text-muted-foreground cursor-pointer p-1 hover:text-foreground"
+                                                title={t("editWizard")}
                                             >
                                                 <Pencil size={16} />
+                                            </button>
+
+                                            {/* Edit (visual builder) */}
+                                            <button
+                                                onClick={() => openFlowBuilder(rule)}
+                                                className="bg-transparent border-none text-indigo-500 cursor-pointer p-1 opacity-70 hover:opacity-100"
+                                                title={t("visualBuilder")}
+                                            >
+                                                <Boxes size={16} />
                                             </button>
 
                                             {/* Delete */}

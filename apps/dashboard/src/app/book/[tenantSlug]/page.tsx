@@ -2,82 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Calendar, Clock, ChevronLeft, ChevronRight, CheckCircle2,
   Loader2, MapPin, User, Phone, Mail, FileText,
 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
-
-/* ── Inline i18n for public page (no next-intl) ───────────── */
-const translations: Record<string, Record<string, string>> = {
-  en: {
-    title: "Book an Appointment", subtitle: "Choose a service and pick your preferred time",
-    selectService: "Select a service", pickDate: "Pick a date", chooseTime: "Choose a time",
-    yourInfo: "Your information", confirmed: "Booking Confirmed!",
-    confirmMessage: "You will receive a confirmation message shortly",
-    back: "Back", today: "Today", noSlots: "No available slots for this date",
-    chooseAnother: "Choose another date", noServices: "No services available at this time",
-    fullName: "Full name", phone: "Phone", email: "Email", notesLabel: "Notes",
-    confirmBooking: "Confirm Booking", booking: "Booking...",
-    bookAnother: "Book another appointment", readMore: "Read more",
-    connectionError: "Connection error", bookingFailed: "Booking failed",
-    loadError: "Could not load services", tryAgain: "Try again",
-    min: "min", poweredBy: "Powered by Parallly",
-    dayMon: "Mon", dayTue: "Tue", dayWed: "Wed", dayThu: "Thu", dayFri: "Fri", daySat: "Sat", daySun: "Sun",
-  },
-  es: {
-    title: "Agendar una cita", subtitle: "Escoge un servicio y tu horario preferido",
-    selectService: "Selecciona un servicio", pickDate: "Elige una fecha", chooseTime: "Elige un horario",
-    yourInfo: "Tu informacion", confirmed: "Cita confirmada!",
-    confirmMessage: "Recibiras un mensaje de confirmacion en breve",
-    back: "Volver", today: "Hoy", noSlots: "No hay horarios disponibles para esta fecha",
-    chooseAnother: "Elegir otra fecha", noServices: "No hay servicios disponibles en este momento",
-    fullName: "Nombre completo", phone: "Telefono", email: "Correo", notesLabel: "Notas",
-    confirmBooking: "Confirmar reserva", booking: "Reservando...",
-    bookAnother: "Agendar otra cita", readMore: "Leer mas",
-    connectionError: "Error de conexion", bookingFailed: "Error al reservar",
-    loadError: "No se pudieron cargar los servicios", tryAgain: "Intentar de nuevo",
-    min: "min", poweredBy: "Powered by Parallly",
-    dayMon: "Lun", dayTue: "Mar", dayWed: "Mie", dayThu: "Jue", dayFri: "Vie", daySat: "Sab", daySun: "Dom",
-  },
-  pt: {
-    title: "Agendar um compromisso", subtitle: "Escolha um servico e seu horario preferido",
-    selectService: "Selecione um servico", pickDate: "Escolha uma data", chooseTime: "Escolha um horario",
-    yourInfo: "Suas informacoes", confirmed: "Agendamento confirmado!",
-    confirmMessage: "Voce recebera uma mensagem de confirmacao em breve",
-    back: "Voltar", today: "Hoje", noSlots: "Sem horarios disponiveis para esta data",
-    chooseAnother: "Escolher outra data", noServices: "Nenhum servico disponivel no momento",
-    fullName: "Nome completo", phone: "Telefone", email: "Email", notesLabel: "Notas",
-    confirmBooking: "Confirmar reserva", booking: "Reservando...",
-    bookAnother: "Agendar outro compromisso", readMore: "Leia mais",
-    connectionError: "Erro de conexao", bookingFailed: "Erro ao reservar",
-    loadError: "Nao foi possivel carregar os servicos", tryAgain: "Tentar novamente",
-    min: "min", poweredBy: "Powered by Parallly",
-    dayMon: "Seg", dayTue: "Ter", dayWed: "Qua", dayThu: "Qui", dayFri: "Sex", daySat: "Sab", daySun: "Dom",
-  },
-  fr: {
-    title: "Prendre rendez-vous", subtitle: "Choisissez un service et votre creneau prefere",
-    selectService: "Selectionnez un service", pickDate: "Choisissez une date", chooseTime: "Choisissez un horaire",
-    yourInfo: "Vos informations", confirmed: "Rendez-vous confirme !",
-    confirmMessage: "Vous recevrez un message de confirmation sous peu",
-    back: "Retour", today: "Aujourd'hui", noSlots: "Aucun creneau disponible pour cette date",
-    chooseAnother: "Choisir une autre date", noServices: "Aucun service disponible pour le moment",
-    fullName: "Nom complet", phone: "Telephone", email: "Email", notesLabel: "Notes",
-    confirmBooking: "Confirmer la reservation", booking: "Reservation...",
-    bookAnother: "Prendre un autre rendez-vous", readMore: "En savoir plus",
-    connectionError: "Erreur de connexion", bookingFailed: "Echec de la reservation",
-    loadError: "Impossible de charger les services", tryAgain: "Reessayer",
-    min: "min", poweredBy: "Powered by Parallly",
-    dayMon: "Lun", dayTue: "Mar", dayWed: "Mer", dayThu: "Jeu", dayFri: "Ven", daySat: "Sam", daySun: "Dim",
-  },
-};
-
-function detectLang(): string {
-  if (typeof navigator === "undefined") return "es";
-  const lang = navigator.language?.slice(0, 2) || "es";
-  return translations[lang] ? lang : "es";
-}
 
 interface Service { id: string; name: string; description: string | null; durationMinutes: number; price: number; currency: string; color: string; }
 interface Slot { start: string; end: string; display: string; }
@@ -86,10 +17,8 @@ type Step = "services" | "date" | "time" | "info" | "confirmed";
 export default function PublicBookingPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
-  const [lang] = useState(detectLang);
-  const t = (key: string) => translations[lang]?.[key] || translations.en[key] || key;
-  const dateLocale = lang === "pt" ? "pt-BR" : lang === "fr" ? "fr-FR" : lang === "en" ? "en-US" : "es-MX";
-  const dayHeaders = ["dayMon", "dayTue", "dayWed", "dayThu", "dayFri", "daySat", "daySun"];
+  const t = useTranslations("publicBooking");
+  const dayHeaders = ["dayMon", "dayTue", "dayWed", "dayThu", "dayFri", "daySat", "daySun"] as const;
 
   const [tenantInfo, setTenantInfo] = useState<{ name: string; logo: string | null; color: string | null }>({ name: "", logo: null, color: null });
   const [services, setServices] = useState<Service[]>([]);
@@ -115,7 +44,6 @@ export default function PublicBookingPage() {
   useEffect(() => {
     if (!tenantSlug) return;
     setLoading(true);
-    // Fetch tenant branding + services in parallel
     Promise.all([
       fetch(`${API_URL}/booking/${tenantSlug}/info`).then(r => r.json()).catch(() => null),
       fetch(`${API_URL}/booking/${tenantSlug}/services`).then(r => r.json()),
@@ -172,7 +100,7 @@ export default function PublicBookingPage() {
     return days;
   }, [calendarMonth]);
 
-  const monthLabel = calendarMonth.toLocaleDateString(dateLocale, { month: "long", year: "numeric" });
+  const monthLabel = calendarMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const isDateSelectable = (day: number) => {
     const d = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` >= todayStr;
@@ -293,7 +221,7 @@ export default function PublicBookingPage() {
             <button onClick={() => setStep("date")} className="flex items-center gap-1 text-sm text-indigo-600 hover:underline bg-transparent border-none cursor-pointer"><ChevronLeft size={16} /> {t("back")}</button>
             <h2 className="text-xl font-semibold text-neutral-900">{t("chooseTime")}</h2>
             <p className="text-sm text-neutral-500">
-              {selectedService.name} — {new Date(selectedDate + "T12:00:00").toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long" })}
+              {selectedService.name} — {new Date(selectedDate + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
             </p>
             {loadingSlots ? (
               <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>
@@ -327,7 +255,7 @@ export default function PublicBookingPage() {
                 {selectedService.name}
               </div>
               <div className="flex items-center gap-4 mt-2 text-xs text-indigo-600">
-                <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(selectedDate + "T12:00:00").toLocaleDateString(dateLocale, { weekday: "short", day: "numeric", month: "short" })}</span>
+                <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(selectedDate + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</span>
                 <span className="flex items-center gap-1"><Clock size={12} /> {selectedSlot.start}</span>
                 <span>{selectedService.durationMinutes} {t("min")}</span>
               </div>
@@ -365,7 +293,7 @@ export default function PublicBookingPage() {
             <p className="text-sm text-neutral-500 mb-6">{t("confirmMessage")}</p>
             <div className="bg-neutral-50 rounded-xl p-5 text-left space-y-3">
               <div className="flex items-center gap-2 text-sm"><MapPin size={14} className="text-neutral-400" /><span className="font-medium text-neutral-900">{confirmationData.service}</span></div>
-              <div className="flex items-center gap-2 text-sm"><Calendar size={14} className="text-neutral-400" /><span className="text-neutral-700">{new Date(confirmationData.date + "T12:00:00").toLocaleDateString(dateLocale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div>
+              <div className="flex items-center gap-2 text-sm"><Calendar size={14} className="text-neutral-400" /><span className="text-neutral-700">{new Date(confirmationData.date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span></div>
               <div className="flex items-center gap-2 text-sm"><Clock size={14} className="text-neutral-400" /><span className="text-neutral-700">{confirmationData.startTime} - {confirmationData.endTime}</span></div>
             </div>
             <button onClick={() => { setStep("services"); setSelectedService(null); setSelectedDate(""); setSelectedSlot(null); setCustomerName(""); setCustomerPhone(""); setCustomerEmail(""); setNotes(""); setConfirmationData(null); }}

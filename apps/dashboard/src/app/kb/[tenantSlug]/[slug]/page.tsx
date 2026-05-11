@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ChevronLeft, Calendar, Clock, BookOpen } from "lucide-react";
 
@@ -22,6 +23,7 @@ export default function KBArticlePage() {
   const params = useParams();
   const tenantSlug = params?.tenantSlug as string;
   const slug = params?.slug as string;
+  const t = useTranslations("kb");
 
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,9 +76,9 @@ export default function KBArticlePage() {
         alignItems: "center", justifyContent: "center", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}>
         <BookOpen size={48} color="#d1d5db" />
-        <h2 style={{ margin: "16px 0 8px", fontSize: 20, fontWeight: 700, color: "#111827" }}>Article not found</h2>
+        <h2 style={{ margin: "16px 0 8px", fontSize: 20, fontWeight: 700, color: "#111827" }}>{t("articleNotFound")}</h2>
         <Link href={`/kb/${tenantSlug}`} style={{ color: "#6366f1", fontSize: 14, textDecoration: "none" }}>
-          Back to Help Center
+          {t("backToHelp")}
         </Link>
       </div>
     );
@@ -100,9 +102,9 @@ export default function KBArticlePage() {
           padding: "6px 14px", cursor: "pointer", fontSize: 13, color: "#374151",
           textDecoration: "none",
         }}>
-          <ChevronLeft size={14} /> Back
+          <ChevronLeft size={14} /> {t("back")}
         </Link>
-        <span style={{ fontSize: 14, color: "#6b7280" }}>{tenantName} Help Center</span>
+        <span style={{ fontSize: 14, color: "#6b7280" }}>{tenantName} {t("helpCenter")}</span>
       </header>
 
       {/* Article */}
@@ -131,12 +133,12 @@ export default function KBArticlePage() {
           {article.published_at && (
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: "#9ca3af" }}>
               <Calendar size={13} />
-              {new Date(article.published_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+              {new Date(article.published_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
             </span>
           )}
           <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: "#9ca3af" }}>
             <Clock size={13} />
-            {readingTime} min read
+            {t("minRead", { count: readingTime })}
           </span>
         </div>
 
@@ -149,7 +151,7 @@ export default function KBArticlePage() {
       {/* Footer */}
       <footer style={{ borderTop: "1px solid #e5e7eb", padding: "20px 32px", textAlign: "center" }}>
         <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>
-          Powered by <span style={{ fontWeight: 600, color: "#6366f1" }}>Parallly</span>
+          {t("poweredBy")}
         </p>
       </footer>
     </div>

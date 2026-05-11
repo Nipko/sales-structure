@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { Search, BookOpen, ChevronRight, Folder } from "lucide-react";
 
@@ -21,6 +22,7 @@ interface Article {
 export default function KBPublicPage() {
   const params = useParams();
   const tenantSlug = params?.tenantSlug as string;
+  const t = useTranslations("kb");
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +61,7 @@ export default function KBPublicPage() {
 
   const tenantName = tenantSlug
     ? tenantSlug.charAt(0).toUpperCase() + tenantSlug.slice(1).replace(/-/g, " ")
-    : "Help Center";
+    : t("helpCenter");
 
   return (
     <div style={{
@@ -72,10 +74,10 @@ export default function KBPublicPage() {
         padding: "48px 32px 56px", textAlign: "center", color: "#fff",
       }}>
         <h1 style={{ margin: "0 0 8px", fontSize: 28, fontWeight: 800 }}>
-          {tenantName} Help Center
+          {tenantName} {t("helpCenter")}
         </h1>
         <p style={{ margin: "0 0 28px", fontSize: 15, opacity: 0.85 }}>
-          Find answers to your questions
+          {t("findAnswers")}
         </p>
 
         {/* Search */}
@@ -83,7 +85,7 @@ export default function KBPublicPage() {
           <Search size={18} style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
           <input
             type="text"
-            placeholder="Search articles..."
+            placeholder={t("searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
@@ -109,7 +111,7 @@ export default function KBPublicPage() {
                 color: selectedCategory === null ? "#ffffff" : "#6b7280",
               }}
             >
-              All ({articles.length})
+              {t("all")} ({articles.length})
             </button>
             {categories.map((cat) => {
               const count = articles.filter((a) => a.category === cat).length;
@@ -137,12 +139,12 @@ export default function KBPublicPage() {
           <div style={{ textAlign: "center", padding: 80, color: "#9ca3af" }}>
             <div style={{ width: 32, height: 32, border: "3px solid #e5e7eb", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-            Loading articles...
+            {t("loading")}
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: 80, color: "#9ca3af" }}>
             <BookOpen size={40} style={{ margin: "0 auto 12px", display: "block", color: "#d1d5db" }} />
-            {search ? "No articles found" : "No published articles yet"}
+            {search ? t("noResults") : t("noArticles")}
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
@@ -185,7 +187,7 @@ export default function KBPublicPage() {
                   </p>
                 )}
                 <span style={{ fontSize: 13, color: "#6366f1", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
-                  Read more <ChevronRight size={14} />
+                  {t("readMore")} <ChevronRight size={14} />
                 </span>
               </Link>
             ))}
@@ -196,7 +198,7 @@ export default function KBPublicPage() {
       {/* Footer */}
       <footer style={{ borderTop: "1px solid #e5e7eb", padding: "20px 32px", textAlign: "center", background: "#ffffff" }}>
         <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>
-          Powered by <span style={{ fontWeight: 600, color: "#6366f1" }}>Parallly</span>
+          {t("poweredBy")}
         </p>
       </footer>
     </div>

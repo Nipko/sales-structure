@@ -1195,6 +1195,7 @@
       "logoLink": "External link",
       "logoUploading": "Uploading...",
       "logoChooseFile": "Choose image",
+      "logoChangeFile": "Change logo",
       "errors": {
         "companyNameRequired": "Company name is required",
         "saveFailed": "Failed to save",

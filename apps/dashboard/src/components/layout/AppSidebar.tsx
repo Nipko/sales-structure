@@ -251,9 +251,14 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
       try {
         const res = await api.getBusinessInfo(user.tenantId!);
         if (res.success && res.data?.logoUrl) {
-          const base = (process.env.NEXT_PUBLIC_API_URL || "")
-            .replace(/\/api\/v1\/?$/, "");
-          setCompanyLogoUrl(base + res.data.logoUrl);
+          const raw = res.data.logoUrl;
+          if (raw.startsWith("http")) {
+            setCompanyLogoUrl(raw);
+          } else {
+            const base = (process.env.NEXT_PUBLIC_API_URL || "")
+              .replace(/\/api\/v1\/?$/, "");
+            setCompanyLogoUrl(base + raw);
+          }
         }
       } catch { /* non-critical */ }
     })();
@@ -382,10 +387,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-3 py-3 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className={cn(
-              "w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 overflow-hidden",
-              useTenantTree
-                ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20"
-                : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
+              "w-9 h-9 rounded-lg border flex items-center justify-center shrink-0 overflow-hidden",
+              useTenantTree && companyLogoUrl
+                ? "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-600"
+                : useTenantTree
+                  ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20"
+                  : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
             )}>
               {useTenantTree && companyLogoUrl ? (
                 <img src={companyLogoUrl} alt="" className="w-full h-full object-contain p-0.5" />

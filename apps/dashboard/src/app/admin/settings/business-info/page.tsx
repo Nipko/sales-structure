@@ -198,59 +198,72 @@ export default function BusinessInfoPage() {
                             <ImageIcon size={12} className="inline mr-1" />
                             {t("fields.logoUrl")}
                         </label>
-                        <div className="flex items-start gap-4">
-                            <div className="w-20 h-20 rounded-xl border-2 border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
-                                {previewUrl ? (
-                                    <img src={previewUrl} alt="Logo" className="w-full h-full object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                                ) : (
-                                    <Building2 size={24} className="text-neutral-300 dark:text-neutral-600" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-2">
-                                <div className="flex gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setLogoMode("upload")}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${logoMode === "upload" ? "bg-indigo-600 text-white border-indigo-600" : "bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-indigo-400"}`}
-                                    >
-                                        <Upload size={12} className="inline mr-1" />
-                                        {t("logoUpload")}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setLogoMode("url")}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${logoMode === "url" ? "bg-indigo-600 text-white border-indigo-600" : "bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-indigo-400"}`}
-                                    >
-                                        <Link2 size={12} className="inline mr-1" />
-                                        {t("logoLink")}
-                                    </button>
-                                </div>
 
-                                {logoMode === "upload" ? (
-                                    <div>
-                                        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
-                                            onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
-                                        <button
-                                            type="button"
-                                            onClick={() => fileRef.current?.click()}
-                                            disabled={uploading}
-                                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50"
-                                        >
-                                            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                                            {uploading ? t("logoUploading") : t("logoChooseFile")}
-                                        </button>
-                                        <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">JPG, PNG, WebP, GIF — Max 5 MB</p>
-                                    </div>
-                                ) : (
-                                    <input
-                                        className={inputCls}
-                                        value={form.logoUrl}
-                                        onChange={e => setField("logoUrl", e.target.value)}
-                                        placeholder="https://cdn.example.com/logo.png"
-                                    />
-                                )}
+                        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
+
+                        {/* Clickable drop zone */}
+                        <button
+                            type="button"
+                            onClick={() => { if (logoMode === "upload") fileRef.current?.click(); }}
+                            disabled={uploading || logoMode === "url"}
+                            className={`w-full rounded-xl border-2 border-dashed p-4 transition-all ${logoMode === "upload" ? "border-indigo-300 dark:border-indigo-500/40 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 cursor-pointer" : "border-neutral-200 dark:border-neutral-700 cursor-default"} bg-neutral-50 dark:bg-neutral-800/50`}
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex items-center justify-center overflow-hidden shrink-0">
+                                    {previewUrl ? (
+                                        <img src={previewUrl} alt="Logo" className="w-full h-full object-contain p-1" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                    ) : (
+                                        <Building2 size={24} className="text-neutral-300 dark:text-neutral-600" />
+                                    )}
+                                </div>
+                                <div className="flex-1 text-left">
+                                    {uploading ? (
+                                        <div className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
+                                            <Loader2 size={16} className="animate-spin" />
+                                            {t("logoUploading")}
+                                        </div>
+                                    ) : logoMode === "upload" ? (
+                                        <>
+                                            <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                                                <Upload size={14} />
+                                                {previewUrl ? t("logoChangeFile") : t("logoChooseFile")}
+                                            </p>
+                                            <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">JPG, PNG, WebP, GIF — Max 5 MB</p>
+                                        </>
+                                    ) : null}
+                                </div>
                             </div>
+                        </button>
+
+                        {/* Mode toggle */}
+                        <div className="flex items-center gap-2 mt-2">
+                            <button
+                                type="button"
+                                onClick={() => setLogoMode("upload")}
+                                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${logoMode === "upload" ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300" : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"}`}
+                            >
+                                <Upload size={11} className="inline mr-1" />
+                                {t("logoUpload")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setLogoMode("url")}
+                                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${logoMode === "url" ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300" : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"}`}
+                            >
+                                <Link2 size={11} className="inline mr-1" />
+                                {t("logoLink")}
+                            </button>
                         </div>
+
+                        {logoMode === "url" && (
+                            <input
+                                className={`${inputCls} mt-2`}
+                                value={form.logoUrl}
+                                onChange={e => setField("logoUrl", e.target.value)}
+                                placeholder="https://cdn.example.com/logo.png"
+                            />
+                        )}
                     </div>
                 </div>
             </section>

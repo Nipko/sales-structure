@@ -93,8 +93,7 @@ export default function WebChatWidgetPage() {
     };
 
     const copySnippet = async (widget: WidgetConfig) => {
-        const apiBase = API_URL.replace("/api/v1", "");
-        const snippet = `<script>\n  window.__paralllyWidget = { widgetId: '${widget.widget_id}' };\n</script>\n<script async src="${apiBase}/widget/loader.js"></script>`;
+        const snippet = `<script>\n  window.__paralllyWidget = { widgetId: '${widget.widget_id}' };\n</script>\n<script async src="${API_URL}/widget/loader.js"></script>`;
         await navigator.clipboard.writeText(snippet);
         setSnippetCopied(widget.id);
         setTimeout(() => setSnippetCopied(null), 2000);

@@ -28,6 +28,21 @@ async function bootstrap() {
             crossOriginResourcePolicy: { policy: 'cross-origin' },
         })(req, res, next);
     });
+    // Widget public endpoints — permissive CORS (embedded on customer sites)
+    app.use((req: any, res: any, next: any) => {
+        if (req.url?.startsWith('/api/v1/widget')) {
+            const origin = req.headers.origin || '*';
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            if (req.method === 'OPTIONS') {
+                res.statusCode = 204;
+                return res.end();
+            }
+        }
+        next();
+    });
+
     app.enableCors({
         origin: [
             process.env.DASHBOARD_URL || 'http://localhost:3001',

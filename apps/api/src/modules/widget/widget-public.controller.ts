@@ -1,17 +1,36 @@
-import { Controller, Get, Post, Body, Param, Headers, Logger, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Headers, Logger, ForbiddenException, Res, Header } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Response } from 'express';
 import { WidgetService } from './widget.service';
 import { RedisService } from '../redis/redis.service';
+import { getLoaderScript } from './widget-loader';
 
 @ApiTags('widget-public')
 @Controller('widget')
 export class WidgetPublicController {
     private readonly logger = new Logger(WidgetPublicController.name);
+    private cachedLoader: string | null = null;
 
     constructor(
         private readonly widgetService: WidgetService,
         private readonly redis: RedisService,
     ) {}
+
+    @Get('loader.js')
+    @ApiOperation({ summary: 'Serve embeddable widget script' })
+    @Header('Content-Type', 'application/javascript; charset=utf-8')
+    @Header('Cache-Control', 'public, max-age=3600')
+    @Header('Access-Control-Allow-Origin', '*')
+    async serveLoader(@Res() res: Response) {
+        if (!this.cachedLoader) {
+            const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1';
+            this.cachedLoader = getLoaderScript(apiBase);
+        }
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.send(this.cachedLoader);
+    }
 
     @Get('config/:widgetId')
     @ApiOperation({ summary: 'Get widget config (public)' })

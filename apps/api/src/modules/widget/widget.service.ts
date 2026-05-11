@@ -222,7 +222,7 @@ export class WidgetService implements OnModuleInit {
     }
 
     getEmbedSnippet(widgetId: string, apiUrl: string): string {
-        return `<script>\n  window.__paralllyWidget = { widgetId: '${widgetId}' };\n</script>\n<script async src="${apiUrl.replace('/api/v1', '')}/widget/loader.js"></script>`;
+        return `<script>\n  window.__paralllyWidget = { widgetId: '${widgetId}' };\n</script>\n<script async src="${apiUrl}/widget/loader.js"></script>`;
     }
 
     private generateToken(sessionId: string, tenantId: string, widgetId: string): string {

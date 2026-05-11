@@ -606,6 +606,7 @@
     "statusResolved": "Resolved",
     "statusWithHuman": "With agent",
     "statusWaitingHuman": "Waiting for agent",
+    "handoffSummaryTitle": "Conversation summary (AI)",
     "unknown": "Unknown",
     "noPhone": "No phone",
     "assignedAgent": "Assigned agent",

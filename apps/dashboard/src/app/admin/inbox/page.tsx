@@ -15,7 +15,7 @@ import {
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
     ArrowRight, ArrowLeft, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
     Bell, Globe, Building2, MapPin, Instagram, Facebook, Linkedin, ExternalLink, Edit2, Save,
-    Archive, Trash2, PanelRightClose, PanelRightOpen, MoreHorizontal,
+    Archive, Trash2, PanelRightClose, PanelRightOpen, MoreHorizontal, FileText,
 } from "lucide-react";
 
 // ============================================
@@ -482,6 +482,8 @@ export default function InboxPage() {
                     assignedAgentName: c.assigned_agent_name || c.assignedAgentName || '',
                     contactId: c.contact_id || c.contactId,
                     estimatedValue: c.estimated_ticket_value || 0,
+                    handoffReason: c.handoff_reason || c.handoffReason || null,
+                    handoffSummary: c.handoff_summary || c.handoffSummary || null,
                 }));
                 convs.sort((a: any, b: any) =>
                     new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
@@ -559,6 +561,13 @@ export default function InboxPage() {
                         };
                     });
                     setMessages(msgs);
+                    if (conv.handoffSummary || conv.handoffReason) {
+                        setSelectedConv((prev: any) => prev ? {
+                            ...prev,
+                            handoffSummary: conv.handoffSummary || prev.handoffSummary,
+                            handoffReason: conv.handoffReason || prev.handoffReason,
+                        } : prev);
+                    }
                     // Update notes from conversation data if available
                     if (conv.notes) {
                         setNotes(conv.notes.map((n: any) => ({
@@ -1336,6 +1345,26 @@ export default function InboxPage() {
                                 background: "linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted) / 0.15) 100%)",
                             }}
                         >
+                            {/* Handoff Summary Banner */}
+                            {selectedConv?.handoffSummary && ['waiting_human', 'with_human', 'handoff'].includes(selectedConv.status) && (
+                                <div className="mb-3 px-4 py-3 rounded-xl bg-gradient-to-r from-orange-500/[0.08] to-amber-500/[0.08] border border-orange-500/20">
+                                    <div className="flex items-start gap-2.5">
+                                        <FileText size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[11px] font-semibold text-orange-500 mb-1 flex items-center gap-1.5">
+                                                <span>{t('handoffSummaryTitle')}</span>
+                                                {selectedConv.handoffReason && (
+                                                    <span className="text-[10px] font-normal text-orange-400/70">— {selectedConv.handoffReason}</span>
+                                                )}
+                                            </div>
+                                            <div className="text-[13px] text-muted-foreground leading-relaxed whitespace-pre-line">
+                                                {selectedConv.handoffSummary}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {messagesWithSeparators.map((item: any) => {
                                 // Date separator
                                 if (item._type === "date-separator") {

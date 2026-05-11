@@ -50,6 +50,8 @@ export interface ConversationDetail {
     channelAccountPicture?: string;
     startedAt: string;
     aiSummary?: string;
+    handoffReason?: string | null;
+    handoffSummary?: string | null;
 }
 
 export interface ConversationMessage {
@@ -165,6 +167,7 @@ export class AgentConsoleService {
             tags: c.contact_tags || [],
             isAiHandled: c.status !== 'handoff' && !c.assigned_agent_id,
             handoffReason: c.metadata?.handoff?.reason || null,
+            handoffSummary: c.metadata?.handoff?.summary || null,
             handoffTriggeredAt: c.metadata?.handoff?.startedAt || null,
         }));
     }
@@ -248,6 +251,8 @@ export class AgentConsoleService {
             channelAccountName: conv.channel_account_name || '',
             channelAccountPicture: conv.channel_account_metadata?.picture || conv.channel_account_metadata?.profilePicture || '',
             startedAt: conv.started_at,
+            handoffReason: conv.metadata?.handoff?.reason || null,
+            handoffSummary: conv.metadata?.handoff?.summary || null,
         };
     }
 

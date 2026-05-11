@@ -606,6 +606,7 @@
     "statusResolved": "Resolue",
     "statusWithHuman": "Avec agent",
     "statusWaitingHuman": "En attente d'agent",
+    "handoffSummaryTitle": "Résumé de la conversation (IA)",
     "unknown": "Inconnu",
     "noPhone": "Sans telephone",
     "assignedAgent": "Agent assigne",

@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
+import { api } from "@/lib/api";
+import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowLeft, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
@@ -40,6 +41,8 @@ export default function LoginPage() {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [googleReady, setGoogleReady] = useState(false);
     const [twoFAState, setTwoFAState] = useState<{ token: string; method: string; email?: string } | null>(null);
+    const [ssoInfo, setSsoInfo] = useState<{ available: boolean; tenantId?: string; forced?: boolean } | null>(null);
+    const ssoCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const googleHiddenRef = useRef<HTMLDivElement>(null);
     const { login, googleLogin, complete2FALogin, send2FAEmailFallback } = useAuth();
     const router = useRouter();
@@ -76,6 +79,33 @@ export default function LoginPage() {
         },
         [googleLogin, router]
     );
+
+    useEffect(() => {
+        if (ssoCheckRef.current) clearTimeout(ssoCheckRef.current);
+        if (!email.includes("@") || email.endsWith("@")) {
+            setSsoInfo(null);
+            return;
+        }
+        ssoCheckRef.current = setTimeout(async () => {
+            try {
+                const res = await api.checkSso(email);
+                if (res.success && res.data) {
+                    setSsoInfo({
+                        available: res.data.ssoAvailable,
+                        tenantId: res.data.tenantId,
+                        forced: res.data.forceSso,
+                    });
+                }
+            } catch { /* noop */ }
+        }, 500);
+        return () => { if (ssoCheckRef.current) clearTimeout(ssoCheckRef.current); };
+    }, [email]);
+
+    const handleSsoLogin = () => {
+        if (!ssoInfo?.tenantId) return;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+        window.location.href = `${apiUrl}/auth/saml/login?tenantId=${ssoInfo.tenantId}`;
+    };
 
     // Load GSI script and render hidden button (works even without Google session)
     useEffect(() => {
@@ -247,6 +277,25 @@ export default function LoginPage() {
                         <svg width="18" height="18" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
                         {t('continueWithMicrosoft')}
                     </button>
+
+                    {/* SSO Button */}
+                    {ssoInfo?.available && (
+                        <div className="mt-3">
+                            <button
+                                type="button"
+                                onClick={handleSsoLogin}
+                                className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-sm font-medium cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+                            >
+                                <Globe size={18} />
+                                {t('ssoLogin')}
+                            </button>
+                            {ssoInfo.forced && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 text-center">
+                                    {t('ssoForcedMessage')}
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     {/* Separator */}
                     <div className="flex items-center gap-3 my-6">

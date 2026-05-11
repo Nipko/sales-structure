@@ -41,6 +41,7 @@
         "@nestjs/schedule": "^4.1.0",
         "@nestjs/swagger": "^7.4.0",
         "@nestjs/websockets": "^10.4.22",
+        "@node-saml/passport-saml": "^5.1.0",
         "@parallext/shared": "*",
         "@prisma/client": "^5.20.0",
         "@sentry/nestjs": "^10.48.0",

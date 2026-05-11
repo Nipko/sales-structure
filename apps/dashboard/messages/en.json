@@ -321,7 +321,11 @@
       "lowercase": "At least 1 lowercase letter",
       "number": "At least 1 number",
       "special": "At least 1 special character (!@#$%^&*)"
-    }
+    },
+    "ssoLogin": "Sign in with SSO",
+    "ssoRedirecting": "Redirecting to your identity provider...",
+    "ssoForcedMessage": "Your organization requires SSO login",
+    "ssoAvailable": "SSO available for your domain"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -987,7 +991,38 @@
       "valUppercase": "At least 1 uppercase letter",
       "valLowercase": "At least 1 lowercase letter",
       "valNumber": "At least 1 number",
-      "valSpecial": "At least 1 special character (!@#$%^&*)"
+      "valSpecial": "At least 1 special character (!@#$%^&*)",
+      "sso": {
+        "title": "Single Sign-On (SSO)",
+        "desc": "Configure SAML SSO so your organization members can sign in with your identity provider",
+        "enterpriseOnly": "SSO is available on Enterprise and Custom plans",
+        "enabled": "SSO enabled",
+        "disabled": "SSO disabled",
+        "enableSso": "Enable SSO",
+        "disableSso": "Disable SSO",
+        "idpEntityId": "IdP Entity ID",
+        "idpEntityIdPh": "https://login.microsoftonline.com/.../saml2",
+        "idpSsoUrl": "IdP Login URL",
+        "idpSsoUrlPh": "https://login.microsoftonline.com/.../saml2",
+        "idpCertificate": "IdP Certificate (PEM)",
+        "idpCertificatePh": "-----BEGIN CERTIFICATE-----",
+        "emailDomains": "Email domains",
+        "emailDomainsPh": "company.com, company.co",
+        "emailDomainsHint": "Users with these domains will be redirected to SSO",
+        "forceSso": "Force SSO",
+        "forceSsoDesc": "Block password login for users with these domains",
+        "defaultRole": "Default role",
+        "defaultRoleDesc": "Role assigned to new users created via SSO",
+        "spMetadata": "SP Metadata",
+        "spMetadataDesc": "Download this metadata and upload it to your identity provider",
+        "downloadMetadata": "Download metadata XML",
+        "spEntityId": "SP Entity ID",
+        "acsUrl": "ACS URL",
+        "saved": "SSO configuration saved",
+        "testConnection": "Test connection",
+        "configured": "Configured",
+        "notConfigured": "Not configured"
+      }
     },
     "notificationsPage": {
       "title": "Notifications",

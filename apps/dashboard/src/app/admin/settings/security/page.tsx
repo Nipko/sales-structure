@@ -5,7 +5,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle, ShieldCheck, ShieldOff, Key, Copy, Loader2 } from "lucide-react";
+import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle, ShieldCheck, ShieldOff, Key, Copy, Loader2, Globe, Download, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 
 export default function SecurityPage() {
@@ -151,6 +151,9 @@ export default function SecurityPage() {
 
             {/* 2FA Section */}
             <TwoFactorSettings />
+
+            {/* SSO Section */}
+            <SsoSettings />
         </div>
     );
 }
@@ -422,6 +425,231 @@ function TwoFactorSettings() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+function SsoSettings() {
+    const t = useTranslations("settings.securityPage.sso");
+    const tc = useTranslations("common");
+    const { user } = useAuth();
+
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [error, setError] = useState("");
+    const [planAllows, setPlanAllows] = useState(false);
+
+    const [enabled, setEnabled] = useState(false);
+    const [idpEntityId, setIdpEntityId] = useState("");
+    const [idpSsoUrl, setIdpSsoUrl] = useState("");
+    const [idpCertificate, setIdpCertificate] = useState("");
+    const [emailDomains, setEmailDomains] = useState("");
+    const [forceSso, setForceSso] = useState(false);
+    const [defaultRole, setDefaultRole] = useState("tenant_agent");
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+    const tenantId = (user as any)?.tenantId;
+
+    useEffect(() => {
+        loadConfig();
+    }, []);
+
+    const loadConfig = async () => {
+        setLoading(true);
+        try {
+            const res = await api.getSsoConfig();
+            if (res.success && res.data) {
+                setPlanAllows(true);
+                const c = res.data as any;
+                setEnabled(c.enabled || false);
+                setIdpEntityId(c.idpEntityId || "");
+                setIdpSsoUrl(c.idpSsoUrl || "");
+                setIdpCertificate(c.idpCertificate === "***CONFIGURED***" ? "" : (c.idpCertificate || ""));
+                setEmailDomains((c.emailDomains || []).join(", "));
+                setForceSso(c.forceSso || false);
+                setDefaultRole(c.defaultRole || "tenant_agent");
+            } else if (res.error?.includes("plan_limit")) {
+                setPlanAllows(false);
+            } else {
+                setPlanAllows(true);
+            }
+        } catch {
+            setPlanAllows(true);
+        }
+        setLoading(false);
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        setError("");
+        try {
+            const domains = emailDomains.split(",").map(d => d.trim()).filter(Boolean);
+            const body: Record<string, any> = {
+                enabled,
+                idpEntityId,
+                idpSsoUrl,
+                emailDomains: domains,
+                forceSso,
+                defaultRole,
+            };
+            if (idpCertificate) body.idpCertificate = idpCertificate;
+
+            const res = await api.updateSsoConfig(body);
+            if (res.success) {
+                setSaved(true);
+                setTimeout(() => setSaved(false), 3000);
+            } else {
+                setError(res.error || tc("errorSaving"));
+            }
+        } catch {
+            setError(tc("connectionError"));
+        }
+        setSaving(false);
+    };
+
+    const inputClasses = "w-full h-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-colors";
+    const labelClasses = "mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300";
+    const spEntityId = `${API_URL}/auth/saml/metadata/${tenantId}`;
+    const acsUrl = `${API_URL}/auth/saml/acs`;
+
+    if (loading) {
+        return (
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="flex items-center gap-3">
+                    <Loader2 size={16} className="animate-spin text-neutral-400" />
+                    <span className="text-sm text-neutral-500">{tc("loading")}</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (!planAllows) {
+        return (
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="flex items-start gap-3">
+                    <Globe size={20} className="text-neutral-400 mt-0.5" />
+                    <div>
+                        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{t("title")}</h2>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("enterpriseOnly")}</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-start justify-between mb-5">
+                <div>
+                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{t("title")}</h2>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("desc")}</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="sr-only peer" />
+                    <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer dark:bg-neutral-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-neutral-600 peer-checked:bg-emerald-500"></div>
+                    <span className="ml-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                        {enabled ? t("enabled") : t("disabled")}
+                    </span>
+                </label>
+            </div>
+
+            {error && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 mb-4">
+                    <AlertCircle size={16} /> {error}
+                </div>
+            )}
+
+            <div className="space-y-4">
+                <div>
+                    <label className={labelClasses}>{t("idpEntityId")}</label>
+                    <input value={idpEntityId} onChange={(e) => setIdpEntityId(e.target.value)}
+                        placeholder={t("idpEntityIdPh")} className={inputClasses} />
+                </div>
+
+                <div>
+                    <label className={labelClasses}>{t("idpSsoUrl")}</label>
+                    <input value={idpSsoUrl} onChange={(e) => setIdpSsoUrl(e.target.value)}
+                        placeholder={t("idpSsoUrlPh")} className={inputClasses} />
+                </div>
+
+                <div>
+                    <label className={labelClasses}>{t("idpCertificate")}</label>
+                    <textarea value={idpCertificate} onChange={(e) => setIdpCertificate(e.target.value)}
+                        placeholder={t("idpCertificatePh")} rows={4}
+                        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-colors resize-none" />
+                </div>
+
+                <div>
+                    <label className={labelClasses}>{t("emailDomains")}</label>
+                    <input value={emailDomains} onChange={(e) => setEmailDomains(e.target.value)}
+                        placeholder={t("emailDomainsPh")} className={inputClasses} />
+                    <p className="mt-1 text-xs text-neutral-400">{t("emailDomainsHint")}</p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("forceSso")}</p>
+                        <p className="text-xs text-neutral-400">{t("forceSsoDesc")}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked={forceSso} onChange={(e) => setForceSso(e.target.checked)} className="sr-only peer" />
+                        <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer dark:bg-neutral-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-neutral-600 peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+
+                <div>
+                    <label className={labelClasses}>{t("defaultRole")}</label>
+                    <select value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)}
+                        className={inputClasses}>
+                        <option value="tenant_agent">Agent</option>
+                        <option value="tenant_supervisor">Supervisor</option>
+                        <option value="tenant_admin">Admin</option>
+                    </select>
+                    <p className="mt-1 text-xs text-neutral-400">{t("defaultRoleDesc")}</p>
+                </div>
+
+                {/* SP Metadata */}
+                <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4 bg-neutral-50 dark:bg-neutral-800/50">
+                    <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">{t("spMetadata")}</h3>
+                    <p className="text-xs text-neutral-400 mb-3">{t("spMetadataDesc")}</p>
+
+                    <div className="space-y-2 text-xs">
+                        <div>
+                            <span className="font-medium text-neutral-600 dark:text-neutral-400">{t("spEntityId")}:</span>
+                            <code className="ml-2 px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 select-all">
+                                {spEntityId}
+                            </code>
+                        </div>
+                        <div>
+                            <span className="font-medium text-neutral-600 dark:text-neutral-400">{t("acsUrl")}:</span>
+                            <code className="ml-2 px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 select-all">
+                                {acsUrl}
+                            </code>
+                        </div>
+                    </div>
+
+                    {tenantId && (
+                        <a href={`${API_URL}/auth/saml/metadata/${tenantId}`} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 mt-3 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                            <Download size={13} /> {t("downloadMetadata")}
+                            <ExternalLink size={11} />
+                        </a>
+                    )}
+                </div>
+
+                <div className="flex justify-end pt-2">
+                    <button onClick={handleSave} disabled={saving}
+                        className={cn(
+                            "flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium text-white transition-all press-effect",
+                            saved ? "bg-emerald-500" : "bg-neutral-900 dark:bg-white dark:text-neutral-900 hover:opacity-90",
+                            saving && "opacity-50 cursor-not-allowed"
+                        )}>
+                        {saving && <Loader2 size={16} className="animate-spin" />}
+                        {saved ? <><CheckCircle size={16} /> {t("saved")}</> : tc("save")}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

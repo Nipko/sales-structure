@@ -112,6 +112,10 @@ export const api = {
     send2FAEmail: (twoFAToken: string) => apiPost("/auth/2fa/send-email", { twoFAToken }),
     regenerateBackupCodes: (password: string) => apiPost("/auth/2fa/backup-codes", { password }),
 
+    checkSso: (email: string) => apiGet<{ ssoAvailable: boolean; tenantId?: string; forceSso?: boolean }>(`/auth/saml/check?email=${encodeURIComponent(email)}`),
+    getSsoConfig: () => apiGet("/auth/saml/config"),
+    updateSsoConfig: (config: Record<string, any>) => apiPut("/auth/saml/config", config),
+
     setupPassword: (password: string) =>
         apiPost("/auth/setup-password", { password }),
 

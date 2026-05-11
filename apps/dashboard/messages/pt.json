@@ -321,7 +321,11 @@
       "lowercase": "Pelo menos 1 minúscula",
       "number": "Pelo menos 1 número",
       "special": "Pelo menos 1 caractere especial (!@#$%^&*)"
-    }
+    },
+    "ssoLogin": "Entrar com SSO",
+    "ssoRedirecting": "Redirecionando para seu provedor de identidade...",
+    "ssoForcedMessage": "Sua organização requer login com SSO",
+    "ssoAvailable": "SSO disponível para seu domínio"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -987,7 +991,38 @@
       "valUppercase": "Pelo menos 1 letra maiuscula",
       "valLowercase": "Pelo menos 1 letra minuscula",
       "valNumber": "Pelo menos 1 numero",
-      "valSpecial": "Pelo menos 1 caractere especial (!@#$%^&*)"
+      "valSpecial": "Pelo menos 1 caractere especial (!@#$%^&*)",
+      "sso": {
+        "title": "Login único (SSO)",
+        "desc": "Configure SAML SSO para que os membros da sua organização façam login com seu provedor de identidade",
+        "enterpriseOnly": "SSO está disponível nos planos Enterprise e Custom",
+        "enabled": "SSO ativado",
+        "disabled": "SSO desativado",
+        "enableSso": "Ativar SSO",
+        "disableSso": "Desativar SSO",
+        "idpEntityId": "Entity ID do IdP",
+        "idpEntityIdPh": "https://login.microsoftonline.com/.../saml2",
+        "idpSsoUrl": "URL de login do IdP",
+        "idpSsoUrlPh": "https://login.microsoftonline.com/.../saml2",
+        "idpCertificate": "Certificado do IdP (PEM)",
+        "idpCertificatePh": "-----BEGIN CERTIFICATE-----",
+        "emailDomains": "Domínios de email",
+        "emailDomainsPh": "empresa.com, empresa.co",
+        "emailDomainsHint": "Usuários com esses domínios serão redirecionados para SSO",
+        "forceSso": "Forçar SSO",
+        "forceSsoDesc": "Bloquear login com senha para usuários desses domínios",
+        "defaultRole": "Função padrão",
+        "defaultRoleDesc": "Função atribuída a novos usuários criados via SSO",
+        "spMetadata": "Metadados do SP",
+        "spMetadataDesc": "Baixe esses metadados e envie para seu provedor de identidade",
+        "downloadMetadata": "Baixar metadados XML",
+        "spEntityId": "Entity ID do SP",
+        "acsUrl": "URL de ACS",
+        "saved": "Configuração SSO salva",
+        "testConnection": "Testar conexão",
+        "configured": "Configurado",
+        "notConfigured": "Não configurado"
+      }
     },
     "notificationsPage": {
       "title": "Notificações",

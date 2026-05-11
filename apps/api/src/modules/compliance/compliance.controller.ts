@@ -148,4 +148,17 @@ export class ComplianceController {
         const data = await this.complianceService.exportContactData(schema, contactId);
         return { success: true, data };
     }
+
+    @Post('erase-contact/:tenantId/:contactId')
+    @Roles('tenant_admin', 'super_admin')
+    @ApiOperation({ summary: 'GDPR Article 17 — erase all PII for a contact (right to be forgotten)' })
+    async eraseContact(
+        @Param('tenantId') tenantId: string,
+        @Param('contactId') contactId: string,
+        @CurrentUser() user: any,
+    ) {
+        const schema = await this.schemaFor(tenantId);
+        const result = await this.complianceService.eraseContactData(schema, tenantId, contactId, user.id || user.sub);
+        return { success: true, data: result };
+    }
 }

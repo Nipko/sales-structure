@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
   ArrowLeft, Upload, ImageIcon, Trash2, Copy, Check, X,
-  Loader2, Building2, ZoomIn, Pencil, Save, Tag, Plus,
+  Loader2, ZoomIn, Pencil, Save, Tag, Plus,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -95,12 +95,7 @@ export default function MediaBankPage() {
   const [newTag, setNewTag] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Logo
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [logoUploading, setLogoUploading] = useState(false);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const logoInputRef = useRef<HTMLInputElement>(null);
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000); }
 
@@ -131,16 +126,6 @@ export default function MediaBankPage() {
   useEffect(() => { loadMedia(); }, [loadMedia]);
   useEffect(() => { loadTags(); }, [loadTags]);
 
-  useEffect(() => {
-    if (!tenantId) return;
-    (async () => {
-      try {
-        const res = await api.getMediaList(tenantId, "tenant_logo");
-        if (res.success && res.data?.length > 0) setLogoUrl(mediaUrl(res.data[0].url));
-      } catch { /* ignore */ }
-    })();
-  }, [tenantId]);
-
   // --- Upload ---
   async function handleFileUpload(file: File) {
     if (!tenantId) return;
@@ -162,22 +147,6 @@ export default function MediaBankPage() {
       } else showToast(`Error: ${res.error || "Could not upload"}`);
     } catch { clearInterval(iv); showToast("Error: Connection failed"); }
     finally { setTimeout(() => { setUploading(false); setUploadProgress(0); }, 600); }
-  }
-
-  async function handleLogoUpload(file: File) {
-    if (!tenantId || !file.type.startsWith("image/")) { showToast(`Error: ${t('onlyImages')}`); return; }
-    if (file.size > MAX_SIZE) { showToast(`Error: ${t('tooLarge', { size: (file.size / 1024 / 1024).toFixed(1) })}`); return; }
-    setLogoUploading(true);
-    try {
-      const res = await api.uploadLogo(tenantId, file);
-      if (res.success && res.data?.logoUrl) {
-        setLogoUrl(mediaUrl(res.data.logoUrl));
-        showToast("Logo updated");
-        loadMedia(); // Refresh gallery to show logo in list too
-      }
-      else showToast(`Error: ${res.error || "Could not upload"}`);
-    } catch { showToast("Error: Connection failed"); }
-    finally { setLogoUploading(false); }
   }
 
   // --- Edit ---
@@ -246,29 +215,6 @@ export default function MediaBankPage() {
           <div>
             <h1 className="text-[22px] font-semibold text-foreground m-0">{t('title')}</h1>
             <p className="text-[13px] text-muted-foreground m-0">{t('subtitle')}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Logo Section */}
-      <div className="bg-card rounded-[14px] border border-border p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Building2 size={18} className="text-indigo-500" />
-          <h2 className="text-base font-semibold text-foreground m-0">{t('companyLogo')}</h2>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="w-24 h-24 rounded-xl border-2 border-dashed border-border bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
-            {logoUrl ? <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" /> : <Building2 size={32} className="text-muted-foreground opacity-40" />}
-          </div>
-          <div className="flex-1">
-            <p className="text-sm text-muted-foreground mb-3">{t('logoDescription')}</p>
-            <input ref={logoInputRef} type="file" accept={ACCEPT} className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
-            <button onClick={() => logoInputRef.current?.click()} disabled={logoUploading}
-              className="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-indigo-600 text-white border-none cursor-pointer text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-              {logoUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              {logoUploading ? "Uploading..." : t('uploadLogo')}
-            </button>
           </div>
         </div>
       </div>

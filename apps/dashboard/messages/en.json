@@ -1177,7 +1177,7 @@
         "address": "Address",
         "city": "City",
         "country": "Country",
-        "logoUrl": "Logo URL"
+        "logoUrl": "Company logo"
       },
       "placeholders": {
         "industry": "e.g. Tourism, Education, Retail",
@@ -1191,6 +1191,10 @@
         "youtube": "YouTube",
         "tiktok": "TikTok"
       },
+      "logoUpload": "Upload file",
+      "logoLink": "External link",
+      "logoUploading": "Uploading...",
+      "logoChooseFile": "Choose image",
       "errors": {
         "companyNameRequired": "Company name is required",
         "saveFailed": "Failed to save",

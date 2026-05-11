@@ -1177,7 +1177,7 @@
         "address": "Endereço",
         "city": "Cidade",
         "country": "País",
-        "logoUrl": "URL do logo"
+        "logoUrl": "Logo da empresa"
       },
       "placeholders": {
         "industry": "Ex: Turismo, Educação, Varejo",
@@ -1191,6 +1191,10 @@
         "youtube": "YouTube",
         "tiktok": "TikTok"
       },
+      "logoUpload": "Enviar arquivo",
+      "logoLink": "Link externo",
+      "logoUploading": "Enviando...",
+      "logoChooseFile": "Escolher imagem",
       "errors": {
         "companyNameRequired": "Nome da empresa é obrigatório",
         "saveFailed": "Falha ao salvar",

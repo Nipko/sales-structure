@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
-import { Building2, Save, CheckCircle, AlertCircle, Globe, Mail, Phone, MapPin, Info, Image as ImageIcon } from "lucide-react";
+import { Building2, Save, CheckCircle, AlertCircle, Globe, Mail, Phone, MapPin, Info, Upload, Loader2, Link2, Image as ImageIcon } from "lucide-react";
 
 type SocialLinks = {
     facebook?: string;
@@ -43,6 +43,14 @@ const EMPTY: BusinessForm = {
     socialLinks: {},
 };
 
+function logoFullUrl(relative: string): string {
+    if (!relative) return "";
+    if (relative.startsWith("http")) return relative;
+    const base = (process.env.NEXT_PUBLIC_API_URL || "")
+        .replace(/\/api\/v1\/?$/, "");
+    return `${base}${relative}`;
+}
+
 export default function BusinessInfoPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("settings.businessInfo");
@@ -51,12 +59,16 @@ export default function BusinessInfoPage() {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
+    const [logoMode, setLogoMode] = useState<"upload" | "url">("upload");
+    const [uploading, setUploading] = useState(false);
+    const fileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (!activeTenantId) return;
         setLoading(true);
         api.getBusinessInfo(activeTenantId).then((res: any) => {
             if (res.success && res.data) {
+                const logoUrl = res.data.logoUrl || "";
                 setForm({
                     companyName: res.data.companyName || "",
                     industry: res.data.industry || "",
@@ -67,9 +79,12 @@ export default function BusinessInfoPage() {
                     address: res.data.address || "",
                     city: res.data.city || "",
                     country: res.data.country || "",
-                    logoUrl: res.data.logoUrl || "",
+                    logoUrl,
                     socialLinks: res.data.socialLinks || {},
                 });
+                if (logoUrl && logoUrl.startsWith("http")) {
+                    setLogoMode("url");
+                }
             }
             setLoading(false);
         });
@@ -97,6 +112,20 @@ export default function BusinessInfoPage() {
         setSaving(false);
     };
 
+    const handleLogoUpload = async (file: File) => {
+        if (!activeTenantId) return;
+        if (!file.type.startsWith("image/")) return;
+        if (file.size > 5 * 1024 * 1024) return;
+        setUploading(true);
+        try {
+            const res = await api.uploadLogo(activeTenantId, file);
+            if (res.success && res.data?.logoUrl) {
+                setForm(prev => ({ ...prev, logoUrl: res.data.logoUrl }));
+            }
+        } catch { /* ignore */ }
+        setUploading(false);
+    };
+
     const setField = <K extends keyof BusinessForm>(k: K, v: BusinessForm[K]) =>
         setForm(prev => ({ ...prev, [k]: v }));
 
@@ -111,6 +140,8 @@ export default function BusinessInfoPage() {
     if (loading) {
         return <div className="text-sm text-neutral-500 dark:text-neutral-400">{t("loading")}</div>;
     }
+
+    const previewUrl = logoFullUrl(form.logoUrl);
 
     return (
         <div className="max-w-3xl space-y-6">
@@ -160,12 +191,66 @@ export default function BusinessInfoPage() {
                         <label className={labelCls}>{t("fields.about")}</label>
                         <textarea className={textareaCls} value={form.about} onChange={e => setField("about", e.target.value)} placeholder={t("placeholders.about")} />
                     </div>
+
+                    {/* Logo */}
                     <div>
                         <label className={labelCls}>
                             <ImageIcon size={12} className="inline mr-1" />
                             {t("fields.logoUrl")}
                         </label>
-                        <input className={inputCls} value={form.logoUrl} onChange={e => setField("logoUrl", e.target.value)} placeholder="https://cdn/.../logo.png" />
+                        <div className="flex items-start gap-4">
+                            <div className="w-20 h-20 rounded-xl border-2 border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
+                                {previewUrl ? (
+                                    <img src={previewUrl} alt="Logo" className="w-full h-full object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                ) : (
+                                    <Building2 size={24} className="text-neutral-300 dark:text-neutral-600" />
+                                )}
+                            </div>
+                            <div className="flex-1 space-y-2">
+                                <div className="flex gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLogoMode("upload")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${logoMode === "upload" ? "bg-indigo-600 text-white border-indigo-600" : "bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-indigo-400"}`}
+                                    >
+                                        <Upload size={12} className="inline mr-1" />
+                                        {t("logoUpload")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLogoMode("url")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${logoMode === "url" ? "bg-indigo-600 text-white border-indigo-600" : "bg-transparent text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-indigo-400"}`}
+                                    >
+                                        <Link2 size={12} className="inline mr-1" />
+                                        {t("logoLink")}
+                                    </button>
+                                </div>
+
+                                {logoMode === "upload" ? (
+                                    <div>
+                                        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
+                                            onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
+                                        <button
+                                            type="button"
+                                            onClick={() => fileRef.current?.click()}
+                                            disabled={uploading}
+                                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50"
+                                        >
+                                            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                            {uploading ? t("logoUploading") : t("logoChooseFile")}
+                                        </button>
+                                        <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">JPG, PNG, WebP, GIF — Max 5 MB</p>
+                                    </div>
+                                ) : (
+                                    <input
+                                        className={inputCls}
+                                        value={form.logoUrl}
+                                        onChange={e => setField("logoUrl", e.target.value)}
+                                        placeholder="https://cdn.example.com/logo.png"
+                                    />
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

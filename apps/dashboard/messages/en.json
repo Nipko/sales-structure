@@ -732,6 +732,10 @@
         "label": "External CRM",
         "description": "Connect HubSpot, Salesforce, or Pipedrive"
       },
+      "outboundWebhooks": {
+        "label": "Outbound Webhooks",
+        "description": "Send events to external services (Zapier, Make, n8n)"
+      },
       "alerts": {
         "label": "System alerts",
         "description": "Team notification rules"
@@ -3511,6 +3515,38 @@
       "revoked": "Revoked",
       "error": "Error"
     }
+  },
+  "outboundWebhooks": {
+    "title": "Outbound Webhooks",
+    "subtitle": "Send automatic HTTP notifications when key events happen in your account",
+    "addEndpoint": "Add endpoint",
+    "empty": "No webhooks configured",
+    "emptyHint": "Webhooks let you integrate with Zapier, Make, n8n, and any external service",
+    "urlLabel": "Endpoint URL",
+    "descriptionLabel": "Description (optional)",
+    "descriptionPlaceholder": "E.g.: Notify Slack when a new lead arrives",
+    "eventsLabel": "Events to send",
+    "eventDesc": {
+      "lead_created": "When a new lead is created",
+      "handoff_created": "When a conversation is escalated to an agent",
+      "appointment_booked": "When an appointment is scheduled",
+      "message_received": "When a message arrives from a customer",
+      "campaign_completed": "When a broadcast campaign finishes"
+    },
+    "create": "Create webhook",
+    "active": "Active",
+    "inactive": "Inactive",
+    "enable": "Enable",
+    "disable": "Disable",
+    "secret": "Secret",
+    "regenerate": "Regenerate secret",
+    "confirmRegenerate": "Regenerate the secret? Existing integrations will stop working until you update the new secret.",
+    "confirmDelete": "Delete this webhook? This cannot be undone.",
+    "sendTest": "Send test",
+    "recentDeliveries": "Recent deliveries",
+    "noDeliveries": "No deliveries yet",
+    "signatureInfo": "Signature verification",
+    "signatureDesc": "Each request includes an X-Webhook-Signature header with the HMAC-SHA256 signature of the body using your secret. Verify this signature to ensure the request comes from Parallly."
   },
   "properties": {
     "title": "Properties",

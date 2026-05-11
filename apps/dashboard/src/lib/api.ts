@@ -1305,6 +1305,24 @@ export const api = {
         apiGet(`/vertical-analytics/industry/${encodeURIComponent(industry)}${refresh ? '?refresh=true' : ''}`),
     getVerticalTenant: (tenantId: string, refresh = false) =>
         apiGet(`/vertical-analytics/tenant/${encodeURIComponent(tenantId)}${refresh ? '?refresh=true' : ''}`),
+
+    // ─── Outbound Webhooks ───
+    listWebhooks: (tenantId: string) =>
+        apiGet(`/webhooks/${tenantId}`),
+    createWebhook: (tenantId: string, data: { url: string; events: string[]; description?: string }) =>
+        apiPost(`/webhooks/${tenantId}`, data),
+    updateWebhook: (tenantId: string, endpointId: string, data: { url?: string; events?: string[]; description?: string; is_active?: boolean }) =>
+        apiPut(`/webhooks/${tenantId}/${endpointId}`, data),
+    deleteWebhook: (tenantId: string, endpointId: string) =>
+        apiDelete(`/webhooks/${tenantId}/${endpointId}`),
+    regenerateWebhookSecret: (tenantId: string, endpointId: string) =>
+        apiPost(`/webhooks/${tenantId}/${endpointId}/regenerate-secret`, {}),
+    getWebhookDeliveries: (tenantId: string, endpointId: string, limit = 50) =>
+        apiGet(`/webhooks/${tenantId}/${endpointId}/deliveries?limit=${limit}`),
+    testWebhook: (tenantId: string, endpointId: string) =>
+        apiPost(`/webhooks/${tenantId}/${endpointId}/test`, {}),
+    getWebhookEvents: () =>
+        apiGet(`/webhooks/events`),
 };
 
 // ============================================

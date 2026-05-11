@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -53,6 +54,7 @@ export class BroadcastService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        private readonly eventEmitter: EventEmitter2,
         @InjectQueue(BROADCAST_QUEUE) private readonly broadcastQueue: Queue,
     ) {}
 
@@ -348,6 +350,31 @@ export class BroadcastService {
                 [campaignId],
             );
             this.logger.log(`Campaign ${campaignId} completed — all recipients processed`);
+
+            try {
+                const campaign = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT c.name,
+                            (SELECT COUNT(*)::int FROM campaign_recipients WHERE campaign_id = c.id AND status = 'sent') AS sent_count,
+                            (SELECT COUNT(*)::int FROM campaign_recipients WHERE campaign_id = c.id AND status = 'failed') AS failed_count
+                     FROM campaigns c WHERE c.id = $1::uuid`,
+                    [campaignId],
+                );
+                if (campaign[0]) {
+                    const tenant = await this.prisma.tenant.findFirst({ where: { schemaName }, select: { id: true } });
+                    if (tenant) {
+                        this.eventEmitter.emit('campaign.completed', {
+                            tenantId: tenant.id,
+                            campaignId,
+                            name: campaign[0].name,
+                            sentCount: campaign[0].sent_count,
+                            failedCount: campaign[0].failed_count,
+                        });
+                    }
+                }
+            } catch (e: any) {
+                this.logger.warn(`Failed to emit campaign.completed: ${e.message}`);
+            }
         }
     }
 

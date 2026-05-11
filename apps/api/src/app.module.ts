@@ -71,6 +71,7 @@ import { HomeServicesModule } from './modules/home-services/home-services.module
 import { PhotographyModule } from './modules/photography/photography.module';
 import { VerticalAnalyticsModule } from './modules/vertical-analytics/vertical-analytics.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -202,6 +203,7 @@ import llmConfig from './config/llm.config';
         PhotographyModule,
         VerticalAnalyticsModule,
         InvitationsModule,
+        WebhooksModule,
     ],
 })
 export class AppModule { }

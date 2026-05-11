@@ -732,6 +732,10 @@
         "label": "CRM externe",
         "description": "Connectez HubSpot, Salesforce ou Pipedrive"
       },
+      "outboundWebhooks": {
+        "label": "Webhooks sortants",
+        "description": "Envoyez des evenements aux services externes (Zapier, Make, n8n)"
+      },
       "alerts": {
         "label": "Alertes système",
         "description": "Règles de notification à l'équipe"
@@ -3511,6 +3515,38 @@
       "revoked": "Révoqué",
       "error": "Erreur"
     }
+  },
+  "outboundWebhooks": {
+    "title": "Webhooks sortants",
+    "subtitle": "Envoyez des notifications HTTP automatiques lorsque des evenements cles se produisent dans votre compte",
+    "addEndpoint": "Ajouter un endpoint",
+    "empty": "Aucun webhook configure",
+    "emptyHint": "Les webhooks vous permettent de vous integrer a Zapier, Make, n8n et tout service externe",
+    "urlLabel": "URL de l'endpoint",
+    "descriptionLabel": "Description (optionnel)",
+    "descriptionPlaceholder": "Ex: Notifier Slack quand un lead arrive",
+    "eventsLabel": "Evenements a envoyer",
+    "eventDesc": {
+      "lead_created": "Quand un nouveau lead est cree",
+      "handoff_created": "Quand une conversation est escaladee a un agent",
+      "appointment_booked": "Quand un rendez-vous est pris",
+      "message_received": "Quand un message d'un client arrive",
+      "campaign_completed": "Quand une campagne de diffusion se termine"
+    },
+    "create": "Creer webhook",
+    "active": "Actif",
+    "inactive": "Inactif",
+    "enable": "Activer",
+    "disable": "Desactiver",
+    "secret": "Secret",
+    "regenerate": "Regenerer le secret",
+    "confirmRegenerate": "Regenerer le secret? Les integrations existantes cesseront de fonctionner jusqu'a ce que vous mettiez a jour le nouveau secret.",
+    "confirmDelete": "Supprimer ce webhook? Cette action est irreversible.",
+    "sendTest": "Envoyer un test",
+    "recentDeliveries": "Livraisons recentes",
+    "noDeliveries": "Aucune livraison pour le moment",
+    "signatureInfo": "Verification de la signature",
+    "signatureDesc": "Chaque requete inclut un header X-Webhook-Signature avec la signature HMAC-SHA256 du body utilisant votre secret. Verifiez cette signature pour vous assurer que la requete provient de Parallly."
   },
   "properties": {
     "title": "Proprietes",

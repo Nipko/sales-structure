@@ -585,6 +585,16 @@ export class ConversationsService {
             ...result[0],
             channel_type: msg.channelType,
         }, conversationId);
+
+        this.eventEmitter.emit('message.inbound', {
+            tenantId,
+            conversationId,
+            contactId: msg.contactId,
+            phone: msg.metadata?.phone,
+            channel: msg.channelType,
+            messageType: msg.content.type,
+            text: msg.content.text,
+        });
     }
 
     private async saveAiMessage(tenantId: string, conversationId: string, text: string, channelType?: string) {

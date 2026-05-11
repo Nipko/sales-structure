@@ -734,6 +734,10 @@
         "label": "CRM externo",
         "description": "Conectá HubSpot, Salesforce o Pipedrive"
       },
+      "outboundWebhooks": {
+        "label": "Webhooks salientes",
+        "description": "Envía eventos a servicios externos (Zapier, Make, n8n)"
+      },
       "alerts": {
         "label": "Alertas del sistema",
         "description": "Reglas de notificación al equipo"
@@ -3511,6 +3515,38 @@
       "revoked": "Revocado",
       "error": "Error"
     }
+  },
+  "outboundWebhooks": {
+    "title": "Webhooks salientes",
+    "subtitle": "Envía notificaciones HTTP automáticas cuando ocurren eventos clave en tu cuenta",
+    "addEndpoint": "Agregar endpoint",
+    "empty": "No hay webhooks configurados",
+    "emptyHint": "Los webhooks te permiten integrar con Zapier, Make, n8n y cualquier servicio externo",
+    "urlLabel": "URL del endpoint",
+    "descriptionLabel": "Descripción (opcional)",
+    "descriptionPlaceholder": "Ej: Notificar a Slack cuando llega un lead",
+    "eventsLabel": "Eventos a enviar",
+    "eventDesc": {
+      "lead_created": "Cuando se crea un nuevo lead",
+      "handoff_created": "Cuando una conversación se escala a un agente",
+      "appointment_booked": "Cuando se agenda una cita",
+      "message_received": "Cuando llega un mensaje de un cliente",
+      "campaign_completed": "Cuando una campaña de broadcast termina"
+    },
+    "create": "Crear webhook",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "secret": "Secret",
+    "regenerate": "Regenerar secret",
+    "confirmRegenerate": "¿Regenerar el secret? Las integraciones existentes dejarán de funcionar hasta que actualices el nuevo secret.",
+    "confirmDelete": "¿Eliminar este webhook? No se podrá recuperar.",
+    "sendTest": "Enviar prueba",
+    "recentDeliveries": "Entregas recientes",
+    "noDeliveries": "Sin entregas aún",
+    "signatureInfo": "Verificación de firma",
+    "signatureDesc": "Cada solicitud incluye un header X-Webhook-Signature con la firma HMAC-SHA256 del body usando tu secret. Verifica esta firma para asegurar que la solicitud proviene de Parallly."
   },
   "properties": {
     "title": "Propiedades",

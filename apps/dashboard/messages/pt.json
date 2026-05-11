@@ -732,6 +732,10 @@
         "label": "CRM externo",
         "description": "Conecte HubSpot, Salesforce ou Pipedrive"
       },
+      "outboundWebhooks": {
+        "label": "Webhooks de saida",
+        "description": "Envie eventos para servicos externos (Zapier, Make, n8n)"
+      },
       "alerts": {
         "label": "Alertas do sistema",
         "description": "Regras de notificação à equipe"
@@ -3511,6 +3515,38 @@
       "revoked": "Revogado",
       "error": "Erro"
     }
+  },
+  "outboundWebhooks": {
+    "title": "Webhooks de saida",
+    "subtitle": "Envie notificacoes HTTP automaticas quando eventos importantes acontecem na sua conta",
+    "addEndpoint": "Adicionar endpoint",
+    "empty": "Nenhum webhook configurado",
+    "emptyHint": "Webhooks permitem integrar com Zapier, Make, n8n e qualquer servico externo",
+    "urlLabel": "URL do endpoint",
+    "descriptionLabel": "Descricao (opcional)",
+    "descriptionPlaceholder": "Ex: Notificar Slack quando um lead chegar",
+    "eventsLabel": "Eventos para enviar",
+    "eventDesc": {
+      "lead_created": "Quando um novo lead e criado",
+      "handoff_created": "Quando uma conversa e escalada para um agente",
+      "appointment_booked": "Quando uma consulta e agendada",
+      "message_received": "Quando uma mensagem de um cliente chega",
+      "campaign_completed": "Quando uma campanha de broadcast termina"
+    },
+    "create": "Criar webhook",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "enable": "Ativar",
+    "disable": "Desativar",
+    "secret": "Secret",
+    "regenerate": "Regenerar secret",
+    "confirmRegenerate": "Regenerar o secret? Integracoes existentes pararao de funcionar ate voce atualizar o novo secret.",
+    "confirmDelete": "Excluir este webhook? Nao pode ser desfeito.",
+    "sendTest": "Enviar teste",
+    "recentDeliveries": "Entregas recentes",
+    "noDeliveries": "Nenhuma entrega ainda",
+    "signatureInfo": "Verificacao de assinatura",
+    "signatureDesc": "Cada solicitacao inclui um header X-Webhook-Signature com a assinatura HMAC-SHA256 do body usando seu secret. Verifique esta assinatura para garantir que a solicitacao vem do Parallly."
   },
   "properties": {
     "title": "Propriedades",

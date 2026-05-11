@@ -614,6 +614,7 @@ export class DashboardAnalyticsService {
     async getAnomalies(tenantId: string): Promise<{
         anomalies: Array<{ metric: string; date: string; value: number; avg: number; stdDev: number; zScore: number }>;
     }> {
+      try {
         const schema = await this.getSchemaName(tenantId);
         const today = new Date().toISOString().split('T')[0];
         const thirtyDaysAgo = new Date();
@@ -681,6 +682,10 @@ export class DashboardAnalyticsService {
         }
 
         return { anomalies: anomalies.sort((a, b) => b.zScore - a.zScore) };
+      } catch (err: any) {
+        this.logger.warn(`getAnomalies failed for tenant ${tenantId}: ${err.message}`);
+        return { anomalies: [] };
+      }
     }
 
     // ── 11. Cohort Analysis ───────────────────────────────────────

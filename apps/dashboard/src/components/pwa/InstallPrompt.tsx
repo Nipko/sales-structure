@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
-import { Download, X, Check } from "lucide-react";
+import { Download, X } from "lucide-react";
 
 export function InstallPrompt() {
     const t = useTranslations("pwa");
-    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const promptRef = useRef<any>(null);
+    const [canInstall, setCanInstall] = useState(false);
     const [dismissed, setDismissed] = useState(false);
     const [isStandalone, setIsStandalone] = useState(false);
-    const [installing, setInstalling] = useState(false);
 
     useEffect(() => {
         setIsStandalone(
@@ -19,12 +19,14 @@ export function InstallPrompt() {
 
         const handler = (e: Event) => {
             e.preventDefault();
-            setDeferredPrompt(e);
+            promptRef.current = e;
+            setCanInstall(true);
         };
         window.addEventListener("beforeinstallprompt", handler);
 
         const installed = () => {
-            setDeferredPrompt(null);
+            promptRef.current = null;
+            setCanInstall(false);
             setIsStandalone(true);
         };
         window.addEventListener("appinstalled", installed);
@@ -35,30 +37,22 @@ export function InstallPrompt() {
         };
     }, []);
 
-    if (isStandalone || !deferredPrompt || dismissed) return null;
-
-    const handleInstall = async () => {
-        if (!deferredPrompt || installing) return;
-        setInstalling(true);
+    const handleInstall = useCallback(async () => {
+        const prompt = promptRef.current;
+        if (!prompt) return;
+        promptRef.current = null;
         try {
-            deferredPrompt.prompt();
-            const choice = await deferredPrompt.userChoice;
-            if (choice.outcome === "accepted") {
-                setDeferredPrompt(null);
+            prompt.prompt();
+            const choice = await prompt.userChoice;
+            if (choice.outcome === "dismissed") {
+                setCanInstall(false);
             }
         } catch {
-            // prompt failed silently
-        } finally {
-            setInstalling(false);
+            setCanInstall(false);
         }
-    };
+    }, []);
 
-    const handleDismiss = () => {
-        setDismissed(true);
-        try {
-            sessionStorage.setItem("pwa-install-dismissed", "1");
-        } catch { /* ok */ }
-    };
+    if (isStandalone || !canInstall || dismissed) return null;
 
     return (
         <div style={{
@@ -88,27 +82,22 @@ export function InstallPrompt() {
             </div>
             <button
                 onClick={handleInstall}
-                disabled={installing}
                 style={{
                     padding: "6px 14px",
-                    background: installing ? "var(--text-secondary, #9898b0)" : "var(--accent, #6c5ce7)",
+                    background: "var(--accent, #6c5ce7)",
                     color: "#fff",
                     border: "none",
                     borderRadius: 8,
                     fontSize: 12,
                     fontWeight: 600,
-                    cursor: installing ? "wait" : "pointer",
+                    cursor: "pointer",
                     whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
                 }}
             >
-                {installing ? <Check size={14} /> : null}
                 {t("install")}
             </button>
             <button
-                onClick={handleDismiss}
+                onClick={() => setDismissed(true)}
                 style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
             >
                 <X size={16} style={{ color: "var(--text-secondary, #9898b0)" }} />

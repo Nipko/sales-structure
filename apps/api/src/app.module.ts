@@ -74,6 +74,8 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { PushModule } from './modules/push/push.module';
 import { WidgetModule } from './modules/widget/widget.module';
+import { CustomerPortalModule } from './modules/customer-portal/customer-portal.module';
+import { WhiteLabelModule } from './modules/white-label/white-label.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -208,6 +210,8 @@ import llmConfig from './config/llm.config';
         WebhooksModule,
         PushModule,
         WidgetModule,
+        CustomerPortalModule,
+        WhiteLabelModule,
     ],
 })
 export class AppModule { }

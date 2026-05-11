@@ -114,10 +114,26 @@
 ### Broadcast (`/api/v1/broadcast`)
 | Método | Ruta | Auth | Descripción |
 |--------|------|------|------------|
-| POST | `/campaigns` | ✅ admin | Crear campaña de broadcast |
-| GET | `/campaigns` | ✅ | Listar campañas del tenant |
-| POST | `/campaigns/:id/launch` | ✅ admin | Lanzar campaña (encola mensajes) |
-| GET | `/campaigns/:id/stats` | ✅ | Estadísticas de entrega de la campaña |
+| POST | `/campaigns` | ✅ admin | Crear campaña multi-canal (WA/Email/SMS). Body: channels[], channelContent{} |
+| GET | `/campaigns` | ✅ | Listar campañas del tenant con stats |
+| POST | `/campaigns/:id/launch` | ✅ admin | Lanzar campaña (encola mensajes por canal) |
+| GET | `/campaigns/:id/stats` | ✅ | Estadísticas de entrega por canal (sent→delivered→read→failed) |
+
+### WhatsApp Templates (`/api/v1/channels/whatsapp`)
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|------------|
+| GET | `/templates` | ✅ | Listar plantillas sincronizadas |
+| POST | `/templates/sync` | ✅ admin | Sincronizar plantillas desde Meta |
+| POST | `/templates/create` | ✅ admin | Crear plantilla y enviar a Meta para aprobación. Body: name, language, category, components[] |
+
+### Custom Report Builder (`/api/v1/analytics-config`)
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|------------|
+| GET | `/saved-reports/:tenantId` | ✅ | Listar reportes guardados |
+| GET | `/saved-reports/:tenantId/:reportId` | ✅ | Obtener reporte por ID |
+| POST | `/saved-reports/:tenantId` | ✅ admin | Crear reporte (name, description, config) |
+| PUT | `/saved-reports/:tenantId/:reportId` | ✅ admin | Actualizar reporte |
+| DELETE | `/saved-reports/:tenantId/:reportId` | ✅ admin | Eliminar reporte |
 
 ---
 

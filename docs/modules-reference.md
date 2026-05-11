@@ -225,6 +225,7 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `POST /channels/whatsapp/disconnect` — Disconnect
   - `GET /channels/whatsapp/templates` — List templates
   - `POST /channels/whatsapp/templates/sync` — Sync from Meta
+  - `POST /channels/whatsapp/templates/create` — Create template and submit to Meta for approval
   - `POST /channels/whatsapp/send/template` — Send template message
   - `POST /channels/whatsapp/send/text` — Send text
   - `POST /channels/whatsapp/send/interactive` — Send buttons/lists
@@ -595,8 +596,8 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 ### Analytics (1 module, multiple controllers)
 
 #### 28. analytics
-- **Purpose:** Platform analytics, BI API, alerts, CSAT, compliance audit, scheduled reports
-- **Services:** `analytics.service.ts`, `dashboard-analytics.service.ts`, `agent-analytics.service.ts`, `alerts.service.ts`, `audit.service.ts`, `compliance.service.ts`, `csat-trigger.service.ts`, `metrics-aggregation.service.ts`, `scheduled-reports.service.ts`
+- **Purpose:** Platform analytics, BI API, alerts, CSAT, compliance audit, scheduled reports, custom report builder
+- **Services:** `analytics.service.ts`, `dashboard-analytics.service.ts`, `agent-analytics.service.ts`, `alerts.service.ts`, `audit.service.ts`, `compliance.service.ts`, `csat-trigger.service.ts`, `metrics-aggregation.service.ts`, `scheduled-reports.service.ts`, `saved-reports.service.ts`
 - **Controllers:** `analytics.controller.ts`, `dashboard-analytics.controller.ts`, `agent-analytics.controller.ts`, `alerts.controller.ts`, `bi-api.controller.ts`
 - **Dashboard Analytics Endpoints:**
   - `GET /dashboard-analytics/overview-kpis/:tenantId`
@@ -641,6 +642,12 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `GET /analytics-config/alerts/:tenantId/:ruleId/history` — Alert history
   - `GET /analytics-config/reports/:tenantId` — Scheduled reports
   - `POST /analytics-config/reports/:tenantId` — Create scheduled report
+- **Custom Report Builder Endpoints:**
+  - `GET /analytics-config/saved-reports/:tenantId` — List saved reports
+  - `GET /analytics-config/saved-reports/:tenantId/:reportId` — Get saved report
+  - `POST /analytics-config/saved-reports/:tenantId` — Create saved report
+  - `PUT /analytics-config/saved-reports/:tenantId/:reportId` — Update saved report
+  - `DELETE /analytics-config/saved-reports/:tenantId/:reportId` — Delete saved report
 - **BI API Endpoints (X-API-Key auth, no JWT):**
   - `GET /bi-api/kpis`
   - `GET /bi-api/time-series`
@@ -722,15 +729,18 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 ### Operations (8 modules)
 
 #### 30. broadcast
-- **Purpose:** Mass template campaigns via WhatsApp
+- **Purpose:** Multi-channel mass campaigns via WhatsApp, Email, and SMS
 - **Services:** `broadcast.service.ts`
 - **Controller:** `broadcast.controller.ts`
+- **Processor:** `broadcast-queue.processor.ts` — Dispatches per channel (WA template send, Email SMTP, SMS Twilio)
 - **Endpoints:**
-  - `POST /broadcast/campaigns` — Create campaign
-  - `POST /broadcast/campaigns/:id/launch` — Launch campaign
-  - `GET /broadcast/campaigns` — List campaigns
-  - `GET /broadcast/campaigns/:id/stats` — Campaign stats (sent→delivered→read→failed)
+  - `POST /broadcast/campaigns` — Create campaign (supports multi-channel: channels[], channelContent per channel)
+  - `POST /broadcast/campaigns/:id/launch` — Launch campaign (queues per-recipient per-channel jobs)
+  - `GET /broadcast/campaigns` — List campaigns with stats
+  - `GET /broadcast/campaigns/:id/stats` — Campaign stats per channel (sent→delivered→read→failed)
+- **Multi-channel:** UI supports WA + Email + SMS selection, smart recipient resolution (WA→Email→SMS fallback based on contact info), per-channel content (template/subject+html/body), per-channel delivery stats
 - **BullMQ:** `broadcast-messages` (concurrency: 10, 80 msg/s rate limit)
+- **Cron:** `* * * * *` — Auto-launch scheduled campaigns
 
 #### 31. email
 - **Purpose:** Transactional email via nodemailer
@@ -1398,6 +1408,7 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 | `/admin/analytics-v2` | Main analytics (8 tabs, CSV export) | Supervisor+ | ✅ |
 | `/admin/crm-analytics` | CRM analytics (funnel, velocity, leaderboard) | Supervisor+ | ✅ |
 | `/admin/agent-analytics` | Agent performance + CSAT (4 tabs) | All | ✅ |
+| `/admin/report-builder` | Custom report builder (16 metrics, 4 chart types, save/edit/duplicate) | Admin | ✅ |
 | `/admin/analytics` | Legacy analytics (deprecated, not in sidebar) | Supervisor+ | ⚠️ |
 | `/admin/ai` | Legacy LLM config (deprecated, not in sidebar) | Super admin | ⚠️ |
 

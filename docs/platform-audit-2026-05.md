@@ -6,9 +6,9 @@
 **Páginas dashboard:** 78 (65+ admin + 13 públicas)
 **Verticales:** 18 definidas, 10 con módulos dedicados
 **Colas BullMQ:** 6 | **Cron jobs:** 26+
-**Score general vs industria:** 5.4/10 (industria: 7.8/10)
+**Score general vs industria:** 7.2/10 (industria: 7.8/10) — *actualizado Mayo 11, 2026*
 **Fortaleza #1:** AI (8/10, por encima del estándar)
-**Brecha #1:** Integraciones (3/10) y Web Chat Widget (0/10)
+**Brecha #1:** Integraciones (5/10) — Zapier native app pendiente
 
 ---
 
@@ -189,16 +189,13 @@
 - ❌ Webhook-triggered automation (inbound HTTP → flow)
 - ❌ Automation templates library
 
-#### 🔴 ALTA: Customer Engagement (5/10)
-**Lo que tenemos:** Broadcast WA, nurturing, CSAT trigger, recall
+#### 🟡 MEDIA: Customer Engagement (7/10)
+**Lo que tenemos:** Broadcast WA/Email/SMS multi-canal, nurturing, CSAT trigger, recall, campaign scheduling, WA template creation in-app, custom report builder
 **Lo que falta:**
-- ❌ Multi-channel campaigns (WA + Email + SMS en una campaña)
-- ❌ Campaign scheduling (envío programado)
 - ❌ Drip sequences configurables
 - ❌ Segment → broadcast targeting (segmentos existen pero no conectados)
 - ❌ A/B testing
 - ❌ Campaign ROI tracking
-- ❌ WhatsApp template creation in-app
 
 #### 🔴 ALTA: Mobile Experience (3/10)
 **Lo que tenemos:** Responsive CSS, dark/light themes
@@ -207,11 +204,9 @@
 - ❌ Mobile-optimized inbox (swipe actions, quick reply)
 - ❌ Native app (iOS/Android) — largo plazo
 
-#### 🔴 ALTA: Security & Compliance (6/10)
-**Lo que tenemos:** JWT + 2FA + refresh rotation, AES-256-GCM, RBAC, audit logs, schema isolation
+#### 🟡 MEDIA: Security & Compliance (8/10)
+**Lo que tenemos:** JWT + 2FA + refresh rotation, AES-256-GCM, RBAC, audit logs, schema isolation, SAML/SSO, GDPR per-contact erasure (11 tablas), plan enforcement gates
 **Lo que falta:**
-- ❌ SAML/SSO (requerido para enterprise)
-- ❌ GDPR per-contact erasure API
 - ❌ IP allowlist/blocklist
 - ❌ SOC 2 preparation
 
@@ -277,15 +272,15 @@
 
 | # | Feature | Impacto | Esfuerzo | Detalles |
 |---|---|---|---|---|
-| 11 | **PWA (Progressive Web App)** | 🔴 Alto | 1-2 semanas | manifest.json, service worker, push notifications. Mobile pasa de 3/10 a 6/10 |
-| 12 | **Multi-channel Campaigns** | 🔴 Alto | 2-3 semanas | Broadcast a WA + Email + SMS en una sola campaña. UI: channel selector en campaign builder |
-| 13 | **Visual Automation Builder** | 🔴 Alto | 3-4 semanas | React Flow canvas con nodos drag-and-drop. If/then branching, time delays, multi-step. Automation pasa de 5/10 a 8/10 |
-| 14 | **Web Chat Widget** | 🔴 Crítico | 3-4 semanas | JS snippet embebible. Bubble → chat window → AI → handoff. Nuevo canal en ChannelGateway. Widget configurator en dashboard |
-| 15 | **WA Template Management in-app** | 🟡 Medio | 2 semanas | Crear/editar templates WA directamente (Meta API). Preview + approval status tracking |
-| 16 | **SAML/SSO** | 🔴 Alto | 2-3 semanas | Enterprise requirement. Passport SAML strategy + UI de configuración |
-| 17 | **Stripe Billing** | 🔴 Alto | 2-3 semanas | Segundo payment provider para mercado global. IPaymentProvider ya existe como interfaz |
-| 18 | **Custom Report Builder** | 🟡 Medio | 2-3 semanas | Elegir dimensiones + métricas, guardar reports personalizados |
-| 19 | **GDPR Contact Erasure API** | 🔴 Alto | 1 semana | Borrado de datos por contacto individual (ya existe compliance module base) |
+| 11 | ~~**PWA (Progressive Web App)**~~ | ✅ Hecho | — | manifest.json, service worker, push notifications, installable app |
+| 12 | ~~**Multi-channel Campaigns**~~ | ✅ Hecho | — | Broadcast a WA + Email + SMS ya funcional. UI: channel selector, processor por canal, stats por canal, resolución inteligente de destinatarios |
+| 13 | ~~**Visual Automation Builder**~~ | ✅ Hecho | — | React Flow canvas con nodos drag-and-drop, trigger/condition/action/delay nodes |
+| 14 | ~~**Web Chat Widget**~~ | ✅ Hecho | — | JS snippet embebible, WebSocket gateway, configurator en dashboard, AI → handoff flow |
+| 15 | ~~**WA Template Management in-app**~~ | ✅ Hecho | — | POST /channels/whatsapp/templates/create + modal con preview en vivo, envío a Meta Graph API, tracking de estado |
+| 16 | ~~**SAML/SSO**~~ | ✅ Hecho | — | Passport MultiSaml strategy, per-tenant IdP config, domain check, force-SSO, JIT provisioning, UI config |
+| 17 | ~~**Stripe Billing**~~ | ✅ Hecho | — | IPaymentProvider implementado, PaymentProviderFactory routes entre Stripe y MercadoPago |
+| 18 | ~~**Custom Report Builder**~~ | ✅ Hecho | — | saved_reports table + CRUD API (5 endpoints) + /admin/report-builder con 16 métricas, 4 tipos de gráfico, recharts, guardar/editar/duplicar/favoritos |
+| 19 | ~~**GDPR Contact Erasure API**~~ | ✅ Hecho | — | eraseContactData() anonimiza 11+ tablas, endpoint POST /compliance/erase-contact/:tenantId/:contactId, UI super-admin |
 
 ### TIER 3 — Largo Plazo, Estratégico (1-3 meses)
 
@@ -387,45 +382,46 @@ Las siguientes categorías deben controlarse por plan:
 
 ## PARTE 8: PRIORIZACIÓN EJECUTIVA
 
-### Fase 1 — Foundation (Semanas 1-4)
+### Fase 1 — Foundation (Semanas 1-4) ✅ COMPLETADA
 **Objetivo:** Cerrar gaps críticos que bloquean ventas
 
-1. Outbound Webhooks (3-5 días)
-2. Pipeline Kanban write ops (2 días)
-3. Broadcast scheduling + segment targeting (3-5 días)
-4. Exposer páginas ocultas en sidebar (1 día)
-5. i18n KB Portal + Public Booking (3 días)
-6. Eliminar páginas legacy (0.5 días)
-7. GDPR contact erasure API (3-5 días)
+1. ~~Outbound Webhooks~~ ✅
+2. ~~Pipeline Kanban write ops~~ ✅
+3. ~~Broadcast scheduling + segment targeting~~ ✅
+4. ~~Exposer páginas ocultas en sidebar~~ ✅
+5. ~~i18n KB Portal + Public Booking~~ ✅
+6. ~~Eliminar páginas legacy~~ ✅
+7. ~~GDPR contact erasure API~~ ✅
 
-### Fase 2 — Competitive Parity (Semanas 5-10)
+### Fase 2 — Competitive Parity (Semanas 5-10) ✅ COMPLETADA
 **Objetivo:** Alcanzar estándar de industria en las áreas más débiles
 
-8. PWA + push notifications (1-2 semanas)
-9. Web Chat Widget (3-4 semanas)
-10. Multi-channel campaigns (2-3 semanas)
-11. Conversation auto-summary (1-2 días)
+8. ~~PWA + push notifications~~ ✅
+9. ~~Web Chat Widget~~ ✅
+10. ~~Multi-channel campaigns~~ ✅
+11. ~~Conversation auto-summary~~ ✅
 
-### Fase 3 — Differentiation (Semanas 11-18)
+### Fase 3 — Differentiation (Semanas 11-18) ✅ COMPLETADA
 **Objetivo:** Features que nos separan de la competencia
 
-12. Visual Automation Builder (3-4 semanas)
-13. Stripe billing (2-3 semanas)
-14. SAML/SSO (2-3 semanas)
-15. Vertical modules faltantes (Belleza, Automotriz) (4 semanas)
+12. ~~Visual Automation Builder~~ ✅
+13. ~~Stripe billing~~ ✅
+14. ~~SAML/SSO~~ ✅
+15. ~~Vertical modules faltantes (Belleza, Automotriz)~~ ✅
 
 ### Fase 4 — World-Class (Meses 5-8)
 **Objetivo:** Convertirse en referente
 
 16. Zapier native app
 17. Native mobile app
-18. Customer portal
-19. White-label mode
-20. Shopify/WooCommerce connector
+18. ~~Customer portal~~ ✅
+19. ~~White-label mode~~ ✅
+20. ~~Shopify/WooCommerce connector~~ ✅
 21. Voice AI channel
-22. Channel manager API (turismo)
+22. ~~Channel manager API (turismo)~~ ✅
 
 ---
 
-*Documento generado: Mayo 10, 2026*
-*Fuentes: Auditoría automática de 58 módulos backend, 78 páginas frontend, 18 verticales, comparación con 15+ competidores*
+*Documento generado: Mayo 10, 2026 — Actualizado: Mayo 11, 2026*
+*Fuentes: Auditoría automática de 67+ módulos backend, 80+ páginas frontend, 18 verticales, comparación con 15+ competidores*
+*Tier 2 completado al 100%. Fases 1-3 completadas. Fase 4: 4/7 ítems completados.*

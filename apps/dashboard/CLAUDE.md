@@ -31,9 +31,11 @@ src/
       agent/_components/  — 9 extracted components (ConfigCard, IdentitySection, etc.)
       agent-analytics/  — Reports (4 tabs: Overview/Agents/Channels/CSAT)
       ai/               — LLM router config
-      broadcast/        — Campaign manager
+      broadcast/        — Multi-channel campaign manager (WA/Email/SMS)
+      report-builder/   — Custom report builder (16 metrics, 4 chart types, save/edit/duplicate/favorite)
       channels/         — Channel overview (WhatsApp/IG/Messenger + agent assignment status)
       channels/whatsapp/ — WhatsApp Embedded Signup
+      channels/whatsapp/templates/ — WA template management + in-app creation via Meta API
       channels/instagram/ — Instagram OAuth setup (popup + BroadcastChannel)
       channels/instagram/callback/ — Instagram OAuth code exchange (minimal layout)
       channels/messenger/ — Messenger FB SDK Login setup

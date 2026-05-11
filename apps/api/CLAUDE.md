@@ -29,7 +29,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `conversations/` — History limited to 4 messages when in directive (booking) mode
 - `conversations/` — Intent interpreter: no early return on confirmation, supports numbered selection, stem matching
 - `conversations/pre-chat.service.ts` — Pre-chat form data collection before AI responds
-- `whatsapp/` — Webhook handling, connection management, templates, messaging
+- `whatsapp/` — Webhook handling, connection management, templates (sync + in-app creation via Meta API), messaging
 
 **AI**:
 - `ai/router/` — LLM Router. 4 tiers, 5 providers. Skips unconfigured providers. Auto-upgrades tier
@@ -51,7 +51,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `pipeline/` — Kanban stages, deals, auto-progress from conversation signals. Configurable stages via `pipeline_stages` table
 - `identity/` — Unified customer profiles, cross-channel contact linking, merge suggestions, **manual merge** (POST `/identity/:tenantId/manual-merge`)
 - `automation/` — Event-driven rules (trigger→conditions→actions), nurturing sequences, BullMQ processors
-- `analytics/` — Redis counters + DB persistence. CSAT surveys + trigger. Agent performance reports
+- `analytics/` — Redis counters + DB persistence. CSAT surveys + trigger. Agent performance reports. Custom report builder (saved_reports CRUD). Scheduled reports (weekly/monthly email)
 
 **Billing & Finance**:
 - `billing/` — MercadoPago integration. Subscription lifecycle (create/cancel/pause/resume/change). Webhook verification (HMAC-SHA256) + idempotency. Plan quotas enforcement. 5 billing email templates. Card tokenization for self-serve checkout
@@ -64,7 +64,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `offboarding/offboarding-cron.service.ts` — Grace enforcer (3AM: past_due >7d → offboard) + archive cleaner (4AM: drop schemas inactive >90d)
 
 **Operations**:
-- `broadcast/` — Mass template sending via BullMQ (80msg/s rate limit)
+- `broadcast/` — Multi-channel campaigns (WA/Email/SMS), BullMQ (80msg/s rate limit), smart recipient resolution, per-channel stats
 - `catalog/` — Products/courses/campaigns
 - `inventory/` — Stock management
 - `orders/` — Order tracking

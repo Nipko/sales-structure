@@ -64,9 +64,9 @@ export class ComplianceService {
     async createOptOut(schemaName: string, data: any) {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO opt_out_records (tenant_id, lead_id, channel, scope, reason, detected_from)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [data.tenant_id, data.lead_id, data.channel, data.scope || 'marketing', data.reason, data.detected_from]
+            `INSERT INTO opt_out_records (lead_id, phone, channel, trigger_msg, detected_from, status)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6) RETURNING *`,
+            [data.lead_id, data.phone || '', data.channel, data.reason || data.trigger_msg || '', data.detected_from || 'manual', data.status || 'pending']
         );
         return rows[0];
     }
@@ -260,13 +260,13 @@ export class ComplianceService {
             try {
                 const dr = await this.prisma.executeInTenantSchema<any[]>(
                     t.schemaName,
-                    `SELECT id, lead_id, requested_by, status, created_at, processed_at
+                    `SELECT id, lead_id, requested_by, status, requested_at, processed_at
                      FROM deletion_requests
                      WHERE status IN ('pending','processing')
-                     ORDER BY created_at DESC LIMIT 50`,
+                     ORDER BY requested_at DESC LIMIT 50`,
                 );
                 for (const r of dr) {
-                    pending.push({ ...r, tenantId: t.id, tenantName: t.name, tenantSlug: t.slug });
+                    pending.push({ ...r, created_at: r.requested_at, tenantId: t.id, tenantName: t.name, tenantSlug: t.slug });
                 }
                 totals.pending += dr.length;
             } catch { /* schema missing → skip */ }
@@ -274,7 +274,7 @@ export class ComplianceService {
             try {
                 const oo = await this.prisma.executeInTenantSchema<any[]>(
                     t.schemaName,
-                    `SELECT id, lead_id, channel, scope, reason, status, created_at
+                    `SELECT id, lead_id, channel, detected_from, created_at
                      FROM opt_out_records
                      ORDER BY created_at DESC LIMIT 25`,
                 );
@@ -285,8 +285,7 @@ export class ComplianceService {
             } catch { /* skip */ }
         }
 
-        // Sort merged arrays by date
-        pending.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        pending.sort((a, b) => new Date(b.requested_at || b.created_at).getTime() - new Date(a.requested_at || a.created_at).getTime());
         optOuts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         return {

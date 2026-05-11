@@ -620,15 +620,32 @@ export class DashboardAnalyticsService {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const startDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-        // Get daily conversation counts for last 30 days
         const dailyRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT DATE(created_at)::text as date, COUNT(*)::int as conversations,
-                    (SELECT COUNT(*)::int FROM "${schema}".messages WHERE DATE(created_at) = DATE(c.created_at)) as messages,
-                    (SELECT COUNT(*)::int FROM "${schema}".conversation_assignments WHERE DATE(assigned_at) = DATE(c.created_at)) as handoffs
-             FROM "${schema}".conversations c
-             WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
-             GROUP BY DATE(created_at)
-             ORDER BY date`,
+            `WITH daily_convs AS (
+                SELECT DATE(created_at) as d, COUNT(*)::int as conversations
+                FROM "${schema}".conversations
+                WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+                GROUP BY DATE(created_at)
+            ),
+            daily_msgs AS (
+                SELECT DATE(created_at) as d, COUNT(*)::int as messages
+                FROM "${schema}".messages
+                WHERE created_at >= $1::date AND created_at < ($2::date + interval '1 day')
+                GROUP BY DATE(created_at)
+            ),
+            daily_handoffs AS (
+                SELECT DATE(assigned_at) as d, COUNT(*)::int as handoffs
+                FROM "${schema}".conversation_assignments
+                WHERE assigned_at >= $1::date AND assigned_at < ($2::date + interval '1 day')
+                GROUP BY DATE(assigned_at)
+            )
+            SELECT dc.d::text as date, dc.conversations,
+                   COALESCE(dm.messages, 0) as messages,
+                   COALESCE(dh.handoffs, 0) as handoffs
+            FROM daily_convs dc
+            LEFT JOIN daily_msgs dm ON dm.d = dc.d
+            LEFT JOIN daily_handoffs dh ON dh.d = dc.d
+            ORDER BY dc.d`,
             startDate, today,
         );
 

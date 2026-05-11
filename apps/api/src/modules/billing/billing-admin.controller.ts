@@ -65,11 +65,11 @@ export class BillingAdminController {
             where: { isActive: true },
         });
         const countMap = Object.fromEntries(
-            counts.map(c => [c.plan, c._count.id]),
+            counts.map((c: { plan: string; _count: { id: number } }) => [c.plan, c._count.id]),
         );
         return {
             success: true,
-            data: plans.map(p => ({ ...p, tenantCount: countMap[p.slug] || 0 })),
+            data: plans.map((p: any) => ({ ...p, tenantCount: countMap[p.slug] || 0 })),
         };
     }
 

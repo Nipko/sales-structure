@@ -12,6 +12,8 @@ import { BillingEmailService } from './billing-email.service';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
+import { StripeAdapter } from './adapters/stripe.adapter';
+import { StripeConfigService } from './adapters/stripe-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import { InvoiceGeneratorService } from './invoice-generator.service';
@@ -37,6 +39,8 @@ import { InvoiceGeneratorService } from './invoice-generator.service';
         MockPaymentProvider,
         MercadoPagoAdapter,
         MercadoPagoConfigService,
+        StripeAdapter,
+        StripeConfigService,
         BillingReconciliationProcessor,
         InvoiceGeneratorService,
     ],

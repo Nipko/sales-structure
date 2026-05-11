@@ -443,6 +443,12 @@ export class BroadcastService {
             for (const tenant of tenants || []) {
                 const schema = tenant.schema_name;
                 try {
+                    const hasCampaigns = await this.prisma.$queryRawUnsafe(
+                        `SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'campaigns' AND column_name = 'scheduled_at'`,
+                        schema,
+                    ) as any[];
+                    if (!hasCampaigns?.length) continue;
+
                     const due = await this.prisma.executeInTenantSchema<any[]>(
                         schema,
                         `SELECT id FROM campaigns

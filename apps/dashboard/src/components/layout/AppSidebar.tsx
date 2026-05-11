@@ -245,24 +245,33 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     ? (verticalConfig?.sidebar?.itemOrder as string[] | undefined)
     : undefined;
 
+  const resolveLogoUrl = useCallback((raw: string) => {
+    if (!raw) return "";
+    if (raw.startsWith("http")) return raw;
+    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api\/v1\/?$/, "");
+    return base + raw;
+  }, []);
+
   useEffect(() => {
     if (!user?.tenantId || !useTenantTree) return;
     (async () => {
       try {
         const res = await api.getBusinessInfo(user.tenantId!);
         if (res.success && res.data?.logoUrl) {
-          const raw = res.data.logoUrl;
-          if (raw.startsWith("http")) {
-            setCompanyLogoUrl(raw);
-          } else {
-            const base = (process.env.NEXT_PUBLIC_API_URL || "")
-              .replace(/\/api\/v1\/?$/, "");
-            setCompanyLogoUrl(base + raw);
-          }
+          setCompanyLogoUrl(resolveLogoUrl(res.data.logoUrl));
         }
       } catch { /* non-critical */ }
     })();
-  }, [user?.tenantId, useTenantTree]);
+  }, [user?.tenantId, useTenantTree, resolveLogoUrl]);
+
+  useEffect(() => {
+    const onLogoChanged = (e: Event) => {
+      const url = (e as CustomEvent).detail?.logoUrl;
+      setCompanyLogoUrl(url ? resolveLogoUrl(url) : "");
+    };
+    window.addEventListener("logo-changed", onLogoChanged);
+    return () => window.removeEventListener("logo-changed", onLogoChanged);
+  }, [resolveLogoUrl]);
 
   const isActive = useCallback((href?: string) => {
     if (!href) return false;

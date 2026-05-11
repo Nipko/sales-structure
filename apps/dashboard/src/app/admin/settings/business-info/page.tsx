@@ -103,6 +103,7 @@ export default function BusinessInfoPage() {
             if (result.success) {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 3000);
+                window.dispatchEvent(new CustomEvent("logo-changed", { detail: { logoUrl: form.logoUrl } }));
             } else {
                 setError(result.error || t("errors.saveFailed"));
             }
@@ -121,6 +122,7 @@ export default function BusinessInfoPage() {
             const res = await api.uploadLogo(activeTenantId, file);
             if (res.success && res.data?.logoUrl) {
                 setForm(prev => ({ ...prev, logoUrl: res.data.logoUrl }));
+                window.dispatchEvent(new CustomEvent("logo-changed", { detail: { logoUrl: res.data.logoUrl } }));
             }
         } catch { /* ignore */ }
         setUploading(false);

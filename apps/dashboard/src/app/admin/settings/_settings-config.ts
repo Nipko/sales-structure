@@ -15,7 +15,7 @@ import {
     User, Shield, Bell, Palette, Building2, Globe, Clock,
     Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
     SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
-    BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook,
+    BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook, MessageCircle,
 } from "lucide-react";
 
 export type Role = {
@@ -93,6 +93,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
         items: [
             { key: "crmIntegrations", href: "/admin/settings/integrations/crm", icon: Plug, iconColor: "text-violet-500", iconBg: "bg-violet-500/10" },
             { key: "outboundWebhooks", href: "/admin/settings/integrations/webhooks", icon: Webhook, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
+            { key: "webChat", href: "/admin/settings/integrations/web-chat", icon: MessageCircle, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "alerts", href: "/admin/settings/alerts", icon: BellRing, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
         ],
     },

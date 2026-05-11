@@ -736,6 +736,10 @@
         "label": "Webhooks de saida",
         "description": "Envie eventos para servicos externos (Zapier, Make, n8n)"
       },
+      "webChat": {
+        "label": "Chat web",
+        "description": "Widget de chat incorporável para seu site"
+      },
       "alerts": {
         "label": "Alertas do sistema",
         "description": "Regras de notificação à equipe"
@@ -4986,6 +4990,29 @@
     "catSystem": "Sistema",
     "catSystemDesc": "Atualizações, manutenção e alertas",
     "localNote": "As preferências são salvas localmente por enquanto. Persistência no servidor em breve."
+  },
+  "webChat": {
+    "title": "Widget de chat web",
+    "subtitle": "Adicione um chat com IA ao seu site para atender visitantes automaticamente",
+    "create": "Criar widget",
+    "noWidgets": "Nenhum widget ainda. Crie um para adicionar chat ao seu site.",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "copySnippet": "Copiar código",
+    "configure": "Configurar",
+    "delete": "Excluir",
+    "confirmDelete": "Excluir este widget? Os visitantes não poderão mais conversar.",
+    "widgetName": "Nome do widget",
+    "agentName": "Nome do assistente",
+    "color": "Cor primária",
+    "position": "Posição",
+    "bottomRight": "Inferior direita",
+    "bottomLeft": "Inferior esquerda",
+    "welcomeMessage": "Mensagem de boas-vindas",
+    "preChatForm": "Formulário pré-chat",
+    "embedCode": "Código de incorporação",
+    "cancel": "Cancelar",
+    "save": "Salvar"
   },
   "pwa": {
     "installTitle": "Instalar Parallly",

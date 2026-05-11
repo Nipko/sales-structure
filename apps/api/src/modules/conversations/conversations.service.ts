@@ -1204,4 +1204,72 @@ export class ConversationsService {
         };
         return messages[lang] || messages.es;
     }
+
+    async processWidgetMessage(
+        tenantId: string,
+        schemaName: string,
+        conversationId: string,
+        contactId: string,
+        text: string,
+    ): Promise<string | null> {
+        const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
+        if (!config) return null;
+
+        const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT direction, content_text FROM messages
+             WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 20`,
+            [conversationId],
+        );
+
+        const conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT * FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+
+        const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
+        if (handoffReason) {
+            await this.handoffService.executeHandoff(tenantId, conversationId, {
+                tenantId, conversationId, contactId, channelType: 'web_widget',
+                content: { type: 'text', text },
+            } as any, handoffReason);
+            return 'Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve.';
+        }
+
+        if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
+            return null;
+        }
+
+        const now = new Date();
+        const turnContext: any = {
+            userMessage: text,
+            language: 'es',
+            channelType: 'web_widget',
+            messageCount: (history?.length || 0) + 1,
+            timezone: 'America/Bogota',
+            now: now.toISOString(),
+            upcomingDays: [],
+            businessHoursStatus: 'open' as const,
+        };
+        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
+
+        const chatMessages = (history || []).map((m: any) => ({
+            role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+            content: m.content_text || '',
+        }));
+        chatMessages.push({ role: 'user' as const, content: text });
+
+        try {
+            const response = await this.llmRouter.execute({
+                model: 'grok-4-1-fast-non-reasoning',
+                messages: chatMessages,
+                systemPrompt,
+                temperature: 0.8,
+                tenantId,
+            });
+            return response.content || null;
+        } catch (err: any) {
+            this.logger.warn(`Widget AI failed: ${err.message}`);
+            return null;
+        }
+    }
 }

@@ -76,6 +76,8 @@ import { PushModule } from './modules/push/push.module';
 import { WidgetModule } from './modules/widget/widget.module';
 import { CustomerPortalModule } from './modules/customer-portal/customer-portal.module';
 import { WhiteLabelModule } from './modules/white-label/white-label.module';
+import { EcommerceModule } from './modules/ecommerce/ecommerce.module';
+import { ChannelManagerModule } from './modules/channel-manager/channel-manager.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -212,6 +214,8 @@ import llmConfig from './config/llm.config';
         WidgetModule,
         CustomerPortalModule,
         WhiteLabelModule,
+        EcommerceModule,
+        ChannelManagerModule,
     ],
 })
 export class AppModule { }

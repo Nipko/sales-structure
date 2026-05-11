@@ -102,6 +102,7 @@ export function InstallPrompt() {
                 style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
             >
                 <X size={16} style={{ color: "#9898b0" }} />
+            </button>
         </div>
     );
 }

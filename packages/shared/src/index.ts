@@ -265,7 +265,7 @@ export interface AnalyticsEvent {
 }
 
 // ---- Auth Types ----
-export type UserRole = 'super_admin' | 'tenant_admin' | 'tenant_agent' | 'tenant_viewer';
+export type UserRole = 'super_admin' | 'tenant_admin' | 'tenant_supervisor' | 'tenant_agent' | 'tenant_viewer';
 
 export interface AuthUser {
     id: string;

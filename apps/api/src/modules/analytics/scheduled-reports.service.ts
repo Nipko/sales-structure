@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @Injectable()
 export class ScheduledReportsService {
@@ -12,6 +13,7 @@ export class ScheduledReportsService {
         private prisma: PrismaService,
         private email: EmailService,
         private dashboardAnalytics: DashboardAnalyticsService,
+        private throttle: TenantThrottleService,
     ) { }
 
     // ── CRUD ──────────────────────────────────────────────────────
@@ -71,6 +73,9 @@ export class ScheduledReportsService {
 
         for (const tenant of tenants) {
             try {
+                const hasFeature = await this.throttle.isFeatureEnabled(tenant.id, 'scheduledReports');
+                if (!hasFeature) continue;
+
                 const config = await this.getConfig(tenant.schemaName, tenant.id);
                 if (!config || !config.is_active || config.frequency !== frequency) continue;
                 if (!config.recipients?.length) continue;

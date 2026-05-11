@@ -206,6 +206,18 @@ export class TenantThrottleService {
         return stamped;
     }
 
+    async invalidatePlanCacheForSlug(planSlug: string): Promise<number> {
+        const tenants = await this.prisma.tenant.findMany({
+            where: { plan: planSlug },
+            select: { id: true },
+        });
+        for (const t of tenants) {
+            await this.redis.del(`plan_features:${t.id}`);
+            await this.redis.del(`tenant_plan:${t.id}`);
+        }
+        return tenants.length;
+    }
+
     /**
      * Resolve a granular per-resource limit from billing_plans.features.
      * Returns Infinity for -1 (unlimited).

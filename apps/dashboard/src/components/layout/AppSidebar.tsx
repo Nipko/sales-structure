@@ -58,6 +58,7 @@ import {
   PawPrint,
   Camera,
   Tag,
+  Layers,
   Package,
   ShoppingCart,
   Shield,
@@ -184,6 +185,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "funnel", href: "/admin/funnel", icon: FunnelIcon },
       { labelKey: "verticalAnalytics", href: "/admin/vertical-analytics", icon: PieChart },
       { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
+      { labelKey: "plans", href: "/admin/plans", icon: Layers },
     ],
   },
   {

@@ -13,7 +13,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
-import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem } from '@parallext/shared';
+import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
@@ -1014,11 +1014,14 @@ export class ConversationsService {
                 const toolModel = 'gemini-2.5-pro';       // Best tool calling (99.3%)
                 const selectedModel = hasTools ? toolModel : conversationModel;
 
+                const planFeatures = await this.throttle.getPlanFeatures(tenantId);
+                const allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
+
                 const response = await this.llmRouter.execute({
                     model: selectedModel,
                     messages: currentMessages,
                     systemPrompt,
-                    temperature: hasTools ? 0.3 : 0.8, // Lower temp for tools, higher for natural conversation
+                    temperature: hasTools ? 0.3 : 0.8,
                     tools: hasTools ? tools : undefined,
                     routingFactors: {
                         ticketValue: 50,
@@ -1027,6 +1030,7 @@ export class ConversationsService {
                         sentiment,
                         intentType: complexity,
                     },
+                    allowedTiers,
                     tenantId,
                 });
 
@@ -1270,6 +1274,18 @@ export class ConversationsService {
         } catch (err: any) {
             this.logger.warn(`Widget AI failed: ${err.message}`);
             return null;
+        }
+    }
+
+    private mapLlmTierToAllowed(planTier: string | undefined): ModelTier[] {
+        switch (planTier) {
+            case 'tier_1':
+                return ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
+            case 'tier_2':
+                return ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
+            case 'tier_3':
+            default:
+                return ['tier_3_efficient', 'tier_4_budget'];
         }
     }
 }

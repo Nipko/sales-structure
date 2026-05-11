@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import type { OutboundMessage } from '@parallext/shared';
 
 /**
@@ -29,6 +30,7 @@ export class RecallService {
         private readonly prisma: PrismaService,
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelTokenService: ChannelTokenService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     /** Daily at 9am — local server time. */
@@ -45,6 +47,9 @@ export class RecallService {
             for (const tenant of tenants || []) {
                 const config = (tenant.settings as any)?.recallConfig;
                 if (!config?.enabled) continue;
+
+                const recallEnabled = await this.throttle.isFeatureEnabled(tenant.id, 'recall');
+                if (!recallEnabled) continue;
 
                 const sent = await this.processForTenant(tenant.id, tenant.schema_name, config);
                 totalSent += sent;

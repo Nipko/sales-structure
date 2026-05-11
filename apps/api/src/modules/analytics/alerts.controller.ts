@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -7,6 +7,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AlertsService } from './alerts.service';
 import { ScheduledReportsService } from './scheduled-reports.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('analytics-alerts')
 @Controller('analytics-config')
@@ -17,6 +18,7 @@ export class AlertsController {
         private alerts: AlertsService,
         private reports: ScheduledReportsService,
         private prisma: PrismaService,
+        private throttle: TenantThrottleService,
     ) { }
 
     private async getSchema(tenantId: string): Promise<string> {
@@ -94,6 +96,10 @@ export class AlertsController {
     @Get('reports/:tenantId')
     @ApiOperation({ summary: 'Get scheduled report config' })
     async getReportConfig(@Param('tenantId') tenantId: string) {
+        const enabled = await this.throttle.isFeatureEnabled(tenantId, 'scheduledReports');
+        if (!enabled) {
+            throw new ForbiddenException({ error: 'feature_not_available', feature: 'scheduledReports' });
+        }
         const schema = await this.getSchema(tenantId);
         const config = await this.reports.getConfig(schema, tenantId);
         return { success: true, data: config };
@@ -106,6 +112,10 @@ export class AlertsController {
         @Param('tenantId') tenantId: string,
         @Body() body: { frequency: string; recipients: string[]; isActive: boolean },
     ) {
+        const enabled = await this.throttle.isFeatureEnabled(tenantId, 'scheduledReports');
+        if (!enabled) {
+            throw new ForbiddenException({ error: 'feature_not_available', feature: 'scheduledReports' });
+        }
         const schema = await this.getSchema(tenantId);
         const config = await this.reports.upsertConfig(schema, tenantId, body);
         return { success: true, data: config };

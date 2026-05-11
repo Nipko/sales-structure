@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
@@ -461,6 +461,10 @@ export class CrmController {
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
     ) {
+        const enabled = await this.throttle.isFeatureEnabled(tenantId, 'aiInsights');
+        if (!enabled) {
+            throw new ForbiddenException({ error: 'feature_not_available', feature: 'aiInsights' });
+        }
         const data = await this.crmInsights.getInsight(tenantId, leadId);
         return { success: true, data };
     }

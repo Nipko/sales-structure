@@ -845,6 +845,12 @@ export const api = {
     grantCompPlan: (tenantId: string, data: { planSlug: string; durationDays: number; reason: string }) =>
         apiPost(`/billing-admin/tenants/${tenantId}/comp-plan`, data),
 
+    // --- Plan management (super_admin) ---
+    getAdminPlans: () => apiGet('/billing-admin/plans'),
+    getAdminPlan: (slug: string) => apiGet(`/billing-admin/plans/${slug}`),
+    updateAdminPlan: (slug: string, data: any) => apiPut(`/billing-admin/plans/${slug}`, data),
+    invalidatePlanCache: (slug: string) => apiPost(`/billing-admin/plans/${slug}/invalidate-cache`, {}),
+
     // --- Coupons (super_admin CRUD + tenant redeem) ---
     listCoupons: (active?: boolean) =>
         apiGet(`/billing-coupons/admin${active !== undefined ? `?active=${active}` : ""}`),

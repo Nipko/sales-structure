@@ -47,7 +47,7 @@ export function InstallPrompt() {
             if (choice.outcome === "dismissed") {
                 setCanInstall(false);
             }
-        } catch {
+        } catch (_err) {
             setCanInstall(false);
         }
     }, []);
@@ -55,22 +55,24 @@ export function InstallPrompt() {
     if (isStandalone || !canInstall || dismissed) return null;
 
     return (
-        <div style={{
-            position: "fixed",
-            bottom: 20,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 9999,
-            background: "#1a1a2e",
-            border: "1px solid #2a2a45",
-            borderRadius: 12,
-            padding: "12px 20px",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-            maxWidth: 400,
-        }}>
+        <div
+            style={{
+                position: "fixed",
+                bottom: 20,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 9999,
+                background: "#1a1a2e",
+                border: "1px solid #2a2a45",
+                borderRadius: 12,
+                padding: "12px 20px",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                maxWidth: 400,
+            }}
+        >
             <Download size={20} style={{ color: "#6c5ce7", flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e8e8f0" }}>

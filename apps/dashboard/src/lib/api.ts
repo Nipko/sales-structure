@@ -343,13 +343,13 @@ export const api = {
 
     // --- Broadcast ---
     getCampaigns(tenantId: string) {
-        return apiGet<any[]>(`/broadcast/campaigns/${tenantId}`);
+        return apiGet<any[]>(`/broadcast/campaigns`);
     },
-    createCampaign(tenantId: string, data: { name: string; channel: string; template: string; targetAudience: string; scheduledAt?: string }) {
-        return apiPost<{ id: string }>(`/broadcast/campaigns/${tenantId}`, data);
+    createCampaign(tenantId: string, data: Record<string, any>) {
+        return apiPost<{ id: string }>(`/broadcast/campaigns`, data);
     },
     sendCampaign(tenantId: string, campaignId: string) {
-        return apiPost(`/broadcast/campaigns/${tenantId}/${campaignId}/send`, {});
+        return apiPost(`/broadcast/campaigns/${campaignId}/launch`, {});
     },
 
     // --- Analytics ---

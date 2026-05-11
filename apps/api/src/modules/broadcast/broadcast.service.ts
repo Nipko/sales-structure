@@ -8,15 +8,21 @@ import { RedisService } from '../redis/redis.service';
 
 export const BROADCAST_QUEUE = 'broadcast-messages';
 
+export interface ChannelContent {
+    whatsapp?: { templateName: string; templateLanguage?: string; templateComponents?: any[] };
+    email?: { subject: string; html?: string; text?: string };
+    sms?: { body: string };
+}
+
 export interface CreateCampaignDto {
     name: string;
     channel?: string;
-    templateName: string;
+    channels?: string[];
+    channelContent?: ChannelContent;
+    templateName?: string;
     templateLanguage?: string;
     templateComponents?: any[];
-    /** Filter: 'all' | JSON with tags/segment filters */
     targetAudience?: string;
-    /** Explicit list of phone numbers (overrides targetAudience query) */
     recipientPhones?: string[];
     scheduledAt?: string;
     metadata?: Record<string, any>;
@@ -27,22 +33,30 @@ export interface BroadcastJobData {
     schemaName: string;
     campaignId: string;
     recipientId: string;
+    channel: string;
     phone: string;
+    email?: string;
     templateName: string;
     templateLanguage: string;
     templateComponents: any[];
+    emailSubject?: string;
+    emailHtml?: string;
+    emailText?: string;
+    smsBody?: string;
 }
 
 export interface CampaignStats {
     campaignId: string;
     name: string;
     status: string;
+    channels: string[];
     totalRecipients: number;
     queued: number;
     sent: number;
     delivered: number;
     read: number;
     failed: number;
+    byChannel: Record<string, { sent: number; delivered: number; failed: number }>;
     launchedAt: string | null;
     completedAt: string | null;
 }
@@ -65,13 +79,26 @@ export class BroadcastService {
         const schema = await this.getTenantSchema(tenantId);
         await this.ensureBroadcastTables(schema);
 
-        // Build recipient list from audience filter or explicit phones
-        const recipients = await this.resolveRecipients(schema, data);
+        const channels = data.channels?.length ? data.channels : [data.channel || 'whatsapp'];
+        const channelContent = data.channelContent || {};
+
+        // Backward compat: if only WA template provided via legacy fields, populate channelContent
+        if (!channelContent.whatsapp && data.templateName) {
+            channelContent.whatsapp = {
+                templateName: data.templateName,
+                templateLanguage: data.templateLanguage || 'es',
+                templateComponents: data.templateComponents || [],
+            };
+        }
+
+        const recipients = await this.resolveRecipientsMultiChannel(schema, data, channels);
 
         const metadata = {
             ...(data.metadata || {}),
-            templateLanguage: data.templateLanguage || 'es',
-            templateComponents: data.templateComponents || [],
+            channels,
+            channelContent,
+            templateLanguage: channelContent.whatsapp?.templateLanguage || data.templateLanguage || 'es',
+            templateComponents: channelContent.whatsapp?.templateComponents || data.templateComponents || [],
             recipientPhones: data.recipientPhones || null,
         };
 
@@ -89,8 +116,8 @@ export class BroadcastService {
             ) RETURNING id`,
             [
                 data.name,
-                data.channel || 'whatsapp',
-                data.templateName,
+                channels.join(','),
+                channelContent.whatsapp?.templateName || data.templateName || '',
                 status,
                 data.targetAudience || 'all',
                 JSON.stringify(metadata),
@@ -100,26 +127,29 @@ export class BroadcastService {
 
         const campaignId = rows?.[0]?.id;
 
-        // Insert recipients into campaign_recipients
         if (recipients.length > 0) {
-            const values = recipients.map(
-                (_, i) => `(gen_random_uuid(), $1::uuid, $${i * 2 + 2}::uuid, $${i * 2 + 3}, 'pending', NOW())`,
-            ).join(', ');
+            const batchSize = 200;
+            for (let i = 0; i < recipients.length; i += batchSize) {
+                const batch = recipients.slice(i, i + batchSize);
+                const values = batch.map(
+                    (_, j) => `(gen_random_uuid(), $1::uuid, $${j * 4 + 2}::uuid, $${j * 4 + 3}, $${j * 4 + 4}, $${j * 4 + 5}, 'pending', NOW())`,
+                ).join(', ');
 
-            const params: any[] = [campaignId];
-            for (const r of recipients) {
-                params.push(r.id, r.phone);
+                const params: any[] = [campaignId];
+                for (const r of batch) {
+                    params.push(r.id, r.phone || '', r.email || '', r.channel);
+                }
+
+                await this.prisma.executeInTenantSchema(
+                    schema,
+                    `INSERT INTO campaign_recipients (id, campaign_id, contact_id, phone, email, channel, status, created_at)
+                     VALUES ${values}`,
+                    params,
+                );
             }
-
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `INSERT INTO campaign_recipients (id, campaign_id, contact_id, phone, status, created_at)
-                 VALUES ${values}`,
-                params,
-            );
         }
 
-        return { id: campaignId, recipientCount: recipients.length };
+        return { id: campaignId, recipientCount: recipients.length, channels };
     }
 
     // ================================================================
@@ -148,10 +178,9 @@ export class BroadcastService {
             );
         }
 
-        // Fetch pending recipients
         const recipients = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, contact_id, phone FROM campaign_recipients
+            `SELECT id, contact_id, phone, email, channel FROM campaign_recipients
              WHERE campaign_id = $1::uuid AND status = 'pending'`,
             [campaignId],
         );
@@ -160,16 +189,17 @@ export class BroadcastService {
             throw new BadRequestException('No pending recipients found for this campaign');
         }
 
-        // Parse template config from metadata
         const metadata = typeof campaign.metadata === 'string'
             ? JSON.parse(campaign.metadata)
             : (campaign.metadata || {});
 
-        const templateName = campaign.wa_template_name;
-        const templateLanguage = metadata.templateLanguage || 'es';
-        const templateComponents = metadata.templateComponents || [];
+        const channelContent: ChannelContent = metadata.channelContent || {};
+        const waContent = channelContent.whatsapp || {
+            templateName: campaign.wa_template_name,
+            templateLanguage: metadata.templateLanguage || 'es',
+            templateComponents: metadata.templateComponents || [],
+        };
 
-        // Mark campaign as sending
         await this.prisma.executeInTenantSchema(
             schema,
             `UPDATE campaigns SET status = 'active', starts_at = NOW(), updated_at = NOW()
@@ -177,31 +207,37 @@ export class BroadcastService {
             [campaignId],
         );
 
-        // Queue each recipient as an individual job with rate limiting
-        const jobs = recipients.map((r) => ({
-            name: 'send-template',
-            data: {
-                tenantId,
-                schemaName: schema,
-                campaignId,
-                recipientId: r.id,
-                phone: r.phone,
-                templateName,
-                templateLanguage,
-                templateComponents,
-            } as BroadcastJobData,
-            opts: {
-                attempts: 3,
-                backoff: { type: 'exponential' as const, delay: 5000 },
-                removeOnComplete: 100,
-                removeOnFail: 500,
-            },
-        }));
+        const jobs = recipients.map((r) => {
+            const ch = r.channel || 'whatsapp';
+            return {
+                name: `send-${ch}`,
+                data: {
+                    tenantId,
+                    schemaName: schema,
+                    campaignId,
+                    recipientId: r.id,
+                    channel: ch,
+                    phone: r.phone || '',
+                    email: r.email || '',
+                    templateName: waContent.templateName || '',
+                    templateLanguage: waContent.templateLanguage || 'es',
+                    templateComponents: waContent.templateComponents || [],
+                    emailSubject: channelContent.email?.subject || '',
+                    emailHtml: channelContent.email?.html || '',
+                    emailText: channelContent.email?.text || '',
+                    smsBody: channelContent.sms?.body || '',
+                } as BroadcastJobData,
+                opts: {
+                    attempts: 3,
+                    backoff: { type: 'exponential' as const, delay: 5000 },
+                    removeOnComplete: 100,
+                    removeOnFail: 500,
+                },
+            };
+        });
 
-        // BullMQ addBulk for efficient queueing
         await this.broadcastQueue.addBulk(jobs);
 
-        // Update recipient statuses to 'queued'
         await this.prisma.executeInTenantSchema(
             schema,
             `UPDATE campaign_recipients SET status = 'queued', updated_at = NOW()
@@ -209,10 +245,7 @@ export class BroadcastService {
             [campaignId],
         );
 
-        this.logger.log(
-            `Campaign ${campaignId} launched: ${recipients.length} messages queued`,
-        );
-
+        this.logger.log(`Campaign ${campaignId} launched: ${recipients.length} messages queued`);
         return { queued: recipients.length };
     }
 
@@ -235,24 +268,29 @@ export class BroadcastService {
              ORDER BY c.created_at DESC`,
         );
 
-        return (campaigns || []).map((c) => ({
-            id: c.id,
-            name: c.name,
-            code: c.code,
-            channel: c.channel,
-            templateName: c.wa_template_name,
-            status: c.status,
-            targetAudience: c.target_audience,
-            totalRecipients: parseInt(c.total_recipients || '0'),
-            sentCount: parseInt(c.sent_count || '0'),
-            deliveredCount: parseInt(c.delivered_count || '0'),
-            readCount: parseInt(c.read_count || '0'),
-            failedCount: parseInt(c.failed_count || '0'),
-            scheduledAt: c.scheduled_at?.toISOString?.() || c.scheduled_at || null,
-            startsAt: c.starts_at?.toISOString?.() || c.starts_at || null,
-            endsAt: c.ends_at?.toISOString?.() || c.ends_at || null,
-            createdAt: c.created_at?.toISOString?.() || c.created_at,
-        }));
+        return (campaigns || []).map((c) => {
+            const meta = typeof c.metadata === 'string' ? JSON.parse(c.metadata || '{}') : (c.metadata || {});
+            const channels = meta.channels || [c.channel || 'whatsapp'];
+            return {
+                id: c.id,
+                name: c.name,
+                code: c.code,
+                channel: c.channel,
+                channels: Array.isArray(channels) ? channels : channels.split(','),
+                templateName: c.wa_template_name,
+                status: c.status,
+                targetAudience: c.target_audience,
+                totalRecipients: parseInt(c.total_recipients || '0'),
+                sentCount: parseInt(c.sent_count || '0'),
+                deliveredCount: parseInt(c.delivered_count || '0'),
+                readCount: parseInt(c.read_count || '0'),
+                failedCount: parseInt(c.failed_count || '0'),
+                scheduledAt: c.scheduled_at?.toISOString?.() || c.scheduled_at || null,
+                startsAt: c.starts_at?.toISOString?.() || c.starts_at || null,
+                endsAt: c.ends_at?.toISOString?.() || c.ends_at || null,
+                createdAt: c.created_at?.toISOString?.() || c.created_at,
+            };
+        });
     }
 
     // ================================================================
@@ -276,32 +314,46 @@ export class BroadcastService {
 
         const stats = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT
-                status,
-                COUNT(*)::int AS count
+            `SELECT status, COALESCE(channel, 'whatsapp') AS channel, COUNT(*)::int AS count
              FROM campaign_recipients
              WHERE campaign_id = $1::uuid
-             GROUP BY status`,
+             GROUP BY status, channel`,
             [campaignId],
         );
 
         const statusMap: Record<string, number> = {};
+        const byChannel: Record<string, { sent: number; delivered: number; failed: number }> = {};
+
         for (const row of stats || []) {
-            statusMap[row.status] = parseInt(row.count || '0');
+            const count = parseInt(row.count || '0');
+            statusMap[row.status] = (statusMap[row.status] || 0) + count;
+
+            if (!byChannel[row.channel]) byChannel[row.channel] = { sent: 0, delivered: 0, failed: 0 };
+            if (row.status === 'sent' || row.status === 'delivered' || row.status === 'read') {
+                byChannel[row.channel].sent += count;
+            }
+            if (row.status === 'delivered' || row.status === 'read') {
+                byChannel[row.channel].delivered += count;
+            }
+            if (row.status === 'failed') byChannel[row.channel].failed += count;
         }
 
         const totalRecipients = Object.values(statusMap).reduce((a, b) => a + b, 0);
+        const meta = typeof campaign.metadata === 'string' ? JSON.parse(campaign.metadata || '{}') : (campaign.metadata || {});
+        const channels = meta.channels || [campaign.channel || 'whatsapp'];
 
         return {
             campaignId,
             name: campaign.name,
             status: campaign.status,
+            channels: Array.isArray(channels) ? channels : channels.split(','),
             totalRecipients,
             queued: statusMap['queued'] || 0,
             sent: statusMap['sent'] || 0,
             delivered: statusMap['delivered'] || 0,
             read: statusMap['read'] || 0,
             failed: statusMap['failed'] || 0,
+            byChannel,
             launchedAt: campaign.starts_at?.toISOString?.() || campaign.starts_at || null,
             completedAt: campaign.ends_at?.toISOString?.() || campaign.ends_at || null,
         };
@@ -418,37 +470,62 @@ export class BroadcastService {
     // PRIVATE HELPERS
     // ================================================================
 
-    private async resolveRecipients(
+    private async resolveRecipientsMultiChannel(
         schema: string,
         data: CreateCampaignDto,
-    ): Promise<Array<{ id: string; phone: string }>> {
-        // Option 1: explicit phone list provided
+        channels: string[],
+    ): Promise<Array<{ id: string; phone: string; email: string; channel: string }>> {
+        const raw = await this.resolveRawContacts(schema, data);
+
+        const hasWA = channels.includes('whatsapp');
+        const hasEmail = channels.includes('email');
+        const hasSMS = channels.includes('sms');
+
+        const result: Array<{ id: string; phone: string; email: string; channel: string }> = [];
+
+        for (const c of raw) {
+            const hasPhone = !!(c.phone && c.phone.trim());
+            const hasEmailAddr = !!(c.email && c.email.trim());
+
+            if (hasWA && hasPhone) {
+                result.push({ id: c.id, phone: c.phone, email: c.email || '', channel: 'whatsapp' });
+            } else if (hasEmail && hasEmailAddr) {
+                result.push({ id: c.id, phone: c.phone || '', email: c.email, channel: 'email' });
+            } else if (hasSMS && hasPhone) {
+                result.push({ id: c.id, phone: c.phone, email: c.email || '', channel: 'sms' });
+            }
+        }
+
+        return result;
+    }
+
+    private async resolveRawContacts(
+        schema: string,
+        data: CreateCampaignDto,
+    ): Promise<Array<{ id: string; phone: string; email: string }>> {
         if (data.recipientPhones?.length) {
             const placeholders = data.recipientPhones.map((_, i) => `$${i + 1}`).join(', ');
             const contacts = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
-                `SELECT id, phone FROM contacts WHERE phone IN (${placeholders})`,
+                `SELECT id, phone, email FROM contacts WHERE phone IN (${placeholders})`,
                 data.recipientPhones,
             );
-            return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+            return (contacts || []).map((c) => ({ id: c.id, phone: c.phone || '', email: c.email || '' }));
         }
 
-        // Option 2: audience filter
         const audience = data.targetAudience || 'all';
 
         if (audience === 'all') {
             const contacts = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
-                `SELECT id, phone FROM contacts WHERE phone IS NOT NULL AND phone != ''`,
+                `SELECT id, phone, email FROM contacts WHERE (phone IS NOT NULL AND phone != '') OR (email IS NOT NULL AND email != '')`,
             );
-            return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+            return (contacts || []).map((c) => ({ id: c.id, phone: c.phone || '', email: c.email || '' }));
         }
 
-        // Option 3: JSON filter — tags or segmentId
         try {
             const filter = JSON.parse(audience);
 
-            // 3a: segment-based targeting
             if (filter.segmentId) {
                 const segs = await this.prisma.executeInTenantSchema<any[]>(
                     schema,
@@ -461,29 +538,28 @@ export class BroadcastService {
                         : segs[0].filter_rules;
 
                     const { whereClause, params } = this.buildFilterSQL(rules);
-                    const phoneCond = whereClause
-                        ? `WHERE ${whereClause} AND phone IS NOT NULL AND phone != ''`
-                        : `WHERE phone IS NOT NULL AND phone != ''`;
+                    const cond = whereClause
+                        ? `WHERE ${whereClause} AND ((phone IS NOT NULL AND phone != '') OR (email IS NOT NULL AND email != ''))`
+                        : `WHERE (phone IS NOT NULL AND phone != '') OR (email IS NOT NULL AND email != '')`;
 
                     const contacts = await this.prisma.executeInTenantSchema<any[]>(
                         schema,
-                        `SELECT id, phone FROM leads ${phoneCond}`,
+                        `SELECT id, phone, email FROM leads ${cond}`,
                         params,
                     );
-                    return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+                    return (contacts || []).map((c) => ({ id: c.id, phone: c.phone || '', email: c.email || '' }));
                 }
             }
 
-            // 3b: tag-based filter — {"tags": ["vip", "prospect"]}
             if (filter.tags?.length) {
                 const contacts = await this.prisma.executeInTenantSchema<any[]>(
                     schema,
-                    `SELECT id, phone FROM contacts
-                     WHERE phone IS NOT NULL AND phone != ''
+                    `SELECT id, phone, email FROM contacts
+                     WHERE ((phone IS NOT NULL AND phone != '') OR (email IS NOT NULL AND email != ''))
                        AND tags && $1::text[]`,
                     [filter.tags],
                 );
-                return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+                return (contacts || []).map((c) => ({ id: c.id, phone: c.phone || '', email: c.email || '' }));
             }
         } catch {
             // Not valid JSON — treat as 'all'
@@ -491,9 +567,9 @@ export class BroadcastService {
 
         const contacts = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, phone FROM contacts WHERE phone IS NOT NULL AND phone != ''`,
+            `SELECT id, phone, email FROM contacts WHERE (phone IS NOT NULL AND phone != '') OR (email IS NOT NULL AND email != '')`,
         );
-        return (contacts || []).map((c) => ({ id: c.id, phone: c.phone }));
+        return (contacts || []).map((c) => ({ id: c.id, phone: c.phone || '', email: c.email || '' }));
     }
 
     private buildFilterSQL(rules: any[]): { whereClause: string; params: any[] } {
@@ -531,7 +607,7 @@ export class BroadcastService {
     }
 
     private async ensureBroadcastTables(schema: string): Promise<void> {
-        const cacheKey = `broadcast:tables:v2:${schema}`;
+        const cacheKey = `broadcast:tables:v3:${schema}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -541,32 +617,30 @@ export class BroadcastService {
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     campaign_id UUID NOT NULL REFERENCES "${schema}".campaigns(id) ON DELETE CASCADE,
                     contact_id UUID REFERENCES "${schema}".contacts(id) ON DELETE SET NULL,
-                    phone VARCHAR(50) NOT NULL,
+                    phone VARCHAR(50) DEFAULT '',
                     status VARCHAR(50) DEFAULT 'pending',
                     provider_message_id VARCHAR(255),
                     error_message TEXT,
                     sent_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign
-                    ON "${schema}".campaign_recipients(campaign_id);
-                CREATE INDEX IF NOT EXISTS idx_campaign_recipients_status
-                    ON "${schema}".campaign_recipients(campaign_id, status);
+                )
             `);
+        } catch { /* already exists */ }
 
-            // Ensure scheduled_at column exists on campaigns
-            await this.prisma.$queryRawUnsafe(`
-                ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
-            `);
+        try {
+            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign ON "${schema}".campaign_recipients(campaign_id)`);
+            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_status ON "${schema}".campaign_recipients(campaign_id, status)`);
+        } catch { /* ok */ }
 
-            await this.redis.set(cacheKey, 'true', 86400);
-        } catch (error: any) {
-            if (!error.message?.includes('already exists')) {
-                this.logger.warn(`Could not create broadcast tables in ${schema}: ${error.message}`);
-            }
-        }
+        // Multi-channel columns
+        try {
+            await this.prisma.$queryRawUnsafe(`ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT ''`);
+            await this.prisma.$queryRawUnsafe(`ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp'`);
+            await this.prisma.$queryRawUnsafe(`ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ`);
+        } catch { /* ok */ }
+
+        await this.redis.set(cacheKey, 'true', 86400);
     }
 
     private async getTenantSchema(tenantId: string): Promise<string> {

@@ -5,11 +5,13 @@ import { BroadcastService, BROADCAST_QUEUE } from './broadcast.service';
 import { BroadcastQueueProcessor } from './broadcast-queue.processor';
 import { RedisModule } from '../redis/redis.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
     imports: [
         RedisModule,
         forwardRef(() => WhatsappModule),
+        EmailModule,
         BullModule.registerQueue({
             name: BROADCAST_QUEUE,
         }),

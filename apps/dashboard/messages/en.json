@@ -1736,11 +1736,17 @@
     "scheduled": "Scheduled",
     "sent": "Sent",
     "draft": "Draft",
+    "sendNow": "Send now",
+    "toast": {
+      "created": "Campaign created successfully"
+    },
     "status": {
       "draft": "Draft",
       "scheduled": "Scheduled",
       "sending": "Sending",
+      "active": "Sending",
       "sent": "Sent",
+      "finished": "Completed",
       "failed": "Failed"
     },
     "stats": {
@@ -1753,9 +1759,16 @@
       "title": "New campaign",
       "nameLabel": "Campaign name",
       "namePlaceholder": "Summer Promo 2026",
+      "channelsLabel": "Send channels",
+      "waTemplateLabel": "WhatsApp template",
       "templateLabel": "Message template",
       "templateHint": "(use {'{{'}name{'}}'} to personalize)",
       "templatePlaceholder": "Hi {'{{'}name{'}}'}! We have a special offer for you...",
+      "emailLabel": "Email content",
+      "emailSubjectPh": "Email subject",
+      "emailBodyPh": "Email body (HTML or plain text)",
+      "smsLabel": "SMS message",
+      "smsBodyPh": "SMS text (max 160 characters)",
       "sendDateLabel": "Send date (optional)",
       "leaveEmpty": "Leave empty to save as draft",
       "preview": "Message preview",

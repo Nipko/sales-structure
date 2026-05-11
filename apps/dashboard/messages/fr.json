@@ -1736,11 +1736,17 @@
     "scheduled": "Programmée",
     "sent": "Envoyée",
     "draft": "Brouillon",
+    "sendNow": "Envoyer maintenant",
+    "toast": {
+      "created": "Campagne créée avec succès"
+    },
     "status": {
       "draft": "Brouillon",
       "scheduled": "Programmée",
       "sending": "En envoi",
+      "active": "En envoi",
       "sent": "Envoyée",
+      "finished": "Terminée",
       "failed": "Échouée"
     },
     "stats": {
@@ -1753,9 +1759,16 @@
       "title": "Nouvelle campagne",
       "nameLabel": "Nom de la campagne",
       "namePlaceholder": "Promo Été 2026",
+      "channelsLabel": "Canaux d'envoi",
+      "waTemplateLabel": "Modèle WhatsApp",
       "templateLabel": "Message modèle",
       "templateHint": "(utilisez {'{{'}name{'}}'} pour personnaliser)",
       "templatePlaceholder": "Bonjour {'{{'}name{'}}'}! Nous avons une offre spéciale pour vous...",
+      "emailLabel": "Contenu de l'email",
+      "emailSubjectPh": "Objet de l'email",
+      "emailBodyPh": "Corps de l'email (HTML ou texte brut)",
+      "smsLabel": "Message SMS",
+      "smsBodyPh": "Texte du SMS (max 160 caractères)",
       "sendDateLabel": "Date d'envoi (optionnel)",
       "leaveEmpty": "Laissez vide pour enregistrer comme brouillon",
       "preview": "Aperçu du message",

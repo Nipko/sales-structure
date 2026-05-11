@@ -1736,11 +1736,17 @@
     "scheduled": "Agendada",
     "sent": "Enviada",
     "draft": "Rascunho",
+    "sendNow": "Enviar agora",
+    "toast": {
+      "created": "Campanha criada com sucesso"
+    },
     "status": {
       "draft": "Rascunho",
       "scheduled": "Agendada",
       "sending": "Enviando",
+      "active": "Enviando",
       "sent": "Enviada",
+      "finished": "Concluída",
       "failed": "Falhou"
     },
     "stats": {
@@ -1753,9 +1759,16 @@
       "title": "Nova campanha",
       "nameLabel": "Nome da campanha",
       "namePlaceholder": "Promo Verão 2026",
+      "channelsLabel": "Canais de envio",
+      "waTemplateLabel": "Modelo WhatsApp",
       "templateLabel": "Mensagem do modelo",
       "templateHint": "(use {'{{'}name{'}}'} para personalizar)",
       "templatePlaceholder": "Olá {'{{'}name{'}}'}! Temos uma oferta especial para você...",
+      "emailLabel": "Conteúdo do email",
+      "emailSubjectPh": "Assunto do email",
+      "emailBodyPh": "Corpo do email (HTML ou texto simples)",
+      "smsLabel": "Mensagem SMS",
+      "smsBodyPh": "Texto do SMS (máx 160 caracteres)",
       "sendDateLabel": "Data de envio (opcional)",
       "leaveEmpty": "Deixe vazio para salvar como rascunho",
       "preview": "Pré-visualização da mensagem",

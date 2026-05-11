@@ -264,6 +264,65 @@ export class WhatsappController {
     return this.templateService.syncTemplatesFromMeta(schemaName);
   }
 
+  @Post('templates/create')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a new WhatsApp template and submit to Meta for approval' })
+  async createTemplate(
+    @Request() req: any,
+    @Body() body: {
+      name: string;
+      language: string;
+      category: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
+      components: Array<{
+        type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
+        format?: string;
+        text?: string;
+        example?: any;
+        buttons?: any[];
+      }>;
+    },
+  ) {
+    const schemaName = await this.resolveSchema(req);
+    if (!schemaName) {
+      throw new BadRequestException('User does not belong to a tenant');
+    }
+
+    if (!body.name || !body.language || !body.category || !body.components?.length) {
+      throw new BadRequestException('name, language, category, and components are required');
+    }
+
+    const channels: any[] = await this.prisma.executeInTenantSchema(
+      schemaName,
+      `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true LIMIT 1`,
+    );
+
+    if (!channels?.length) {
+      throw new BadRequestException('No active WhatsApp channel. Complete Embedded Signup first.');
+    }
+
+    const { id: channelId, waba_id: wabaId, access_token: accessToken } = channels[0];
+    if (!wabaId || !accessToken) {
+      throw new BadRequestException('WhatsApp channel missing WABA ID or access token');
+    }
+
+    const result = await this.templateService.createTemplate(
+      schemaName,
+      channelId,
+      wabaId,
+      accessToken,
+      {
+        name: body.name,
+        language: body.language as any,
+        category: body.category,
+        components: body.components as any,
+      },
+    );
+
+    return { success: true, data: result };
+  }
+
   // ======================== MESSAGING ========================
 
   @Post('send/template')

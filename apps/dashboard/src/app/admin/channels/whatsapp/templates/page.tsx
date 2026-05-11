@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     ArrowLeft, MessageSquare, RefreshCw, CheckCircle, Clock,
-    XCircle, Sprout, AlertCircle, Info,
+    XCircle, Sprout, AlertCircle, Info, Plus, X, Loader2,
 } from "lucide-react";
 
 type Template = {
@@ -104,6 +104,279 @@ function TemplatePreview({ tpl }: { tpl: Template }) {
     );
 }
 
+const LANGUAGES = [
+    { value: "es_MX", label: "Español (MX)" },
+    { value: "en_US", label: "English (US)" },
+    { value: "pt_BR", label: "Português (BR)" },
+    { value: "fr", label: "Français" },
+];
+
+const CATEGORIES = ["UTILITY", "MARKETING", "AUTHENTICATION"] as const;
+
+type NewTemplate = {
+    name: string;
+    language: string;
+    category: typeof CATEGORIES[number];
+    headerText: string;
+    bodyText: string;
+    footerText: string;
+    buttons: Array<{ type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"; text: string; url?: string; phone_number?: string }>;
+};
+
+const EMPTY_TEMPLATE: NewTemplate = {
+    name: "", language: "es_MX", category: "UTILITY",
+    headerText: "", bodyText: "", footerText: "", buttons: [],
+};
+
+function CreateTemplateModal({ t, onClose, onCreated }: {
+    t: (key: string, values?: Record<string, any>) => string;
+    onClose: () => void;
+    onCreated: () => void;
+}) {
+    const [form, setForm] = useState<NewTemplate>({ ...EMPTY_TEMPLATE });
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const varCount = (form.bodyText.match(/\{\{\d+\}\}/g) || []).length;
+
+    const handleSubmit = async () => {
+        if (!form.name || !form.bodyText) return;
+        setSaving(true);
+        setError(null);
+
+        const components: any[] = [];
+        if (form.headerText) {
+            components.push({ type: "HEADER", format: "TEXT", text: form.headerText });
+        }
+        components.push({
+            type: "BODY",
+            text: form.bodyText,
+            ...(varCount > 0 ? {
+                example: { body_text: [Array.from({ length: varCount }, (_, i) => `example${i + 1}`)] }
+            } : {}),
+        });
+        if (form.footerText) {
+            components.push({ type: "FOOTER", text: form.footerText });
+        }
+        if (form.buttons.length > 0) {
+            components.push({ type: "BUTTONS", buttons: form.buttons });
+        }
+
+        try {
+            const res = await api.createWhatsAppTemplate({
+                name: form.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+                language: form.language,
+                category: form.category,
+                components,
+            });
+            if (res?.success) {
+                onCreated();
+            } else {
+                setError((res as any)?.error || t("createError"));
+            }
+        } catch (e: any) {
+            setError(e?.message || t("createError"));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const addButton = () => {
+        if (form.buttons.length >= 3) return;
+        setForm(f => ({ ...f, buttons: [...f.buttons, { type: "QUICK_REPLY", text: "" }] }));
+    };
+
+    const removeButton = (idx: number) => {
+        setForm(f => ({ ...f, buttons: f.buttons.filter((_, i) => i !== idx) }));
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+            <div className="w-full max-w-[900px] max-h-[90vh] bg-[var(--bg-secondary)] rounded-2xl border border-border overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                    <h2 className="text-lg font-semibold">{t("createTitle")}</h2>
+                    <button onClick={onClose} className="p-1 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"><X size={18} /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                    {error && (
+                        <div className="mb-4 p-3 rounded-lg bg-[rgba(231,76,60,0.1)] text-[#e74c3c] text-sm border border-[rgba(231,76,60,0.2)]">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-6">
+                        {/* Form */}
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs text-[var(--text-secondary)] mb-1 block">{t("createName")}</label>
+                                <input
+                                    value={form.name}
+                                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                                    placeholder="appointment_reminder"
+                                    className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm"
+                                />
+                                <p className="text-[10px] text-[var(--text-secondary)] mt-1">{t("createNameHint")}</p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs text-[var(--text-secondary)] mb-1 block">{t("createLanguage")}</label>
+                                    <select
+                                        value={form.language}
+                                        onChange={e => setForm(f => ({ ...f, language: e.target.value }))}
+                                        className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm"
+                                    >
+                                        {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-[var(--text-secondary)] mb-1 block">{t("createCategory")}</label>
+                                    <select
+                                        value={form.category}
+                                        onChange={e => setForm(f => ({ ...f, category: e.target.value as any }))}
+                                        className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm"
+                                    >
+                                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-[var(--text-secondary)] mb-1 block">{t("createHeader")}</label>
+                                <input
+                                    value={form.headerText}
+                                    onChange={e => setForm(f => ({ ...f, headerText: e.target.value }))}
+                                    className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm"
+                                    placeholder={t("createHeaderPlaceholder")}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-[var(--text-secondary)] mb-1 block">
+                                    {t("createBody")} {varCount > 0 && <span className="text-primary">({t("variablesCount", { count: varCount })})</span>}
+                                </label>
+                                <textarea
+                                    value={form.bodyText}
+                                    onChange={e => setForm(f => ({ ...f, bodyText: e.target.value }))}
+                                    rows={5}
+                                    className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm resize-none"
+                                    placeholder={t("createBodyPlaceholder")}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-[var(--text-secondary)] mb-1 block">{t("createFooter")}</label>
+                                <input
+                                    value={form.footerText}
+                                    onChange={e => setForm(f => ({ ...f, footerText: e.target.value }))}
+                                    className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm"
+                                    placeholder={t("createFooterPlaceholder")}
+                                />
+                            </div>
+
+                            {/* Buttons */}
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-xs text-[var(--text-secondary)]">{t("createButtons")}</label>
+                                    {form.buttons.length < 3 && (
+                                        <button onClick={addButton} className="text-xs text-primary hover:underline">{t("createAddButton")}</button>
+                                    )}
+                                </div>
+                                {form.buttons.map((btn, i) => (
+                                    <div key={i} className="flex gap-2 mb-2 items-center">
+                                        <select
+                                            value={btn.type}
+                                            onChange={e => {
+                                                const buttons = [...form.buttons];
+                                                buttons[i] = { ...buttons[i], type: e.target.value as any };
+                                                setForm(f => ({ ...f, buttons }));
+                                            }}
+                                            className="bg-[var(--bg-tertiary)] border border-border rounded-lg px-2 py-1.5 text-xs w-28"
+                                        >
+                                            <option value="QUICK_REPLY">Quick Reply</option>
+                                            <option value="URL">URL</option>
+                                            <option value="PHONE_NUMBER">Phone</option>
+                                        </select>
+                                        <input
+                                            value={btn.text}
+                                            onChange={e => {
+                                                const buttons = [...form.buttons];
+                                                buttons[i] = { ...buttons[i], text: e.target.value };
+                                                setForm(f => ({ ...f, buttons }));
+                                            }}
+                                            placeholder={t("createButtonText")}
+                                            className="flex-1 bg-[var(--bg-tertiary)] border border-border rounded-lg px-2 py-1.5 text-xs"
+                                        />
+                                        {btn.type === "URL" && (
+                                            <input
+                                                value={btn.url || ""}
+                                                onChange={e => {
+                                                    const buttons = [...form.buttons];
+                                                    buttons[i] = { ...buttons[i], url: e.target.value };
+                                                    setForm(f => ({ ...f, buttons }));
+                                                }}
+                                                placeholder="https://..."
+                                                className="flex-1 bg-[var(--bg-tertiary)] border border-border rounded-lg px-2 py-1.5 text-xs"
+                                            />
+                                        )}
+                                        <button onClick={() => removeButton(i)} className="text-[var(--text-secondary)] hover:text-[#e74c3c]"><X size={14} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Live Preview */}
+                        <div>
+                            <label className="text-xs text-[var(--text-secondary)] mb-2 block">{t("createPreview")}</label>
+                            <div className="bg-[#e5ddd5] dark:bg-[#0b141a] rounded-xl p-4 flex justify-start">
+                                <div className="max-w-[280px] bg-white dark:bg-[#202c33] rounded-lg p-3 shadow-sm">
+                                    {form.headerText && (
+                                        <div className="font-semibold text-[14px] text-[#111] dark:text-white mb-1.5">{form.headerText}</div>
+                                    )}
+                                    {form.bodyText ? (
+                                        <div className="text-[13.5px] text-[#111] dark:text-[#e9edef] whitespace-pre-wrap leading-[1.4]">{form.bodyText}</div>
+                                    ) : (
+                                        <div className="text-[13.5px] text-[#667781] italic">{t("createPreviewEmpty")}</div>
+                                    )}
+                                    {form.footerText && (
+                                        <div className="text-[11.5px] text-[#667781] dark:text-[#8696a0] mt-2">{form.footerText}</div>
+                                    )}
+                                    {form.buttons.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-[#e9edef] dark:border-[#374045] flex flex-col gap-1.5">
+                                            {form.buttons.map((b, i) => (
+                                                <div key={i} className="text-center text-[13px] text-[#00a5f4] py-1.5 rounded">
+                                                    {b.text || "..."}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-[var(--text-secondary)] mt-3">{t("createPreviewNote")}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm">{t("createCancel")}</button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={saving || !form.name || !form.bodyText}
+                        className={cn(
+                            "px-5 py-2 rounded-lg bg-[#25D366] text-white text-sm font-medium flex items-center gap-2",
+                            (saving || !form.name || !form.bodyText) && "opacity-50 cursor-not-allowed"
+                        )}
+                    >
+                        {saving && <Loader2 size={14} className="animate-spin" />}
+                        {t("createSubmit")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function WhatsAppTemplatesPage() {
     const t = useTranslations("whatsappTemplates");
     const router = useRouter();
@@ -111,6 +384,7 @@ export default function WhatsAppTemplatesPage() {
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [filter, setFilter] = useState<StatusFilter>("all");
+    const [showCreate, setShowCreate] = useState(false);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     const loadTemplates = async () => {
@@ -175,17 +449,26 @@ export default function WhatsAppTemplatesPage() {
                         </div>
                         <p className="text-[var(--text-secondary)] mt-1 text-sm">{t("subtitle")}</p>
                     </div>
-                    <button
-                        onClick={handleSync}
-                        disabled={syncing}
-                        className={cn(
-                            "flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-border bg-[var(--bg-tertiary)] text-foreground text-[13px] font-medium cursor-pointer whitespace-nowrap",
-                            syncing && "opacity-70"
-                        )}
-                    >
-                        <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-                        {syncing ? t("syncing") : t("syncFromMeta")}
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setShowCreate(true)}
+                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-[#25D366] text-white text-[13px] font-medium cursor-pointer whitespace-nowrap"
+                        >
+                            <Plus size={14} />
+                            {t("createBtn")}
+                        </button>
+                        <button
+                            onClick={handleSync}
+                            disabled={syncing}
+                            className={cn(
+                                "flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-border bg-[var(--bg-tertiary)] text-foreground text-[13px] font-medium cursor-pointer whitespace-nowrap",
+                                syncing && "opacity-70"
+                            )}
+                        >
+                            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+                            {syncing ? t("syncing") : t("syncFromMeta")}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -328,6 +611,18 @@ export default function WhatsAppTemplatesPage() {
                         );
                     })}
                 </div>
+            )}
+
+            {showCreate && (
+                <CreateTemplateModal
+                    t={t}
+                    onClose={() => setShowCreate(false)}
+                    onCreated={() => {
+                        setShowCreate(false);
+                        setMessage({ type: "success", text: t("createSuccess") });
+                        loadTemplates();
+                    }}
+                />
             )}
         </div>
     );

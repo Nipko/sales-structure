@@ -150,6 +150,7 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "analyticsOverview", href: "/admin/analytics-v2" },
           { labelKey: "crmAnalytics", href: "/admin/crm-analytics" },
           { labelKey: "agentAnalytics", href: "/admin/agent-analytics" },
+          { labelKey: "reportBuilder", href: "/admin/report-builder" },
         ]
       },
       { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels" },

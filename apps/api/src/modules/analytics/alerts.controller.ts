@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus, ForbiddenException, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -6,6 +6,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AlertsService } from './alerts.service';
 import { ScheduledReportsService } from './scheduled-reports.service';
+import { SavedReportsService } from './saved-reports.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
@@ -17,6 +18,7 @@ export class AlertsController {
     constructor(
         private alerts: AlertsService,
         private reports: ScheduledReportsService,
+        private savedReports: SavedReportsService,
         private prisma: PrismaService,
         private throttle: TenantThrottleService,
     ) { }
@@ -119,5 +121,68 @@ export class AlertsController {
         const schema = await this.getSchema(tenantId);
         const config = await this.reports.upsertConfig(schema, tenantId, body);
         return { success: true, data: config };
+    }
+
+    // ── Saved Reports (Custom Report Builder) ────────────────────
+
+    @Get('saved-reports/:tenantId')
+    @ApiOperation({ summary: 'List saved custom reports' })
+    async listSavedReports(@Param('tenantId') tenantId: string) {
+        const schema = await this.getSchema(tenantId);
+        const reports = await this.savedReports.list(schema);
+        return { success: true, data: reports };
+    }
+
+    @Get('saved-reports/:tenantId/:reportId')
+    @ApiOperation({ summary: 'Get saved report by id' })
+    async getSavedReport(
+        @Param('tenantId') tenantId: string,
+        @Param('reportId') reportId: string,
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const report = await this.savedReports.getById(schema, reportId);
+        return { success: true, data: report };
+    }
+
+    @Post('saved-reports/:tenantId')
+    @Roles('tenant_admin', 'super_admin')
+    @ApiOperation({ summary: 'Create a custom saved report' })
+    async createSavedReport(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { name: string; description?: string; config: any },
+        @Request() req: any,
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const report = await this.savedReports.create(schema, {
+            ...body,
+            createdBy: req.user?.id,
+        });
+        return { success: true, data: report };
+    }
+
+    @Put('saved-reports/:tenantId/:reportId')
+    @Roles('tenant_admin', 'super_admin')
+    @ApiOperation({ summary: 'Update a saved report' })
+    async updateSavedReport(
+        @Param('tenantId') tenantId: string,
+        @Param('reportId') reportId: string,
+        @Body() body: { name?: string; description?: string; config?: any; isFavorite?: boolean },
+    ) {
+        const schema = await this.getSchema(tenantId);
+        const report = await this.savedReports.update(schema, reportId, body);
+        return { success: true, data: report };
+    }
+
+    @Delete('saved-reports/:tenantId/:reportId')
+    @Roles('tenant_admin', 'super_admin')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Delete a saved report' })
+    async deleteSavedReport(
+        @Param('tenantId') tenantId: string,
+        @Param('reportId') reportId: string,
+    ) {
+        const schema = await this.getSchema(tenantId);
+        await this.savedReports.remove(schema, reportId);
+        return { success: true };
     }
 }

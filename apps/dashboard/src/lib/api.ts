@@ -845,6 +845,22 @@ export const api = {
     grantCompPlan: (tenantId: string, data: { planSlug: string; durationDays: number; reason: string }) =>
         apiPost(`/billing-admin/tenants/${tenantId}/comp-plan`, data),
 
+    // --- WA Template creation ---
+    createWhatsAppTemplate: (data: { name: string; language: string; category: string; components: any[] }) =>
+        apiPost('/channels/whatsapp/templates/create', data),
+
+    // --- Saved Reports (Custom Report Builder) ---
+    listSavedReports: (tenantId: string) =>
+        apiGet(`/analytics-config/saved-reports/${tenantId}`),
+    getSavedReport: (tenantId: string, reportId: string) =>
+        apiGet(`/analytics-config/saved-reports/${tenantId}/${reportId}`),
+    createSavedReport: (tenantId: string, data: { name: string; description?: string; config: any }) =>
+        apiPost(`/analytics-config/saved-reports/${tenantId}`, data),
+    updateSavedReport: (tenantId: string, reportId: string, data: any) =>
+        apiPut(`/analytics-config/saved-reports/${tenantId}/${reportId}`, data),
+    deleteSavedReport: (tenantId: string, reportId: string) =>
+        apiDelete(`/analytics-config/saved-reports/${tenantId}/${reportId}`),
+
     // --- Plan management (super_admin) ---
     getAdminPlans: () => apiGet('/billing-admin/plans'),
     getAdminPlan: (slug: string) => apiGet(`/billing-admin/plans/${slug}`),

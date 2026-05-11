@@ -8,6 +8,7 @@ import { AlertsService } from './alerts.service';
 import { AlertsController } from './alerts.controller';
 import { BIApiController } from './bi-api.controller';
 import { ScheduledReportsService } from './scheduled-reports.service';
+import { SavedReportsService } from './saved-reports.service';
 import { ComplianceService } from './compliance.service';
 import { AuditService } from './audit.service';
 import { CsatTriggerService } from './csat-trigger.service';
@@ -18,7 +19,7 @@ import { RedisModule } from '../redis/redis.module';
     imports: [PrismaModule, RedisModule],
     providers: [
         AnalyticsService, DashboardAnalyticsService, MetricsAggregationService,
-        AlertsService, ScheduledReportsService,
+        AlertsService, ScheduledReportsService, SavedReportsService,
         ComplianceService, AuditService, CsatTriggerService,
     ],
     controllers: [AnalyticsController, DashboardAnalyticsController, AlertsController, BIApiController],

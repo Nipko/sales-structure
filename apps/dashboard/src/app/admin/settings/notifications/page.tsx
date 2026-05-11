@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { PushNotificationToggle } from "@/components/pwa/PushNotificationToggle";
 import {
     Bell,
     MessageSquare,
@@ -15,24 +17,25 @@ import {
 
 interface NotificationCategory {
     id: string;
-    label: string;
-    description: string;
+    labelKey: string;
+    descriptionKey: string;
     icon: any;
     iconColor: string;
     enabled: boolean;
 }
 
 const defaultCategories: NotificationCategory[] = [
-    { id: "chat", label: "New messages", description: "When a client sends a new message", icon: MessageSquare, iconColor: "text-green-500", enabled: true },
-    { id: "handoff", label: "Transfers", description: "When a conversation is escalated to an agent", icon: UserCheck, iconColor: "text-blue-500", enabled: true },
-    { id: "compliance", label: "Compliance", description: "Opt-out and consent requests", icon: Shield, iconColor: "text-amber-500", enabled: true },
-    { id: "appointments", label: "Appointments", description: "New appointments, cancellations and reminders", icon: CalendarDays, iconColor: "text-purple-500", enabled: true },
-    { id: "automation", label: "Automation", description: "Rules executed, flow errors", icon: Workflow, iconColor: "text-indigo-500", enabled: false },
-    { id: "orders", label: "Orders", description: "New orders and status changes", icon: ShoppingCart, iconColor: "text-emerald-500", enabled: false },
-    { id: "system", label: "System", description: "Updates, maintenance and alerts", icon: Settings, iconColor: "text-neutral-500", enabled: true },
+    { id: "chat", labelKey: "catChat", descriptionKey: "catChatDesc", icon: MessageSquare, iconColor: "text-green-500", enabled: true },
+    { id: "handoff", labelKey: "catHandoff", descriptionKey: "catHandoffDesc", icon: UserCheck, iconColor: "text-blue-500", enabled: true },
+    { id: "compliance", labelKey: "catCompliance", descriptionKey: "catComplianceDesc", icon: Shield, iconColor: "text-amber-500", enabled: true },
+    { id: "appointments", labelKey: "catAppointments", descriptionKey: "catAppointmentsDesc", icon: CalendarDays, iconColor: "text-purple-500", enabled: true },
+    { id: "automation", labelKey: "catAutomation", descriptionKey: "catAutomationDesc", icon: Workflow, iconColor: "text-indigo-500", enabled: false },
+    { id: "orders", labelKey: "catOrders", descriptionKey: "catOrdersDesc", icon: ShoppingCart, iconColor: "text-emerald-500", enabled: false },
+    { id: "system", labelKey: "catSystem", descriptionKey: "catSystemDesc", icon: Settings, iconColor: "text-neutral-500", enabled: true },
 ];
 
 export default function NotificationsPage() {
+    const t = useTranslations("notifications");
     const [categories, setCategories] = useState(defaultCategories);
     const [emailDigest, setEmailDigest] = useState("realtime");
     const [soundEnabled, setSoundEnabled] = useState(true);
@@ -46,38 +49,39 @@ export default function NotificationsPage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Notifications</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("title")}</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Configure which notifications you receive
+                    {t("subtitle")}
                 </p>
             </div>
 
+            {/* Push notifications */}
+            <PushNotificationToggle />
+
             {/* General preferences */}
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900 space-y-5">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">General preferences</h2>
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("generalPrefs")}</h2>
 
-                {/* Email digest */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Email digest
+                        {t("emailDigest")}
                     </label>
                     <select
                         value={emailDigest}
                         onChange={(e) => setEmailDigest(e.target.value)}
                         className="h-10 w-full max-w-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 cursor-pointer"
                     >
-                        <option value="realtime">Real-time</option>
-                        <option value="hourly">Hourly</option>
-                        <option value="daily">Daily digest (9:00 AM)</option>
-                        <option value="off">Disabled</option>
+                        <option value="realtime">{t("digestRealtime")}</option>
+                        <option value="hourly">{t("digestHourly")}</option>
+                        <option value="daily">{t("digestDaily")}</option>
+                        <option value="off">{t("digestOff")}</option>
                     </select>
                 </div>
 
-                {/* Sound */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Notification sound</div>
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400">Play sound when receiving notifications</div>
+                        <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t("sound")}</div>
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400">{t("soundDesc")}</div>
                     </div>
                     <button
                         onClick={() => setSoundEnabled(!soundEnabled)}
@@ -97,10 +101,10 @@ export default function NotificationsPage() {
             {/* Categories */}
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                    Categories
+                    {t("categories")}
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
-                    Toggle notifications by category
+                    {t("categoriesDesc")}
                 </p>
 
                 <div className="space-y-3">
@@ -115,8 +119,8 @@ export default function NotificationsPage() {
                                     <Icon size={18} className={cat.iconColor} />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{cat.label}</div>
-                                    <div className="text-xs text-neutral-500 dark:text-neutral-400">{cat.description}</div>
+                                    <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t(cat.labelKey)}</div>
+                                    <div className="text-xs text-neutral-500 dark:text-neutral-400">{t(cat.descriptionKey)}</div>
                                 </div>
                                 <button
                                     onClick={() => toggleCategory(cat.id)}
@@ -136,10 +140,9 @@ export default function NotificationsPage() {
                 </div>
             </div>
 
-            {/* Coming soon note */}
             <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
                 <Bell size={14} className="text-indigo-500 shrink-0" />
-                Preferences are saved locally for now. Server persistence coming soon.
+                {t("localNote")}
             </div>
         </div>
     );

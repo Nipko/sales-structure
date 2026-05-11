@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
 import { NormalizedMessage, TenantConfig } from '@parallext/shared';
 
 export interface HandoffResult {
@@ -36,6 +37,7 @@ export class HandoffService {
         private eventEmitter: EventEmitter2,
         private emailService: EmailService,
         private emailTemplates: EmailTemplatesService,
+        private llmRouter: LLMRouterService,
     ) {}
 
     /**
@@ -97,10 +99,10 @@ export class HandoffService {
         // 1. Build AI summary from recent messages
         const recentMessages = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text FROM messages
-             WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 10`,
+             WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 20`,
             [conversationId],
         );
-        const summary = this.buildSummary(recentMessages || []);
+        const summary = await this.generateAISummary(recentMessages || [], reason, tenantId);
 
         // 2. Update conversation status to waiting_human
         await this.prisma.executeInTenantSchema(schemaName,
@@ -319,17 +321,50 @@ export class HandoffService {
         return null;
     }
 
-    /**
-     * Build a concise summary from recent messages for the human agent
-     */
-    private buildSummary(messages: Array<{ direction: string; content_text: string }>): string {
+    private async generateAISummary(
+        messages: Array<{ direction: string; content_text: string }>,
+        reason: string,
+        tenantId: string,
+    ): Promise<string> {
         const reversed = [...messages].reverse();
-        const lines = reversed.map(m => {
-            const prefix = m.direction === 'inbound' ? '👤 Cliente' : '🤖 IA';
-            const text = (m.content_text || '').substring(0, 150);
-            return `${prefix}: ${text}`;
-        });
+        if (reversed.length === 0) return 'Sin mensajes previos.';
 
-        return `**Últimos ${reversed.length} mensajes antes del handoff:**\n${lines.join('\n')}`;
+        const transcript = reversed.map(m => {
+            const role = m.direction === 'inbound' ? 'Cliente' : 'Asistente';
+            return `${role}: ${(m.content_text || '').substring(0, 300)}`;
+        }).join('\n');
+
+        try {
+            const response = await this.llmRouter.execute({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: transcript }],
+                systemPrompt: [
+                    'You are an internal tool that creates brief handoff summaries for human agents.',
+                    'Analyze the conversation and produce a structured summary in Spanish with:',
+                    '1. **Tema**: What the customer wants (1 sentence)',
+                    '2. **Contexto**: Key facts mentioned (2-3 bullets)',
+                    '3. **Estado**: Where the conversation left off',
+                    `4. **Razón de escalación**: ${reason}`,
+                    'Be concise — max 150 words. No greetings, no filler.',
+                ].join('\n'),
+                temperature: 0.2,
+                maxTokens: 400,
+                tenantId,
+            });
+
+            if (response.content) return response.content;
+        } catch (err: any) {
+            this.logger.warn(`AI summary failed, using fallback: ${err.message}`);
+        }
+
+        return this.buildFallbackSummary(reversed);
+    }
+
+    private buildFallbackSummary(messages: Array<{ direction: string; content_text: string }>): string {
+        const lines = messages.map(m => {
+            const prefix = m.direction === 'inbound' ? 'Cliente' : 'IA';
+            return `${prefix}: ${(m.content_text || '').substring(0, 150)}`;
+        });
+        return `**Últimos ${messages.length} mensajes antes del handoff:**\n${lines.join('\n')}`;
     }
 }

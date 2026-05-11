@@ -72,6 +72,7 @@ import { PhotographyModule } from './modules/photography/photography.module';
 import { VerticalAnalyticsModule } from './modules/vertical-analytics/vertical-analytics.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { PushModule } from './modules/push/push.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -204,6 +205,7 @@ import llmConfig from './config/llm.config';
         VerticalAnalyticsModule,
         InvitationsModule,
         WebhooksModule,
+        PushModule,
     ],
 })
 export class AppModule { }

@@ -8,13 +8,19 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Allow Facebook popup to communicate with parent window
         source: "/(.*)",
         headers: [
           {
             key: "Cross-Origin-Opener-Policy",
             value: "same-origin-allow-popups",
           },
+        ],
+      },
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
         ],
       },
     ];

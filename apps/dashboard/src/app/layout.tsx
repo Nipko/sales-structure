@@ -1,21 +1,32 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
+import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
   title: "Parallly — Admin Dashboard",
   description: "Multi-tenant conversational AI platform",
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192x192.svg", sizes: "192x192", type: "image/svg+xml" },
+      { url: "/icon-512x512.svg", sizes: "512x512", type: "image/svg+xml" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: "/icon-192x192.svg",
   },
-  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Parallly",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#6c5ce7",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default async function RootLayout({
@@ -38,6 +49,7 @@ export default async function RootLayout({
         <NextIntlClientProvider messages={messages}>
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

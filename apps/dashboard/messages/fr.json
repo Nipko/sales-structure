@@ -128,7 +128,8 @@
       "platformAdvanced": "Avancé",
       "personalSettings": "Mes paramètres",
       "analyticsOverview": "Vue d'ensemble",
-      "agentAnalytics": "Performance des agents"
+      "agentAnalytics": "Performance des agents",
+      "crmAnalytics": "Analytiques CRM"
     }
   },
   "topbar": {

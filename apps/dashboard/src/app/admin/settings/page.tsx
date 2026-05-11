@@ -36,7 +36,6 @@ export default function SettingsHub() {
             <HelpPanel
                 title={tHelp("settings.title")}
                 description={tHelp("settings.description")}
-                videoUrl={tHelp("settings.videoUrl")}
             />
 
             {sections.map((section, sIdx) => (

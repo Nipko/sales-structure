@@ -29,6 +29,7 @@ export class SamlService {
     ) {}
 
     async getSamlConfig(tenantId: string): Promise<SamlConfig | null> {
+        if (!tenantId) return null;
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },

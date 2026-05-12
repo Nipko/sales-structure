@@ -250,6 +250,15 @@ export class WebhooksService {
 
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         try {
+            const hasTable = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'webhook_endpoints' LIMIT 1`,
+                [schema],
+            );
+            if (!hasTable?.length) {
+                await this.redis.setJson(cacheKey, [], 300);
+                return [];
+            }
             const all = await this.prisma.executeInTenantSchema<WebhookEndpoint[]>(
                 schema,
                 `SELECT * FROM webhook_endpoints WHERE is_active = true`,

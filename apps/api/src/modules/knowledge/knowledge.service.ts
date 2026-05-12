@@ -353,28 +353,14 @@ export class KnowledgeService {
     }
 
     async createResource(schemaName: string, tenantId: string, data: { title: string; type?: string; content?: string; source_url?: string }) {
-        await this.prisma.executeInTenantSchema(schemaName,
-            `CREATE TABLE IF NOT EXISTS knowledge_resources (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                title VARCHAR(500) NOT NULL,
-                type VARCHAR(50) DEFAULT 'manual',
-                content TEXT,
-                source_url TEXT,
-                status VARCHAR(50) DEFAULT 'draft',
-                version INT DEFAULT 1,
-                content_hash VARCHAR(64),
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )`);
-
         const contentHash = data.content
             ? require('crypto').createHash('sha256').update(data.content).digest('hex').substring(0, 16)
             : null;
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO knowledge_resources (title, type, content, source_url, content_hash)
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [data.title, data.type || 'manual', data.content || '', data.source_url || null, contentHash]);
+            `INSERT INTO knowledge_resources (tenant_id, title, type, content, source_url, content_hash)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [tenantId, data.title, data.type || 'manual', data.content || '', data.source_url || null, contentHash]);
 
         await this.invalidateHasKnowledgeCache(tenantId);
 

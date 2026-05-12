@@ -135,6 +135,7 @@ export default function MessengerSetupPage() {
                 config_id: MESSENGER_CONFIG_ID,
                 response_type: "token",
                 override_default_response_type: true,
+                scope: "pages_show_list,pages_messaging,pages_manage_metadata,pages_read_engagement",
             }
         );
     };

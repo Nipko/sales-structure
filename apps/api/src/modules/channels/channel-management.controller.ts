@@ -329,7 +329,21 @@ export class ChannelManagementController {
             this.logger.warn(`Long-lived token exchange failed (using short-lived): ${e.message}`);
         }
 
-        // Step 2: List pages the user manages (using long-lived token → page tokens won't expire)
+        // Step 2a: Check granted permissions on the token
+        try {
+            const permRes = await fetch(
+                `https://graph.facebook.com/${graphVersion}/me/permissions?` +
+                new URLSearchParams({ access_token: longLivedUserToken }),
+            );
+            const permData = await permRes.json() as any;
+            const granted = (permData.data || []).filter((p: any) => p.status === 'granted').map((p: any) => p.permission);
+            const declined = (permData.data || []).filter((p: any) => p.status === 'declined').map((p: any) => p.permission);
+            this.logger.log(`Messenger OAuth: token permissions for tenant ${tenantId} — granted: [${granted.join(', ')}] declined: [${declined.join(', ')}]`);
+        } catch (e: any) {
+            this.logger.warn(`Messenger OAuth: failed to check permissions: ${e.message}`);
+        }
+
+        // Step 2b: List pages the user manages (using long-lived token → page tokens won't expire)
         const pagesRes = await fetch(
             `https://graph.facebook.com/${graphVersion}/me/accounts?` +
             new URLSearchParams({
@@ -338,6 +352,7 @@ export class ChannelManagementController {
             }),
         );
         const pagesData = await pagesRes.json() as any;
+        this.logger.log(`Messenger OAuth: /me/accounts raw response for tenant ${tenantId}: ${JSON.stringify({ data: (pagesData.data || []).map((p: any) => ({ id: p.id, name: p.name, tasks: p.tasks, has_access_token: !!p.access_token })), paging: pagesData.paging, error: pagesData.error })}`);
         if (pagesData.error) {
             this.logger.error(`Messenger OAuth: /me/accounts error for tenant ${tenantId}: ${JSON.stringify(pagesData.error)}`);
             throw new BadRequestException(`Page listing failed: ${pagesData.error.message}`);
@@ -346,10 +361,10 @@ export class ChannelManagementController {
         const allPages = pagesData.data || [];
         this.logger.log(`Messenger OAuth: /me/accounts returned ${allPages.length} page(s) for tenant ${tenantId}`);
 
+        // Accept pages that have MESSAGING/MANAGE tasks, or if tasks field is absent (deprecated in Graph API v19.0+)
         const pages = allPages.filter((p: any) => {
             const tasks = p.tasks;
             if (!tasks || !Array.isArray(tasks)) {
-                this.logger.log(`Messenger OAuth: page ${p.id} (${p.name}) has no tasks field — accepting (user granted pages_messaging)`);
                 return true;
             }
             const allowed = tasks.includes('MESSAGING') || tasks.includes('MANAGE');
@@ -360,8 +375,8 @@ export class ChannelManagementController {
         });
 
         if (pages.length === 0) {
-            this.logger.error(`Messenger OAuth: 0 pages passed filter for tenant ${tenantId}. Raw pages: ${JSON.stringify(allPages.map((p: any) => ({ id: p.id, name: p.name, tasks: p.tasks })))}`);
-            throw new BadRequestException('No Facebook pages with messaging permission found');
+            this.logger.error(`Messenger OAuth: 0 pages for tenant ${tenantId}. allPages=${allPages.length}. The user's FB token likely lacks pages_show_list or the user does not admin any Facebook Page`);
+            throw new BadRequestException('No Facebook pages with messaging permission found. Verify the Facebook account manages at least one Page and the app has pages_show_list permission.');
         }
 
         // Step 3: For each page, subscribe webhook and store

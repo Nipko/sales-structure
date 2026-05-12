@@ -691,6 +691,29 @@ export class ChannelManagementController {
             });
         }
 
+        // Step 5: Subscribe account to webhooks so Meta delivers DM events
+        try {
+            const subRes = await fetch(
+                `https://graph.instagram.com/${graphVersion}/${igScopedId}/subscribed_apps`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        subscribed_fields: 'messages,messaging_postbacks',
+                        access_token: longLivedToken,
+                    }),
+                },
+            );
+            const subData = await subRes.json() as any;
+            if (subData.success) {
+                this.logger.log(`Instagram webhook subscription activated for ${igScopedId}`);
+            } else {
+                this.logger.warn(`Instagram webhook subscription failed for ${igScopedId}: ${JSON.stringify(subData)}`);
+            }
+        } catch (subErr: any) {
+            this.logger.warn(`Instagram webhook subscription error for ${igScopedId}: ${subErr.message}`);
+        }
+
         // Invalidate cached token so next message uses the fresh one
         await this.channelToken.invalidateCache('instagram', tenantId);
 

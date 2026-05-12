@@ -43,7 +43,7 @@ export class AutomationController {
         // Plan gate — count existing active rules and reject if tier limit is reached.
         const existing = await this.automationService.getRules(schemaName);
         const activeCount = Array.isArray(existing)
-            ? existing.filter((r: any) => r.is_active !== false && r.isActive !== false).length
+            ? existing.filter((r: any) => r.active !== false).length
             : 0;
         await this.throttle.enforcePlanLimit(tenantId, 'automationRules', activeCount, 'reglas de automatización');
 

@@ -348,7 +348,7 @@ export class CrmController {
     async createCustomAttribute(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*)::int AS c FROM custom_attribute_definitions WHERE is_active = true`);
+            `SELECT COUNT(*)::int AS c FROM custom_attribute_definitions`);
         await this.throttle.enforcePlanLimit(tenantId, 'customAttributes', cnt?.[0]?.c || 0, 'atributos personalizados');
         const data = await this.customAttrs.createDefinition(tenantId, body);
         return { success: true, data };

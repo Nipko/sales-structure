@@ -105,22 +105,23 @@ export class BroadcastService {
         const status = data.scheduledAt ? 'scheduled' : 'draft';
         const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null;
 
+        const fullMetadata = { ...metadata, targetAudience: data.targetAudience || 'all' };
+
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `INSERT INTO campaigns (
                 id, name, channel, wa_template_name, status,
-                target_audience, metadata, scheduled_at, created_at, updated_at
+                metadata, scheduled_at, created_at, updated_at
             ) VALUES (
                 gen_random_uuid(), $1, $2, $3, $4,
-                $5, $6, $7::timestamptz, NOW(), NOW()
+                $5, $6::timestamptz, NOW(), NOW()
             ) RETURNING id`,
             [
                 data.name,
                 channels.join(','),
                 channelContent.whatsapp?.templateName || data.templateName || '',
                 status,
-                data.targetAudience || 'all',
-                JSON.stringify(metadata),
+                JSON.stringify(fullMetadata),
                 scheduledAt,
             ],
         );
@@ -279,7 +280,7 @@ export class BroadcastService {
                 channels: Array.isArray(channels) ? channels : channels.split(','),
                 templateName: c.wa_template_name,
                 status: c.status,
-                targetAudience: c.target_audience,
+                targetAudience: meta.targetAudience || 'all',
                 totalRecipients: parseInt(c.total_recipients || '0'),
                 sentCount: parseInt(c.sent_count || '0'),
                 deliveredCount: parseInt(c.delivered_count || '0'),

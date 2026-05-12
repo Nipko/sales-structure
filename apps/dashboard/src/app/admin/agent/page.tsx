@@ -693,7 +693,8 @@ const VERTICAL_PREFIXES = [
   "tpl_salud_", "tpl_restaurante_", "tpl_inmobiliaria_",
   "tpl_belleza_", "tpl_educacion_", "tpl_automotriz_",
   "tpl_turismo_", "tpl_finanzas_", "tpl_legal_",
-  "tpl_retail_", "tpl_technology_",
+  "tpl_retail_", "tpl_technology_", "tpl_veterinaria_",
+  "tpl_gimnasio_", "tpl_servicios_",
 ];
 
 function isVerticalTemplate(id: string): boolean {
@@ -703,9 +704,15 @@ function isVerticalTemplate(id: string): boolean {
 function TemplatePickerModal({
   templates, loading, onSelect, onClose, onDeleteTemplate, t,
 }: TemplatePickerModalProps) {
+  const [agentName, setAgentName] = useState("");
   const verticalTemplates = templates.filter(tp => tp.is_builtin && isVerticalTemplate(tp.id));
   const genericBuiltIn = templates.filter(tp => tp.is_builtin && !isVerticalTemplate(tp.id));
   const userTemplates = templates.filter(tp => !tp.is_builtin);
+
+  const handleSelect = (template: AgentTemplate) => {
+    const finalName = agentName.trim() || template.name;
+    onSelect({ ...template, name: finalName });
+  };
 
   return (
     <div
@@ -735,6 +742,20 @@ function TemplatePickerModal({
           </button>
         </div>
 
+        {/* Agent name input */}
+        <div className="px-6 py-3 border-b border-neutral-100 dark:border-neutral-800">
+          <label className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5 block">
+            {t("agentNameLabel")}
+          </label>
+          <input
+            type="text"
+            value={agentName}
+            onChange={e => setAgentName(e.target.value)}
+            placeholder={t("agentNamePlaceholder")}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+          />
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading ? (
@@ -753,7 +774,7 @@ function TemplatePickerModal({
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {verticalTemplates.map(tp => (
-                      <TemplateCard key={tp.id} template={tp} onSelect={onSelect} t={t} />
+                      <TemplateCard key={tp.id} template={tp} onSelect={handleSelect} t={t} />
                     ))}
                   </div>
                 </div>
@@ -767,7 +788,7 @@ function TemplatePickerModal({
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {genericBuiltIn.map(tp => (
-                      <TemplateCard key={tp.id} template={tp} onSelect={onSelect} t={t} />
+                      <TemplateCard key={tp.id} template={tp} onSelect={handleSelect} t={t} />
                     ))}
                   </div>
                 </div>
@@ -784,7 +805,7 @@ function TemplatePickerModal({
                       <TemplateCard
                         key={tp.id}
                         template={tp}
-                        onSelect={onSelect}
+                        onSelect={handleSelect}
                         onDelete={() => onDeleteTemplate(tp.id)}
                         t={t}
                       />

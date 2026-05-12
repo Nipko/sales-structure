@@ -7,6 +7,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('knowledge')
 @Controller('knowledge')
@@ -16,6 +17,7 @@ export class KnowledgeController {
     constructor(
         private readonly knowledgeService: KnowledgeService,
         private readonly prisma: PrismaService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     // ─── Document RAG Endpoints ──────────────────────────────────────────────
@@ -92,6 +94,31 @@ export class KnowledgeController {
         @Query('status') status?: string,
     ) {
         return this.knowledgeService.getResources(await this.schemaFor(tenantId), status);
+    }
+
+    @Post('resources/:tenantId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Create a knowledge resource' })
+    async createResource(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { title: string; type?: string; content?: string; source_url?: string },
+    ) {
+        const schema = await this.schemaFor(tenantId);
+        const existing = await this.knowledgeService.getResources(schema);
+        await this.throttle.enforcePlanLimit(tenantId, 'knowledgeArticles', existing.length, 'documentos de conocimiento');
+        return this.knowledgeService.createResource(schema, tenantId, body);
+    }
+
+    @Delete('resources/:tenantId/:resourceId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @ApiOperation({ summary: 'Delete a knowledge resource' })
+    async deleteResource(
+        @Param('tenantId') tenantId: string,
+        @Param('resourceId') resourceId: string,
+    ) {
+        const schema = await this.schemaFor(tenantId);
+        await this.knowledgeService.deleteResource(schema, resourceId);
     }
 
     @Get('search/:tenantId')

@@ -2010,6 +2010,8 @@
     "agentLimitReached": "Agent limit reached",
     "agentLimitDesc": "Your current plan has reached the maximum number of agents. Upgrade to add more.",
     "upgradePlan": "Upgrade plan",
+    "agentNameLabel": "Agent name",
+    "agentNamePlaceholder": "E.g.: Luna, Max, Sofia... (optional, template name used by default)",
     "chooseTemplate": "Choose a template",
     "chooseTemplateDesc": "Start with a pre-configured template and customize it to your needs.",
     "builtInTemplates": "Built-in templates",
@@ -3113,6 +3115,7 @@
     "recommended": "Recommended",
     "complete": "complete",
     "dismiss": "Dismiss guide",
+    "reopenChecklist": "View setup progress",
     "items": {
       "createAccount": "Create account",
       "configureAgent": "Configure AI agent",

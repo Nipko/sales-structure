@@ -2010,6 +2010,8 @@
     "agentLimitReached": "Límite de agentes alcanzado",
     "agentLimitDesc": "Tu plan actual alcanzó el número máximo de agentes. Mejora tu plan para agregar más.",
     "upgradePlan": "Mejorar plan",
+    "agentNameLabel": "Nombre del agente",
+    "agentNamePlaceholder": "Ej: Luna, Max, Sofía... (opcional, se usa el de la plantilla)",
     "chooseTemplate": "Elige una plantilla",
     "chooseTemplateDesc": "Comienza con una plantilla preconfigurada y personalízala según tus necesidades.",
     "builtInTemplates": "Plantillas integradas",
@@ -3113,6 +3115,7 @@
     "recommended": "Recomendados",
     "complete": "completo",
     "dismiss": "Cerrar guía",
+    "reopenChecklist": "Ver progreso de configuración",
     "items": {
       "createAccount": "Crear cuenta",
       "configureAgent": "Configurar agente IA",

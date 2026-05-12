@@ -2010,6 +2010,8 @@
     "agentLimitReached": "Limite d'agents atteinte",
     "agentLimitDesc": "Votre plan actuel a atteint le nombre maximum d'agents. Mettez à niveau pour en ajouter.",
     "upgradePlan": "Mettre à niveau",
+    "agentNameLabel": "Nom de l'agent",
+    "agentNamePlaceholder": "Ex : Luna, Max, Sofia... (optionnel, le nom du modèle est utilisé par défaut)",
     "chooseTemplate": "Choisir un modèle",
     "chooseTemplateDesc": "Commencez avec un modèle préconstruit et personnalisez-le selon vos besoins.",
     "builtInTemplates": "Modèles intégrés",
@@ -3113,6 +3115,7 @@
     "recommended": "Recommandés",
     "complete": "terminé",
     "dismiss": "Fermer le guide",
+    "reopenChecklist": "Voir la progression de la configuration",
     "items": {
       "createAccount": "Créer un compte",
       "configureAgent": "Configurer l'agent IA",

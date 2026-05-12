@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { api } from "@/lib/api";
-import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, X, ListChecks } from "lucide-react";
 
 interface ChecklistItem {
     key: string;
@@ -35,66 +35,102 @@ export default function OnboardingChecklist() {
     const vt = useVerticalTerms();
     const { user } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
     const [dismissed, setDismissed] = useState(false);
+    const [minimized, setMinimized] = useState(false);
     const [checkData, setCheckData] = useState<any>({});
     const [loaded, setLoaded] = useState(false);
+
+    const fetchStatus = useCallback(async () => {
+        if (!user?.tenantId) return;
+        try {
+            const [setupRes, channelsRes] = await Promise.all([
+                api.getSetupStatus(user.tenantId!),
+                api.fetch(`/channels/overview?tenantId=${user.tenantId}`).catch(() => ({ channels: [] })),
+            ]);
+
+            const channels = channelsRes?.channels || channelsRes?.data?.channels || [];
+            const hasAnyChannel = channels.some((c: any) => c.is_active);
+            const hasInstagram = channels.some((c: any) => c.channel_type === "instagram" && c.is_active);
+            const data = setupRes?.data || {};
+
+            setCheckData({
+                setupCompleted: data.setupWizardCompleted || false,
+                hasPersona: data.hasPersona || data.setupWizardCompleted || false,
+                hasAnyChannel,
+                hasInstagram,
+                hasConversations: data.hasConversations || false,
+                hasKnowledge: data.hasKnowledge || false,
+                hasTeam: data.hasTeam || false,
+                hasAutomation: data.hasAutomation || false,
+                hasTemplates: data.hasTemplates || false,
+            });
+        } catch {
+            // Silently fail
+        }
+        setLoaded(true);
+    }, [user?.tenantId]);
 
     useEffect(() => {
         if (!user?.tenantId) return;
 
-        // Check if dismissed
         const key = `checklist_dismissed_${user.tenantId}`;
         if (localStorage.getItem(key) === "true") {
             setDismissed(true);
-            return;
+            setMinimized(true);
         }
 
-        // Fetch status data
-        const fetchStatus = async () => {
-            try {
-                const [setupRes, channelsRes] = await Promise.all([
-                    api.getSetupStatus(user.tenantId!),
-                    api.fetch(`/channels/overview?tenantId=${user.tenantId}`).catch(() => ({ channels: [] })),
-                ]);
-
-                const channels = channelsRes?.channels || channelsRes?.data?.channels || [];
-                const hasAnyChannel = channels.some((c: any) => c.is_active);
-                const hasInstagram = channels.some((c: any) => c.channel_type === "instagram" && c.is_active);
-
-                setCheckData({
-                    setupCompleted: setupRes?.data?.setupWizardCompleted || false,
-                    hasPersona: setupRes?.data?.setupWizardCompleted || false,
-                    hasAnyChannel,
-                    hasInstagram,
-                    hasConversations: false, // Would need a count check
-                    hasKnowledge: false,
-                    hasTeam: false,
-                    hasAutomation: false,
-                    hasTemplates: false,
-                });
-            } catch {
-                // Silently fail
-            }
-            setLoaded(true);
-        };
-
         fetchStatus();
-    }, [user?.tenantId]);
+    }, [user?.tenantId, fetchStatus]);
 
-    if (dismissed || !loaded || !user?.tenantId) return null;
+    // Re-fetch on route change
+    useEffect(() => {
+        if (loaded && user?.tenantId) fetchStatus();
+    }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Re-fetch on window focus
+    useEffect(() => {
+        const onFocus = () => { if (user?.tenantId) fetchStatus(); };
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") onFocus();
+        });
+        return () => {
+            window.removeEventListener("focus", onFocus);
+        };
+    }, [user?.tenantId, fetchStatus]);
+
+    if (!loaded || !user?.tenantId) return null;
 
     const completedCount = ITEMS.filter(item => item.check(checkData)).length;
     const totalCount = ITEMS.length;
     const percentage = Math.round((completedCount / totalCount) * 100);
+    const allDone = completedCount === totalCount;
 
-    // Don't show if all essentials are done
-    const essentialsDone = ITEMS.filter(i => i.essential).every(i => i.check(checkData));
-    if (essentialsDone && percentage >= 80) return null;
+    // Minimized pill — shown when dismissed but not 100% complete
+    if (minimized && dismissed && !allDone) {
+        return (
+            <button
+                onClick={() => { setDismissed(false); setMinimized(false); }}
+                className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all hover:scale-105 cursor-pointer"
+                title={t("reopenChecklist")}
+            >
+                <ListChecks size={16} />
+                <span className="text-xs font-semibold">{completedCount}/{totalCount}</span>
+                <div className="w-10 h-1.5 rounded-full bg-white/30 overflow-hidden">
+                    <div className="h-full rounded-full bg-white transition-all" style={{ width: `${percentage}%` }} />
+                </div>
+            </button>
+        );
+    }
+
+    if (dismissed || allDone) return null;
 
     const handleDismiss = () => {
         localStorage.setItem(`checklist_dismissed_${user.tenantId}`, "true");
         setDismissed(true);
+        setMinimized(true);
     };
 
     const essentialItems = ITEMS.filter(i => i.essential);
@@ -107,10 +143,10 @@ export default function OnboardingChecklist() {
                 <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-semibold text-foreground">{t("title")}</h3>
                     <div className="flex items-center gap-1">
-                        <button onClick={() => setCollapsed(!collapsed)} className="p-1 text-muted-foreground hover:text-foreground">
+                        <button onClick={() => setCollapsed(!collapsed)} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
                             {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                         </button>
-                        <button onClick={handleDismiss} className="p-1 text-muted-foreground hover:text-foreground">
+                        <button onClick={handleDismiss} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
                             <X size={14} />
                         </button>
                     </div>
@@ -119,7 +155,7 @@ export default function OnboardingChecklist() {
                 {/* Progress bar */}
                 <div className="mb-4">
                     <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] text-muted-foreground">{percentage}% {t("complete")}</span>
+                        <span className="text-[11px] text-muted-foreground">{completedCount}/{totalCount} — {percentage}% {t("complete")}</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-neutral-100 dark:bg-white/[0.06] overflow-hidden">
                         <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${percentage}%` }} />
@@ -149,7 +185,7 @@ export default function OnboardingChecklist() {
                                             {!done && item.href && (
                                                 <button
                                                     onClick={() => router.push(item.href)}
-                                                    className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-medium hover:bg-indigo-500/20 transition-colors"
+                                                    className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-medium hover:bg-indigo-500/20 transition-colors cursor-pointer"
                                                 >
                                                     {t(`actions.${item.actionKey}`)}
                                                 </button>
@@ -181,7 +217,7 @@ export default function OnboardingChecklist() {
                                             {!done && item.href && (
                                                 <button
                                                     onClick={() => router.push(item.href)}
-                                                    className="text-[10px] px-2 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors"
+                                                    className="text-[10px] px-2 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors cursor-pointer"
                                                 >
                                                     {t(`actions.${item.actionKey}`)}
                                                 </button>
@@ -193,7 +229,7 @@ export default function OnboardingChecklist() {
                         </div>
 
                         {/* Dismiss */}
-                        <button onClick={handleDismiss} className="mt-4 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                        <button onClick={handleDismiss} className="mt-4 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                             {t("dismiss")}
                         </button>
                     </>

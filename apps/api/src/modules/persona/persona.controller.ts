@@ -190,19 +190,58 @@ export class PersonaController {
     }
 
     @Get(':tenantId/setup-status')
-    @ApiOperation({ summary: 'Get setup wizard completion status' })
+    @ApiOperation({ summary: 'Get setup wizard completion status + onboarding checklist data' })
     async getSetupStatus(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true },
+            select: { settings: true, schemaName: true },
         });
         const settings = (tenant?.settings as any) || {};
+        const schema = tenant?.schemaName;
+
+        let hasPersona = false;
+        let hasConversations = false;
+        let hasKnowledge = false;
+        let hasTeam = false;
+        let hasAutomation = false;
+        let hasTemplates = false;
+
+        if (schema) {
+            try {
+                const checks = await Promise.allSettled([
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".agent_personas WHERE is_active = true`),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".conversations LIMIT 1`),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".knowledge_resources LIMIT 1`)
+                        .catch(() => this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".knowledge_documents WHERE status != 'deleted' LIMIT 1`)),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1::uuid AND is_active = true`, tenantId),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE is_active = true LIMIT 1`).catch(() => [{ c: 0 }]),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => [{ c: 0 }]),
+                ]);
+
+                const val = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? Number((r.value as any[])?.[0]?.c || 0) : 0;
+                hasPersona = val(checks[0]) > 0;
+                hasConversations = val(checks[1]) > 0;
+                hasKnowledge = val(checks[2]) > 0;
+                hasTeam = val(checks[3]) > 1;
+                hasAutomation = val(checks[4]) > 0;
+                hasTemplates = val(checks[5]) > 0;
+            } catch {
+                // If schema doesn't exist yet, all default to false
+            }
+        }
+
         return {
             success: true,
             data: {
                 setupWizardCompleted: settings.setupWizardCompleted || false,
                 setupWizardTemplate: settings.setupWizardTemplate || null,
                 setupWizardChannels: settings.setupWizardChannels || [],
+                hasPersona,
+                hasConversations,
+                hasKnowledge,
+                hasTeam,
+                hasAutomation,
+                hasTemplates,
             },
         };
     }

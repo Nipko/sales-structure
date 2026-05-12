@@ -10,6 +10,7 @@ export default function InstagramCallback() {
     const [errorMessage, setErrorMessage] = useState("");
 
     useEffect(() => {
+        let cancelled = false;
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
         const error = params.get("error");
@@ -24,18 +25,27 @@ export default function InstagramCallback() {
             return;
         }
 
-        // Exchange code via backend
+        const codeKey = `ig_code_used_${code.slice(0, 16)}`;
+        if (sessionStorage.getItem(codeKey)) {
+            return;
+        }
+        sessionStorage.setItem(codeKey, "1");
+
         api.instagramOAuthConnect(code)
             .then((data: any) => {
+                if (cancelled) return;
                 if (data.success) {
                     finish("success");
                 } else {
-                    finish("error", data.error || "Connection failed");
+                    finish("error", data.error || data.message || "Connection failed");
                 }
             })
             .catch((err: any) => {
+                if (cancelled) return;
                 finish("error", err.message);
             });
+
+        return () => { cancelled = true; };
     }, []);
 
     function finish(result: "success" | "error", message?: string) {

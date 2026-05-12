@@ -574,8 +574,9 @@ export class ChannelManagementController {
 
         if (!shortToken) {
             const { access_token: _s, ...safeShort } = shortData;
-            this.logger.warn(`Instagram short-lived token exchange failed: ${JSON.stringify(safeShort)}`);
-            throw new BadRequestException('Instagram token exchange failed');
+            this.logger.warn(`Instagram short-lived token exchange failed (HTTP ${shortRes.status}): ${JSON.stringify(safeShort)}`);
+            const igError = safeShort.error_message || safeShort.error?.message || safeShort.error || 'Unknown';
+            throw new BadRequestException(`Instagram token exchange failed: ${igError}`);
         }
 
         // Step 2: Exchange short-lived → long-lived (60 days)

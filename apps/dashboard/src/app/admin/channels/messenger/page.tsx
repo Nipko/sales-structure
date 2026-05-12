@@ -132,10 +132,14 @@ export default function MessengerSetupPage() {
                 }
             },
             {
+                // When config_id is set, Meta ignores the scope parameter.
+                // All required permissions (pages_show_list, pages_messaging,
+                // pages_manage_metadata, pages_read_engagement) MUST be configured
+                // in the Facebook Login Configuration at Meta App Dashboard.
                 config_id: MESSENGER_CONFIG_ID,
                 response_type: "token",
                 override_default_response_type: true,
-                scope: "pages_show_list,pages_messaging,pages_manage_metadata,pages_read_engagement",
+                auth_type: "rerequest",
             }
         );
     };

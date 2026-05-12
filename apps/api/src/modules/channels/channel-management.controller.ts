@@ -339,13 +339,28 @@ export class ChannelManagementController {
         );
         const pagesData = await pagesRes.json() as any;
         if (pagesData.error) {
+            this.logger.error(`Messenger OAuth: /me/accounts error for tenant ${tenantId}: ${JSON.stringify(pagesData.error)}`);
             throw new BadRequestException(`Page listing failed: ${pagesData.error.message}`);
         }
 
-        const pages = (pagesData.data || []).filter(
-            (p: any) => p.tasks?.includes('MESSAGING') || p.tasks?.includes('MANAGE'),
-        );
+        const allPages = pagesData.data || [];
+        this.logger.log(`Messenger OAuth: /me/accounts returned ${allPages.length} page(s) for tenant ${tenantId}`);
+
+        const pages = allPages.filter((p: any) => {
+            const tasks = p.tasks;
+            if (!tasks || !Array.isArray(tasks)) {
+                this.logger.log(`Messenger OAuth: page ${p.id} (${p.name}) has no tasks field — accepting (user granted pages_messaging)`);
+                return true;
+            }
+            const allowed = tasks.includes('MESSAGING') || tasks.includes('MANAGE');
+            if (!allowed) {
+                this.logger.warn(`Messenger OAuth: page ${p.id} (${p.name}) filtered out — tasks: [${tasks.join(', ')}]`);
+            }
+            return allowed;
+        });
+
         if (pages.length === 0) {
+            this.logger.error(`Messenger OAuth: 0 pages passed filter for tenant ${tenantId}. Raw pages: ${JSON.stringify(allPages.map((p: any) => ({ id: p.id, name: p.name, tasks: p.tasks })))}`);
             throw new BadRequestException('No Facebook pages with messaging permission found');
         }
 
@@ -353,6 +368,11 @@ export class ChannelManagementController {
         const connected: { id: string; name: string; picture?: string }[] = [];
         for (const page of pages) {
             try {
+                if (!page.access_token) {
+                    this.logger.warn(`Messenger OAuth: page ${page.id} (${page.name}) skipped — no access_token (insufficient permissions)`);
+                    continue;
+                }
+
                 // Subscribe app webhooks to the page
                 const subRes = await fetch(
                     `https://graph.facebook.com/${graphVersion}/${page.id}/subscribed_apps`,
@@ -365,9 +385,9 @@ export class ChannelManagementController {
                         }),
                     },
                 );
-                const subData = await subRes.json();
+                const subData = await subRes.json() as any;
                 if (subData.error) {
-                    this.logger.warn(`Webhook subscription failed for page ${page.id}: ${subData.error.message}`);
+                    this.logger.warn(`Webhook subscription failed for page ${page.id}: code=${subData.error.code} subcode=${subData.error.error_subcode} type=${subData.error.type} message=${subData.error.message} fbtrace=${subData.error.fbtrace_id}`);
                 }
 
                 // Encrypt page access token

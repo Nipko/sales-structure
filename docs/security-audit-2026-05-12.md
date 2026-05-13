@@ -8,17 +8,17 @@
 
 ## Executive Summary
 
-| Severity | Count | Status |
-|----------|-------|--------|
-| **CRITICAL** | 11 | Requires immediate remediation before production launch |
-| **HIGH** | 16 | Must be fixed before accepting external tenants |
-| **MEDIUM** | 22 | Should be addressed within 2 weeks of launch |
-| **LOW** | 14 | Schedule for next maintenance cycle |
-| **INFO** | 12 | No action needed (positive findings / accepted risks) |
+| Severity | Count | Fixed | Remaining |
+|----------|-------|-------|-----------|
+| **CRITICAL** | 11 | 11 | 0 |
+| **HIGH** | 16 | 15 | 1 (H-14 Docker non-root) |
+| **MEDIUM** | 22 | 18 | 4 (M-05, M-07, M-08, M-17) |
+| **LOW** | 14 | 7 | 7 (L-02, L-04, L-06, L-07, L-08, L-10, L-12) |
+| **INFO** | 12 | — | No action needed |
 
-**Total findings: 75**
+**Total findings: 75 | Fixed: 51 | Remaining: 12**
 
-The platform has solid foundations (schema isolation, parameterized queries, AES-256-GCM encryption, webhook HMAC validation). However, there are critical gaps in access control (missing TenantGuard on billing/offboarding), SQL injection via column name interpolation, hardcoded secret fallbacks, and zero rate limiting on authentication endpoints.
+Remediation completed in 3 phases (commits 1c85fe6, 08bdc4e, 4a3223e). All CRITICAL issues resolved. Remaining items are low-risk design decisions (M-05 super admin session skip, M-07 signup returns tokens before verification, M-08 unsigned SAML requests) or broad refactoring tasks (M-17 queryRawUnsafe audit across 13 files).
 
 ---
 

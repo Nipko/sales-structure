@@ -156,7 +156,7 @@ export class ChannelManagementController {
         const encryptedToken = this.cryptoService.encryptToken(botToken);
 
         const existing = await this.prisma.channelAccount.findFirst({
-            where: { channelType: 'telegram', accountId },
+            where: { channelType: 'telegram', accountId, tenantId },
         });
 
         if (existing) {
@@ -463,7 +463,7 @@ export class ChannelManagementController {
 
                 // Upsert ChannelAccount (unique on [channelType, accountId])
                 const existingAccount = await this.prisma.channelAccount.findFirst({
-                    where: { channelType: 'messenger', accountId: page.id },
+                    where: { channelType: 'messenger', accountId: page.id, tenantId },
                 });
 
                 if (existingAccount) {
@@ -906,7 +906,7 @@ export class ChannelManagementController {
 
         // 4. Upsert channel_account
         const existing = await this.prisma.channelAccount.findFirst({
-            where: { channelType: 'sms', accountId: phoneNumber },
+            where: { channelType: 'sms', accountId: phoneNumber, tenantId },
         });
 
         const channelData = {
@@ -1100,7 +1100,7 @@ export class ChannelManagementController {
 
         // Upsert channel_account
         const existing = await this.prisma.channelAccount.findFirst({
-            where: { channelType, accountId },
+            where: { channelType, accountId, tenantId },
         });
 
         if (existing) {

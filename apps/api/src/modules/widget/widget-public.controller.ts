@@ -65,9 +65,16 @@ export class WidgetPublicController {
         if (!config) return { success: false, error: 'Widget not found' };
 
         if (config.allowed_domains?.length > 0 && origin) {
-            const allowed = config.allowed_domains.some((d: string) =>
-                origin.endsWith(d) || origin.includes(d),
-            );
+            let originHostname: string;
+            try {
+                originHostname = new URL(origin).hostname.toLowerCase();
+            } catch {
+                throw new ForbiddenException('Origin not allowed');
+            }
+            const allowed = config.allowed_domains.some((d: string) => {
+                const domain = d.toLowerCase().replace(/^\./, '');
+                return originHostname === domain || originHostname.endsWith(`.${domain}`);
+            });
             if (!allowed) throw new ForbiddenException('Origin not allowed');
         }
 

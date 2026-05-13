@@ -1,0 +1,16 @@
+node_modules
+.git
+.env
+.env.*
+*.log
+dist
+.next
+.turbo
+coverage
+scratch
+*.png
+*.jpg
+*.jpeg
+docs
+.claude
+.vscode

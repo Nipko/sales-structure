@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
+import * as crypto from 'crypto';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
@@ -280,14 +281,60 @@ export class ChannelsController {
     async receiveSms(
         @Param('phoneNumber') phoneNumber: string,
         @Body() body: any,
+        @Headers('x-twilio-signature') twilioSignature: string,
+        @Req() req: Request,
         @Res() res: Response,
     ) {
         // Twilio expects TwiML response; empty <Response/> = acknowledge
         res.type('text/xml').status(200).send('<Response/>');
-        await this.processSmsWebhook(body, phoneNumber);
+
+        const webhookUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+        await this.processSmsWebhook(body, phoneNumber, twilioSignature, webhookUrl);
     }
 
-    private async processSmsWebhook(body: any, phoneNumber: string): Promise<void> {
+    /**
+     * Validates a Twilio webhook signature (HMAC-SHA1).
+     *
+     * Algorithm:
+     * 1. Start with the full webhook URL
+     * 2. Sort POST params alphabetically by key
+     * 3. Append each key+value (no separator) to the URL string
+     * 4. HMAC-SHA1 the result with the Twilio Auth Token
+     * 5. Base64 encode → compare to X-Twilio-Signature header
+     */
+    private validateTwilioSignature(
+        webhookUrl: string,
+        params: Record<string, string>,
+        signature: string,
+        authToken: string,
+    ): boolean {
+        try {
+            const data = Object.keys(params)
+                .sort()
+                .reduce((acc, key) => acc + key + params[key], webhookUrl);
+
+            const expectedSig = crypto
+                .createHmac('sha1', authToken)
+                .update(data, 'utf-8')
+                .digest('base64');
+
+            const expectedBuf = Buffer.from(expectedSig);
+            const actualBuf = Buffer.from(signature);
+
+            if (expectedBuf.length !== actualBuf.length) return false;
+
+            return crypto.timingSafeEqual(expectedBuf, actualBuf);
+        } catch {
+            return false;
+        }
+    }
+
+    private async processSmsWebhook(
+        body: any,
+        phoneNumber: string,
+        twilioSignature?: string,
+        webhookUrl?: string,
+    ): Promise<void> {
         try {
             const messageSid = body?.MessageSid;
             if (messageSid) {
@@ -302,6 +349,25 @@ export class ChannelsController {
 
             if (!channelAccount) {
                 this.logger.warn(`No SMS channel account found for phone: ${phoneNumber}`);
+                return;
+            }
+
+            // ── Twilio signature validation ──
+            const authToken = (channelAccount.metadata as any)?.twilioAuthToken
+                || this.configService.get<string>('TWILIO_AUTH_TOKEN');
+
+            if (!authToken) {
+                this.logger.warn(
+                    `No Twilio Auth Token configured for SMS account ${phoneNumber} — skipping signature validation`,
+                );
+            } else if (!twilioSignature || !webhookUrl) {
+                this.logger.warn(
+                    `Missing X-Twilio-Signature header for SMS webhook on ${phoneNumber} — skipping validation`,
+                );
+            } else if (!this.validateTwilioSignature(webhookUrl, body || {}, twilioSignature, authToken)) {
+                this.logger.warn(
+                    `Invalid Twilio signature for SMS webhook on ${phoneNumber} — rejecting request`,
+                );
                 return;
             }
 

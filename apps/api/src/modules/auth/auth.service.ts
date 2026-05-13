@@ -441,6 +441,10 @@ export class AuthService {
 
         const { sub: userId, tid: tokenId, sid: tokenSid } = decoded;
 
+        if (decoded.isImpersonation) {
+            throw new UnauthorizedException('Impersonation tokens cannot be refreshed');
+        }
+
         // Verify active session if the token had one
         if (tokenSid) {
             const session = await this.redis.getJson<SessionData>(`session:${userId}`);
@@ -527,6 +531,9 @@ export class AuthService {
             where: { id: userId },
             data: { password: hashedPassword },
         });
+
+        await this.revokeAllUserSessions(userId);
+        await this.destroySession(userId);
 
         return { message: 'Password reset successfully' };
     }
@@ -791,7 +798,7 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
-        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const code = String(crypto.randomInt(100000, 1000000));
         const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
         await this.prisma.user.update({
@@ -813,7 +820,8 @@ export class AuthService {
         if (!user) throw new NotFoundException('User not found');
 
         if (!user.emailVerifyCode || !user.emailVerifyExpires ||
-            user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
+            user.emailVerifyExpires < new Date() ||
+            !this.timingSafeEqual(user.emailVerifyCode, code)) {
             throw new BadRequestException('Invalid or expired verification code');
         }
 
@@ -832,7 +840,7 @@ export class AuthService {
         // Always return success to avoid email enumeration
         if (!user || !user.isActive) return { message: 'If the email exists, a code was sent' };
 
-        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const code = String(crypto.randomInt(100000, 1000000));
         const expires = new Date(Date.now() + 10 * 60 * 1000);
 
         await this.prisma.user.update({
@@ -854,7 +862,8 @@ export class AuthService {
         if (!user) throw new BadRequestException('Invalid or expired code');
 
         if (!user.emailVerifyCode || !user.emailVerifyExpires ||
-            user.emailVerifyCode !== code || user.emailVerifyExpires < new Date()) {
+            user.emailVerifyExpires < new Date() ||
+            !this.timingSafeEqual(user.emailVerifyCode, code)) {
             throw new BadRequestException('Invalid or expired code');
         }
 
@@ -870,7 +879,9 @@ export class AuthService {
             },
         });
 
-        // Notify
+        await this.revokeAllUserSessions(user.id);
+        await this.destroySession(user.id);
+
         this.emailService.send({
             to: user.email,
             subject: 'Tu contrasena ha sido cambiada — Parallly',
@@ -1027,7 +1038,7 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
-        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const code = String(crypto.randomInt(100000, 1000000));
         await this.redis.set(`2fa:email:${userId}`, code, 300);
 
         await this.emailService.send({
@@ -1470,6 +1481,13 @@ export class AuthService {
      * Starter tenants from Argentina don't get Colombian MP plan ids.
      * Expand this list as we onboard more countries.
      */
+    private timingSafeEqual(a: string, b: string): boolean {
+        const bufA = Buffer.from(a);
+        const bufB = Buffer.from(b);
+        if (bufA.length !== bufB.length) return false;
+        return crypto.timingSafeEqual(bufA, bufB);
+    }
+
     private encryptTotpSecret(plaintext: string): string {
         const key = process.env.ENCRYPTION_KEY;
         if (!key || key.length < 32) {

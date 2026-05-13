@@ -21,7 +21,7 @@
         "migrate:tenants": "node scripts/migrate-tenants.js && node scripts/add-missing-tables.js"
     },
     "dependencies": {
-        "@anthropic-ai/sdk": "latest",
+        "@anthropic-ai/sdk": "^0.78.0",
         "@azure/msal-node": "^5.1.2",
         "@bull-board/api": "^7.0.0",
         "@bull-board/express": "^7.0.0",

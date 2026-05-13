@@ -136,6 +136,13 @@ export class SamlService {
     ) {
         const email = samlProfile.email.toLowerCase();
 
+        if (config.emailDomains?.length) {
+            const emailDomain = email.split('@')[1];
+            if (!config.emailDomains.some(d => d.toLowerCase() === emailDomain)) {
+                throw new ForbiddenException(`Email domain ${emailDomain} is not allowed for this SSO configuration`);
+            }
+        }
+
         let user = await this.prisma.user.findFirst({
             where: { email },
             include: { tenant: true },

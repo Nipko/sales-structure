@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import {
   Injectable,
   CanActivate,
@@ -45,7 +46,12 @@ export class InternalAuthGuard implements CanActivate {
         throw new UnauthorizedException('Internal auth is not configured');
       }
 
-      if (internalKey !== expectedKey) {
+      const expected = Buffer.from(expectedKey);
+      const provided = Buffer.from(internalKey);
+      if (
+        expected.length !== provided.length ||
+        !crypto.timingSafeEqual(expected, provided)
+      ) {
         throw new UnauthorizedException('Invalid internal API key');
       }
 

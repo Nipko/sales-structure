@@ -20,7 +20,7 @@ export class ScheduledReportsService {
 
     async getConfig(schemaName: string, tenantId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT * FROM "${schemaName}".scheduled_reports WHERE tenant_id = $1 LIMIT 1`,
+            `SELECT * FROM "${schemaName}".scheduled_reports WHERE tenant_id = $1::uuid LIMIT 1`,
             tenantId,
         );
         return rows[0] || null;

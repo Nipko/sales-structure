@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -67,6 +67,27 @@ export class WebhooksService {
         );
     }
 
+    // ── SSRF validation ──────────────────────────────────────────────────
+
+    private validateWebhookUrl(url: string): void {
+        let parsed: URL;
+        try {
+            parsed = new URL(url);
+        } catch {
+            throw new BadRequestException(`Invalid webhook URL: ${url.substring(0, 80)}`);
+        }
+
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            throw new BadRequestException(`Webhook URL must use http or https protocol`);
+        }
+
+        const hostname = parsed.hostname.toLowerCase();
+        const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
+        if (blocked.test(hostname)) {
+            throw new BadRequestException(`Webhook URL must not point to private/reserved IP ranges`);
+        }
+    }
+
     // ── CRUD ─────────────────────────────────────────────────────────────
 
     async list(tenantId: string): Promise<WebhookEndpoint[]> {
@@ -83,6 +104,7 @@ export class WebhooksService {
         tenantId: string,
         data: { url: string; events: WebhookEventType[]; description?: string },
     ): Promise<WebhookEndpoint> {
+        this.validateWebhookUrl(data.url);
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureWebhookTables(schema);
         const secret = crypto.randomBytes(32).toString('hex');
@@ -102,6 +124,9 @@ export class WebhooksService {
         endpointId: string,
         data: { url?: string; events?: WebhookEventType[]; description?: string; is_active?: boolean },
     ): Promise<WebhookEndpoint> {
+        if (data.url !== undefined) {
+            this.validateWebhookUrl(data.url);
+        }
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         const sets: string[] = [];
         const params: any[] = [];
@@ -181,6 +206,14 @@ export class WebhooksService {
         body: string,
         maxAttempts = 3,
     ) {
+        // Defense-in-depth: validate URL at delivery time for pre-existing endpoints
+        try {
+            this.validateWebhookUrl(endpoint.url);
+        } catch {
+            this.logger.warn(`Skipping webhook delivery to blocked URL: endpoint=${endpoint.id} url=${endpoint.url.substring(0, 80)}`);
+            return;
+        }
+
         const signature = crypto
             .createHmac('sha256', endpoint.secret)
             .update(body)

@@ -2,9 +2,6 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 
-const DEFAULT_CLIENT_ID =
-    '950001098107-4ctk2jm3876afqktip7r4f04120kt0ou.apps.googleusercontent.com';
-
 @Injectable()
 export class GoogleAuthService {
     private client: OAuth2Client;
@@ -12,9 +9,11 @@ export class GoogleAuthService {
     private readonly logger = new Logger(GoogleAuthService.name);
 
     constructor(private config: ConfigService) {
-        this.clientId = config.get('GOOGLE_OAUTH_CLIENT_ID') || DEFAULT_CLIENT_ID;
+        this.clientId = config.get('GOOGLE_OAUTH_CLIENT_ID') || '';
+        if (!this.clientId) {
+            this.logger.warn('GOOGLE_OAUTH_CLIENT_ID not set — Google OAuth login will fail');
+        }
         this.client = new OAuth2Client(this.clientId);
-        this.logger.log(`Google OAuth initialized with client ID: ${this.clientId.slice(0, 20)}...`);
     }
 
     async verifyIdToken(idToken: string): Promise<{

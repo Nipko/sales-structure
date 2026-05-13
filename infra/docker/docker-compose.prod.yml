@@ -45,7 +45,7 @@ services:
     container_name: parallext-pgbouncer
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD}@postgres:5432/parallext_engine
       AUTH_TYPE: md5
       POOL_MODE: transaction
       DEFAULT_POOL_SIZE: "50"
@@ -188,12 +188,12 @@ services:
       -c effective_cache_size=512MB
     environment:
       POSTGRES_USER: parallext
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-parallext_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: parallext_engine
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U parallext -d parallext_engine" ]
       interval: 10s

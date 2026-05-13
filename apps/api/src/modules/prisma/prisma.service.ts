@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -33,12 +33,27 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     /**
+     * Validate that a schema name is safe for use in SQL.
+     * Prevents SQL injection via malicious schema names.
+     */
+    private validateSchemaName(schemaName: string): void {
+        if (!schemaName || schemaName.length > 63) {
+            throw new BadRequestException(
+                `Invalid schema name: must be between 1 and 63 characters (PostgreSQL identifier limit)`,
+            );
+        }
+        if (!/^tenant_[a-z0-9_]+$/.test(schemaName)) {
+            throw new BadRequestException(
+                `Invalid schema name "${schemaName}": must match pattern tenant_[a-z0-9_]+`,
+            );
+        }
+    }
+
+    /**
      * Execute a query in a specific tenant schema
      */
     async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = [], options?: { timeout?: number }): Promise<T> {
-        if (!/^[a-zA-Z0-9_]+$/.test(schemaName)) {
-            throw new Error(`Invalid schema name: ${schemaName}`);
-        }
+        this.validateSchemaName(schemaName);
 
         // Use a transaction + SET LOCAL so search_path is guaranteed to be scoped
         // to this query lifecycle and cannot leak across pooled connections.
@@ -52,6 +67,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Create a new tenant schema from the SQL template
      */
     async createTenantSchema(schemaName: string): Promise<void> {
+        this.validateSchemaName(schemaName);
+
         // 1. Check if schema already exists (stale data from deleted tenant)
         const existing = await this.$queryRawUnsafe(
             `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1 LIMIT 1`,
@@ -159,6 +176,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Drop a tenant schema (use with extreme caution!)
      */
     async dropTenantSchema(schemaName: string): Promise<void> {
+        this.validateSchemaName(schemaName);
         await this.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE;`);
     }
 

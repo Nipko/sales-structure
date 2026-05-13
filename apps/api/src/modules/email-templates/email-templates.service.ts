@@ -126,25 +126,50 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
     {
         name: 'Trial iniciado',
         slug: 'billing_trial_started',
-        subject: 'Tu prueba gratuita de {{trial_days}} dias arranco — {{company_name}}',
-        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
-  <div style="background:linear-gradient(135deg,#6c5ce7,#0984e3);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
-    <h2 style="color:white;margin:0;font-size:20px;">Tu prueba empezo</h2>
-  </div>
-  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
-    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
-    <p style="font-size:14px;color:#555;">Activaste el plan <strong>{{plan_name}}</strong> y tienes <strong>{{trial_days}} dias</strong> para probarlo sin costo.</p>
-    <div style="background:#f0f4ff;padding:16px;border-radius:8px;border-left:3px solid #6c5ce7;margin:16px 0;">
-      <p style="margin:4px 0;font-size:14px;"><strong>Tu prueba termina el:</strong> {{trial_ends_at}}</p>
-    </div>
-    <p style="font-size:14px;color:#555;">Aprovecha estos dias para conectar tus canales, cargar tus servicios y configurar tu agente IA.</p>
-    <div style="text-align:center;margin:24px 0;">
-      <a href="{{dashboard_url}}" style="background:#6c5ce7;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Ir a mi dashboard</a>
-    </div>
-    <p style="font-size:12px;color:#999;margin-top:20px;">Si tienes dudas, responde a este correo.</p>
-  </div>
-</div>`,
+        subject: 'Bienvenido a Parallly — Tu plan {{plan_name}} esta listo',
+        bodyHtml: `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<tr><td style="text-align:center;padding:0 0 24px;">{{#if company_logo}}<img src="{{company_logo}}" alt="Parallly" style="height:36px;"/>{{/if}}</td></tr>
+<tr><td style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:4px;background:linear-gradient(90deg,#3897f0,#6c5ce7);"></td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="background:linear-gradient(135deg,#3897f0,#2b7cd4);padding:40px 32px;text-align:center;">
+<p style="margin:0 0 8px;font-size:40px;line-height:1;">&#127881;</p>
+<h1 style="margin:0 0 8px;color:#fff;font-size:26px;font-weight:700;">Tu prueba comenzo</h1>
+<p style="margin:0;font-size:15px;color:rgba(255,255,255,.9);">Tienes <strong>{{trial_days}} dias</strong> para descubrir todo lo que Parallly puede hacer por tu negocio.</p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:32px;">
+<p style="margin:0 0 4px;font-size:16px;color:#1f2937;">Hola <strong>{{customer_name}}</strong>,</p>
+<p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Activaste el plan <strong style="color:#3897f0;">{{plan_name}}</strong>. Aprovecha cada dia para configurar tu operacion y empezar a ver resultados.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:12px;border:1px solid #dbeafe;margin-bottom:28px;">
+<tr><td style="padding:16px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="font-size:13px;color:#6b7280;">Tu prueba termina el</td><td style="text-align:right;font-size:14px;font-weight:600;color:#1f2937;">{{trial_ends_at}}</td></tr></table></td></tr>
+</table>
+<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Lo que puedes hacer ahora</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#128172;</div></td>
+<td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Conectar tus canales</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">WhatsApp, Instagram, Messenger, Telegram y SMS en un solo lugar.</p></td></tr>
+<tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#129302;</div></td>
+<td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Agente de IA 24/7</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">Tu vendedor virtual que responde, agenda citas y califica leads automaticamente.</p></td></tr>
+<tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#128200;</div></td>
+<td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">CRM y pipeline de ventas</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">Gestiona contactos, oportunidades y seguimiento de cada negociacion.</p></td></tr>
+<tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#128197;</div></td>
+<td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Agenda inteligente</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">Booking automatizado con Google Calendar y confirmacion directa por chat.</p></td></tr>
+</table>
+<div style="text-align:center;padding:28px 0 8px;"><a href="{{dashboard_url}}" style="display:inline-block;padding:14px 44px;background:linear-gradient(135deg,#3897f0,#2b7cd4);color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;box-shadow:0 4px 14px rgba(56,151,240,.3);">Ir a mi dashboard</a></div>
+<p style="margin:12px 0 0;text-align:center;font-size:12px;color:#9ca3af;">Configura tu primer canal en menos de 5 minutos</p>
+</td></tr></table>
+</td></tr>
+<tr><td style="text-align:center;padding:24px 0 8px;">
+<p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Parallly &mdash; Automatizacion conversacional inteligente</p>
+<p style="margin:0;font-size:11px;color:#d1d5db;"><a href="https://parallly-chat.cloud" style="color:#3897f0;text-decoration:none;">parallly-chat.cloud</a> &middot; <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Soporte</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`,
         bodyJson: {},
         variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'trial_days', 'trial_ends_at', 'dashboard_url'],
         isActive: true,
@@ -153,22 +178,54 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
     {
         name: 'Trial por vencer',
         slug: 'billing_trial_ending_soon',
-        subject: 'Tu prueba termina en 3 dias — {{company_name}}',
-        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
-  <div style="background:linear-gradient(135deg,#f39c12,#e67e22);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
-    <h2 style="color:white;margin:0;font-size:20px;">Tu prueba termina pronto</h2>
-  </div>
-  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
-    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
-    <p style="font-size:14px;color:#555;">Tu prueba del plan <strong>{{plan_name}}</strong> termina el <strong>{{trial_ends_at}}</strong>.</p>
-    <p style="font-size:14px;color:#555;">Para seguir usando {{company_name}} sin interrupcion, agrega un metodo de pago antes de esa fecha.</p>
-    <div style="text-align:center;margin:24px 0;">
-      <a href="{{update_payment_url}}" style="background:#e67e22;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Agregar metodo de pago</a>
-    </div>
-    <p style="font-size:12px;color:#999;margin-top:20px;">Si no haces nada, tu cuenta pasara a modo lectura el {{trial_ends_at}}. Podes reactivarla en cualquier momento desde tu dashboard.</p>
-  </div>
-</div>`,
+        subject: 'Tu prueba termina en 3 dias — No pierdas lo que construiste',
+        bodyHtml: `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<tr><td style="text-align:center;padding:0 0 24px;">{{#if company_logo}}<img src="{{company_logo}}" alt="Parallly" style="height:36px;"/>{{/if}}</td></tr>
+<tr><td style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:4px;background:linear-gradient(90deg,#3897f0,#6c5ce7);"></td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:40px 32px;text-align:center;">
+<p style="margin:0 0 8px;font-size:40px;line-height:1;">&#9200;</p>
+<h1 style="margin:0 0 8px;color:#fff;font-size:26px;font-weight:700;">Tu prueba termina pronto</h1>
+<p style="margin:0;font-size:15px;color:rgba(255,255,255,.9);">El plan <strong>{{plan_name}}</strong> se desactiva el <strong>{{trial_ends_at}}</strong></p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:32px;">
+<p style="margin:0 0 4px;font-size:16px;color:#1f2937;">Hola <strong>{{customer_name}}</strong>,</p>
+<p style="margin:0 0 28px;font-size:14px;color:#6b7280;line-height:1.6;">En estos dias Parallly ha estado trabajando para tu negocio. Para no perder el acceso, agrega un metodo de pago antes de que termine tu prueba.</p>
+<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Esto es lo que tienes activo hoy</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#10b981;font-size:16px;">&#10003;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#1f2937;"><strong>Agente de IA 24/7</strong> <span style="color:#6b7280;">&mdash; respondiendo consultas y cerrando ventas mientras duermes</span></td></tr>
+<tr><td colspan="2" style="height:1px;background:#f3f4f6;"></td></tr>
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#10b981;font-size:16px;">&#10003;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#1f2937;"><strong>Canales conectados</strong> <span style="color:#6b7280;">&mdash; WhatsApp, Instagram, Messenger y mas, todo centralizado</span></td></tr>
+<tr><td colspan="2" style="height:1px;background:#f3f4f6;"></td></tr>
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#10b981;font-size:16px;">&#10003;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#1f2937;"><strong>CRM y pipeline</strong> <span style="color:#6b7280;">&mdash; tus leads, oportunidades y seguimiento de ventas</span></td></tr>
+<tr><td colspan="2" style="height:1px;background:#f3f4f6;"></td></tr>
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#10b981;font-size:16px;">&#10003;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#1f2937;"><strong>Agenda automatizada</strong> <span style="color:#6b7280;">&mdash; citas que se agendan solas con Google Calendar</span></td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef3c7;border-radius:12px;border:1px solid #fde68a;margin-bottom:4px;">
+<tr><td style="padding:16px 20px;">
+<p style="margin:0;font-size:14px;color:#92400e;line-height:1.6;"><strong>&#9888; Si no agregas un metodo de pago</strong>, tu cuenta pasara a modo lectura: el bot se detiene, las automatizaciones se pausan y no podras recibir mensajes nuevos.</p>
+</td></tr></table>
+<div style="text-align:center;padding:28px 0 8px;"><a href="{{update_payment_url}}" style="display:inline-block;padding:14px 44px;background:linear-gradient(135deg,#3897f0,#2b7cd4);color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;box-shadow:0 4px 14px rgba(56,151,240,.3);">Suscribirme ahora</a></div>
+<p style="margin:12px 0 0;text-align:center;font-size:12px;color:#9ca3af;">Sin compromisos &mdash; cancela cuando quieras</p>
+</td></tr></table>
+</td></tr>
+<tr><td style="text-align:center;padding:24px 0 8px;">
+<p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Parallly &mdash; Automatizacion conversacional inteligente</p>
+<p style="margin:0;font-size:11px;color:#d1d5db;"><a href="https://parallly-chat.cloud" style="color:#3897f0;text-decoration:none;">parallly-chat.cloud</a> &middot; <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Soporte</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`,
         bodyJson: {},
         variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'trial_ends_at', 'update_payment_url'],
         isActive: true,
@@ -177,22 +234,54 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
     {
         name: 'Trial vencido',
         slug: 'billing_trial_ended',
-        subject: 'Tu prueba gratuita termino — {{company_name}}',
-        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
-  <div style="background:linear-gradient(135deg,#e74c3c,#c0392b);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
-    <h2 style="color:white;margin:0;font-size:20px;">Tu prueba termino</h2>
-  </div>
-  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
-    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
-    <p style="font-size:14px;color:#555;">Tu prueba gratuita del plan <strong>{{plan_name}}</strong> termino. Tu cuenta entro en <strong>modo lectura</strong>: podes ver tu informacion pero el bot y las automatizaciones estan pausadas.</p>
-    <p style="font-size:14px;color:#555;">Agrega un metodo de pago para reactivar tu cuenta. Tenes <strong>22 dias</strong> antes de que archivemos tu informacion.</p>
-    <div style="text-align:center;margin:24px 0;">
-      <a href="{{update_payment_url}}" style="background:#6c5ce7;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Reactivar mi cuenta</a>
-    </div>
-    <p style="font-size:12px;color:#999;margin-top:20px;">Si tenes dudas o necesitas mas tiempo, respondenos a este correo.</p>
-  </div>
-</div>`,
+        subject: 'Tu cuenta esta en pausa — Reactiva tu plan en un clic',
+        bodyHtml: `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<tr><td style="text-align:center;padding:0 0 24px;">{{#if company_logo}}<img src="{{company_logo}}" alt="Parallly" style="height:36px;"/>{{/if}}</td></tr>
+<tr><td style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:4px;background:linear-gradient(90deg,#3897f0,#6c5ce7);"></td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:40px 32px;text-align:center;">
+<p style="margin:0 0 8px;font-size:40px;line-height:1;">&#128274;</p>
+<h1 style="margin:0 0 8px;color:#fff;font-size:26px;font-weight:700;">Tu prueba termino</h1>
+<p style="margin:0;font-size:15px;color:rgba(255,255,255,.9);">Tu cuenta entro en <strong>modo lectura</strong></p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:32px;">
+<p style="margin:0 0 4px;font-size:16px;color:#1f2937;">Hola <strong>{{customer_name}}</strong>,</p>
+<p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Tu prueba gratuita del plan <strong>{{plan_name}}</strong> termino. Podes ver tu informacion pero el bot, los canales y las automatizaciones estan pausados.</p>
+<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Esto es lo que estas perdiendo ahora mismo</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#ef4444;font-size:16px;">&#10007;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#6b7280;"><strong style="color:#1f2937;">Agente de IA detenido</strong> &mdash; tus clientes escriben pero nadie responde</td></tr>
+<tr><td colspan="2" style="height:1px;background:#f3f4f6;"></td></tr>
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#ef4444;font-size:16px;">&#10007;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#6b7280;"><strong style="color:#1f2937;">Canales desconectados</strong> &mdash; mensajes de WhatsApp, Instagram y Messenger sin atender</td></tr>
+<tr><td colspan="2" style="height:1px;background:#f3f4f6;"></td></tr>
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#ef4444;font-size:16px;">&#10007;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#6b7280;"><strong style="color:#1f2937;">Citas y automatizaciones pausadas</strong> &mdash; tus clientes no pueden agendar</td></tr>
+<tr><td colspan="2" style="height:1px;background:#f3f4f6;"></td></tr>
+<tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#ef4444;font-size:16px;">&#10007;</span></td>
+<td style="padding:8px 0;font-size:14px;color:#6b7280;"><strong style="color:#1f2937;">CRM congelado</strong> &mdash; leads y oportunidades sin seguimiento</td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border-radius:12px;border:1px solid #fecaca;margin-bottom:4px;">
+<tr><td style="padding:16px 20px;">
+<p style="margin:0;font-size:14px;color:#991b1b;line-height:1.6;">Tienes <strong>22 dias</strong> para reactivar antes de que archivemos tu informacion. Despues de eso, tus datos seran eliminados permanentemente.</p>
+</td></tr></table>
+<div style="text-align:center;padding:28px 0 8px;"><a href="{{update_payment_url}}" style="display:inline-block;padding:14px 44px;background:linear-gradient(135deg,#3897f0,#2b7cd4);color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;box-shadow:0 4px 14px rgba(56,151,240,.3);">Reactivar mi cuenta</a></div>
+<p style="margin:12px 0 0;text-align:center;font-size:12px;color:#9ca3af;">Necesitas mas tiempo? <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Escribenos</a></p>
+</td></tr></table>
+</td></tr>
+<tr><td style="text-align:center;padding:24px 0 8px;">
+<p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Parallly &mdash; Automatizacion conversacional inteligente</p>
+<p style="margin:0;font-size:11px;color:#d1d5db;"><a href="https://parallly-chat.cloud" style="color:#3897f0;text-decoration:none;">parallly-chat.cloud</a> &middot; <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Soporte</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`,
         bodyJson: {},
         variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'update_payment_url'],
         isActive: true,
@@ -201,28 +290,49 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
     {
         name: 'Pago recibido',
         slug: 'billing_payment_succeeded',
-        subject: 'Recibimos tu pago — {{company_name}}',
-        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
-  <div style="background:linear-gradient(135deg,#00b894,#00cec9);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
-    <h2 style="color:white;margin:0;font-size:20px;">Pago confirmado</h2>
-  </div>
-  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
-    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
-    <p style="font-size:14px;color:#555;">Recibimos tu pago. Gracias por seguir con {{company_name}}.</p>
-    <div style="background:#f0fff4;padding:16px;border-radius:8px;border-left:3px solid #00b894;margin:16px 0;">
-      <p style="margin:4px 0;font-size:14px;"><strong>Plan:</strong> {{plan_name}}</p>
-      <p style="margin:4px 0;font-size:14px;"><strong>Monto:</strong> {{amount_charged}} {{currency}}</p>
-      <p style="margin:4px 0;font-size:14px;"><strong>Proximo cobro:</strong> {{next_billing_date}}</p>
-    </div>
-    {{#if invoice_url}}<div style="text-align:center;margin:20px 0;">
-      <a href="{{invoice_url}}" style="background:#00b894;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">Ver recibo</a>
-    </div>{{/if}}
-    <p style="font-size:12px;color:#999;margin-top:20px;">Si tenes dudas sobre tu factura, respondenos a este correo.</p>
-  </div>
-</div>`,
+        subject: 'Pago confirmado — Gracias por confiar en Parallly',
+        bodyHtml: `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<tr><td style="text-align:center;padding:0 0 24px;">{{#if company_logo}}<img src="{{company_logo}}" alt="Parallly" style="height:36px;"/>{{/if}}</td></tr>
+<tr><td style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:4px;background:linear-gradient(90deg,#3897f0,#6c5ce7);"></td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="background:linear-gradient(135deg,#10b981,#059669);padding:40px 32px;text-align:center;">
+<p style="margin:0 0 8px;font-size:40px;line-height:1;">&#9989;</p>
+<h1 style="margin:0 0 8px;color:#fff;font-size:26px;font-weight:700;">Pago confirmado</h1>
+<p style="margin:0;font-size:15px;color:rgba(255,255,255,.9);">Gracias por seguir confiando en Parallly</p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:32px;">
+<p style="margin:0 0 4px;font-size:16px;color:#1f2937;">Hola <strong>{{customer_name}}</strong>,</p>
+<p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Recibimos tu pago exitosamente. Tu suscripcion sigue activa y todas tus herramientas estan funcionando.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border-radius:12px;border:1px solid #bbf7d0;margin-bottom:24px;">
+<tr><td style="padding:20px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Plan</td><td style="padding:6px 0;text-align:right;font-size:14px;font-weight:600;color:#1f2937;">{{plan_name}}</td></tr>
+<tr><td colspan="2" style="height:1px;background:#dcfce7;"></td></tr>
+<tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Monto cobrado</td><td style="padding:6px 0;text-align:right;font-size:14px;font-weight:600;color:#1f2937;">{{amount_charged}} {{currency}}</td></tr>
+<tr><td colspan="2" style="height:1px;background:#dcfce7;"></td></tr>
+<tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Proximo cobro</td><td style="padding:6px 0;text-align:right;font-size:14px;font-weight:600;color:#1f2937;">{{next_billing_date}}</td></tr>
+</table>
+</td></tr></table>
+{{#if invoice_url}}<div style="text-align:center;margin-bottom:24px;"><a href="{{invoice_url}}" style="font-size:13px;color:#3897f0;text-decoration:none;font-weight:600;">&#128196; Ver recibo completo</a></div>{{/if}}
+<div style="text-align:center;padding:4px 0 8px;"><a href="{{dashboard_url}}" style="display:inline-block;padding:14px 44px;background:linear-gradient(135deg,#3897f0,#2b7cd4);color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;box-shadow:0 4px 14px rgba(56,151,240,.3);">Ir a mi dashboard</a></div>
+<p style="margin:16px 0 0;text-align:center;font-size:12px;color:#9ca3af;">Dudas sobre tu factura? <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Contactanos</a></p>
+</td></tr></table>
+</td></tr>
+<tr><td style="text-align:center;padding:24px 0 8px;">
+<p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Parallly &mdash; Automatizacion conversacional inteligente</p>
+<p style="margin:0;font-size:11px;color:#d1d5db;"><a href="https://parallly-chat.cloud" style="color:#3897f0;text-decoration:none;">parallly-chat.cloud</a> &middot; <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Soporte</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`,
         bodyJson: {},
-        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'amount_charged', 'currency', 'next_billing_date', 'invoice_url'],
+        variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'amount_charged', 'currency', 'next_billing_date', 'invoice_url', 'dashboard_url'],
         isActive: true,
     },
 
@@ -331,25 +441,45 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
     {
         name: 'Pago fallido',
         slug: 'billing_payment_failed',
-        subject: 'No pudimos cobrar tu suscripcion — {{company_name}}',
-        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
-  <div style="background:linear-gradient(135deg,#e74c3c,#c0392b);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
-    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
-    <h2 style="color:white;margin:0;font-size:20px;">Problema con tu pago</h2>
-  </div>
-  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
-    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
-    <p style="font-size:14px;color:#555;">Intentamos cobrar tu suscripcion del plan <strong>{{plan_name}}</strong> por <strong>{{amount_charged}} {{currency}}</strong> pero la transaccion no pudo completarse.</p>
-    {{#if failure_reason}}<div style="background:#fff5f5;padding:12px;border-radius:8px;border-left:3px solid #e74c3c;margin:16px 0;">
-      <p style="margin:0;font-size:13px;color:#c0392b;"><strong>Motivo:</strong> {{failure_reason}}</p>
-    </div>{{/if}}
-    <p style="font-size:14px;color:#555;">Vamos a reintentar el cobro automaticamente en las proximas horas. Para evitar la suspension, actualiza tu metodo de pago ahora.</p>
-    <div style="text-align:center;margin:24px 0;">
-      <a href="{{update_payment_url}}" style="background:#e74c3c;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Actualizar metodo de pago</a>
-    </div>
-    <p style="font-size:12px;color:#999;margin-top:20px;">Tu cuenta sigue activa. Si despues de varios intentos no logramos cobrar, te avisaremos antes de suspender.</p>
-  </div>
-</div>`,
+        subject: 'Accion requerida: Problema con tu pago — Parallly',
+        bodyHtml: `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:32px 16px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<tr><td style="text-align:center;padding:0 0 24px;">{{#if company_logo}}<img src="{{company_logo}}" alt="Parallly" style="height:36px;"/>{{/if}}</td></tr>
+<tr><td style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:4px;background:linear-gradient(90deg,#3897f0,#6c5ce7);"></td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="background:linear-gradient(135deg,#ef4444,#dc2626);padding:40px 32px;text-align:center;">
+<p style="margin:0 0 8px;font-size:40px;line-height:1;">&#9888;</p>
+<h1 style="margin:0 0 8px;color:#fff;font-size:26px;font-weight:700;">Problema con tu pago</h1>
+<p style="margin:0;font-size:15px;color:rgba(255,255,255,.9);">No pudimos procesar el cobro de tu suscripcion</p>
+</td></tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:32px;">
+<p style="margin:0 0 4px;font-size:16px;color:#1f2937;">Hola <strong>{{customer_name}}</strong>,</p>
+<p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Intentamos cobrar tu suscripcion del plan <strong>{{plan_name}}</strong> por <strong>{{amount_charged}} {{currency}}</strong> pero la transaccion no pudo completarse.</p>
+{{#if failure_reason}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border-radius:12px;border:1px solid #fecaca;margin-bottom:24px;">
+<tr><td style="padding:16px 20px;">
+<p style="margin:0;font-size:14px;color:#991b1b;"><strong>Motivo:</strong> {{failure_reason}}</p>
+</td></tr></table>{{/if}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:12px;border:1px solid #dbeafe;margin-bottom:24px;">
+<tr><td style="padding:16px 20px;">
+<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">&#128260; Vamos a reintentar el cobro automaticamente en las proximas horas.</p>
+<p style="margin:4px 0 0;font-size:13px;color:#6b7280;">Para evitar la suspension de tu cuenta, actualiza tu metodo de pago ahora.</p>
+</td></tr></table>
+<div style="text-align:center;padding:4px 0 8px;"><a href="{{update_payment_url}}" style="display:inline-block;padding:14px 44px;background:linear-gradient(135deg,#3897f0,#2b7cd4);color:#fff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;box-shadow:0 4px 14px rgba(56,151,240,.3);">Actualizar metodo de pago</a></div>
+<p style="margin:16px 0 0;text-align:center;font-size:12px;color:#9ca3af;">Tu cuenta sigue activa. Te avisaremos antes de tomar cualquier accion.</p>
+</td></tr></table>
+</td></tr>
+<tr><td style="text-align:center;padding:24px 0 8px;">
+<p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Parallly &mdash; Automatizacion conversacional inteligente</p>
+<p style="margin:0;font-size:11px;color:#d1d5db;"><a href="https://parallly-chat.cloud" style="color:#3897f0;text-decoration:none;">parallly-chat.cloud</a> &middot; <a href="mailto:it.executive@parallext.com" style="color:#3897f0;text-decoration:none;">Soporte</a></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`,
         bodyJson: {},
         variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'amount_charged', 'currency', 'failure_reason', 'update_payment_url'],
         isActive: true,
@@ -514,8 +644,8 @@ export class EmailTemplatesService {
             customer_name: 'Juan Perez',
             customer_email: 'juan@ejemplo.com',
             customer_phone: '+57 300 123 4567',
-            company_name: 'Mi Empresa SAS',
-            company_logo: '',
+            company_name: 'Parallly',
+            company_logo: 'https://parallly-chat.cloud/parallly-logo.svg',
             service_name: 'Consulta General',
             appointment_date: '15 de abril, 2026',
             appointment_time: '3:00 PM',
@@ -526,18 +656,51 @@ export class EmailTemplatesService {
             order_total: '$110,000 COP',
             payment_method: 'Transferencia bancaria',
             cancel_link: '#',
+            plan_name: 'Starter',
+            trial_days: '14',
+            trial_ends_at: '17 de mayo, 2026',
+            amount_charged: '29.99',
+            currency: 'USD',
+            next_billing_date: '17 de junio, 2026',
+            dashboard_url: 'https://admin.parallly-chat.cloud/admin',
+            update_payment_url: 'https://admin.parallly-chat.cloud/admin/settings/billing',
+            invoice_url: '#',
+            failure_reason: 'Fondos insuficientes',
         };
         return samples[varName] || `[${varName}]`;
+    }
+
+    private readonly platformRefreshed = new Set<string>();
+
+    async refreshPlatformTemplates(schemaName: string): Promise<void> {
+        if (this.platformRefreshed.has(schemaName)) return;
+        const billingTpls = DEFAULT_TEMPLATES.filter(t => t.slug.startsWith('billing_'));
+        for (const tpl of billingTpls) {
+            const id = randomUUID();
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
+                 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+                   body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`,
+                [id, tpl.name, tpl.slug, tpl.subject, tpl.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive],
+            );
+        }
+        this.platformRefreshed.add(schemaName);
     }
 
     private async seedDefaults(schemaName: string): Promise<void> {
         this.logger.log(`Seeding default email templates for ${schemaName}`);
         for (const tpl of DEFAULT_TEMPLATES) {
             const id = randomUUID();
+            const isBilling = tpl.slug.startsWith('billing_');
+            const conflict = isBilling
+                ? `ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+                     body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`
+                : `ON CONFLICT (slug) DO NOTHING`;
             await this.prisma.executeInTenantSchema(schemaName,
                 `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at)
                  VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
-                 ON CONFLICT (slug) DO NOTHING`,
+                 ${conflict}`,
                 [id, tpl.name, tpl.slug, tpl.subject, tpl.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive],
             );
         }

@@ -94,6 +94,7 @@ export class BillingEmailService {
         const variables = this.buildVariables(tenant, admin, subscription, normalizedEvent, dashboardUrl);
 
         try {
+            await this.emailTemplates.refreshPlatformTemplates(tenant.schemaName);
             const sent = await this.emailTemplates.renderAndSend(
                 tenant.schemaName,
                 templateSlug,
@@ -128,7 +129,7 @@ export class BillingEmailService {
         return {
             customer_name: admin?.firstName ? `${admin.firstName} ${admin.lastName ?? ''}`.trim() : tenant.name,
             company_name: 'Parallly',
-            company_logo: '', // hook for future branded logo URL
+            company_logo: 'https://parallly-chat.cloud/parallly-logo.svg',
             plan_name: plan?.name ?? '',
             trial_days: String(plan?.trialDays ?? ''),
             trial_ends_at: fmt(subscription?.trialEndsAt),

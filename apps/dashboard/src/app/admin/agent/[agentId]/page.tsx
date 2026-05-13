@@ -442,44 +442,7 @@ export default function AgentEditorPage() {
         </div>
       )}
 
-      {/* Mode toggle */}
-      <div className="flex gap-2 mb-6">
-        <button
-          type="button"
-          onClick={() => setMode("guided")}
-          className={cn(
-            "flex-1 py-3 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all",
-            mode === "guided"
-              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400"
-          )}
-        >
-          <Sparkles size={16} /> {t("guidedSetup")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("prompt")}
-          className={cn(
-            "flex-1 py-3 px-5 rounded-xl border-2 text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 transition-all",
-            mode === "prompt"
-              ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400"
-          )}
-        >
-          <Brain size={16} /> {t("customPromptMode")}
-        </button>
-      </div>
-
-      {mode === "prompt" ? (
-        <CustomPromptMode
-          customPrompt={customPrompt}
-          onChangePrompt={setCustomPrompt}
-          saving={saving}
-          onSave={handleSave}
-          saveLabel={tc("saveChanges")}
-          savingLabel={tc("saving")}
-        />
-      ) : (
+      {(
         <>
           <AgentProfileCard
             config={config}

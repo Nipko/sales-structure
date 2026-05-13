@@ -108,7 +108,7 @@ export default function SetupWizardPage() {
         try {
             const result = await api.applySetupTemplate(tenantId, {
                 templateId: selectedTemplate.id,
-                customizations: { agentName, greeting, tone, enabledCapabilities },
+                customizations: { agentName, greeting, tone, enabledCapabilities, is247 },
                 selectedChannels,
             });
             templateApplied = !!(result as any)?.success;

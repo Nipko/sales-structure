@@ -103,6 +103,13 @@ export class PersonaController {
             if (body.customizations.tone) config.persona.personality.tone = body.customizations.tone;
             if (body.customizations.afterHoursMessage) config.hours.afterHoursMessage = body.customizations.afterHoursMessage;
             if (body.customizations.schedule) config.hours.schedule = body.customizations.schedule;
+            if (body.customizations.is247 !== undefined) {
+                if (!config.hours) config.hours = { timezone: 'America/Bogota', schedule: {}, afterHoursMessage: '' };
+                if (body.customizations.is247) {
+                    config.hours.schedule = {};
+                    config.hours.afterHoursMessage = '';
+                }
+            }
             if (Array.isArray(body.customizations.enabledCapabilities)) {
                 if (!config.tools) config.tools = {};
                 for (const cap of body.customizations.enabledCapabilities) {
@@ -146,7 +153,30 @@ export class PersonaController {
         // Save persona
         const createdBy = req.user?.sub || 'setup-wizard';
         const yamlContent = yaml.dump(config, { lineWidth: -1 });
-        const saved = await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
+        await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
+
+        // Sync to agent_personas (multi-agent system) — the setup wizard must
+        // update the actual agent record, not just the legacy persona_config.
+        const scheduleMode = body.customizations?.is247 === false ? 'business_hours' : '24_7';
+        const agents = await this.personaService.listAgents(tenantId);
+        const defaultAgent = agents.find((a: any) => a.is_default);
+        if (defaultAgent) {
+            await this.personaService.updateAgent(tenantId, defaultAgent.id, {
+                name: config.persona.name,
+                configJson: config,
+                scheduleMode,
+            });
+        } else {
+            await this.personaService.createAgent(tenantId, {
+                name: config.persona.name,
+                templateId: body.templateId,
+                configJson: config,
+                channels: body.selectedChannels || ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+                scheduleMode,
+                isDefault: true,
+                createdBy,
+            });
+        }
 
         // Mark setup wizard as completed in tenant settings
         await this.prisma.tenant.update({
@@ -163,7 +193,7 @@ export class PersonaController {
         });
 
         this.logger.log(`Setup wizard completed for tenant ${tenantId} with template ${body.templateId}`);
-        return { success: true, data: saved };
+        return { success: true };
     }
 
     @Post(':tenantId/setup-wizard/skip')

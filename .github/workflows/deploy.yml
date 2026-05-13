@@ -188,7 +188,7 @@ jobs:
           PROD_REDIS_HOST: ${{ secrets.REDIS_HOST }}
           PROD_REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           PROD_INTERNAL_JWT_SECRET: ${{ secrets.INTERNAL_JWT_SECRET }}
-          PROD_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PROD_JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
           PROD_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           PROD_META_APP_ID: ${{ secrets.META_APP_ID }}
           PROD_META_APP_SECRET: ${{ secrets.META_APP_SECRET }}

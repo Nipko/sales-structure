@@ -106,7 +106,8 @@ export class PersonaController {
             if (body.customizations.is247 !== undefined) {
                 if (!config.hours) config.hours = { timezone: 'America/Bogota', schedule: {}, afterHoursMessage: '' };
                 if (body.customizations.is247) {
-                    config.hours.schedule = {};
+                    const allDay = { start: '00:00', end: '23:59' };
+                    config.hours.schedule = { lun: allDay, mar: allDay, mie: allDay, jue: allDay, vie: allDay, sab: allDay, dom: allDay };
                     config.hours.afterHoursMessage = '';
                 }
             }

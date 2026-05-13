@@ -270,6 +270,7 @@ jobs:
           script: |
             set -e
             cd /opt/parallext-engine
+            export DC="docker compose --env-file .env -f infra/docker/docker-compose.prod.yml"
 
             echo "===> Pulling latest infrastructure code..."
             git fetch origin
@@ -366,12 +367,12 @@ jobs:
             echo "  [OK] .env generated and secured"
 
             echo "===> Ensuring postgres and redis are healthy..."
-            docker compose -f infra/docker/docker-compose.prod.yml \
+            $DC \
               up -d postgres redis
 
             echo "===> Waiting for postgres to be ready..."
             for i in $(seq 1 12); do
-              if docker compose -f infra/docker/docker-compose.prod.yml \
+              if $DC \
                   exec -T postgres \
                   pg_isready -U postgres > /dev/null 2>&1; then
                 echo "  [OK] Postgres ready after ${i}s"
@@ -382,7 +383,7 @@ jobs:
             done
 
             echo "===> Ensuring platform_settings table exists..."
-            docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+            $DC exec -T postgres \
               psql -U parallext -d parallext_engine -c "
                 CREATE TABLE IF NOT EXISTS platform_settings (
                   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), key TEXT UNIQUE NOT NULL,
@@ -392,7 +393,7 @@ jobs:
               " || true
 
             echo "===> Ensuring users columns exist..."
-            docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+            $DC exec -T postgres \
               psql -U parallext -d parallext_engine \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS availability_status VARCHAR(20) DEFAULT 'offline';" \
               -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS max_capacity INTEGER DEFAULT 5;" \
@@ -411,16 +412,16 @@ jobs:
               || true
 
             echo "===> Running Prisma public schema migrations..."
-            docker compose -f infra/docker/docker-compose.prod.yml \
+            $DC \
               run --rm \
               api npx prisma migrate deploy --schema=prisma/schema.prisma || true
 
             echo "===> Running tenant schema migration (idempotent)..."
-            docker compose -f infra/docker/docker-compose.prod.yml \
+            $DC \
               run --rm api npm run migrate:tenants || true
 
             echo "===> Seeding billing_plans (idempotent upsert)..."
-            docker compose -f infra/docker/docker-compose.prod.yml \
+            $DC \
               run --rm api node prisma/seed-billing-plans.js || true
 
             echo "===> Syncing billing plans to MercadoPago (Colombia)..."
@@ -431,15 +432,15 @@ jobs:
             # appleboy/ssh-action wraps each line with exit-code tracking and
             # chokes on bash arrays / case statements, so we keep the loop
             # unrolled as plain sequential invocations.
-            docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" || true
+            $DC run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" || true
             # Add below when opening new countries:
-            # docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}" || true
-            # docker compose -f infra/docker/docker-compose.prod.yml run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}" || true
+            # $DC run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}" || true
+            # $DC run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}" || true
 
             echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
-            for schema in $(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+            for schema in $($DC exec -T postgres \
               psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true); do
-              docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+              $DC exec -T postgres \
                 psql -U parallext -d parallext_engine -c "
                   DROP INDEX IF EXISTS ${schema}.ci_user_idx;
                   CREATE UNIQUE INDEX IF NOT EXISTS ci_user_idx ON ${schema}.calendar_integrations (user_id, provider);
@@ -447,17 +448,17 @@ jobs:
             done
 
             echo "===> Applying tenant-schema.sql to all existing tenants..."
-            TENANTS=$(docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+            TENANTS=$($DC exec -T postgres \
               psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true)
             for schema in $TENANTS; do
               echo "  Migrating tenant: $schema"
               cat apps/api/prisma/tenant-schema.sql | sed "s/{{SCHEMA_NAME}}/$schema/g" | \
-                docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \
+                $DC exec -T postgres \
                 psql -U parallext -d parallext_engine 2>/dev/null || true
             done
 
             echo "===> Restarting API, Worker, Dashboard, and WhatsApp..."
-            docker compose -f infra/docker/docker-compose.prod.yml \
+            $DC \
               up -d --force-recreate api worker dashboard whatsapp landing
 
 
@@ -481,7 +482,7 @@ jobs:
             fi
 
             echo "===> Ensuring tunnel is running..."
-            docker compose -f infra/docker/docker-compose.prod.yml up -d tunnel
+            $DC up -d tunnel
 
             echo "===> 🚀 Deploy complete! SHA: $GIT_SHA"
 

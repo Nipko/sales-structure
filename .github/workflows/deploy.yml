@@ -287,22 +287,6 @@ jobs:
             docker pull ghcr.io/nipko/parallext-whatsapp:latest
             docker pull ghcr.io/nipko/parallext-landing:latest
 
-            echo "===> Ensuring postgres and redis are healthy..."
-            docker compose -f infra/docker/docker-compose.prod.yml \
-              up -d postgres redis
-
-            echo "===> Waiting for postgres to be ready..."
-            for i in $(seq 1 12); do
-              if docker compose -f infra/docker/docker-compose.prod.yml \
-                  exec -T postgres \
-                  pg_isready -U postgres > /dev/null 2>&1; then
-                echo "  [OK] Postgres ready after ${i}s"
-                break
-              fi
-              echo "  [$i/12] waiting for postgres..."
-              sleep 5
-            done
-
             echo "===> Generating production .env from GitHub Secrets..."
             > .env
             echo "# Parallext Engine - Production Configuration" >> .env
@@ -380,6 +364,22 @@ jobs:
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
+
+            echo "===> Ensuring postgres and redis are healthy..."
+            docker compose -f infra/docker/docker-compose.prod.yml \
+              up -d postgres redis
+
+            echo "===> Waiting for postgres to be ready..."
+            for i in $(seq 1 12); do
+              if docker compose -f infra/docker/docker-compose.prod.yml \
+                  exec -T postgres \
+                  pg_isready -U postgres > /dev/null 2>&1; then
+                echo "  [OK] Postgres ready after ${i}s"
+                break
+              fi
+              echo "  [$i/12] waiting for postgres..."
+              sleep 5
+            done
 
             echo "===> Ensuring platform_settings table exists..."
             docker compose -f infra/docker/docker-compose.prod.yml exec -T postgres \

@@ -83,8 +83,10 @@ async function bootstrap() {
         .addTag('analytics', 'Analytics & Reporting')
         .build();
 
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('docs', app, document);
+    if (process.env.NODE_ENV !== 'production') {
+        const document = SwaggerModule.createDocument(app, config);
+        SwaggerModule.setup('docs', app, document);
+    }
 
     // Protect Bull Board with token (allow static assets through)
     const bullBoardToken = process.env.BULL_BOARD_TOKEN;

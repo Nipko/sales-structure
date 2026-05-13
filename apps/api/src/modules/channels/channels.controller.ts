@@ -326,20 +326,25 @@ export class ChannelsController {
     async receiveTelegramByBot(
         @Param('botUsername') botUsername: string,
         @Body() body: any,
+        @Headers('x-telegram-bot-api-secret-token') secretToken: string,
         @Res() res: Response,
     ) {
         res.status(200).send('OK');
-        await this.processTelegramUpdate(body, botUsername);
+        await this.processTelegramUpdate(body, botUsername, secretToken);
     }
 
     @Post('webhook/telegram')
     @ApiOperation({ summary: 'Receive Telegram Bot webhook updates (generic)' })
-    async receiveTelegram(@Body() body: any, @Res() res: Response) {
+    async receiveTelegram(
+        @Body() body: any,
+        @Headers('x-telegram-bot-api-secret-token') secretToken: string,
+        @Res() res: Response,
+    ) {
         res.status(200).send('OK');
-        await this.processTelegramUpdate(body, null);
+        await this.processTelegramUpdate(body, null, secretToken);
     }
 
-    private async processTelegramUpdate(body: any, botUsername: string | null): Promise<void> {
+    private async processTelegramUpdate(body: any, botUsername: string | null, secretToken?: string): Promise<void> {
         try {
             // Idempotency check via update_id
             const updateId = body?.update_id;
@@ -359,11 +364,18 @@ export class ChannelsController {
             }
 
             if (!channelAccount) {
-                // Fallback: find any active Telegram channel account for this bot
-                // (for generic webhook URL with single-bot setups)
                 channelAccount = await this.prisma.channelAccount.findFirst({
                     where: { channelType: 'telegram', isActive: true },
                 });
+            }
+
+            // Validate webhook secret if configured on this bot
+            if (channelAccount) {
+                const expectedSecret = (channelAccount.metadata as any)?.webhookSecret;
+                if (expectedSecret && secretToken !== expectedSecret) {
+                    this.logger.warn(`Telegram webhook secret mismatch for bot ${botUsername || 'unknown'}`);
+                    return;
+                }
             }
 
             if (!channelAccount) {

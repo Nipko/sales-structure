@@ -182,17 +182,22 @@ export class TelegramAdapter implements IChannelAdapter {
      * Set webhook URL for a bot via Telegram API.
      * Called when connecting a bot from the dashboard.
      */
-    async setWebhook(botToken: string, webhookUrl: string): Promise<{ ok: boolean; description?: string }> {
+    async setWebhook(botToken: string, webhookUrl: string, secretToken?: string): Promise<{ ok: boolean; description?: string }> {
         const url = `${this.apiUrl}/bot${botToken}/setWebhook`;
+
+        const body: any = {
+            url: webhookUrl,
+            allowed_updates: ['message', 'edited_message', 'callback_query'],
+            drop_pending_updates: false,
+        };
+        if (secretToken) {
+            body.secret_token = secretToken;
+        }
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: webhookUrl,
-                allowed_updates: ['message', 'edited_message', 'callback_query'],
-                drop_pending_updates: false,
-            }),
+            body: JSON.stringify(body),
         });
 
         const data = await response.json() as any;

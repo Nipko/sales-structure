@@ -46,9 +46,12 @@ export default function KBArticlePage() {
       .finally(() => setLoading(false));
   }, [tenantSlug, slug]);
 
-  // Simple markdown-like rendering (bold, links, headings, lists)
+  const escapeHtml = (str: string) =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const renderContent = (text: string) => {
-    return text
+    const escaped = escapeHtml(text);
+    return escaped
       .replace(/^### (.+)$/gm, '<h3 style="font-size:18px;font-weight:700;margin:24px 0 8px;color:#111827">$1</h3>')
       .replace(/^## (.+)$/gm, '<h2 style="font-size:20px;font-weight:700;margin:28px 0 10px;color:#111827">$1</h2>')
       .replace(/^# (.+)$/gm, '<h1 style="font-size:24px;font-weight:700;margin:32px 0 12px;color:#111827">$1</h1>')

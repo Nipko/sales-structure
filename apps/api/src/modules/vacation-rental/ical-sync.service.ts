@@ -29,13 +29,29 @@ export class IcalSyncService {
 
         try {
             // 2. Fetch and parse .ics
-            // We use axios directly, mimicking Google Calendar to bypass Cloudflare/Bot protection
-            // Airbnb and Booking.com whitelist Google Calendar's User-Agent
             let url = feed.import_url.trim().replace(/&amp;/g, '&');
-            url = url.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Remove zero-width spaces
-            
+            url = url.replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+            // SSRF protection: validate URL before fetching
+            try {
+                const parsed = new URL(url);
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    this.logger.warn(`Feed ${feedId}: blocked non-HTTP URL: ${parsed.protocol}`);
+                    return { imported: 0, deleted: 0 };
+                }
+                const hostname = parsed.hostname.toLowerCase();
+                const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
+                if (blocked.test(hostname)) {
+                    this.logger.warn(`Feed ${feedId}: blocked private/reserved IP: ${hostname}`);
+                    return { imported: 0, deleted: 0 };
+                }
+            } catch {
+                this.logger.warn(`Feed ${feedId}: invalid URL: ${url.substring(0, 80)}`);
+                return { imported: 0, deleted: 0 };
+            }
+
             this.logger.log(`Fetching feed ${feedId} from ${url.substring(0, 50)}...`);
-            
+
             const response = await axios.get(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (compatible; Google-Calendar-Importer; +http://www.google.com/bot.html)',

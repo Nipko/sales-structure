@@ -9,6 +9,8 @@ import { MicrosoftAuthService } from './microsoft-auth.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
+import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
 
 class LoginDto {
     @IsEmail()
@@ -95,6 +97,8 @@ export class AuthController {
     }
 
     @Post('login')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(10, 900) // 10 attempts per 15 minutes
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login with email and password' })
     async login(@Body() dto: LoginDto) {
@@ -103,6 +107,8 @@ export class AuthController {
     }
 
     @Post('signup')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(5, 3600) // 5 attempts per hour
     @HttpCode(HttpStatus.CREATED)
     @ApiOperation({ summary: 'Self-service signup: create a new company and admin account' })
     async signup(@Body() dto: SignupDto) {
@@ -359,7 +365,8 @@ export class AuthController {
     }
 
     @Post('verify-email')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthThrottleGuard, AuthGuard('jwt'))
+    @AuthThrottle(10, 900) // 10 attempts per 15 minutes
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Verify email with 6-digit code' })
@@ -381,6 +388,8 @@ export class AuthController {
     // ── Password reset (public) ──────────────────────────────────
 
     @Post('forgot-password')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(5, 3600) // 5 attempts per hour
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Request password reset code (public)' })
     async forgotPassword(@Body() body: { email: string }) {
@@ -389,6 +398,8 @@ export class AuthController {
     }
 
     @Post('reset-password')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(10, 900) // 10 attempts per 15 minutes
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Confirm password reset with code (public)' })
     async resetPassword(@Body() body: { email: string; code: string; newPassword: string }) {
@@ -475,6 +486,8 @@ export class AuthController {
     }
 
     @Post('2fa/verify')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(10, 900) // 10 attempts per 15 minutes
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Verify 2FA code during login (public — uses twoFAToken)' })
     async verify2FA(@Body() body: { twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup'; rememberMe?: boolean }) {

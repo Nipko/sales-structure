@@ -192,6 +192,13 @@ export class SegmentsService {
         return count;
     }
 
+    private static readonly ALLOWED_FILTER_FIELDS = new Set([
+        'first_name', 'last_name', 'phone', 'email', 'stage', 'source',
+        'score', 'assigned_to', 'is_vip', 'created_at', 'updated_at',
+        'converted_at', 'archived_at', 'tags',
+    ]);
+    private static readonly METADATA_KEY_PATTERN = /^[a-zA-Z0-9_]+$/;
+
     private buildFilterSQL(rules: FilterRule[]): { whereClause: string; params: any[] } {
         if (!rules || rules.length === 0) {
             return { whereClause: '', params: [] };
@@ -203,9 +210,15 @@ export class SegmentsService {
 
         for (const rule of rules) {
             const isMetadata = rule.field.startsWith('metadata.');
-            const column = isMetadata
-                ? `metadata->>'${rule.field.replace('metadata.', '')}'`
-                : rule.field;
+            let column: string;
+            if (isMetadata) {
+                const key = rule.field.replace('metadata.', '');
+                if (!SegmentsService.METADATA_KEY_PATTERN.test(key)) continue;
+                column = `metadata->>'${key}'`;
+            } else {
+                if (!SegmentsService.ALLOWED_FILTER_FIELDS.has(rule.field)) continue;
+                column = rule.field;
+            }
 
             switch (rule.operator) {
                 case 'eq':

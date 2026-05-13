@@ -25,6 +25,15 @@ export default function InstagramCallback() {
             return;
         }
 
+        // Validate OAuth state parameter (CSRF protection)
+        const returnedState = params.get("state");
+        const savedState = localStorage.getItem("ig_oauth_state");
+        if (!returnedState || !savedState || returnedState !== savedState) {
+            finish("error", "Invalid OAuth state — possible CSRF attack. Please try again.");
+            return;
+        }
+        localStorage.removeItem("ig_oauth_state");
+
         const codeKey = `ig_code_used_${code.slice(0, 16)}`;
         if (sessionStorage.getItem(codeKey)) {
             return;

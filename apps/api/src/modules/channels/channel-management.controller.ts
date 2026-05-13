@@ -2,6 +2,7 @@ import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, Bad
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
@@ -142,7 +143,10 @@ export class ChannelManagementController {
         const baseUrl = apiUrl.replace('/api/v1', '');
         const webhookUrl = `${baseUrl}/api/v1/channels/webhook/telegram/${accountId}`;
 
-        const webhookResult = await this.telegramAdapter.setWebhook(botToken, webhookUrl);
+        // Generate a secret token for webhook validation
+        const webhookSecret = crypto.randomBytes(32).toString('hex');
+
+        const webhookResult = await this.telegramAdapter.setWebhook(botToken, webhookUrl, webhookSecret);
         if (!webhookResult.ok) {
             this.logger.error(`Failed to set Telegram webhook: ${webhookResult.description}`);
             throw new BadRequestException(`Error al configurar webhook: ${webhookResult.description}`);
@@ -169,6 +173,7 @@ export class ChannelManagementController {
                         botUsername: botInfo.username,
                         botName: botInfo.firstName,
                         webhookUrl,
+                        webhookSecret,
                     },
                 },
             });
@@ -187,6 +192,7 @@ export class ChannelManagementController {
                         botUsername: botInfo.username,
                         botName: botInfo.firstName,
                         webhookUrl,
+                        webhookSecret,
                     },
                 },
             });

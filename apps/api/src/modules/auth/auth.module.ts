@@ -10,6 +10,7 @@ import { MicrosoftAuthService } from './microsoft-auth.service';
 import { SamlService } from './saml.service';
 import { SamlStrategy } from './saml.strategy';
 import { SamlController } from './saml.controller';
+import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
 import { PersonaModule } from '../persona/persona.module';
 import { BusinessInfoModule } from '../business-info/business-info.module';
 import { BillingModule } from '../billing/billing.module';
@@ -34,7 +35,7 @@ import { VerticalsModule } from '../verticals/verticals.module';
         }),
     ],
     controllers: [AuthController, SamlController],
-    providers: [AuthService, JwtStrategy, GoogleAuthService, MicrosoftAuthService, SamlService, SamlStrategy],
+    providers: [AuthService, JwtStrategy, GoogleAuthService, MicrosoftAuthService, SamlService, SamlStrategy, AuthThrottleGuard],
     exports: [AuthService, JwtStrategy, PassportModule, SamlService],
 })
 export class AuthModule { }

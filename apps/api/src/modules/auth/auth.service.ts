@@ -935,7 +935,7 @@ export class AuthService {
 
         await this.prisma.user.update({
             where: { id: userId },
-            data: { twoFactorSecret: secret },
+            data: { twoFactorSecret: this.encryptTotpSecret(secret) },
         });
 
         return { secret, otpauthUrl, qrCodeDataUrl };
@@ -951,7 +951,8 @@ export class AuthService {
             throw new BadRequestException('Run setup first');
         }
 
-        const verifyTotp = new TOTP({ secret: Secret.fromBase32(user.twoFactorSecret) });
+        const decryptedSecret = this.decryptTotpSecret(user.twoFactorSecret);
+        const verifyTotp = new TOTP({ secret: Secret.fromBase32(decryptedSecret) });
         const isValid = verifyTotp.validate({ token: code, window: 1 }) !== null;
         if (!isValid) {
             throw new BadRequestException('Invalid code. Make sure your authenticator app is synced.');
@@ -1057,7 +1058,8 @@ export class AuthService {
 
         if (method === 'totp') {
             if (!user.twoFactorSecret) throw new BadRequestException('TOTP not configured');
-            const t = new TOTP({ secret: Secret.fromBase32(user.twoFactorSecret) });
+            const decrypted = this.decryptTotpSecret(user.twoFactorSecret);
+            const t = new TOTP({ secret: Secret.fromBase32(decrypted) });
             valid = t.validate({ token: code, window: 1 }) !== null;
         } else if (method === 'email') {
             const storedCode = await this.redis.get(`2fa:email:${userId}`);
@@ -1468,6 +1470,38 @@ export class AuthService {
      * Starter tenants from Argentina don't get Colombian MP plan ids.
      * Expand this list as we onboard more countries.
      */
+    private encryptTotpSecret(plaintext: string): string {
+        const key = process.env.ENCRYPTION_KEY;
+        if (!key || key.length < 32) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('ENCRYPTION_KEY is required in production — cannot store TOTP secrets without encryption');
+            }
+            return plaintext;
+        }
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(key, 'hex').subarray(0, 32), iv);
+        let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        const tag = cipher.getAuthTag().toString('hex');
+        return `${iv.toString('hex')}:${tag}:${encrypted}`;
+    }
+
+    private decryptTotpSecret(ciphertext: string): string {
+        const key = process.env.ENCRYPTION_KEY;
+        if (!key || key.length < 32) {
+            return ciphertext;
+        }
+        if (!ciphertext.includes(':')) {
+            return ciphertext;
+        }
+        const [ivHex, tagHex, encryptedHex] = ciphertext.split(':');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(key, 'hex').subarray(0, 32), Buffer.from(ivHex, 'hex'));
+        decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+        let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    }
+
     private inferCountryFromTimezone(tz: string | undefined): string {
         if (!tz) return 'CO';
         const map: Record<string, string> = {

@@ -61,7 +61,12 @@ export class OpportunitiesRepository {
     if (!schema) return null;
 
     const record = data as Record<string, any>;
-    const fields = Object.keys(record).filter(k => record[k] !== undefined);
+    const ALLOWED_FIELDS = [
+      'lead_id', 'title', 'value', 'currency', 'stage', 'probability',
+      'expected_close_date', 'assigned_to', 'notes', 'metadata',
+      'source', 'lost_reason', 'won_date', 'lost_date',
+    ];
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     const values = fields.map(k => record[k]);
     const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -78,7 +83,12 @@ export class OpportunitiesRepository {
     if (!schema) return null;
 
     const record = data as Record<string, any>;
-    const fields = Object.keys(record).filter(k => record[k] !== undefined);
+    const ALLOWED_FIELDS = [
+      'lead_id', 'title', 'value', 'currency', 'stage', 'probability',
+      'expected_close_date', 'assigned_to', 'notes', 'metadata',
+      'source', 'lost_reason', 'won_date', 'lost_date',
+    ];
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     if (fields.length === 0) return this.getOpportunityById(tenantId, id);
 
     const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');

@@ -87,8 +87,14 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
 
     // Protect Bull Board with token (allow static assets through)
-    const bullBoardToken = process.env.BULL_BOARD_TOKEN || 'parallly-queues-2026';
+    const bullBoardToken = process.env.BULL_BOARD_TOKEN;
+    if (!bullBoardToken) {
+        console.warn('BULL_BOARD_TOKEN not set — Bull Board dashboard disabled');
+    }
     app.use('/api/v1/admin/queues', (req: any, res: any, next: any) => {
+        if (!bullBoardToken) {
+            return res.status(503).json({ message: 'Bull Board disabled — BULL_BOARD_TOKEN not configured' });
+        }
         // Allow static assets (JS, CSS, images) without auth
         if (req.url?.includes('/static/') || req.url?.endsWith('.js') || req.url?.endsWith('.css') || req.url?.endsWith('.svg')) {
             return next();

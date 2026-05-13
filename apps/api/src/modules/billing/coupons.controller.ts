@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CouponsService } from './coupons.service';
 import { BillingService } from './billing.service';
@@ -51,7 +52,7 @@ class RedeemCouponDto {
  * scoped via the path tenant param.
  */
 @Controller('billing-coupons')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CouponsController {
     constructor(
         private readonly couponsService: CouponsService,

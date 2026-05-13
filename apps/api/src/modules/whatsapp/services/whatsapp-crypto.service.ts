@@ -8,6 +8,9 @@ export class WhatsappCryptoService {
   encryptToken(plaintext: string): string {
     const key = process.env.ENCRYPTION_KEY;
     if (!key || key.length < 32) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('ENCRYPTION_KEY is required in production — cannot store tokens without encryption');
+      }
       this.logger.warn('ENCRYPTION_KEY not set or too short — storing token as base64 (DEV ONLY)');
       return Buffer.from(plaintext).toString('base64');
     }

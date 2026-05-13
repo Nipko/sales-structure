@@ -1,6 +1,9 @@
 import { BadRequestException, Body, Controller, Get, Logger, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
@@ -69,6 +72,8 @@ class PauseSubscriptionDto {
 }
 
 @Controller('billing')
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@ApiBearerAuth()
 export class BillingController {
     private readonly logger = new Logger(BillingController.name);
 

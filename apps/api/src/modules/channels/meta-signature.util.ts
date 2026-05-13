@@ -9,7 +9,7 @@ export function validateMetaSignature(
     signature: string | undefined,
     appSecret: string | undefined,
 ): boolean {
-    if (!appSecret) return true; // Skip in dev if not configured
+    if (!appSecret) return false;
     if (!rawBody || !signature) return false;
 
     try {

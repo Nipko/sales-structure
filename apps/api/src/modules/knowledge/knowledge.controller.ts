@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -88,7 +89,8 @@ export class KnowledgeController {
     // ─── Legacy Resource Endpoints ───────────────────────────────────────────
 
     @Get('resources/:tenantId')
-    @ApiOperation({ summary: 'List knowledge resources (legacy)' })
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'List knowledge resources' })
     async getResources(
         @Param('tenantId') tenantId: string,
         @Query('status') status?: string,
@@ -97,7 +99,7 @@ export class KnowledgeController {
     }
 
     @Post('resources/:tenantId')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Create a knowledge resource' })
     async createResource(
         @Param('tenantId') tenantId: string,
@@ -110,7 +112,7 @@ export class KnowledgeController {
     }
 
     @Delete('resources/:tenantId/:resourceId')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a knowledge resource' })
     async deleteResource(
@@ -122,7 +124,8 @@ export class KnowledgeController {
     }
 
     @Get('search/:tenantId')
-    @ApiOperation({ summary: 'Search approved knowledge resources (legacy ILIKE)' })
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'Search approved knowledge resources' })
     async searchChunks(
         @Param('tenantId') tenantId: string,
         @Query('query') query: string,

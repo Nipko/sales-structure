@@ -226,7 +226,12 @@ export class LeadsRepository {
     if (record.phone) {
       record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
     }
-    const fields = Object.keys(record).filter(k => record[k] !== undefined);
+    const ALLOWED_FIELDS = [
+      'first_name', 'last_name', 'phone', 'phone_normalized', 'email', 'stage',
+      'source', 'score', 'assigned_to', 'is_vip', 'notes', 'metadata',
+      'tags', 'customer_profile_id', 'archived_at', 'converted_at',
+    ];
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     const values = fields.map(k => record[k]);
     const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -248,9 +253,12 @@ export class LeadsRepository {
     if (record.phone) {
       record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
     }
-    // Filter out non-column fields and undefined values
-    const skipFields = ['tags', 'id'];
-    const fields = Object.keys(record).filter(k => record[k] !== undefined && !skipFields.includes(k));
+    const ALLOWED_FIELDS = [
+      'first_name', 'last_name', 'phone', 'phone_normalized', 'email', 'stage',
+      'source', 'score', 'assigned_to', 'is_vip', 'notes', 'metadata',
+      'customer_profile_id', 'archived_at', 'converted_at',
+    ];
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     if (fields.length === 0) return this.getLeadById(tenantId, id);
 
     const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');

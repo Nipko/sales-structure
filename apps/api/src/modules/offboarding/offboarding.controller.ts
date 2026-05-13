@@ -2,12 +2,13 @@ import { Controller, Get, Post, Delete, Body, Param, UseGuards, Logger } from '@
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { OffboardingService } from './offboarding.service';
 
 @ApiTags('offboarding')
 @Controller('offboarding')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class OffboardingController {
     private readonly logger = new Logger(OffboardingController.name);

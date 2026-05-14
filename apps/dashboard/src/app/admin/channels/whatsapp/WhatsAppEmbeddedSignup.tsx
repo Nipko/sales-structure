@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ============================================
 interface EmbeddedSignupProps {
   tenantId: string;
+  mode?: "standard" | "coexistence";
   onSuccess: (data: OnboardingResult) => void;
   onError: (error: string) => void;
 }
@@ -36,7 +37,7 @@ const META_BUSINESS_ID = process.env.NEXT_PUBLIC_META_BUSINESS_ID || "";
 // ============================================
 // Component
 // ============================================
-export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }: EmbeddedSignupProps) {
+export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", onSuccess, onError }: EmbeddedSignupProps) {
     const tc = useTranslations("common");
     const t = useTranslations("channels.whatsapp");
   const [sdkLoaded, setSdkLoaded] = useState(false);
@@ -179,9 +180,9 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
             tenantId,
             configId: META_CONFIG_ID,
             code,
-            mode: "new",
+            mode: mode === "coexistence" ? "coexistence" : "new",
             source: "embedded_signup",
-            coexistenceAcknowledged: false,
+            coexistenceAcknowledged: mode === "coexistence",
             phoneNumberId: sessionPhoneNumberId,
             wabaId: sessionWabaId,
           };
@@ -256,8 +257,10 @@ export default function WhatsAppEmbeddedSignup({ tenantId, onSuccess, onError }:
           ...(META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {}),
           ...(META_BUSINESS_ID ? { business_id: META_BUSINESS_ID } : {}),
         },
-        featureType: "whatsapp_business_app_onboarding",
-        sessionInfoVersion: "3",
+        ...(mode === "coexistence" ? {
+          featureType: "whatsapp_business_app_onboarding",
+          sessionInfoVersion: "3",
+        } : {}),
         version: "v4",
       },
     };

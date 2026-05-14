@@ -7,13 +7,17 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
-    MessageSquare, CheckCircle,
-    Zap, Phone, Smartphone, PhoneCall, RefreshCw, PhoneForwarded,
+    MessageSquare, CheckCircle, Check, X,
+    Phone, Sparkles, Layers, ArrowRightLeft,
     AlertCircle, ArrowRight, Sprout, Clock, XCircle, LogOut,
-    HelpCircle, FileCheck, AlertTriangle, Ban,
+    AlertTriangle, Shield, Timer, Info,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
+
+type Route = "new" | "coexistence" | "migration";
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const MetaLogo = ({ className }: { className?: string }) => (
     <svg className={className} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -22,6 +26,36 @@ const MetaLogo = ({ className }: { className?: string }) => (
     </svg>
 );
 
+const ROUTES: {
+    id: Route;
+    icon: typeof Sparkles;
+    iconColor: string;
+    iconBg: string;
+    tagColor: string;
+}[] = [
+    {
+        id: "new",
+        icon: Sparkles,
+        iconColor: "text-[#25D366]",
+        iconBg: "bg-[#25D366]/10",
+        tagColor: "bg-[#25D366]/10 text-[#25D366]",
+    },
+    {
+        id: "coexistence",
+        icon: Layers,
+        iconColor: "text-[#1877F2]",
+        iconBg: "bg-[#1877F2]/10",
+        tagColor: "bg-[#1877F2]/10 text-[#1877F2]",
+    },
+    {
+        id: "migration",
+        icon: ArrowRightLeft,
+        iconColor: "text-orange-500",
+        iconBg: "bg-orange-500/10",
+        tagColor: "bg-orange-500/10 text-orange-500",
+    },
+];
+
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
     const t = useTranslations("channels");
@@ -29,13 +63,13 @@ export default function WhatsAppSetupPage() {
     const twt = useTranslations("whatsappTemplates");
     const router = useRouter();
     const { user } = useAuth();
+
+    const [selectedRoute, setSelectedRoute] = useState<Route>("new");
     const [status, setStatus] = useState<any>(null);
     const [templates, setTemplates] = useState<any[]>([]);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
-
     const [phoneNumber, setPhoneNumber] = useState("");
     const [phoneNumberId, setPhoneNumberId] = useState("");
-
     const [loading, setLoading] = useState(true);
     const [disconnecting, setDisconnecting] = useState(false);
     const [showDisconnectModal, setShowDisconnectModal] = useState(false);
@@ -43,7 +77,6 @@ export default function WhatsAppSetupPage() {
 
     const loadData = async () => {
         setLoading(true);
-
         try {
             const statusRes = await api.fetch("/channels/whatsapp/status");
             setStatus(statusRes);
@@ -53,18 +86,15 @@ export default function WhatsAppSetupPage() {
                 setPhoneNumberId(channelData.phone_number_id || channelData.metadata?.phoneNumberId || channelData.accountId || "");
             }
         } catch (e) { console.error("Failed to load WA status", e); }
-
         try {
             const tplRes = await api.fetch("/channels/whatsapp/templates");
             setTemplates(tplRes || []);
         } catch (e) { console.error("Failed to load WA templates", e); }
-
         try {
             const configRes = await api.getWhatsappConfig();
             if (configRes?.data) setConfig(configRes.data);
             else if ((configRes as any)?.webhookUrl) setConfig(configRes as any);
         } catch (e) { console.error("Failed to load WA config", e); }
-
         setLoading(false);
     };
 
@@ -105,7 +135,7 @@ export default function WhatsAppSetupPage() {
 
     return (
         <div className="mx-auto max-w-[960px]">
-            {/* ======== HEADER ======== */}
+            {/* ═══════════ HEADER ═══════════ */}
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <div className="flex items-center gap-2.5">
@@ -114,19 +144,15 @@ export default function WhatsAppSetupPage() {
                         </div>
                         <h1 className="text-[28px] font-semibold m-0">WhatsApp Business</h1>
                     </div>
-                    <p className="text-[var(--text-secondary)] mt-1">
-                        {tw("pageSubtitle")}
-                    </p>
+                    <p className="text-[var(--text-secondary)] mt-1">{tw("pageSubtitle")}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div
-                        className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
-                            isConnected
-                                ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
-                                : "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
-                        )}
-                    >
+                    <div className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-semibold border",
+                        isConnected
+                            ? "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
+                            : "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
+                    )}>
                         {isConnected ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                         {isConnected ? t("connected") : t("disconnected")}
                     </div>
@@ -142,60 +168,237 @@ export default function WhatsAppSetupPage() {
                 </div>
             </div>
 
-            {/* Alert Message */}
+            {/* Alert */}
             {message.text && (
-                <div
-                    className={cn(
-                        "p-4 rounded-xl mb-6 text-sm border",
-                        message.type === "error"
-                            ? "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
-                            : message.type === "warning"
-                            ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-900"
-                            : "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
-                    )}
-                >
+                <div className={cn(
+                    "p-4 rounded-xl mb-6 text-sm border",
+                    message.type === "error"
+                        ? "bg-[rgba(231,76,60,0.1)] text-[#e74c3c] border-[rgba(231,76,60,0.2)]"
+                        : message.type === "warning"
+                        ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-900"
+                        : "bg-[rgba(46,204,113,0.1)] text-[#2ecc71] border-[rgba(46,204,113,0.2)]"
+                )}>
                     {message.text}
                 </div>
             )}
 
-            {/* ======== CONNECTION ======== */}
+            {/* ═══════════ NOT CONNECTED ═══════════ */}
             {!isConnected ? (
-                <div className="rounded-xl p-7 mb-6 bg-gradient-to-br from-[rgba(37,211,102,0.05)] to-[rgba(18,140,126,0.08)] border border-[rgba(37,211,102,0.15)]">
-                    <div className="flex items-center gap-2.5 mb-5">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#25D366]">
-                            <Zap size={16} className="text-white" />
+                <>
+                    {/* Meta brief */}
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[rgba(24,119,242,0.04)] border border-[rgba(24,119,242,0.1)] mb-8">
+                        <div className="w-8 h-8 rounded-lg bg-[#1877F2] flex items-center justify-center shrink-0">
+                            <MetaLogo className="w-4 h-4 text-white" />
                         </div>
-                        <div>
-                            <h2 className="text-base font-semibold m-0">{tw("embeddedTitle")}</h2>
-                            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                                {tw("embeddedSubtitle")}
+                        <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">{tw("metaBrief")}</p>
+                    </div>
+
+                    {/* Route selection header */}
+                    <div className="mb-5">
+                        <h2 className="text-lg font-semibold">{tw("routeTitle")}</h2>
+                        <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">{tw("routeSubtitle")}</p>
+                    </div>
+
+                    {/* Route cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+                        {ROUTES.map((route) => {
+                            const isSelected = selectedRoute === route.id;
+                            const Icon = route.icon;
+                            return (
+                                <button
+                                    key={route.id}
+                                    onClick={() => setSelectedRoute(route.id)}
+                                    className={cn(
+                                        "relative flex flex-col items-start p-5 rounded-xl border-2 transition-all text-left cursor-pointer bg-[var(--bg-secondary)]",
+                                        isSelected
+                                            ? "border-[#25D366] shadow-[0_0_0_1px_rgba(37,211,102,0.15),0_4px_12px_rgba(37,211,102,0.08)]"
+                                            : "border-border hover:border-[var(--text-secondary)]/30"
+                                    )}
+                                >
+                                    <div className={cn(
+                                        "absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                        isSelected ? "border-[#25D366] bg-[#25D366]" : "border-[var(--text-secondary)]/25"
+                                    )}>
+                                        {isSelected && <Check size={12} className="text-white" />}
+                                    </div>
+                                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3", route.iconBg)}>
+                                        <Icon size={20} className={route.iconColor} />
+                                    </div>
+                                    <h3 className="text-[14px] font-semibold mb-0.5 pr-6">{tw(`route${cap(route.id)}Title`)}</h3>
+                                    <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed mb-3">{tw(`route${cap(route.id)}Short`)}</p>
+                                    <div className="flex items-center gap-2 mt-auto">
+                                        <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md", route.tagColor)}>
+                                            {tw(`route${cap(route.id)}Tag`)}
+                                        </span>
+                                        <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1">
+                                            <Timer size={11} />
+                                            {tw(`route${cap(route.id)}Time`)}
+                                        </span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* ─── Route detail panel ─── */}
+                    <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                        {/* Overview */}
+                        <div className="p-6 border-b border-border">
+                            <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+                                {tw(`route${cap(selectedRoute)}Overview`)}
                             </p>
                         </div>
-                    </div>
 
-                    {/* Meta / Facebook explanation */}
-                    <div className="flex items-start gap-3 mb-5 rounded-lg bg-[rgba(24,119,242,0.06)] dark:bg-[rgba(24,119,242,0.1)] border border-[rgba(24,119,242,0.15)] p-4">
-                        <div className="w-10 h-10 rounded-lg bg-[#1877F2] flex items-center justify-center shrink-0">
-                            <MetaLogo className="w-5 h-5 text-white" />
+                        {/* Coexistence: sync table */}
+                        {selectedRoute === "coexistence" && (
+                            <>
+                                <div className="p-6 border-b border-border">
+                                    <h3 className="text-sm font-semibold mb-4">{tw("routeCoexSyncTitle")}</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                        <div>
+                                            <p className="text-[11px] font-semibold text-[#2ecc71] mb-2.5 uppercase tracking-wider">{tw("syncYes")}</p>
+                                            <div className="flex flex-col gap-2">
+                                                {[1, 2, 3, 4].map(i => (
+                                                    <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
+                                                        <CheckCircle size={13} className="text-[#2ecc71] shrink-0 mt-0.5" />
+                                                        <span>{tw(`routeCoexSyncYes${i}`)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] font-semibold text-[#e74c3c] mb-2.5 uppercase tracking-wider">{tw("syncNo")}</p>
+                                            <div className="flex flex-col gap-2">
+                                                {[1, 2, 3, 4].map(i => (
+                                                    <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
+                                                        <X size={13} className="text-[#e74c3c] shrink-0 mt-0.5" />
+                                                        <span>{tw(`routeCoexSyncNo${i}`)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Limitations */}
+                                <div className="p-6 border-b border-border">
+                                    <h3 className="text-sm font-semibold mb-3">{tw("routeCoexLimitTitle")}</h3>
+                                    <div className="flex flex-col gap-2.5">
+                                        {[1, 2, 3, 4].map(i => (
+                                            <div key={i} className="flex items-start gap-2.5 text-[12px] text-[var(--text-secondary)]">
+                                                <Info size={13} className="text-amber-500 shrink-0 mt-0.5" />
+                                                <span>{tw(`routeCoexLimit${i}`)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Migration: preserved / lost */}
+                        {selectedRoute === "migration" && (
+                            <div className="p-6 border-b border-border">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                    <div>
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                            <CheckCircle size={14} className="text-[#2ecc71]" />
+                                            {tw("routeMigPreservedTitle")}
+                                        </h3>
+                                        <div className="flex flex-col gap-2">
+                                            {[1, 2, 3, 4, 5].map(i => (
+                                                <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
+                                                    <CheckCircle size={13} className="text-[#2ecc71] shrink-0 mt-0.5" />
+                                                    <span>{tw(`routeMigPreserved${i}`)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                            <XCircle size={14} className="text-[#e74c3c]" />
+                                            {tw("routeMigLostTitle")}
+                                        </h3>
+                                        <div className="flex flex-col gap-2">
+                                            {[1, 2, 3, 4].map(i => (
+                                                <div key={i} className="flex items-start gap-2 text-[12px] text-[var(--text-secondary)]">
+                                                    <X size={13} className="text-[#e74c3c] shrink-0 mt-0.5" />
+                                                    <span>{tw(`routeMigLost${i}`)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Steps */}
+                        <div className="p-6 border-b border-border">
+                            <h3 className="text-sm font-semibold mb-3">{tw("stepsTitle")}</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {[1, 2, 3, 4].map(i => (
+                                    <div key={i} className="flex items-start gap-2.5 rounded-lg border border-border bg-[var(--bg-tertiary)] p-3">
+                                        <span className="w-6 h-6 rounded-full bg-[#25D366] text-white text-xs font-bold flex items-center justify-center shrink-0">{i}</span>
+                                        <span className="text-[12px] text-[var(--text-secondary)] leading-relaxed mt-0.5">
+                                            {tw(`route${cap(selectedRoute)}Step${i}`)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-[13px] font-semibold mb-1">{tw("metaExplainTitle")}</p>
-                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-1.5">{tw("metaExplainDesc")}</p>
-                            <p className="text-xs text-[#1877F2] dark:text-[#5a9cf5] font-medium">{tw("metaExplainNote")}</p>
+
+                        {/* Prerequisites */}
+                        <div className="p-6 border-b border-border">
+                            <h3 className="text-sm font-semibold mb-3">{tw("reqsTitle")}</h3>
+                            <div className="flex flex-col gap-2">
+                                {[1, 2, 3, 4].map(i => (
+                                    <div key={i} className="flex items-start gap-2.5 text-[12px] text-[var(--text-secondary)]">
+                                        <Shield size={13} className="text-[#25D366] shrink-0 mt-0.5" />
+                                        <span>{tw(`route${cap(selectedRoute)}Req${i}`)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Warnings (coexistence) */}
+                        {selectedRoute === "coexistence" && (
+                            <div className="p-6 border-b border-border">
+                                <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4">
+                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                    <span className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">{tw("routeCoexNote")}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Warnings (migration) */}
+                        {selectedRoute === "migration" && (
+                            <div className="p-6 border-b border-border flex flex-col gap-2.5">
+                                <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4">
+                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                    <span className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">{tw("routeMigWarnBM")}</span>
+                                </div>
+                                <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4">
+                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                    <span className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">{tw("routeMigWarn2FA")}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Connect button */}
+                        <div className="p-6">
+                            <WhatsAppEmbeddedSignup
+                                mode={selectedRoute === "coexistence" ? "coexistence" : "standard"}
+                                tenantId={getTenantId()}
+                                onSuccess={(result) => {
+                                    setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
+                                    loadData();
+                                }}
+                                onError={(error) => setMessage({ type: "error", text: error })}
+                            />
                         </div>
                     </div>
-
-                    <WhatsAppEmbeddedSignup
-                        tenantId={getTenantId()}
-                        onSuccess={(result) => {
-                            setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
-                            loadData();
-                        }}
-                        onError={(error) => setMessage({ type: "error", text: error })}
-                    />
-                </div>
+                </>
             ) : (
-                /* ======== CONNECTED STATE ======== */
+                /* ═══════════ CONNECTED STATE ═══════════ */
                 <div className="mb-6">
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
@@ -239,7 +442,7 @@ export default function WhatsAppSetupPage() {
                 </div>
             )}
 
-            {/* ======== TEMPLATES (connected only) ======== */}
+            {/* ═══════════ TEMPLATES (connected only) ═══════════ */}
             {isConnected && (() => {
                 const approvedCount = templates.filter((x: any) => x.approval_status === "APPROVED").length;
                 const pendingCount  = templates.filter((x: any) => x.approval_status === "PENDING").length;
@@ -300,108 +503,6 @@ export default function WhatsAppSetupPage() {
                     </div>
                 );
             })()}
-
-            {/* ======== HELP SECTION ======== */}
-            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
-                <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
-                    <HelpCircle size={18} className="text-primary" />
-                    <div>
-                        <h2 className="text-base font-semibold m-0">{tw("helpTitle")}</h2>
-                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">{tw("helpSubtitle")}</p>
-                    </div>
-                </div>
-                <div className="p-6 flex flex-col gap-6">
-                    {/* How it works */}
-                    <div>
-                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                            <Zap size={16} className="text-[#1877F2]" />
-                            {tw("howItWorksTitle")}
-                        </h3>
-                        <p className="text-[13px] text-[var(--text-secondary)] mb-3 leading-relaxed">{tw("howItWorksDesc")}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                            {[tw("howItWorksStep1"), tw("howItWorksStep2"), tw("howItWorksStep3"), tw("howItWorksStep4")].map((step, i) => (
-                                <div key={i} className="flex items-start gap-2.5 rounded-lg border border-border bg-[var(--bg-tertiary)] p-3">
-                                    <span className="w-6 h-6 rounded-full bg-[#1877F2] text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                                    <span className="text-xs text-[var(--text-secondary)] leading-relaxed mt-0.5">{step}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t border-border" />
-
-                    {/* Number paths */}
-                    <div>
-                        <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
-                            <Phone size={16} className="text-[#25D366]" />
-                            {tw("numberPathsTitle")}
-                        </h3>
-                        <p className="text-xs text-[var(--text-secondary)] mb-3">{tw("numberPathsSubtitle")}</p>
-                        <div className="flex flex-col gap-2.5">
-                            {([
-                                { icon: <Smartphone size={16} className="text-[#25D366]" />, title: tw("pathNewTitle"), desc: tw("pathNewDesc"), tag: tw("pathNewTag"), tagColor: "bg-[#25D366]/10 text-[#25D366]" },
-                                { icon: <PhoneCall size={16} className="text-blue-500" />, title: tw("pathPersonalTitle"), desc: tw("pathPersonalDesc") },
-                                { icon: <RefreshCw size={16} className="text-purple-500" />, title: tw("pathBusinessAppTitle"), desc: tw("pathBusinessAppDesc"), tag: tw("pathBusinessAppTag"), tagColor: "bg-purple-500/10 text-purple-500" },
-                                { icon: <PhoneForwarded size={16} className="text-orange-500" />, title: tw("pathMigrationTitle"), desc: tw("pathMigrationDesc") },
-                                { icon: <Phone size={16} className="text-[var(--text-secondary)]" />, title: tw("pathLandlineTitle"), desc: tw("pathLandlineDesc") },
-                            ] as const).map((path, i) => (
-                                <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-[var(--bg-tertiary)] p-3.5">
-                                    <div className="mt-0.5 shrink-0">{path.icon}</div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="text-[13px] font-semibold">{path.title}</span>
-                                            {"tag" in path && path.tag && (
-                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${path.tagColor}`}>{path.tag}</span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{path.desc}</p>
-                                    </div>
-                                </div>
-                            ))}
-                            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] mt-1">
-                                <Ban size={12} className="text-[#e74c3c] shrink-0" />
-                                <span>{tw("pathUnsupported")}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="border-t border-border" />
-
-                    {/* Prerequisites */}
-                    <div>
-                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                            <FileCheck size={16} className="text-[#25D366]" />
-                            {tw("reqTitle")}
-                        </h3>
-                        <div className="flex flex-col gap-2">
-                            {[tw("req1"), tw("req2"), tw("req3"), tw("req4")].map((req, i) => (
-                                <div key={i} className="flex items-start gap-2.5 text-[13px] text-[var(--text-secondary)] leading-relaxed">
-                                    <CheckCircle size={14} className="text-[#25D366] mt-0.5 shrink-0" />
-                                    <span>{req}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t border-border" />
-
-                    {/* Important Notes */}
-                    <div>
-                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                            <AlertTriangle size={16} className="text-amber-500" />
-                            {tw("importantTitle")}
-                        </h3>
-                        <div className="flex flex-col gap-2.5">
-                            {[tw("important1"), tw("important2"), tw("important3")].map((note, i) => (
-                                <div key={i} className="flex items-start gap-2.5 text-[13px] leading-relaxed rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-3">
-                                    <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                                    <span className="text-amber-800 dark:text-amber-300">{note}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <DisconnectChannelModal
                 open={showDisconnectModal}

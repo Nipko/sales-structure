@@ -213,46 +213,65 @@ export class BillingService {
             return this.scheduleDowngrade(tenantId, sub.id, newPlan.id);
         }
 
-        const provider = this.providerFactory.getByName(sub.provider);
-        const tenantForCountry = await this.prisma.tenant.findUnique({
+        const providerName = sub.provider as PaymentProviderName;
+        const provider = this.providerFactory.getByName(providerName);
+        const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { billingCountry: true, billingEmail: true },
+            select: { id: true, name: true, billingCountry: true, billingEmail: true, paymentProviderCustomerId: true },
         });
-        const newProviderPlanId = this.resolveProviderPlanId(newPlan, sub.provider as PaymentProviderName, tenantForCountry?.billingCountry);
-        if (!sub.providerSubscriptionId) {
-            throw new BadRequestException({ error: 'missing_provider_subscription', message: 'Subscription has no provider id — cannot upgrade.' });
-        }
+        const newProviderPlanId = this.resolveProviderPlanId(newPlan, providerName, tenant?.billingCountry);
 
         let updatedStatus = sub.status;
         let currentPeriodStart = sub.currentPeriodStart;
         let currentPeriodEnd = sub.currentPeriodEnd;
         let newProviderSubscriptionId = sub.providerSubscriptionId;
 
-        // Mercado Pago doesn't support changing plans dynamically via PUT on existing subscriptions.
-        // We must cancel the old one and create a new one using the provided card token.
         if (sub.provider === 'mercadopago') {
             if (!cardTokenId) {
                 throw new BadRequestException({ error: 'card_token_required_for_upgrade', message: 'A new card token is required to upgrade a Mercado Pago subscription.' });
             }
-            
-            // 1. Create the new subscription first to ensure the card is valid
+
+            const payerEmail = tenant?.billingEmail;
+            if (!payerEmail) {
+                throw new BadRequestException({ error: 'mp_payer_email_required', message: 'Tenant billingEmail is required for MercadoPago. Set it in tenant settings.' });
+            }
+
+            // Ensure we have a provider customer ID (starter trials skip customer creation)
+            let custId = sub.providerCustomerId || tenant?.paymentProviderCustomerId;
+            if (!custId) {
+                const customer = await provider.createCustomer({
+                    tenantId,
+                    email: payerEmail,
+                    name: tenant?.name || '',
+                    country: tenant?.billingCountry || undefined,
+                });
+                custId = customer.providerCustomerId;
+                await this.prisma.tenant.update({ where: { id: tenantId }, data: { paymentProviderCustomerId: custId } });
+            }
+
+            // Create the new subscription
             const newProviderSub = await provider.createSubscription({
                 tenantId,
-                providerCustomerId: sub.providerCustomerId!, // Carry over synthetic id
+                providerCustomerId: custId,
                 providerPlanId: newProviderPlanId,
                 cardTokenId,
-                metadata: { email: tenantForCountry?.billingEmail || '' },
+                metadata: { email: payerEmail, billingEmail: payerEmail },
             });
-            
-            // 2. Cancel the old subscription at Mercado Pago
-            await provider.cancelSubscription(sub.providerSubscriptionId, { immediate: true });
-            
+
+            // Cancel the old MP subscription if one existed
+            if (sub.providerSubscriptionId) {
+                await provider.cancelSubscription(sub.providerSubscriptionId, { immediate: true });
+            }
+
             updatedStatus = newProviderSub.status;
             currentPeriodStart = newProviderSub.currentPeriodStart || null;
             currentPeriodEnd = newProviderSub.currentPeriodEnd || null;
             newProviderSubscriptionId = newProviderSub.providerSubscriptionId;
         } else {
-            // Stripe or Mock
+            // Stripe or Mock — requires an existing provider subscription
+            if (!sub.providerSubscriptionId) {
+                throw new BadRequestException({ error: 'missing_provider_subscription', message: 'Subscription has no provider id — cannot upgrade via this provider.' });
+            }
             const updated = await provider.changeSubscriptionPlan(sub.providerSubscriptionId, newProviderPlanId);
             updatedStatus = updated.status;
             currentPeriodStart = updated.currentPeriodStart || null;

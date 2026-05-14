@@ -8,9 +8,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
     MessageSquare, CheckCircle,
-    Zap, Phone,
+    Zap, Phone, Smartphone, PhoneCall, RefreshCw, PhoneForwarded,
     AlertCircle, ArrowRight, Sprout, Clock, XCircle, LogOut,
-    HelpCircle, FileCheck, AlertTriangle,
+    HelpCircle, FileCheck, AlertTriangle, Ban,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
@@ -325,6 +325,43 @@ export default function WhatsAppSetupPage() {
                                     <span className="text-xs text-[var(--text-secondary)] leading-relaxed mt-0.5">{step}</span>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+
+                    <div className="border-t border-border" />
+
+                    {/* Number paths */}
+                    <div>
+                        <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                            <Phone size={16} className="text-[#25D366]" />
+                            {tw("numberPathsTitle")}
+                        </h3>
+                        <p className="text-xs text-[var(--text-secondary)] mb-3">{tw("numberPathsSubtitle")}</p>
+                        <div className="flex flex-col gap-2.5">
+                            {([
+                                { icon: <Smartphone size={16} className="text-[#25D366]" />, title: tw("pathNewTitle"), desc: tw("pathNewDesc"), tag: tw("pathNewTag"), tagColor: "bg-[#25D366]/10 text-[#25D366]" },
+                                { icon: <PhoneCall size={16} className="text-blue-500" />, title: tw("pathPersonalTitle"), desc: tw("pathPersonalDesc") },
+                                { icon: <RefreshCw size={16} className="text-purple-500" />, title: tw("pathBusinessAppTitle"), desc: tw("pathBusinessAppDesc"), tag: tw("pathBusinessAppTag"), tagColor: "bg-purple-500/10 text-purple-500" },
+                                { icon: <PhoneForwarded size={16} className="text-orange-500" />, title: tw("pathMigrationTitle"), desc: tw("pathMigrationDesc") },
+                                { icon: <Phone size={16} className="text-[var(--text-secondary)]" />, title: tw("pathLandlineTitle"), desc: tw("pathLandlineDesc") },
+                            ] as const).map((path, i) => (
+                                <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-[var(--bg-tertiary)] p-3.5">
+                                    <div className="mt-0.5 shrink-0">{path.icon}</div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="text-[13px] font-semibold">{path.title}</span>
+                                            {"tag" in path && path.tag && (
+                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${path.tagColor}`}>{path.tag}</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{path.desc}</p>
+                                    </div>
+                                </div>
+                            ))}
+                            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] mt-1">
+                                <Ban size={12} className="text-[#e74c3c] shrink-0" />
+                                <span>{tw("pathUnsupported")}</span>
+                            </div>
                         </div>
                     </div>
 

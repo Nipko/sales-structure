@@ -49,6 +49,15 @@ export class WebhooksService implements OnModuleDestroy {
       case 'account_update':
         await this.handleAccountUpdate(wabaId, value);
         break;
+      case 'smb_message_echoes':
+        await this.handleMessageEchoEvent(wabaId, value);
+        break;
+      case 'history':
+        await this.handleHistoryEvent(wabaId, value);
+        break;
+      case 'smb_app_state_sync':
+        await this.handleContactSyncEvent(wabaId, value);
+        break;
       default:
         this.logger.debug(`Unhandled webhook field: ${field}`);
     }
@@ -129,6 +138,148 @@ export class WebhooksService implements OnModuleDestroy {
 
       await this.redis.setex(dedupeKey, 86400, '1');
     }
+  }
+
+  /**
+   * Coexistence: message echoes — messages sent from the WhatsApp Business App
+   * after coexistence is activated. These are outbound messages from the business
+   * that should appear in the platform inbox but NOT trigger AI or automations.
+   */
+  private async handleMessageEchoEvent(wabaId: string, value: any) {
+    const metadata = value?.metadata;
+    const phoneNumberId = metadata?.phone_number_id;
+    if (!phoneNumberId) return;
+
+    const tenantInfo = await this.resolveTenant(phoneNumberId);
+    if (!tenantInfo) {
+      this.logger.warn(`[CoexEcho] No tenant for phoneNumberId: ${phoneNumberId}`);
+      return;
+    }
+
+    const echoes = value?.message_echoes || [];
+    for (const echo of echoes) {
+      const dedupeKey = `wa:echo:${echo.id}`;
+      const exists = await this.redis.get(dedupeKey);
+      if (exists) continue;
+
+      await this.webhookQueue.add('process-coex-echo', {
+        tenantId: tenantInfo.tenantId,
+        schemaName: tenantInfo.schemaName,
+        wabaId,
+        phoneNumberId,
+        echo,
+        timestamp: new Date().toISOString(),
+      }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        jobId: `coex-echo:${echo.id}`,
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      });
+
+      await this.redis.setex(dedupeKey, 86400, '1');
+    }
+
+    this.logger.log(`[CoexEcho] Enqueued ${echoes.length} echo(es) for tenant ${tenantInfo.tenantId}`);
+  }
+
+  /**
+   * Coexistence: history sync — up to 6 months of past chat history.
+   * Arrives in phases (0=24h, 1=1-90d, 2=90-180d) with chunked delivery.
+   * Text messages cover 180 days; media only available for last 14 days.
+   * Chunks may arrive out of order — use chunk_order to reassemble.
+   */
+  private async handleHistoryEvent(wabaId: string, value: any) {
+    const metadata = value?.metadata;
+    const phoneNumberId = metadata?.phone_number_id;
+    if (!phoneNumberId) return;
+
+    const tenantInfo = await this.resolveTenant(phoneNumberId);
+    if (!tenantInfo) {
+      this.logger.warn(`[CoexHistory] No tenant for phoneNumberId: ${phoneNumberId}`);
+      return;
+    }
+
+    const historyEntries = value?.history || [];
+    for (const entry of historyEntries) {
+      const phase = entry?.metadata?.phase || '0';
+      const chunkOrder = entry?.metadata?.chunk_order || '0';
+      const progress = entry?.metadata?.progress || '0';
+      const threads = entry?.threads || [];
+
+      const dedupeKey = `wa:hist:${phoneNumberId}:p${phase}:c${chunkOrder}`;
+      const exists = await this.redis.get(dedupeKey);
+      if (exists) continue;
+
+      await this.webhookQueue.add('process-coex-history', {
+        tenantId: tenantInfo.tenantId,
+        schemaName: tenantInfo.schemaName,
+        wabaId,
+        phoneNumberId,
+        phase,
+        chunkOrder: parseInt(chunkOrder, 10),
+        progress: parseInt(progress, 10),
+        threads,
+        timestamp: new Date().toISOString(),
+      }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 3000 },
+        jobId: `coex-hist:${phoneNumberId}:${phase}:${chunkOrder}`,
+        removeOnComplete: 200,
+        removeOnFail: 1000,
+      });
+
+      await this.redis.setex(dedupeKey, 86400, '1');
+
+      // Track sync progress in Redis for dashboard visibility
+      await this.redis.setex(
+        `coex:sync:${tenantInfo.tenantId}:${phoneNumberId}`,
+        3600,
+        JSON.stringify({ phase, chunkOrder, progress, updatedAt: new Date().toISOString() }),
+      );
+
+      this.logger.log(
+        `[CoexHistory] Enqueued phase=${phase} chunk=${chunkOrder} progress=${progress}% ` +
+        `(${threads.length} threads) for tenant ${tenantInfo.tenantId}`,
+      );
+    }
+  }
+
+  /**
+   * Coexistence: contact sync — contacts from the WhatsApp Business App.
+   * Initial batch arrives after onboarding; incremental updates follow.
+   * Actions: 'add', 'update', 'remove'.
+   */
+  private async handleContactSyncEvent(wabaId: string, value: any) {
+    const metadata = value?.metadata;
+    const phoneNumberId = metadata?.phone_number_id;
+    if (!phoneNumberId) return;
+
+    const tenantInfo = await this.resolveTenant(phoneNumberId);
+    if (!tenantInfo) {
+      this.logger.warn(`[CoexContacts] No tenant for phoneNumberId: ${phoneNumberId}`);
+      return;
+    }
+
+    const contacts = value?.state_sync || [];
+    if (contacts.length === 0) return;
+
+    await this.webhookQueue.add('process-coex-contacts', {
+      tenantId: tenantInfo.tenantId,
+      schemaName: tenantInfo.schemaName,
+      wabaId,
+      phoneNumberId,
+      contacts,
+      timestamp: new Date().toISOString(),
+    }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+      jobId: `coex-contacts:${phoneNumberId}:${Date.now()}`,
+      removeOnComplete: 100,
+      removeOnFail: 500,
+    });
+
+    this.logger.log(`[CoexContacts] Enqueued ${contacts.length} contact(s) for tenant ${tenantInfo.tenantId}`);
   }
 
   /**

@@ -302,6 +302,17 @@ export class OnboardingService {
           data: { webhookValidatedAt: new Date() },
         });
         this.logger.log(`[Onboarding][${onboardingId}] Webhook subscription successful`);
+
+        // Coexistence mode: log that additional webhook fields are expected.
+        // Meta automatically sends history, smb_message_echoes, and smb_app_state_sync
+        // webhooks when the phone is onboarded with featureType='whatsapp_business_app_onboarding'.
+        // The fields are configured in Meta App Dashboard > WhatsApp > Configuration.
+        if (dto.mode === OnboardingMode.COEXISTENCE) {
+          this.logger.log(
+            `[Onboarding][${onboardingId}] Coexistence mode — expecting additional webhook fields: ` +
+            `history, smb_message_echoes, smb_app_state_sync`,
+          );
+        }
       } else {
         this.logger.warn(`[Onboarding][${onboardingId}] Webhook subscription returned false — may need manual verification`);
       }

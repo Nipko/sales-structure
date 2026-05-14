@@ -62,6 +62,7 @@ import {
   Package,
   ShoppingCart,
   Shield,
+  Lightbulb,
   type LucideIcon,
 } from "lucide-react";
 
@@ -163,6 +164,7 @@ const tenantSections: NavSectionDef[] = [
     titleKey: "config",
     items: [
       { labelKey: "settings", href: "/admin/settings", icon: Settings },
+      { labelKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
     ],
   },
 ];
@@ -567,7 +569,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
               <p className="text-[12px] font-semibold text-foreground truncate">
                 {user?.firstName} {user?.lastName}
               </p>
-              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium">{roleLabel}</p>
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium truncate">{roleLabel}</p>
             </div>
           </div>
         </div>

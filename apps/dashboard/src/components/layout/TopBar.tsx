@@ -497,7 +497,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         <select
           value={activeTenantId || ""}
           onChange={(e) => setActiveTenant(e.target.value)}
-          className="h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="h-8 max-w-[200px] rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-700 dark:text-neutral-300 px-2 truncate focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           {tenants.map((t) => (
             <option key={t.id} value={t.id}>
@@ -520,7 +520,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
               {user?.firstName?.charAt(0) || "U"}
             </div>
           )}
-          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 hidden sm:inline">
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 hidden sm:inline max-w-[120px] truncate">
             {user?.firstName}
           </span>
           <ChevronDown size={14} className="text-neutral-400" />
@@ -537,14 +537,14 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
                   {user?.firstName?.charAt(0) || "U"}
                 </div>
               )}
-              <div>
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
                 {user?.firstName} {user?.lastName}
               </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
                 {user?.email}
               </p>
-              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 truncate">
                 {user?.tenantName ? `${user.tenantName} · ${roleLabel}` : roleLabel}
               </p>
               </div>

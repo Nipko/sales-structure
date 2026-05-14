@@ -126,6 +126,28 @@ const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
         { key: 'desarrollo', label: 'Desarrollo de software' },
         { key: 'hardware', label: 'Hardware y redes' },
     ],
+    pet_services: [
+        { key: 'peluqueria', label: 'Peluquería canina / felina' },
+        { key: 'guarderia', label: 'Guardería y hotel' },
+        { key: 'paseos', label: 'Paseos y cuidado a domicilio' },
+        { key: 'entrenamiento', label: 'Entrenamiento y adiestramiento' },
+        { key: 'tienda', label: 'Tienda de mascotas' },
+    ],
+    servicios_hogar: [
+        { key: 'plomeria', label: 'Plomería' },
+        { key: 'electricidad', label: 'Electricidad' },
+        { key: 'cerrajeria', label: 'Cerrajería' },
+        { key: 'limpieza', label: 'Limpieza profesional' },
+        { key: 'pintura', label: 'Pintura y remodelación' },
+        { key: 'multiservicio', label: 'Multiservicio / General' },
+    ],
+    fotografia: [
+        { key: 'bodas', label: 'Bodas y eventos' },
+        { key: 'retrato', label: 'Retrato y book' },
+        { key: 'producto', label: 'Fotografía de producto' },
+        { key: 'corporativo', label: 'Corporativo y empresas' },
+        { key: 'inmobiliaria', label: 'Fotografía inmobiliaria' },
+    ],
 };
 
 const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: string}>> = {
@@ -201,13 +223,43 @@ const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: st
         { key: 'faq', label: 'Información de servicios y honorarios', icon: '📋' },
         { key: 'support', label: 'Seguimiento de casos', icon: '📂' },
     ],
+    retail: [
+        { key: 'sales', label: 'Recomendar y vender productos', icon: '🛍️' },
+        { key: 'faq', label: 'Consultar stock y precios', icon: '📦' },
+        { key: 'promotions', label: 'Enviar promociones y ofertas', icon: '🎁' },
+        { key: 'support', label: 'Soporte postventa y devoluciones', icon: '📞' },
+    ],
+    technology: [
+        { key: 'lead_qualification', label: 'Calificar leads B2B', icon: '🎯' },
+        { key: 'appointments', label: 'Agendar demos y reuniones', icon: '💻' },
+        { key: 'support', label: 'Soporte técnico nivel 1', icon: '🔧' },
+        { key: 'faq', label: 'FAQ de producto y documentación', icon: '📖' },
+    ],
+    pet_services: [
+        { key: 'appointments', label: 'Agendar peluquería, guardería y paseos', icon: '🐾' },
+        { key: 'sales', label: 'Recomendar productos para mascotas', icon: '🛒' },
+        { key: 'faq', label: 'Información de servicios y requisitos', icon: '❓' },
+        { key: 'reminders', label: 'Recordatorios de citas y vacunas', icon: '🔔' },
+    ],
+    servicios_hogar: [
+        { key: 'sales', label: 'Cotizar servicios y reparaciones', icon: '🔧' },
+        { key: 'appointments', label: 'Agendar visitas del técnico', icon: '📅' },
+        { key: 'support', label: 'Seguimiento y garantía postventa', icon: '✅' },
+        { key: 'faq', label: 'Información de coberturas y precios', icon: '💰' },
+    ],
+    fotografia: [
+        { key: 'sales', label: 'Cotizar paquetes y sesiones', icon: '📸' },
+        { key: 'appointments', label: 'Agendar sesiones fotográficas', icon: '📅' },
+        { key: 'support', label: 'Gestionar entregas y galerías', icon: '🖼️' },
+        { key: 'promotions', label: 'Enviar portafolio y promociones', icon: '🎨' },
+    ],
 };
 
 const VERTICAL_AGENT_NAMES: Record<string, string> = {
     salud: 'Sofía',
     veterinaria: 'Dra. Ana',
     gimnasios: 'Alex',
-    seguros: 'Roberto',
+    seguros: 'Andrés',
     moda_belleza: 'Luna',
     inmobiliaria: 'Carlos',
     restaurantes: 'Luca',
@@ -216,6 +268,11 @@ const VERTICAL_AGENT_NAMES: Record<string, string> = {
     education: 'Pablo',
     finanzas: 'Roberto',
     servicios_profesionales: 'Elena',
+    retail: 'Sofía',
+    technology: 'Diego',
+    pet_services: 'Luna',
+    servicios_hogar: 'Carlos',
+    fotografia: 'Valentina',
 };
 
 const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = {
@@ -279,6 +336,34 @@ const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = 
         { key: 'businesses', label: 'Empresas' },
         { key: 'legal', label: 'Casos legales/contables' },
     ],
+    retail: [
+        { key: 'b2c', label: 'Compradores individuales' },
+        { key: 'b2b', label: 'Clientes mayoristas / B2B' },
+        { key: 'online', label: 'Compradores online' },
+    ],
+    technology: [
+        { key: 'b2b', label: 'Empresas y PYMES' },
+        { key: 'startups', label: 'Startups' },
+        { key: 'developers', label: 'Desarrolladores y equipos técnicos' },
+    ],
+    pet_services: [
+        { key: 'dog_owners', label: 'Dueños de perros' },
+        { key: 'cat_owners', label: 'Dueños de gatos' },
+        { key: 'multi_pet', label: 'Dueños de múltiples mascotas' },
+        { key: 'breeders', label: 'Criadores y refugios' },
+    ],
+    servicios_hogar: [
+        { key: 'homeowners', label: 'Propietarios de vivienda' },
+        { key: 'renters', label: 'Arrendatarios' },
+        { key: 'admins', label: 'Administradores de edificios' },
+        { key: 'b2b', label: 'Empresas y oficinas' },
+    ],
+    fotografia: [
+        { key: 'couples', label: 'Novios y parejas' },
+        { key: 'families', label: 'Familias' },
+        { key: 'businesses', label: 'Empresas y marcas' },
+        { key: 'events', label: 'Organizadores de eventos' },
+    ],
 };
 
 const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
@@ -294,6 +379,11 @@ const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
     education: 'estudiantes',
     finanzas: 'clientes',
     servicios_profesionales: 'clientes',
+    retail: 'compradores',
+    technology: 'empresas',
+    pet_services: 'tutores',
+    servicios_hogar: 'clientes',
+    fotografia: 'clientes',
 };
 
 // TikTok icon (lucide doesn't have one)

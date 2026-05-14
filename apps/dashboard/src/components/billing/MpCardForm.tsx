@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useTheme } from "next-themes";
 import { CreditCard, AlertTriangle, Loader2 } from "lucide-react";
 import {
     initMercadoPago,
@@ -32,6 +33,9 @@ function ensureInit() {
 
 export default function MpCardForm({ onToken, submitting = false, submitLabel, externalSubmit = false }: MpCardFormProps) {
     const t = useTranslations("mpCardForm");
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme === "dark";
+
     const [cardholderName, setCardholderName] = useState("");
     const [identificationType, setIdentificationType] = useState("");
     const [identificationNumber, setIdentificationNumber] = useState("");
@@ -39,6 +43,15 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
     const [tokenizing, setTokenizing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [ready, setReady] = useState(false);
+
+    const fieldStyle = useMemo(() => ({
+        height: "100%",
+        "font-size": "14px",
+        "font-family": "Inter, system-ui, sans-serif",
+        padding: "0 12px",
+        color: isDark ? "#f5f5f5" : "#171717",
+        "placeholder-color": isDark ? "#737373" : "#a3a3a3",
+    }), [isDark]);
 
     useEffect(() => {
         if (!MP_KEY) {
@@ -110,6 +123,7 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
     }
 
     const inputCls = "w-full h-11 px-3 py-2.5 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100";
+    const iframeCls = "h-11 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-neutral-900 overflow-hidden [&_div]:!h-full [&_iframe]:!h-full [&_iframe]:!w-full [&_iframe]:!border-none";
 
     return (
         <div className="space-y-3">
@@ -124,7 +138,9 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
                 <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
                     {t("cardNumber")}
                 </label>
-                <CardNumber placeholder="1234 5678 9012 3456" />
+                <div className={iframeCls}>
+                    <CardNumber placeholder="1234 5678 9012 3456" style={fieldStyle} />
+                </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -132,13 +148,17 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
                     <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
                         {t("expiry")}
                     </label>
-                    <ExpirationDate placeholder="MM/YY" />
+                    <div className={iframeCls}>
+                        <ExpirationDate placeholder="MM/YY" style={fieldStyle} />
+                    </div>
                 </div>
                 <div>
                     <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
                         {t("cvv")}
                     </label>
-                    <SecurityCode placeholder="CVV" />
+                    <div className={iframeCls}>
+                        <SecurityCode placeholder="CVV" style={fieldStyle} />
+                    </div>
                 </div>
             </div>
 

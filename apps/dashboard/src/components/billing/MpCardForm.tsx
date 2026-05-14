@@ -46,34 +46,45 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
     useEffect(() => {
         if (!ready || !mp || fieldsReady) return;
         let disposed = false;
-        (async () => {
-            try {
-                const cardNumber = mp.fields.create("cardNumber", {
-                    placeholder: "1234 5678 9012 3456",
-                    style: FIELD_STYLE,
-                });
-                const expiry = mp.fields.create("expirationDate", {
-                    placeholder: "MM/YY",
-                    style: FIELD_STYLE,
-                });
-                const cvv = mp.fields.create("securityCode", {
-                    placeholder: "CVV",
-                    style: FIELD_STYLE,
-                });
-                if (disposed) return;
-                await Promise.all([
-                    cardNumber.mount("#mp-card-number"),
-                    expiry.mount("#mp-card-expiry"),
-                    cvv.mount("#mp-card-cvv"),
-                ]);
-                fieldsRef.current = { number: cardNumber, expiry, cvv };
-                setFieldsReady(true);
-            } catch (e: any) {
-                if (!disposed) setFieldsError(e?.message || "mp_fields_init_failed");
-            }
-        })();
+        let rafId: number;
+
+        rafId = requestAnimationFrame(() => {
+            const numberEl = document.getElementById("mp-card-number");
+            const expiryEl = document.getElementById("mp-card-expiry");
+            const cvvEl = document.getElementById("mp-card-cvv");
+            if (!numberEl || !expiryEl || !cvvEl || disposed) return;
+
+            (async () => {
+                try {
+                    const cardNumber = mp.fields.create("cardNumber", {
+                        placeholder: "1234 5678 9012 3456",
+                        style: FIELD_STYLE,
+                    });
+                    const expiry = mp.fields.create("expirationDate", {
+                        placeholder: "MM/YY",
+                        style: FIELD_STYLE,
+                    });
+                    const cvv = mp.fields.create("securityCode", {
+                        placeholder: "CVV",
+                        style: FIELD_STYLE,
+                    });
+                    if (disposed) return;
+                    await Promise.all([
+                        cardNumber.mount(numberEl),
+                        expiry.mount(expiryEl),
+                        cvv.mount(cvvEl),
+                    ]);
+                    fieldsRef.current = { number: cardNumber, expiry, cvv };
+                    if (!disposed) setFieldsReady(true);
+                } catch (e: any) {
+                    if (!disposed) setFieldsError(e?.message || "mp_fields_init_failed");
+                }
+            })();
+        });
+
         return () => {
             disposed = true;
+            cancelAnimationFrame(rafId);
             const f = fieldsRef.current;
             try { f.number?.unmount?.(); f.expiry?.unmount?.(); f.cvv?.unmount?.(); } catch { /* noop */ }
         };

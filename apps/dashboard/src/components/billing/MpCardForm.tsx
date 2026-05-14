@@ -6,32 +6,12 @@ import { CreditCard, AlertTriangle, Loader2 } from "lucide-react";
 import { useMercadoPago } from "@/hooks/useMercadoPago";
 import { cn } from "@/lib/utils";
 
-/**
- * PCI-compliant MP card form using mp.fields.create() iframe fields.
- *
- * The 4 sensitive fields (number, expiry, cvv, holder) are hosted by MP
- * inside sandboxed iframes. Parallly's JS never touches the raw card data,
- * which keeps us out of PCI scope. On submit, mp.createCardToken() exchanges
- * the fields for a short-lived card_token_id (~7 minute TTL) that the
- * backend uses to create the MP preapproval.
- *
- * Caller passes onToken — fired once a valid token is produced. Caller is
- * responsible for sending that token to POST /billing/... within 7 minutes.
- */
 interface MpCardFormProps {
     onToken: (cardTokenId: string) => void;
     submitting?: boolean;
     submitLabel?: string;
-    /** Optional — when provided we auto-call the createCardToken on this click-trigger */
     externalSubmit?: boolean;
 }
-
-const FIELD_STYLE = {
-    "font-size": "14px",
-    "font-family": "Inter, Arial, sans-serif",
-    color: "#1f2937",
-    placeholderColor: "#9ca3af",
-};
 
 export default function MpCardForm({ onToken, submitting = false, submitLabel, externalSubmit = false }: MpCardFormProps) {
     const t = useTranslations("mpCardForm");
@@ -39,84 +19,100 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
     const [fieldsReady, setFieldsReady] = useState(false);
     const [fieldsError, setFieldsError] = useState<string | null>(null);
     const [tokenizing, setTokenizing] = useState(false);
-    const [cardholderName, setCardholderName] = useState("");
-    const [identificationNumber, setIdentificationNumber] = useState("");
-    const fieldsRef = useRef<{ number?: any; expiry?: any; cvv?: any }>({});
+    const cardFormRef = useRef<any>(null);
+    const formRef = useRef<HTMLFormElement>(null);
+    const onTokenRef = useRef(onToken);
+    onTokenRef.current = onToken;
 
     useEffect(() => {
-        if (!ready || !mp || fieldsReady) return;
+        if (!ready || !mp || cardFormRef.current) return;
         let disposed = false;
-        let rafId: number;
 
-        rafId = requestAnimationFrame(() => {
-            const numberEl = document.getElementById("mp-card-number");
-            const expiryEl = document.getElementById("mp-card-expiry");
-            const cvvEl = document.getElementById("mp-card-cvv");
-            if (!numberEl || !expiryEl || !cvvEl || disposed) return;
-
-            (async () => {
-                try {
-                    const cardNumber = mp.fields.create("cardNumber", {
-                        placeholder: "1234 5678 9012 3456",
-                        style: FIELD_STYLE,
-                    });
-                    const expiry = mp.fields.create("expirationDate", {
-                        placeholder: "MM/YY",
-                        style: FIELD_STYLE,
-                    });
-                    const cvv = mp.fields.create("securityCode", {
-                        placeholder: "CVV",
-                        style: FIELD_STYLE,
-                    });
-                    if (disposed) return;
-                    await Promise.all([
-                        cardNumber.mount(numberEl),
-                        expiry.mount(expiryEl),
-                        cvv.mount(cvvEl),
-                    ]);
-                    fieldsRef.current = { number: cardNumber, expiry, cvv };
-                    if (!disposed) setFieldsReady(true);
-                } catch (e: any) {
-                    if (!disposed) setFieldsError(e?.message || "mp_fields_init_failed");
-                }
-            })();
-        });
+        const timerId = setTimeout(() => {
+            if (disposed) return;
+            try {
+                const cf = mp.cardForm({
+                    amount: "100",
+                    iframe: true,
+                    form: {
+                        id: "mp-card-form",
+                        cardNumber: {
+                            id: "mp-card-number",
+                            placeholder: "1234 5678 9012 3456",
+                        },
+                        expirationDate: {
+                            id: "mp-card-expiry",
+                            placeholder: "MM/YY",
+                        },
+                        securityCode: {
+                            id: "mp-card-cvv",
+                            placeholder: "CVV",
+                        },
+                        cardholderName: {
+                            id: "mp-cardholder-name",
+                        },
+                        identificationType: {
+                            id: "mp-id-type",
+                        },
+                        identificationNumber: {
+                            id: "mp-id-number",
+                        },
+                    },
+                    callbacks: {
+                        onFormMounted: (error: any) => {
+                            if (disposed) return;
+                            if (error) {
+                                console.warn("[MpCardForm] mount error:", error);
+                                setFieldsError(typeof error === "string" ? error : error?.message || "mount_error");
+                            } else {
+                                setFieldsReady(true);
+                            }
+                        },
+                        onSubmit: (event: Event) => {
+                            event.preventDefault();
+                            if (disposed || !cardFormRef.current) return;
+                            setTokenizing(true);
+                            setFieldsError(null);
+                            try {
+                                const data = cardFormRef.current.getCardFormData();
+                                if (data?.token) {
+                                    onTokenRef.current(data.token);
+                                } else {
+                                    setFieldsError("No se pudo generar el token de la tarjeta.");
+                                }
+                            } catch (e: any) {
+                                setFieldsError(e?.message || "tokenize_error");
+                            } finally {
+                                setTokenizing(false);
+                            }
+                        },
+                        onFetching: (resource: string) => {
+                            if (!disposed) setTokenizing(true);
+                            return () => { if (!disposed) setTokenizing(false); };
+                        },
+                    },
+                });
+                cardFormRef.current = cf;
+            } catch (e: any) {
+                console.error("[MpCardForm] cardForm init error:", e);
+                if (!disposed) setFieldsError(e?.message || "mp_cardform_init_failed");
+            }
+        }, 200);
 
         return () => {
             disposed = true;
-            cancelAnimationFrame(rafId);
-            const f = fieldsRef.current;
-            try { f.number?.unmount?.(); f.expiry?.unmount?.(); f.cvv?.unmount?.(); } catch { /* noop */ }
+            clearTimeout(timerId);
+            try { cardFormRef.current?.unmount?.(); } catch { /* noop */ }
+            cardFormRef.current = null;
+            setFieldsReady(false);
         };
-    }, [ready, mp, fieldsReady]);
-
-    const handleTokenize = async () => {
-        if (!mp || !fieldsReady || tokenizing) return;
-        setFieldsError(null);
-        if (!cardholderName.trim() || !identificationNumber.trim()) {
-            setFieldsError(t("fillNameAndDoc"));
-            return;
-        }
-        setTokenizing(true);
-        try {
-            const res = await mp.fields.createCardToken({
-                cardholderName: cardholderName.trim(),
-                identificationType: "CC",
-                identificationNumber: identificationNumber.trim(),
-            });
-            if (!res?.id) throw new Error("mp_no_token_returned");
-            onToken(res.id);
-        } catch (e: any) {
-            setFieldsError(e?.message || t("tokenizeError"));
-        } finally {
-            setTokenizing(false);
-        }
-    };
+    }, [ready, mp]);
 
     useEffect(() => {
-        if (externalSubmit) handleTokenize();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [externalSubmit]);
+        if (externalSubmit && formRef.current && fieldsReady) {
+            formRef.current.requestSubmit();
+        }
+    }, [externalSubmit, fieldsReady]);
 
     if (sdkError) {
         return (
@@ -136,14 +132,17 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
         );
     }
 
+    const inputCls = "w-full h-11 px-3 py-2.5 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100";
+
     return (
-        <div className="space-y-3">
+        <form id="mp-card-form" ref={formRef} className="space-y-3">
             {fieldsError && (
                 <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-300">
                     <AlertTriangle size={12} className="inline mr-1" />
                     {fieldsError}
                 </div>
             )}
+
             <div>
                 <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
                     {t("cardNumber")}
@@ -171,31 +170,36 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
                     {t("cardholder")}
                 </label>
                 <input
+                    id="mp-cardholder-name"
                     type="text"
-                    value={cardholderName}
-                    onChange={(e) => setCardholderName(e.target.value)}
                     placeholder={t("cardholderPlaceholder")}
-                    className="w-full h-11 px-3 py-2.5 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-neutral-900 text-sm"
+                    className={inputCls}
                 />
             </div>
 
-            <div>
-                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-                    {t("docNumber")}
-                </label>
-                <input
-                    type="text"
-                    value={identificationNumber}
-                    onChange={(e) => setIdentificationNumber(e.target.value)}
-                    placeholder={t("docPlaceholder")}
-                    className="w-full h-11 px-3 py-2.5 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-neutral-900 text-sm"
-                />
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
+                        {t("docType")}
+                    </label>
+                    <select id="mp-id-type" className={inputCls} />
+                </div>
+                <div>
+                    <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
+                        {t("docNumber")}
+                    </label>
+                    <input
+                        id="mp-id-number"
+                        type="text"
+                        placeholder={t("docPlaceholder")}
+                        className={inputCls}
+                    />
+                </div>
             </div>
 
             {!externalSubmit && (
                 <button
-                    type="button"
-                    onClick={handleTokenize}
+                    type="submit"
                     disabled={!fieldsReady || submitting || tokenizing}
                     className={cn(
                         "w-full h-11 rounded-lg text-sm font-semibold text-white transition-all flex items-center justify-center gap-2",
@@ -216,6 +220,6 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
                 <CreditCard size={10} className="inline mr-1" />
                 {t("pciNote")}
             </p>
-        </div>
+        </form>
     );
 }

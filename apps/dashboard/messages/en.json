@@ -3260,6 +3260,7 @@
     "cvv": "CVV",
     "cardholder": "Cardholder",
     "cardholderPlaceholder": "Name as it appears on the card",
+    "docType": "Document type",
     "docNumber": "ID / Document",
     "docPlaceholder": "Identification number",
     "confirmAndPay": "Confirm and activate",

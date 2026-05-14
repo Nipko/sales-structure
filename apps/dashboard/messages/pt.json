@@ -3260,6 +3260,7 @@
     "cvv": "CVV",
     "cardholder": "Titular do cartao",
     "cardholderPlaceholder": "Nome como aparece no cartao",
+    "docType": "Tipo de documento",
     "docNumber": "Documento",
     "docPlaceholder": "Numero do documento",
     "confirmAndPay": "Confirmar e ativar",

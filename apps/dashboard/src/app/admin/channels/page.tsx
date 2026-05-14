@@ -52,14 +52,8 @@ const channels = [
         href: "/admin/channels/telegram",
         description: "telegramDesc",
     },
-    {
-        key: "sms",
-        name: "SMS (Twilio)",
-        color: "#0D9B47",
-        Icon: Phone,
-        href: "/admin/channels/sms",
-        description: "smsDesc",
-    },
+    // SMS hidden until integration is ready
+    // { key: "sms", name: "SMS (Twilio)", color: "#0D9B47", Icon: Phone, href: "/admin/channels/sms", description: "smsDesc" },
 ];
 
 export default function ChannelsOverviewPage() {

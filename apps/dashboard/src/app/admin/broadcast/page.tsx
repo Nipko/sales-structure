@@ -21,7 +21,8 @@ import {
 const CHANNEL_OPTIONS = [
     { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, color: "#25D366" },
     { id: "email", label: "Email", icon: Mail, color: "#6c5ce7" },
-    { id: "sms", label: "SMS", icon: Phone, color: "#f39c12" },
+    // SMS hidden until integration is ready
+    // { id: "sms", label: "SMS", icon: Phone, color: "#f39c12" },
 ] as const;
 
 const statusStyle: Record<string, { color: string; icon: any }> = {

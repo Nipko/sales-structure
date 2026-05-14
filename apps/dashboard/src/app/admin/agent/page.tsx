@@ -24,7 +24,7 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
-  sms:       { label: "SMS",       icon: Phone,         color: "text-violet-500" },
+  // sms: hidden until integration is ready
 };
 
 // ── Types ───────────────────────────────────────────────────
@@ -155,7 +155,7 @@ export default function AgentListPage() {
         name: template.name,
         templateId: template.id,
         configJson: template.config_json || {},
-        channels: agents.length === 0 ? ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'] : [],
+        channels: agents.length === 0 ? ['whatsapp', 'instagram', 'messenger', 'telegram'] : [],
         isDefault: agents.length === 0,
       });
       if (res?.success && res.data) {

@@ -35,10 +35,10 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
-  sms:       { label: "SMS",       icon: Phone,         color: "text-violet-500" },
+  // sms: hidden until integration is ready
 };
 
-const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
+const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram"];
 
 // ── Helpers ──────────────────────────────────────────────────
 

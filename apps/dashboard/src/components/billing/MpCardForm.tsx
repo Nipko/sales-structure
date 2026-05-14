@@ -62,9 +62,9 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
                 });
                 if (disposed) return;
                 await Promise.all([
-                    cardNumber.mount("mp-card-number"),
-                    expiry.mount("mp-card-expiry"),
-                    cvv.mount("mp-card-cvv"),
+                    cardNumber.mount("#mp-card-number"),
+                    expiry.mount("#mp-card-expiry"),
+                    cvv.mount("#mp-card-cvv"),
                 ]);
                 fieldsRef.current = { number: cardNumber, expiry, cvv };
                 setFieldsReady(true);
@@ -107,11 +107,11 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [externalSubmit]);
 
-    if (sdkError === "mp_public_key_missing") {
+    if (sdkError) {
         return (
             <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-sm text-red-800 dark:text-red-300">
                 <AlertTriangle size={16} className="inline mr-2" />
-                {t("publicKeyMissing")}
+                {sdkError === "mp_public_key_missing" ? t("publicKeyMissing") : `SDK error: ${sdkError}`}
             </div>
         );
     }
@@ -127,6 +127,12 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
 
     return (
         <div className="space-y-3">
+            {fieldsError && (
+                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-300">
+                    <AlertTriangle size={12} className="inline mr-1" />
+                    {fieldsError}
+                </div>
+            )}
             <div>
                 <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
                     {t("cardNumber")}
@@ -174,13 +180,6 @@ export default function MpCardForm({ onToken, submitting = false, submitLabel, e
                     className="w-full h-11 px-3 py-2.5 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-neutral-900 text-sm"
                 />
             </div>
-
-            {fieldsError && (
-                <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-xs text-red-800 dark:text-red-300">
-                    <AlertTriangle size={12} className="inline mr-1" />
-                    {fieldsError}
-                </div>
-            )}
 
             {!externalSubmit && (
                 <button

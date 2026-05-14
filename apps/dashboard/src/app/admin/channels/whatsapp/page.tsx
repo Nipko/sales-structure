@@ -10,6 +10,7 @@ import {
     MessageSquare, Shield, CheckCircle,
     Link as LinkIcon, Zap, Phone, Copy, ExternalLink,
     AlertCircle, Settings, ArrowRight, Sprout, Clock, XCircle, LogOut,
+    HelpCircle, Globe, Smartphone, KeyRound, FileCheck, AlertTriangle,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
@@ -17,6 +18,7 @@ import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal
 export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
     const t = useTranslations("channels");
+    const tw = useTranslations("channels.whatsapp");
     const twt = useTranslations("whatsappTemplates");
     const router = useRouter();
     const { user } = useAuth();
@@ -83,7 +85,7 @@ export default function WhatsAppSetupPage() {
                     displayPhoneNumber: phoneNumber || undefined,
                 }),
             });
-            setMessage({ type: "success", text: "Canal conectado correctamente." });
+            setMessage({ type: "success", text: tw("connectionOk") });
             setAccessToken("");
             await loadData();
         } catch (err: any) {
@@ -130,7 +132,7 @@ export default function WhatsAppSetupPage() {
     };
 
     if (loading) {
-        return <div className="p-8 text-center text-[var(--text-secondary)]">Cargando estado de WhatsApp...</div>;
+        return <div className="p-8 text-center text-[var(--text-secondary)]">{tw("loadingStatus")}</div>;
     }
 
     // Support both formats: WhatsApp-specific (status.status) and generic channel API (data.connected)
@@ -149,7 +151,7 @@ export default function WhatsAppSetupPage() {
                         <h1 className="text-[28px] font-semibold m-0">WhatsApp Business</h1>
                     </div>
                     <p className="text-[var(--text-secondary)] mt-1">
-                        Conecta y gestiona tu cuenta de WhatsApp Business con Meta Cloud API.
+                        {tw("pageSubtitle")}
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -202,16 +204,16 @@ export default function WhatsAppSetupPage() {
                                 <Zap size={16} className="text-white" />
                             </div>
                             <div>
-                                <h2 className="text-base font-semibold m-0">Conexion Rapida — Embedded Signup</h2>
+                                <h2 className="text-base font-semibold m-0">{tw("embeddedTitle")}</h2>
                                 <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                                    Conecta tu cuenta de WhatsApp Business con un solo clic
+                                    {tw("embeddedSubtitle")}
                                 </p>
                             </div>
                         </div>
                         <WhatsAppEmbeddedSignup
                             tenantId={getTenantId()}
                             onSuccess={(result) => {
-                                setMessage({ type: "success", text: `Canal conectado. Numero: ${result.displayPhoneNumber || "N/A"}` });
+                                setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
                                 loadData();
                             }}
                             onError={(error) => setMessage({ type: "error", text: error })}
@@ -225,7 +227,7 @@ export default function WhatsAppSetupPage() {
                             onClick={() => setShowManual(!showManual)}
                             className="bg-transparent border-none text-[var(--text-secondary)] text-[13px] cursor-pointer underline"
                         >
-                            {showManual ? "Ocultar conexion manual" : "O conectar manualmente con credenciales de Meta"}
+                            {showManual ? tw("hideManual") : tw("showManual")}
                         </button>
                     </div>
                     )}
@@ -235,32 +237,34 @@ export default function WhatsAppSetupPage() {
                         <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
                             <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                                 <Settings size={18} className="text-primary" />
-                                <h2 className="text-base font-semibold m-0">Conexion Manual</h2>
+                                <h2 className="text-base font-semibold m-0">{tw("manualTitle")}</h2>
                             </div>
                             <div className="p-6">
                                 <p className="text-[13px] text-[var(--text-secondary)] mb-5 leading-relaxed">
-                                    Obtiene estos datos de <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-primary">
-                                    developers.facebook.com <ExternalLink size={12} className="inline" /></a> &rarr; tu app &rarr; WhatsApp &rarr; API Setup
+                                    {tw("manualSubtitle").split("developers.facebook.com")[0]}
+                                    <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-primary">
+                                    developers.facebook.com <ExternalLink size={12} className="inline" /></a>
+                                    {tw("manualSubtitle").split("developers.facebook.com")[1]}
                                 </p>
                                 <form onSubmit={handleConnect} className="flex flex-col gap-4">
                                     <div>
-                                        <label className="text-[13px] font-semibold mb-1 block">Numero de telefono</label>
-                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">El numero de WhatsApp Business desde el que se enviaran los mensajes</span>
+                                        <label className="text-[13px] font-semibold mb-1 block">{tw("labelPhone")}</label>
+                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">{tw("labelPhoneHint")}</span>
                                         <input type="text" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="Ej: +57 320 801 0737" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none" />
                                     </div>
                                     <div>
-                                        <label className="text-[13px] font-semibold mb-1 block">Phone Number ID</label>
-                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">Lo encuentras en WhatsApp &rarr; API Setup, debajo de tu numero</span>
+                                        <label className="text-[13px] font-semibold mb-1 block">{tw("labelPhoneNumberId")}</label>
+                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">{tw("labelPhoneNumberIdHint")}</span>
                                         <input type="text" value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} placeholder="Ej: 104561234908123" required className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none" />
                                     </div>
                                     <div>
-                                        <label className="text-[13px] font-semibold mb-1 block">Business Account ID</label>
-                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">WhatsApp &rarr; API Setup &rarr; WhatsApp Business Account ID (arriba de la pagina)</span>
+                                        <label className="text-[13px] font-semibold mb-1 block">{tw("labelWabaId")}</label>
+                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">{tw("labelWabaIdHint")}</span>
                                         <input type="text" value={wabaId} onChange={e => setWabaId(e.target.value)} placeholder="Ej: 1120019283746" required className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none" />
                                     </div>
                                     <div>
-                                        <label className="text-[13px] font-semibold mb-1 block">API Key (Access Token permanente)</label>
-                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">System User Token o token temporal de API Setup. Nunca se almacena en texto plano.</span>
+                                        <label className="text-[13px] font-semibold mb-1 block">{tw("labelAccessToken")}</label>
+                                        <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">{tw("labelAccessTokenHint")}</span>
                                         <input type="password" value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="EAAG..." required className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm font-mono outline-none" />
                                     </div>
                                     <button
@@ -271,7 +275,7 @@ export default function WhatsAppSetupPage() {
                                             saving && "opacity-70"
                                         )}
                                     >
-                                        {saving ? "Conectando..." : "Conectar WABA"}
+                                        {saving ? tw("connecting") : tw("connectWaba")}
                                     </button>
                                 </form>
                             </div>
@@ -285,7 +289,7 @@ export default function WhatsAppSetupPage() {
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <Phone size={18} className="text-[#25D366]" />
-                            <h2 className="text-base font-semibold m-0">Canal Activo</h2>
+                            <h2 className="text-base font-semibold m-0">{tw("activeChannel")}</h2>
                         </div>
                         <div className="p-6">
                             {(() => {
@@ -293,25 +297,25 @@ export default function WhatsAppSetupPage() {
                                 return (
                                     <div className="flex flex-col gap-3.5">
                                         <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">Numero</span>
+                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelNumber")}</span>
                                             <p className="text-base font-semibold mt-1 mb-0">
                                                 {ch?.display_phone_number || ch?.metadata?.displayPhoneNumber || ch?.accountId || phoneNumberId || "\u2014"}
                                             </p>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">Nombre verificado</span>
+                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelVerifiedName")}</span>
                                             <p className="text-sm mt-1 mb-0">
                                                 {ch?.display_name || ch?.verified_name || ch?.displayName || ch?.metadata?.verifiedName || "\u2014"}
                                             </p>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">Calidad</span>
+                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelQuality")}</span>
                                             <span className="inline-block ml-2 px-2.5 py-0.5 rounded-xl text-xs font-semibold bg-[rgba(46,204,113,0.1)] text-[#2ecc71]">
                                                 {ch?.quality_rating || ch?.metadata?.qualityRating || "GREEN"}
                                             </span>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">Phone Number ID</span>
+                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelPhoneNumberId")}</span>
                                             <p className="text-xs font-mono mt-1 mb-0 text-[var(--text-secondary)]">
                                                 {ch?.phone_number_id || ch?.metadata?.phoneNumberId || ch?.accountId || phoneNumberId || "\u2014"}
                                             </p>
@@ -327,21 +331,21 @@ export default function WhatsAppSetupPage() {
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <LinkIcon size={18} className="text-primary" />
-                            <h2 className="text-base font-semibold m-0">Actualizar Credenciales</h2>
+                            <h2 className="text-base font-semibold m-0">{tw("updateCredentials")}</h2>
                         </div>
                         <div className="p-6">
                             <form onSubmit={handleConnect} className="flex flex-col gap-3.5">
                                 <div>
-                                    <label className="text-[13px] font-semibold mb-1.5 block">Phone Number ID</label>
+                                    <label className="text-[13px] font-semibold mb-1.5 block">{tw("labelPhoneNumberId")}</label>
                                     <input type="text" value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} required className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none" />
                                 </div>
                                 <div>
-                                    <label className="text-[13px] font-semibold mb-1.5 block">Business Account ID</label>
+                                    <label className="text-[13px] font-semibold mb-1.5 block">{tw("labelWabaId")}</label>
                                     <input type="text" value={wabaId} onChange={e => setWabaId(e.target.value)} required className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm outline-none" />
                                 </div>
                                 <div>
-                                    <label className="text-[13px] font-semibold mb-1.5 block">Nueva API Key (Access Token)</label>
-                                    <input type="password" value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder="Solo si necesitas actualizar" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm font-mono outline-none" />
+                                    <label className="text-[13px] font-semibold mb-1.5 block">{tw("labelNewToken")}</label>
+                                    <input type="password" value={accessToken} onChange={e => setAccessToken(e.target.value)} placeholder={tw("newTokenPlaceholder")} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-[var(--bg-tertiary)] text-foreground text-sm font-mono outline-none" />
                                 </div>
                                 <button
                                     type="submit"
@@ -351,7 +355,7 @@ export default function WhatsAppSetupPage() {
                                         saving && "opacity-70"
                                     )}
                                 >
-                                    {saving ? "Actualizando..." : "Actualizar Credenciales"}
+                                    {saving ? tw("updating") : tw("updateButton")}
                                 </button>
                             </form>
                         </div>
@@ -422,12 +426,84 @@ export default function WhatsAppSetupPage() {
                 );
             })()}
 
+            {/* ======== HELP SECTION ======== */}
+            <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
+                    <HelpCircle size={18} className="text-primary" />
+                    <div>
+                        <h2 className="text-base font-semibold m-0">{tw("helpTitle")}</h2>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">{tw("helpSubtitle")}</p>
+                    </div>
+                </div>
+                <div className="p-6 flex flex-col gap-6">
+                    {/* Prerequisites */}
+                    <div>
+                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <FileCheck size={16} className="text-[#25D366]" />
+                            {tw("reqTitle")}
+                        </h3>
+                        <div className="flex flex-col gap-2">
+                            {[tw("req1"), tw("req2"), tw("req3"), tw("req4")].map((req, i) => (
+                                <div key={i} className="flex items-start gap-2.5 text-[13px] text-[var(--text-secondary)] leading-relaxed">
+                                    <CheckCircle size={14} className="text-[#25D366] mt-0.5 shrink-0" />
+                                    <span>{req}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="border-t border-border" />
+
+                    {/* Connection Methods */}
+                    <div>
+                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <Globe size={16} className="text-primary" />
+                            {tw("methodsTitle")}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="rounded-lg border border-[rgba(37,211,102,0.2)] bg-[rgba(37,211,102,0.03)] p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Zap size={14} className="text-[#25D366]" />
+                                    <span className="text-[13px] font-semibold">{tw("method1Title")}</span>
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{tw("method1Desc")}</p>
+                            </div>
+                            <div className="rounded-lg border border-border bg-[var(--bg-tertiary)] p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <KeyRound size={14} className="text-[var(--text-secondary)]" />
+                                    <span className="text-[13px] font-semibold">{tw("method2Title")}</span>
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{tw("method2Desc")}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-border" />
+
+                    {/* Important Notes */}
+                    <div>
+                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <AlertTriangle size={16} className="text-amber-500" />
+                            {tw("importantTitle")}
+                        </h3>
+                        <div className="flex flex-col gap-2.5">
+                            {[tw("important1"), tw("important2"), tw("important3")].map((note, i) => (
+                                <div key={i} className="flex items-start gap-2.5 text-[13px] leading-relaxed rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-3">
+                                    <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                                    <span className="text-amber-800 dark:text-amber-300">{note}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <DisconnectChannelModal
                 open={showDisconnectModal}
                 onClose={() => setShowDisconnectModal(false)}
                 onConfirm={handleDisconnect}
                 channelName="WhatsApp"
-                description={t("whatsapp.disconnectConfirm")}
+                description={tw("disconnectConfirm")}
                 loading={disconnecting}
             />
         </div>

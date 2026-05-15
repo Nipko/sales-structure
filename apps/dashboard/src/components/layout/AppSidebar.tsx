@@ -76,6 +76,8 @@ interface NavItemDef {
   capability?: keyof ReturnType<typeof useRole>;
   /** Vertical industries that show this item. Omit = visible for all verticals. */
   verticals?: string[];
+  /** Accent color for primary/important items. Omit = neutral grey. */
+  accent?: string;
 }
 
 interface NavSectionDef {
@@ -93,18 +95,19 @@ const tenantSections: NavSectionDef[] = [
   {
     titleKey: "operation",
     items: [
-      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox, shortcut: "⌘ 1", capability: "canHandleConversations" },
+      { labelKey: "conversations", href: "/admin/inbox", icon: Inbox, shortcut: "⌘ 1", capability: "canHandleConversations", accent: "text-emerald-500 dark:text-emerald-400" },
       {
         labelKey: "crm",
         icon: Contact,
         shortcut: "⌘ 2",
         capability: "canViewContacts",
+        accent: "text-blue-500 dark:text-blue-400",
         children: [
           { labelKey: "crm", href: "/admin/contacts" },
           { labelKey: "pipeline", href: "/admin/pipeline" }
         ]
       },
-      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, capability: "canHandleConversations" },
+      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
       // Catalog management — supervisor+ (agents don't manage catalogs, they only operate)
       { labelKey: "properties", href: "/admin/properties", icon: Home, verticals: ["turismo"], capability: "canEditPipeline" },
       { labelKey: "tours", href: "/admin/tours", icon: Compass, verticals: ["turismo"], capability: "canEditPipeline" },
@@ -127,11 +130,12 @@ const tenantSections: NavSectionDef[] = [
   {
     titleKey: "growth",
     items: [
-      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone, capability: "canSendBroadcast" },
+      { labelKey: "campaigns", href: "/admin/broadcast", icon: Megaphone, capability: "canSendBroadcast", accent: "text-orange-500 dark:text-orange-400" },
       {
         labelKey: "automation",
         icon: Zap,
         capability: "canEditAutomation",
+        accent: "text-violet-500 dark:text-violet-400",
         children: [
           { labelKey: "automation", href: "/admin/automation", capability: "canEditAutomation" },
           { labelKey: "aiAgent", href: "/admin/agent", capability: "canEditAgent" },
@@ -154,7 +158,7 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "reportBuilder", href: "/admin/report-builder" },
         ]
       },
-      { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels" },
+      { labelKey: "channels", href: "/admin/channels", icon: Radio, capability: "canManageChannels", accent: "text-sky-500 dark:text-sky-400" },
       { labelKey: "compliance", href: "/admin/compliance", icon: Shield, capability: "canManageBilling" },
       { labelKey: "users", href: "/admin/users", icon: Users, capability: "canManageUsers" },
       { labelKey: "billing", href: "/admin/settings/billing", icon: CreditCard, capability: "canManageBilling" },
@@ -177,12 +181,12 @@ const platformSections: NavSectionDef[] = [
   {
     titleKey: "platform",
     items: [
-      { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1" },
-      { labelKey: "financials", href: "/admin/financials", icon: DollarSign },
+      { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1", accent: "text-blue-500 dark:text-blue-400" },
+      { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "platformUsage", href: "/admin/usage", icon: TrendingUp },
-      { labelKey: "platformHealth", href: "/admin/health", icon: Activity },
+      { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
-      { labelKey: "llmStats", href: "/admin/llm-stats", icon: Brain },
+      { labelKey: "llmStats", href: "/admin/llm-stats", icon: Brain, accent: "text-violet-500 dark:text-violet-400" },
       { labelKey: "webhookTap", href: "/admin/webhooks", icon: Radio },
       { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
       { labelKey: "funnel", href: "/admin/funnel", icon: FunnelIcon },
@@ -512,7 +516,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon size={16} className={cn(
                           "shrink-0",
-                          item.active ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-400 dark:text-neutral-500"
+                          item.active ? "text-indigo-600 dark:text-indigo-400" : item.accent || "text-neutral-400 dark:text-neutral-500"
                         )} />
                         {showExpanded && (
                           <span className="truncate">{item.label}</span>

@@ -635,6 +635,10 @@
   "settings": {
     "title": "Configuración",
     "subtitle": "Gestiona tu cuenta, empresa, canales y herramientas",
+    "sidebarSubtitle": "Ajustes generales",
+    "backToDashboard": "Volver al panel",
+    "searchSettings": "Buscar configuración…",
+    "noResults": "Sin resultados",
     "sections": {
       "account": {
         "title": "Mi cuenta",

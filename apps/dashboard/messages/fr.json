@@ -633,6 +633,12 @@
     "cancel": "Annuler"
   },
   "settings": {
+    "title": "Paramètres",
+    "subtitle": "Gérez votre compte, entreprise, canaux et outils",
+    "sidebarSubtitle": "Réglages généraux",
+    "backToDashboard": "Retour au tableau de bord",
+    "searchSettings": "Rechercher paramètres…",
+    "noResults": "Aucun résultat",
     "sections": {
       "account": {
         "title": "Mon compte",

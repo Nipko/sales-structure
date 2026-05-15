@@ -23,16 +23,7 @@ export default function SettingsHub() {
     });
 
     return (
-        <div className="space-y-10 max-w-5xl">
-            <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
-                    {t("title")}
-                </h1>
-                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    {t("subtitle")}
-                </p>
-            </div>
-
+        <div className="space-y-8 max-w-4xl">
             <HelpPanel
                 title={tHelp("settings.title")}
                 description={tHelp("settings.description")}
@@ -55,7 +46,7 @@ export default function SettingsHub() {
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {section.items.map((card, i) => {
                             const Icon = card.icon;
                             return (

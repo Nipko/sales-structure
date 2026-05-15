@@ -633,6 +633,12 @@
     "cancel": "Cancel"
   },
   "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your account, company, channels and tools",
+    "sidebarSubtitle": "General settings",
+    "backToDashboard": "Back to dashboard",
+    "searchSettings": "Search settings…",
+    "noResults": "No results",
     "sections": {
       "account": {
         "title": "My account",

@@ -158,13 +158,13 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "compliance", href: "/admin/compliance", icon: Shield, capability: "canManageBilling" },
       { labelKey: "users", href: "/admin/users", icon: Users, capability: "canManageUsers" },
       { labelKey: "billing", href: "/admin/settings/billing", icon: CreditCard, capability: "canManageBilling" },
+      { labelKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
     ],
   },
   {
     titleKey: "config",
     items: [
       { labelKey: "settings", href: "/admin/settings", icon: Settings },
-      { labelKey: "featureRequests", href: "/admin/feature-requests", icon: Lightbulb },
     ],
   },
 ];
@@ -438,14 +438,53 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           {sections.map((section) => (
             <Fragment key={section.titleKey}>
               {section.titleKey === "config" ? (
-                <div className="my-3 mx-2 border-t border-border/40" />
+                <div className="mt-3 mb-2 mx-1">
+                  {showExpanded ? (
+                    <Link href="/admin/settings" onClick={handleNavClick}>
+                      <div className={cn(
+                        "flex items-center gap-2.5 px-3 py-2.5 rounded-lg border transition-all duration-150 cursor-pointer",
+                        section.items[0]?.active
+                          ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300"
+                          : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                      )}>
+                        <div className={cn(
+                          "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
+                          section.items[0]?.active
+                            ? "bg-indigo-500/15 dark:bg-indigo-500/20"
+                            : "bg-neutral-200/60 dark:bg-neutral-700/40"
+                        )}>
+                          <Settings size={14} className={section.items[0]?.active ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-500 dark:text-neutral-400"} />
+                        </div>
+                        <span className="text-[13px] font-semibold truncate">{tNav('items.settings')}</span>
+                      </div>
+                    </Link>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link href="/admin/settings" onClick={handleNavClick}>
+                          <div className={cn(
+                            "flex items-center justify-center py-2 rounded-lg border transition-all duration-150",
+                            section.items[0]?.active
+                              ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60"
+                              : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                          )}>
+                            <Settings size={16} className={section.items[0]?.active ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-500 dark:text-neutral-400"} />
+                          </div>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <span className="font-semibold">{tNav('items.settings')}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               ) : (
-                showExpanded && section.items.length > 0 && (
+                <>
+                {showExpanded && section.items.length > 0 && (
                   <p className="px-2 mb-1.5 mt-4 first:mt-0 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 select-none">
                     {tNav(`sections.${section.titleKey}`)}
                   </p>
-                )
-              )}
+                )}
 
               <ul className="space-y-0.5">
                 {section.items.map((item) => {
@@ -551,6 +590,8 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                   );
                 })}
               </ul>
+              </>
+              )}
             </Fragment>
           ))}
         </TooltipProvider>

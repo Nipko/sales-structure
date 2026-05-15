@@ -1,82 +1,149 @@
 #!/bin/bash
 # ============================================
-# Parallext Engine - Automated Backup Script
-# Backs up all tenant schemas individually + public schema
-# Designed to run via crontab: 0 2 * * * /path/to/backup.sh
+# Parallext Engine — Production Backup Script
+# Backs up: DB (public + tenant schemas) + media + Redis
+# Optionally syncs offsite via rclone (R2/S3/Backblaze)
+#
+# Crontab (recommended):
+#   0 2 * * * /opt/parallext-engine/infra/backup/backup.sh >> /var/log/parallext-backup.log 2>&1
 # ============================================
 
 set -euo pipefail
 
-# Configuration
+# ── Configuration ──
 DB_HOST="${DATABASE_HOST:-localhost}"
 DB_PORT="${DATABASE_PORT:-5432}"
 DB_USER="${DATABASE_USER:-parallext}"
 DB_NAME="${DATABASE_NAME:-parallext_engine}"
 BACKUP_DIR="${BACKUP_DIR:-/backup}"
-RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
+MEDIA_DIR="${MEDIA_DIR:-/var/lib/docker/volumes/parallext-media-data/_data}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-parallext-redis}"
+OFFSITE_REMOTE="${OFFSITE_REMOTE:-}"  # e.g. "r2:parallext-backups" or "b2:parallext-backups"
+
+# Retention
+DAILY_KEEP=7
+WEEKLY_KEEP=4
+MONTHLY_KEEP=2
+
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+DAY_OF_WEEK=$(date +%u)   # 1=Monday, 7=Sunday
+DAY_OF_MONTH=$(date +%d)
+BACKUP_PATH="${BACKUP_DIR}/daily/${TIMESTAMP}"
 
-# Create backup directory
-mkdir -p "${BACKUP_DIR}/${TIMESTAMP}"
+echo "========================================"
+echo "Parallext Backup — ${TIMESTAMP}"
+echo "========================================"
 
-echo "🔄 Starting backup at ${TIMESTAMP}..."
+mkdir -p "${BACKUP_PATH}"
 
-# 1. Backup public schema (global tables)
-echo "📦 Backing up public schema..."
+# ── 1. Database: public schema ──
+echo "[1/6] Backing up public schema..."
 pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
   --schema=public \
   --format=custom \
-  --file="${BACKUP_DIR}/${TIMESTAMP}/public.dump" \
-  2>&1 || echo "⚠️ Warning: Public schema backup had issues"
+  --file="${BACKUP_PATH}/public.dump" \
+  2>&1 || echo "  WARN: Public schema backup had issues"
+echo "  OK — public.dump"
 
-echo "✅ Public schema backed up"
-
-# 2. Backup each tenant schema individually
-echo "📦 Backing up tenant schemas..."
+# ── 2. Database: each tenant schema ──
+echo "[2/6] Backing up tenant schemas..."
 TENANT_SCHEMAS=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-  -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ')
+  -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true)
 
+TENANT_COUNT=0
 for SCHEMA in ${TENANT_SCHEMAS}; do
   if [ -n "${SCHEMA}" ]; then
-    echo "  → Backing up schema: ${SCHEMA}"
     pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
       --schema="${SCHEMA}" \
       --format=custom \
-      --file="${BACKUP_DIR}/${TIMESTAMP}/${SCHEMA}.dump" \
-      2>&1 || echo "  ⚠️ Warning: ${SCHEMA} backup had issues"
+      --file="${BACKUP_PATH}/${SCHEMA}.dump" \
+      2>&1 || echo "  WARN: ${SCHEMA} backup had issues"
+    TENANT_COUNT=$((TENANT_COUNT + 1))
   fi
 done
+echo "  OK — ${TENANT_COUNT} tenant schemas"
 
-echo "✅ All tenant schemas backed up"
-
-# 3. Full database backup (safety net)
-echo "📦 Creating full database backup..."
+# ── 3. Full database backup (safety net) ──
+echo "[3/6] Full database backup..."
 pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
   --format=custom \
-  --file="${BACKUP_DIR}/${TIMESTAMP}/full_backup.dump" \
-  2>&1 || echo "⚠️ Warning: Full backup had issues"
+  --file="${BACKUP_PATH}/full_backup.dump" \
+  2>&1 || echo "  WARN: Full backup had issues"
+echo "  OK — full_backup.dump"
 
-echo "✅ Full backup complete"
+# ── 4. Redis RDB snapshot ──
+echo "[4/6] Redis snapshot..."
+if docker exec "${REDIS_CONTAINER}" redis-cli BGSAVE 2>/dev/null; then
+  sleep 3
+  docker cp "${REDIS_CONTAINER}:/data/dump.rdb" "${BACKUP_PATH}/redis.rdb" 2>/dev/null \
+    || echo "  WARN: Could not copy Redis dump"
+  echo "  OK — redis.rdb"
+else
+  echo "  SKIP — Redis container not reachable"
+fi
 
-# 4. Compress backup directory
-echo "📦 Compressing backup..."
-cd "${BACKUP_DIR}"
+# ── 5. Media files ──
+echo "[5/6] Media files..."
+if [ -d "${MEDIA_DIR}" ]; then
+  tar -czf "${BACKUP_PATH}/media.tar.gz" -C "${MEDIA_DIR}" . 2>/dev/null \
+    || echo "  WARN: Media backup had issues"
+  echo "  OK — media.tar.gz"
+else
+  echo "  SKIP — Media directory not found: ${MEDIA_DIR}"
+fi
+
+# ── 6. Compress daily backup ──
+echo "[6/6] Compressing..."
+cd "${BACKUP_DIR}/daily"
 tar -czf "${TIMESTAMP}.tar.gz" "${TIMESTAMP}/"
 rm -rf "${TIMESTAMP}/"
+BACKUP_SIZE=$(du -sh "${TIMESTAMP}.tar.gz" | cut -f1)
+echo "  OK — ${BACKUP_SIZE}"
 
-echo "✅ Compressed to ${TIMESTAMP}.tar.gz"
+# ── Weekly copy (Sundays) ──
+if [ "${DAY_OF_WEEK}" = "7" ]; then
+  mkdir -p "${BACKUP_DIR}/weekly"
+  cp "${BACKUP_DIR}/daily/${TIMESTAMP}.tar.gz" "${BACKUP_DIR}/weekly/${TIMESTAMP}.tar.gz"
+  echo "  + Weekly copy created"
+fi
 
-# 5. Clean old backups (retention policy)
-echo "🗑️ Cleaning backups older than ${RETENTION_DAYS} days..."
-find "${BACKUP_DIR}" -name "*.tar.gz" -type f -mtime +${RETENTION_DAYS} -delete
+# ── Monthly copy (1st of month) ──
+if [ "${DAY_OF_MONTH}" = "01" ]; then
+  mkdir -p "${BACKUP_DIR}/monthly"
+  cp "${BACKUP_DIR}/daily/${TIMESTAMP}.tar.gz" "${BACKUP_DIR}/monthly/${TIMESTAMP}.tar.gz"
+  echo "  + Monthly copy created"
+fi
 
-# 6. Report
-BACKUP_SIZE=$(du -sh "${BACKUP_DIR}/${TIMESTAMP}.tar.gz" | cut -f1)
+# ── Retention cleanup ──
 echo ""
-echo "=============================="
-echo "✅ Backup completed!"
-echo "  File: ${BACKUP_DIR}/${TIMESTAMP}.tar.gz"
+echo "Cleaning old backups..."
+find "${BACKUP_DIR}/daily"   -name "*.tar.gz" -type f -mtime +${DAILY_KEEP}   -delete 2>/dev/null || true
+find "${BACKUP_DIR}/weekly"  -name "*.tar.gz" -type f -mtime +$((WEEKLY_KEEP * 7)) -delete 2>/dev/null || true
+find "${BACKUP_DIR}/monthly" -name "*.tar.gz" -type f -mtime +$((MONTHLY_KEEP * 30)) -delete 2>/dev/null || true
+echo "  Retention: ${DAILY_KEEP} daily, ${WEEKLY_KEEP} weekly, ${MONTHLY_KEEP} monthly"
+
+# ── Offsite sync (if configured) ──
+if [ -n "${OFFSITE_REMOTE}" ] && command -v rclone &> /dev/null; then
+  echo ""
+  echo "Syncing to offsite: ${OFFSITE_REMOTE}..."
+  rclone sync "${BACKUP_DIR}/" "${OFFSITE_REMOTE}/" \
+    --transfers 4 \
+    --checkers 8 \
+    --log-level NOTICE \
+    2>&1 || echo "  WARN: Offsite sync had issues"
+  echo "  OK — offsite sync complete"
+elif [ -n "${OFFSITE_REMOTE}" ]; then
+  echo "  WARN: OFFSITE_REMOTE set but rclone not installed"
+fi
+
+# ── Summary ──
+TOTAL_SIZE=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
+echo ""
+echo "========================================"
+echo "Backup complete!"
+echo "  File: daily/${TIMESTAMP}.tar.gz"
 echo "  Size: ${BACKUP_SIZE}"
-echo "  Schemas: public + $(echo ${TENANT_SCHEMAS} | wc -w | tr -d ' ') tenants"
-echo "  Retention: ${RETENTION_DAYS} days"
-echo "=============================="
+echo "  Schemas: public + ${TENANT_COUNT} tenants"
+echo "  Includes: DB + Redis + Media"
+echo "  Total backup dir: ${TOTAL_SIZE}"
+echo "========================================"

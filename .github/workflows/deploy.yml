@@ -457,10 +457,14 @@ jobs:
                 psql -U parallext -d parallext_engine 2>/dev/null || true
             done
 
-            echo "===> Restarting API, Worker, Dashboard, and WhatsApp..."
-            $DC \
-              up -d --force-recreate api worker dashboard whatsapp landing
+            # ── Rolling deploy: update services one by one to minimize downtime ──
+            # 1. Worker first (no HTTP traffic, no user impact)
+            echo "===> [1/4] Updating worker (no downtime)..."
+            $DC up -d --no-deps --force-recreate worker
 
+            # 2. API (main service — brief gap while container restarts)
+            echo "===> [2/4] Updating API..."
+            $DC up -d --no-deps --force-recreate api
 
             echo "===> Waiting for API health (max 3 min)..."
             STATUS="starting"
@@ -481,10 +485,19 @@ jobs:
               exit 1
             fi
 
-            echo "===> Ensuring tunnel is running..."
+            # 3. Frontend + WhatsApp (can update in parallel, API is already healthy)
+            echo "===> [3/4] Updating dashboard, whatsapp, landing..."
+            $DC up -d --no-deps --force-recreate dashboard whatsapp landing
+
+            # 4. Ensure tunnel is running
+            echo "===> [4/4] Ensuring tunnel is running..."
             $DC up -d tunnel
 
-            echo "===> 🚀 Deploy complete! SHA: $GIT_SHA"
+            # ── Post-deploy cleanup: remove old images ──
+            echo "===> Pruning old Docker images..."
+            docker image prune -f --filter "until=24h" 2>/dev/null || true
+
+            echo "===> Deploy complete! SHA: $GIT_SHA"
 
       - name: Notify — secrets not configured
         if: steps.check_secrets.outputs.configured == 'false'

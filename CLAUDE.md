@@ -107,7 +107,9 @@ See `.env.example`. Critical:
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
 - GitHub: https://github.com/Nipko/sales-structure
 - VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
-- Deploy: Push to main → GitHub Actions → build 5 images → SSH → regenerate .env → migrate → restart
+- Deploy: Push to main → GitHub Actions → build 5 images → SSH → regenerate .env → migrate → rolling restart (worker→API→frontend)
+- Backups: Daily 2AM (DB + media + Redis), weekly/monthly copies, offsite via rclone (if configured)
+- Cleanup: Weekly Sunday 5AM (Docker prune, temp files, journal logs)
 
 ---
 
@@ -132,4 +134,5 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Data dictionary** | `docs/data-dictionary.md` |
 | **Security policies** | `docs/SECURITY.md` |
 | **Server installation** | `docs/server-installation.md` |
+| **Infrastructure capacity, scaling projections, cost analysis, 1000-tenant scenario, provider comparison** | `docs/infrastructure-capacity-analysis.md` |
 | **User manual** | `docs/user-manual.md` |

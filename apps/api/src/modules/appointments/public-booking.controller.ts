@@ -44,7 +44,8 @@ export class PublicBookingController {
         welcomeText: string | null;
     }> {
         const rows = await this.prisma.$queryRaw<any[]>`
-            SELECT id, schema_name, company_name, logo_url,
+            SELECT id, schema_name, name,
+                   (settings::jsonb)->>'logoUrl' as logo_url,
                    COALESCE((settings::jsonb)->>'brandColor', NULL) as brand_color,
                    COALESCE((settings::jsonb)->'publicBooking'->>'enabled', 'false')::boolean as public_booking_enabled,
                    (settings::jsonb)->'publicBooking'->>'welcomeText' as welcome_text
@@ -56,7 +57,7 @@ export class PublicBookingController {
         return {
             tenantId: rows[0].id,
             schemaName: rows[0].schema_name,
-            tenantName: rows[0].company_name || tenantSlug,
+            tenantName: rows[0].name || tenantSlug,
             tenantLogo: rows[0].logo_url || null,
             tenantColor: rows[0].brand_color || null,
             publicBookingEnabled: rows[0].public_booking_enabled ?? false,

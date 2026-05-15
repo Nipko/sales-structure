@@ -610,7 +610,7 @@ export class AppointmentsService {
         if (!tenant) throw new BadRequestException('Tenant not found');
         const settings = (tenant.settings as any) ?? {};
         const pb = settings.publicBooking ?? {};
-        const baseUrl = process.env.LANDING_URL || 'https://parallly-chat.cloud';
+        const baseUrl = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
         return {
             enabled: pb.enabled === true,
             welcomeText: pb.welcomeText ?? null,

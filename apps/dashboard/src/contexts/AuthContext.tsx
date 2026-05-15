@@ -70,7 +70,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
 // Pages that don't need session management
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/verify-email", "/setup-password", "/onboarding"];
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/verify-email", "/setup-password", "/onboarding", "/book", "/kb"];
 
 // ============================================
 // Provider

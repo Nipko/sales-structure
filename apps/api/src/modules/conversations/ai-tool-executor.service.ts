@@ -971,7 +971,7 @@ export class AIToolExecutorService {
                 message: 'El booking público no está activado. Contactá al equipo para que lo habilite o agendá por aquí.',
             };
         }
-        const baseUrl = process.env.LANDING_URL || 'https://parallly-chat.cloud';
+        const baseUrl = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
         const url = `${baseUrl}/book/${tenant.slug}`;
         return {
             enabled: true,

@@ -107,6 +107,24 @@ async function bootstrap() {
         next();
     });
 
+    // Graceful shutdown — let in-flight requests finish before exiting
+    app.enableShutdownHooks();
+
+    const server = app.getHttpServer();
+    const shutdown = async (signal: string) => {
+        console.log(`\n${signal} received — draining connections...`);
+        server.close(() => {
+            console.log('HTTP server closed');
+        });
+        // Give in-flight requests up to 10s to finish
+        setTimeout(async () => {
+            await app.close();
+            process.exit(0);
+        }, 10_000);
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+
     const port = process.env.PORT || 3000;
     await app.listen(port);
     console.log(`🚀 Parallext Engine API running on port ${port}`);

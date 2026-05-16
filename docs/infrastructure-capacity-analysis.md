@@ -263,19 +263,26 @@ Cons: No managed Redis, manual DB management, no LATAM datacenter.
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Firewall (ufw) | PENDING | Only SSH should be open |
-| Fail2ban | PENDING | Protect SSH from brute-force |
-| OS auto-updates | PENDING | unattended-upgrades |
-| Cloudflare WAF rules | PENDING | SQL injection, XSS protection |
+| Firewall (ufw) | DONE | `infra/scripts/harden-vps.sh` — SSH only |
+| Fail2ban | DONE | 3 failed SSH = 2h ban |
+| OS auto-updates | DONE | unattended-upgrades (security patches daily) |
+| Swap (2 GB) | DONE | Safety net for OOM, swappiness=10 |
+| SSH hardening | DONE | Root restricted, max 3 auth tries |
+| Kernel tuning | DONE | file-max, TCP keepalive, somaxconn |
+| Docker resource limits | DONE | API=768MB, Worker=512MB, Dashboard=512MB, WA=384MB |
+| Graceful shutdown (API) | DONE | SIGTERM drain in main.ts, stop_grace_period=15s |
+| Graceful shutdown (Worker) | DONE | SIGTERM handler, stop_grace_period=30s |
+| Cloudflare WAF rules | PENDING | SQL injection, XSS protection (configure in CF dashboard) |
 | Secrets rotation plan | PENDING | Quarterly JWT/encryption key rotation |
-| Swap (2 GB) | PENDING | Safety net for OOM |
 
 ### Monitoring — Status
 
 | Item | Status | Notes |
 |------|--------|-------|
 | Uptime Kuma | DONE | 7 monitors configured |
-| Disk usage alerts | PENDING | Alert at 80% |
+| Detailed health endpoint | DONE | GET /health/detailed (memory, latency, system info) |
+| Version tracking | DONE | GIT_SHA in health response |
+| Disk usage alerts | PENDING | Alert at 80% (cleanup.sh warns) |
 | RAM usage alerts | PENDING | Alert at 85% |
 | Queue depth alerts | PENDING | BullMQ backlog monitoring |
 | Error rate alerts (Sentry) | DONE | >5 events in 10 min |

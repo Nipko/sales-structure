@@ -363,6 +363,7 @@ jobs:
             echo "PIPEDRIVE_CLIENT_SECRET=${PROD_PIPEDRIVE_CLIENT_SECRET}" >> .env
             echo "API_PUBLIC_URL=https://api.parallly-chat.cloud/api/v1" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
+            echo "GIT_SHA=${GIT_SHA}" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 

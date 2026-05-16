@@ -78,6 +78,7 @@ services:
     image: ghcr.io/nipko/parallext-api:latest
     container_name: parallext-api
     restart: unless-stopped
+    stop_grace_period: 15s
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
@@ -85,6 +86,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MEDIA_STORAGE_PATH: /data/media
+      GIT_SHA: ${GIT_SHA:-unknown}
     env_file:
       - ../../.env
     volumes:
@@ -103,6 +105,7 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
+    mem_limit: 768m
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
@@ -119,6 +122,7 @@ services:
       - "3001"
     depends_on:
       - api
+    mem_limit: 512m
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
@@ -128,6 +132,7 @@ services:
     image: ghcr.io/nipko/parallext-worker:latest
     container_name: parallext-worker
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
@@ -143,6 +148,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    mem_limit: 512m
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
@@ -152,6 +158,7 @@ services:
     image: ghcr.io/nipko/parallext-whatsapp:latest
     container_name: parallext-whatsapp
     restart: unless-stopped
+    mem_limit: 384m
     environment:
       NODE_ENV: production
       PORT: "3002"

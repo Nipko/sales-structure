@@ -1,23 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { LlmKeyService } from '../../settings/llm-key.service';
 
 @Injectable()
 export class GeminiProvider implements ILLMProvider {
-    private genAI: GoogleGenerativeAI;
+    private client: GoogleGenerativeAI | null = null;
+    private currentKey = '';
     private readonly logger = new Logger(GeminiProvider.name);
     readonly providerName = 'google';
 
-    constructor(private configService: ConfigService) {
-        this.genAI = new GoogleGenerativeAI(this.configService.get<string>('GEMINI_API_KEY') || '');
+    constructor(private llmKeys: LlmKeyService) {}
+
+    private async ensureClient(): Promise<GoogleGenerativeAI> {
+        const key = await this.llmKeys.getKey('google');
+        if (!key) throw new Error('Google AI API key not configured');
+        if (this.client && key === this.currentKey) return this.client;
+        this.client = new GoogleGenerativeAI(key);
+        this.currentKey = key;
+        return this.client;
     }
 
     async generate(options: LLMRequestOptions): Promise<LLMResponse> {
         try {
-            const model = this.genAI.getGenerativeModel({ model: options.model });
+            const genAI = await this.ensureClient();
+            const model = genAI.getGenerativeModel({ model: options.model });
 
-            // Format for Gemini
             const contents = this.formatMessages(options.messages);
 
             const requestParams: any = {
@@ -38,7 +46,7 @@ export class GeminiProvider implements ILLMProvider {
 
             const result = await model.generateContent(requestParams);
             const response = result.response;
-            
+
             const text = response.text();
 
             return {
@@ -59,8 +67,9 @@ export class GeminiProvider implements ILLMProvider {
 
     async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
         try {
-            const model = this.genAI.getGenerativeModel({ model: options.model });
-            
+            const genAI = await this.ensureClient();
+            const model = genAI.getGenerativeModel({ model: options.model });
+
             const contents = this.formatMessages(options.messages);
             const requestParams: any = {
                 contents,
@@ -90,19 +99,18 @@ export class GeminiProvider implements ILLMProvider {
 
     private formatMessages(messages: any[]): any[] {
         const contents: any[] = [];
-        
+
         for (const msg of messages) {
             if (msg.role === 'system') continue;
-            
+
             const role = msg.role === 'assistant' ? 'model' : 'user';
-            
-            // Gemini groups user/model interactions
+
             contents.push({
                 role,
                 parts: [{ text: msg.content || '' }]
             });
         }
-        
+
         return contents;
     }
 }

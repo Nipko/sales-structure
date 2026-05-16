@@ -1,7 +1,8 @@
-import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { SettingsService } from './settings.service';
+import { LlmKeyService } from './llm-key.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -11,7 +12,10 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 @ApiBearerAuth()
 export class SettingsController {
 
-    constructor(private settingsService: SettingsService) { }
+    constructor(
+        private settingsService: SettingsService,
+        private llmKeyService: LlmKeyService,
+    ) { }
 
     @Get()
     @Roles('super_admin', 'tenant_admin')
@@ -22,46 +26,52 @@ export class SettingsController {
 
     @Put()
     @Roles('super_admin', 'tenant_admin')
-    async updateSettings(@Body() body: Record<string, string>) {
-        await this.settingsService.updateSettings(body);
+    async updateSettings(@Body() body: Record<string, string>, @Req() req: any) {
+        const isSuperAdmin = req.user?.role === 'super_admin';
+        const otherSettings: Record<string, string> = {};
+
+        for (const [key, value] of Object.entries(body)) {
+            if (this.llmKeyService.isLlmKeyField(key)) {
+                if (!isSuperAdmin) continue;
+                if (value.includes('•••')) continue;
+                const provider = this.llmKeyService.resolveProviderFromDbKey(key);
+                if (provider) await this.llmKeyService.setKey(provider, value);
+            } else {
+                otherSettings[key] = value;
+            }
+        }
+
+        if (Object.keys(otherSettings).length > 0) {
+            await this.settingsService.updateSettings(otherSettings);
+        }
+
         return { success: true, message: 'Settings updated' };
     }
 
     @Get('api-keys')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin')
     async getApiKeys() {
-        const settings = await this.settingsService.getSettingsForDisplay();
-        return { success: true, data: this.flattenSettings(settings as Record<string, any>) };
+        const data = await this.llmKeyService.getMaskedKeys();
+        return { success: true, data };
     }
 
     @Post('api-keys')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin')
     async setApiKey(@Body() body: { provider: string; key: string }) {
         if (!body?.provider) {
             return { success: false, message: 'provider is required' };
         }
 
-        await this.settingsService.updateSettings({ [body.provider]: body.key || '' });
+        const providerName = this.llmKeyService.resolveProviderFromDbKey(body.provider) || body.provider;
+        await this.llmKeyService.setKey(providerName, body.key || '');
         return { success: true, message: 'API key updated' };
     }
 
     @Delete('api-keys/:provider')
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin')
     async deleteApiKey(@Param('provider') provider: string) {
-        await this.settingsService.updateSettings({ [provider]: '' });
+        const providerName = this.llmKeyService.resolveProviderFromDbKey(provider) || provider;
+        await this.llmKeyService.deleteKey(providerName);
         return { success: true, message: 'API key removed' };
-    }
-
-    private flattenSettings(settings: Record<string, any>): Record<string, string> {
-        const flattened: Record<string, string> = {};
-
-        for (const [category, value] of Object.entries(settings)) {
-            if (!value || typeof value !== 'object') continue;
-            for (const [field, fieldValue] of Object.entries(value)) {
-                flattened[`${category}.${field}`] = fieldValue == null ? '' : String(fieldValue);
-            }
-        }
-
-        return flattened;
     }
 }

@@ -99,7 +99,7 @@ function AIProvidersContent() {
                                     <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{provider.label}</div>
                                     <div className="text-xs text-neutral-500 dark:text-neutral-400">{provider.description}</div>
                                 </div>
-                                {value && !value.includes("•") && (
+                                {value && (
                                     <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                                         Configurada
                                     </span>

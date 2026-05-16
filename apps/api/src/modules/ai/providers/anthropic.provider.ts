@@ -1,22 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { LlmKeyService } from '../../settings/llm-key.service';
 
 @Injectable()
 export class AnthropicProvider implements ILLMProvider {
-    private anthropic: Anthropic;
+    private client: Anthropic | null = null;
+    private currentKey = '';
     private readonly logger = new Logger(AnthropicProvider.name);
     readonly providerName = 'anthropic';
 
-    constructor(private configService: ConfigService) {
-        this.anthropic = new Anthropic({
-            apiKey: this.configService.get<string>('ANTHROPIC_API_KEY') || '',
-        });
+    constructor(private llmKeys: LlmKeyService) {}
+
+    private async ensureClient(): Promise<Anthropic> {
+        const key = await this.llmKeys.getKey('anthropic');
+        if (!key) throw new Error('Anthropic API key not configured');
+        if (this.client && key === this.currentKey) return this.client;
+        this.client = new Anthropic({ apiKey: key });
+        this.currentKey = key;
+        return this.client;
     }
 
     async generate(options: LLMRequestOptions): Promise<LLMResponse> {
         try {
+            const anthropic = await this.ensureClient();
+
             const req: Anthropic.MessageCreateParamsNonStreaming = {
                 model: options.model,
                 messages: this.formatMessages(options.messages),
@@ -40,12 +48,11 @@ export class AnthropicProvider implements ILLMProvider {
                 }));
             }
 
-            const response = await this.anthropic.messages.create(req);
-            
-            // Parse response content
+            const response = await anthropic.messages.create(req);
+
             let textContent = '';
             const toolCalls = [];
-            
+
             for (const block of response.content) {
                 if (block.type === 'text') {
                     textContent += block.text;
@@ -84,6 +91,8 @@ export class AnthropicProvider implements ILLMProvider {
 
     async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
         try {
+            const anthropic = await this.ensureClient();
+
             const req: Anthropic.MessageCreateParamsStreaming = {
                 model: options.model,
                 messages: this.formatMessages(options.messages),
@@ -96,7 +105,7 @@ export class AnthropicProvider implements ILLMProvider {
                 req.system = options.systemPrompt;
             }
 
-            const stream = await this.anthropic.messages.create(req);
+            const stream = await anthropic.messages.create(req);
 
             for await (const chunk of stream) {
                 if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
@@ -112,10 +121,10 @@ export class AnthropicProvider implements ILLMProvider {
     private formatMessages(messages: any[]): Anthropic.MessageParam[] {
         const formatted: Anthropic.MessageParam[] = [];
         let currentRole: 'user' | 'assistant' = 'user';
-        
+
         for (const msg of messages) {
-            if (msg.role === 'system') continue; // Handled separately
-            
+            if (msg.role === 'system') continue;
+
             if (msg.role === 'tool') {
                 formatted.push({
                     role: 'user',
@@ -130,10 +139,9 @@ export class AnthropicProvider implements ILLMProvider {
                 currentRole = 'assistant';
                 continue;
             }
-            
+
             const anthropicRole = msg.role === 'assistant' ? 'assistant' : 'user';
-            
-            // Combine consecutive messages of the same role (Anthropic requires alternating)
+
             if (formatted.length > 0 && formatted[formatted.length - 1].role === anthropicRole) {
                 const prevMsg = formatted[formatted.length - 1];
                 if (typeof prevMsg.content === 'string') {
@@ -141,8 +149,7 @@ export class AnthropicProvider implements ILLMProvider {
                 }
             } else {
                 let content: any = msg.content;
-                
-                // Add tool calls if present
+
                 if (msg.toolCalls && msg.toolCalls.length > 0) {
                     content = [];
                     if (msg.content) {
@@ -157,7 +164,7 @@ export class AnthropicProvider implements ILLMProvider {
                         });
                     }
                 }
-                
+
                 formatted.push({
                     role: anthropicRole,
                     content,
@@ -165,7 +172,7 @@ export class AnthropicProvider implements ILLMProvider {
             }
             currentRole = anthropicRole === 'user' ? 'assistant' : 'user';
         }
-        
+
         return formatted;
     }
 }

@@ -5,8 +5,10 @@ import { AnthropicProvider } from './providers/anthropic.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { DeepSeekProvider } from './providers/deepseek.provider';
 import { XAIProvider } from './providers/xai.provider';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
+    imports: [SettingsModule],
     providers: [
         OpenAIProvider,
         AnthropicProvider,
@@ -16,7 +18,7 @@ import { XAIProvider } from './providers/xai.provider';
         LLMRouterService,
         {
             provide: 'LLM_PROVIDERS',
-            useFactory: (openai, anthropic, gemini, deepseek, xai) => [openai, anthropic, gemini, deepseek, xai],
+            useFactory: (openai: OpenAIProvider, anthropic: AnthropicProvider, gemini: GeminiProvider, deepseek: DeepSeekProvider, xai: XAIProvider) => [openai, anthropic, gemini, deepseek, xai],
             inject: [OpenAIProvider, AnthropicProvider, GeminiProvider, DeepSeekProvider, XAIProvider]
         }
     ],

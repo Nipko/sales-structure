@@ -1,8 +1,8 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { ModelTier, RoutingFactors, RoutingDecision, RoutingWeights, ChatMessage, ToolDefinition, ToolCall } from '@parallext/shared';
+import { ModelTier, RoutingFactors, RoutingDecision, RoutingWeights } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
 import { RedisService } from '../../redis/redis.service';
+import { LlmKeyService } from '../../settings/llm-key.service';
 
 interface ModelConfig {
     id: string;
@@ -40,9 +40,9 @@ export class LLMRouterService {
     private readonly logger = new Logger(LLMRouterService.name);
 
     constructor(
-        private configService: ConfigService,
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
         private redis: RedisService,
+        private llmKeys: LlmKeyService,
     ) { }
 
     /**
@@ -71,7 +71,7 @@ export class LLMRouterService {
         let routingDecision: RoutingDecision | undefined;
 
         if (options.routingFactors) {
-            routingDecision = this.selectModel(options.routingFactors, undefined, options.allowedTiers);
+            routingDecision = await this.selectModel(options.routingFactors, undefined, options.allowedTiers);
             modelConfig = MODEL_REGISTRY.find(m => m.id === routingDecision!.selectedModel.id);
         } else {
             modelConfig = MODEL_REGISTRY.find(m => m.id === options.model);
@@ -250,7 +250,7 @@ export class LLMRouterService {
         let modelConfig: ModelConfig | undefined;
 
         if (options.routingFactors) {
-            const decision = this.selectModel(options.routingFactors, undefined, options.allowedTiers);
+            const decision = await this.selectModel(options.routingFactors, undefined, options.allowedTiers);
             modelConfig = MODEL_REGISTRY.find(m => m.id === decision.selectedModel.id);
         } else {
             modelConfig = MODEL_REGISTRY.find(m => m.id === options.model);
@@ -269,7 +269,7 @@ export class LLMRouterService {
     /**
      * Select the optimal model based on multi-factor analysis
      */
-    selectModel(factors: RoutingFactors, weights?: RoutingWeights, allowedTiers?: ModelTier[]): RoutingDecision {
+    async selectModel(factors: RoutingFactors, weights?: RoutingWeights, allowedTiers?: ModelTier[]): Promise<RoutingDecision> {
         const w = weights || DEFAULT_WEIGHTS;
 
         // Calculate composite score (0-100)
@@ -295,13 +295,19 @@ export class LLMRouterService {
 
         // Filter by allowed tiers if specified
         if (allowedTiers && !allowedTiers.includes(selectedTier)) {
-            selectedTier = allowedTiers[0]; // Default to first allowed tier
+            selectedTier = allowedTiers[0];
+        }
+
+        // Build set of configured providers (single cache read)
+        const configuredProviders = new Set<string>();
+        for (const p of ['openai', 'anthropic', 'google', 'xai', 'deepseek']) {
+            if (await this.llmKeys.isConfigured(p)) configuredProviders.add(p);
         }
 
         // Select model from tier — only include models whose provider has an API key
         let availableModels = MODEL_REGISTRY
             .filter(m => m.tier === selectedTier)
-            .filter(m => this.isProviderConfigured(m.provider));
+            .filter(m => configuredProviders.has(m.provider));
 
         // If no configured provider in this tier, try upgrading tiers
         if (availableModels.length === 0) {
@@ -310,7 +316,7 @@ export class LLMRouterService {
             for (let i = startIdx; i < tierOrder.length; i++) {
                 availableModels = MODEL_REGISTRY
                     .filter(m => m.tier === tierOrder[i])
-                    .filter(m => this.isProviderConfigured(m.provider));
+                    .filter(m => configuredProviders.has(m.provider));
                 if (availableModels.length > 0) {
                     selectedTier = tierOrder[i];
                     this.logger.warn(`No configured provider in original tier — upgraded to ${selectedTier}`);
@@ -321,11 +327,11 @@ export class LLMRouterService {
 
         // Last resort: pick any model with a configured provider
         if (availableModels.length === 0) {
-            availableModels = MODEL_REGISTRY.filter(m => this.isProviderConfigured(m.provider));
+            availableModels = MODEL_REGISTRY.filter(m => configuredProviders.has(m.provider));
         }
 
         if (availableModels.length === 0) {
-            throw new Error('No LLM provider is configured — set at least one API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)');
+            throw new Error('No LLM provider is configured — set at least one API key from the super admin dashboard');
         }
 
         const selectedModel = availableModels[0];
@@ -349,23 +355,6 @@ export class LLMRouterService {
 
         this.logger.debug(`Routing decision: ${decision.reasoning}`);
         return decision;
-    }
-
-    /**
-     * Check if a provider has a valid API key configured.
-     */
-    private isProviderConfigured(providerName: string): boolean {
-        const keyMap: Record<string, string> = {
-            openai: 'OPENAI_API_KEY',
-            anthropic: 'ANTHROPIC_API_KEY',
-            google: 'GOOGLE_GENERATIVE_AI_API_KEY',
-            deepseek: 'DEEPSEEK_API_KEY',
-            xai: 'XAI_API_KEY',
-        };
-        const envVar = keyMap[providerName];
-        if (!envVar) return false;
-        const key = this.configService.get<string>(envVar);
-        return !!key && key.length > 5;
     }
 
     /**

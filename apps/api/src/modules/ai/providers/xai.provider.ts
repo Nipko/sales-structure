@@ -1,27 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { LlmKeyService } from '../../settings/llm-key.service';
 
-/**
- * xAI (Grok) provider — uses OpenAI-compatible API.
- * Grok 4.1 is the primary conversational model: natural, emotional, cheap.
- */
 @Injectable()
 export class XAIProvider implements ILLMProvider {
-    private client: OpenAI;
+    private client: OpenAI | null = null;
+    private currentKey = '';
     private readonly logger = new Logger(XAIProvider.name);
     readonly providerName = 'xai';
 
-    constructor(private configService: ConfigService) {
-        this.client = new OpenAI({
-            apiKey: this.configService.get<string>('XAI_API_KEY') || '',
-            baseURL: 'https://api.x.ai/v1',
-        });
+    constructor(private llmKeys: LlmKeyService) {}
+
+    private async ensureClient(): Promise<OpenAI> {
+        const key = await this.llmKeys.getKey('xai');
+        if (!key) throw new Error('xAI API key not configured');
+        if (this.client && key === this.currentKey) return this.client;
+        this.client = new OpenAI({ apiKey: key, baseURL: 'https://api.x.ai/v1' });
+        this.currentKey = key;
+        return this.client;
     }
 
     async generate(options: LLMRequestOptions): Promise<LLMResponse> {
         try {
+            const client = await this.ensureClient();
             const formattedMessages = this.formatMessages(options);
 
             const req: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
@@ -46,7 +48,7 @@ export class XAIProvider implements ILLMProvider {
                 req.response_format = { type: 'json_object' };
             }
 
-            const response = await this.client.chat.completions.create(req);
+            const response = await client.chat.completions.create(req);
             const choice = response.choices[0];
 
             return {
@@ -74,6 +76,7 @@ export class XAIProvider implements ILLMProvider {
     }
 
     async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
+        const client = await this.ensureClient();
         const formattedMessages = this.formatMessages(options);
         const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
             model: options.model,
@@ -81,15 +84,11 @@ export class XAIProvider implements ILLMProvider {
             temperature: Number(options.temperature ?? 0.7),
             stream: true,
         };
-        const stream = await this.client.chat.completions.create(req);
+        const stream = await client.chat.completions.create(req);
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content;
             if (content) yield content;
         }
-    }
-
-    isConfigured(): boolean {
-        return !!(this.configService.get<string>('XAI_API_KEY'));
     }
 
     private formatMessages(options: LLMRequestOptions) {

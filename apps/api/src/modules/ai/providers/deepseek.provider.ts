@@ -1,25 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { LlmKeyService } from '../../settings/llm-key.service';
 
 @Injectable()
 export class DeepSeekProvider implements ILLMProvider {
-    private openai: OpenAI;
+    private client: OpenAI | null = null;
+    private currentKey = '';
     private readonly logger = new Logger(DeepSeekProvider.name);
     readonly providerName = 'deepseek';
 
-    constructor(private configService: ConfigService) {
-        this.openai = new OpenAI({
-            baseURL: 'https://api.deepseek.com',
-            apiKey: this.configService.get<string>('DEEPSEEK_API_KEY') || '',
-        });
+    constructor(private llmKeys: LlmKeyService) {}
+
+    private async ensureClient(): Promise<OpenAI> {
+        const key = await this.llmKeys.getKey('deepseek');
+        if (!key) throw new Error('DeepSeek API key not configured');
+        if (this.client && key === this.currentKey) return this.client;
+        this.client = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: key });
+        this.currentKey = key;
+        return this.client;
     }
 
     async generate(options: LLMRequestOptions): Promise<LLMResponse> {
         try {
+            const openai = await this.ensureClient();
             const formattedMessages = this.formatMessages(options);
-            
+
             const req: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
@@ -42,7 +48,7 @@ export class DeepSeekProvider implements ILLMProvider {
                 req.response_format = { type: 'json_object' };
             }
 
-            const response = await this.openai.chat.completions.create(req);
+            const response = await openai.chat.completions.create(req);
             const choice = response.choices[0];
 
             return {
@@ -71,8 +77,9 @@ export class DeepSeekProvider implements ILLMProvider {
 
     async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
         try {
+            const openai = await this.ensureClient();
             const formattedMessages = this.formatMessages(options);
-            
+
             const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
@@ -81,7 +88,7 @@ export class DeepSeekProvider implements ILLMProvider {
                 stream: true,
             };
 
-            const stream = await this.openai.chat.completions.create(req);
+            const stream = await openai.chat.completions.create(req);
 
             for await (const chunk of stream) {
                 const content = chunk.choices[0]?.delta?.content;
@@ -97,7 +104,7 @@ export class DeepSeekProvider implements ILLMProvider {
 
     private formatMessages(options: LLMRequestOptions): any[] {
         const messages: any[] = [];
-        
+
         if (options.systemPrompt) {
             messages.push({ role: 'system', content: options.systemPrompt });
         }

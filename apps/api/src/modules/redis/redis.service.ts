@@ -10,6 +10,7 @@ export class RedisService implements OnModuleDestroy {
         this.client = new Redis({
             host: this.configService.get<string>('redis.host', 'localhost'),
             port: this.configService.get<number>('redis.port', 6379),
+            password: this.configService.get<string>('redis.password') || undefined,
             maxRetriesPerRequest: null, // Required for BullMQ
         });
     }

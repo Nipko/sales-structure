@@ -145,12 +145,12 @@ export class AutomationService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO automation_rules (tenant_id, name, trigger_type, conditions_json, actions_json, active)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+             VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb, $6) RETURNING *`,
             [
                 payload.tenant_id,
                 payload.name,
                 payload.trigger_type,
-                payload.conditions_json || '{}',
+                JSON.stringify(payload.conditions_json || {}),
                 JSON.stringify(payload.actions_json || []),
                 payload.active ?? true
             ]

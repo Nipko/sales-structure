@@ -257,7 +257,7 @@ Cons: No managed Redis, manual DB management, no LATAM datacenter.
 | Log rotation | DONE | json-file 50MB × 5 (built-in) |
 | Loki retention | DONE | 7 days (auto) |
 | Old backup cleanup | DONE | Retention policy in backup script |
-| Orphaned media cleanup | PENDING | Needs custom script (DB vs disk scan) |
+| Orphaned media cleanup | DONE | MediaCleanupService: weekly cron + manual endpoint |
 
 ### Security — Status
 
@@ -282,9 +282,10 @@ Cons: No managed Redis, manual DB management, no LATAM datacenter.
 | Uptime Kuma | DONE | 7 monitors configured |
 | Detailed health endpoint | DONE | GET /health/detailed (memory, latency, system info) |
 | Version tracking | DONE | GIT_SHA in health response |
-| Disk usage alerts | PENDING | Alert at 80% (cleanup.sh warns) |
-| RAM usage alerts | PENDING | Alert at 85% |
-| Queue depth alerts | PENDING | BullMQ backlog monitoring |
+| Disk usage alerts | DONE | PlatformMonitorService: warn 80%, critical 90% → email |
+| RAM usage alerts | DONE | PlatformMonitorService: warn 85%, critical 95% → email |
+| Redis memory alerts | DONE | PlatformMonitorService: warn 75%, critical 90% → email |
+| Queue depth alerts | DONE | PlatformMonitorService: per-queue thresholds + failed job alerts → email |
 | Error rate alerts (Sentry) | DONE | >5 events in 10 min |
 
 ---

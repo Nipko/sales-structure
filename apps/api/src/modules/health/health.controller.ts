@@ -1,7 +1,12 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { PlatformMonitorService } from './platform-monitor.service';
+import { MediaCleanupService } from '../media/media-cleanup.service';
 import * as os from 'os';
 
 @ApiTags('health')
@@ -10,6 +15,8 @@ export class HealthController {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private monitor: PlatformMonitorService,
+        private mediaCleanup: MediaCleanupService,
     ) { }
 
     @Get()
@@ -42,7 +49,7 @@ export class HealthController {
     }
 
     @Get('detailed')
-    @ApiOperation({ summary: 'Detailed health check (memory, disk, connections)' })
+    @ApiOperation({ summary: 'Detailed health check (memory, disk, queues, connections)' })
     async detailed() {
         const checks: Record<string, any> = {};
 
@@ -98,6 +105,10 @@ export class HealthController {
             loadAvg: os.loadavg().map(l => Math.round(l * 100) / 100),
         };
 
+        // Queue status
+        const monitorStatus = await this.monitor.getStatus();
+        checks.queues = monitorStatus.queues;
+
         const allHealthy = checks.database?.status === 'ok' && checks.redis?.status === 'ok';
 
         return {
@@ -106,6 +117,34 @@ export class HealthController {
             uptime: Math.floor(process.uptime()),
             version: process.env.GIT_SHA || 'dev',
             checks,
+            activeAlerts: monitorStatus.activeAlerts,
+        };
+    }
+
+    @Get('storage')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Media storage report (super_admin only)' })
+    async storageReport() {
+        return this.mediaCleanup.getStorageReport();
+    }
+
+    @Post('media-cleanup')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Run orphaned media cleanup (super_admin only)' })
+    async mediaCleanupRun(@Query('dryRun') dryRun?: string) {
+        const isDryRun = dryRun !== 'false';
+        const results = await this.mediaCleanup.cleanupAll(isDryRun);
+        const totalOrphans = results.reduce((sum, r) => sum + r.orphanedFiles.length, 0);
+        const totalFreed = results.reduce((sum, r) => sum + r.freedBytes, 0);
+        return {
+            dryRun: isDryRun,
+            tenantsAffected: results.length,
+            totalOrphanedFiles: totalOrphans,
+            totalFreedBytes: totalFreed,
+            totalFreedMB: Math.round(totalFreed / 1048576 * 100) / 100,
+            details: results,
         };
     }
 }

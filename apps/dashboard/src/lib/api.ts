@@ -221,6 +221,12 @@ export const api = {
     getRuleExecutions: (tenantId: string, ruleId: string) =>
         apiGet(`/automation/rules/${tenantId}/${ruleId}/executions`),
 
+    getNurturingConfig: (tenantId: string) =>
+        apiGet(`/automation/nurturing/${tenantId}`),
+
+    updateNurturingConfig: (tenantId: string, data: any) =>
+        apiPut(`/automation/nurturing/${tenantId}`, data),
+
     // --- Persona / Agent Config ---
     getPersonaConfig: (tenantId: string) =>
         apiGet(`/persona/${tenantId}/active`),

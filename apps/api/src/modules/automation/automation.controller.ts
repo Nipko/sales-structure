@@ -2,9 +2,11 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards } fr
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AutomationService } from './automation.service';
+import { NurturingService } from './nurturing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('automation')
@@ -16,6 +18,7 @@ export class AutomationController {
 
     constructor(
         private readonly automationService: AutomationService,
+        private readonly nurturingService: NurturingService,
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
     ) {}
@@ -95,5 +98,26 @@ export class AutomationController {
         const schemaName = await this.schemaFor(tenantId);
         await this.automationService.deleteRule(schemaName, ruleId);
         return { success: true, message: 'Rule deleted' };
+    }
+
+    // ─── Nurturing Config ─────────────────────────────────────────────
+
+    @Get('nurturing/:tenantId')
+    @Roles('tenant_admin', 'super_admin')
+    @ApiOperation({ summary: 'Get nurturing/follow-up configuration for a tenant' })
+    async getNurturingConfig(@Param('tenantId') tenantId: string) {
+        const config = await this.nurturingService.getNurturingConfig(tenantId);
+        return { success: true, data: config };
+    }
+
+    @Put('nurturing/:tenantId')
+    @Roles('tenant_admin', 'super_admin')
+    @ApiOperation({ summary: 'Update nurturing/follow-up configuration' })
+    async updateNurturingConfig(
+        @Param('tenantId') tenantId: string,
+        @Body() body: any,
+    ) {
+        const updated = await this.nurturingService.updateNurturingConfig(tenantId, body);
+        return { success: true, data: updated };
     }
 }

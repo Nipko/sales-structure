@@ -23,10 +23,11 @@ export interface NurturingJobData {
 const DEFAULT_DELAYS = [14400, 86400, 259200];
 const DEFAULT_MAX_ATTEMPTS = 3;
 
-interface NurturingConfig {
+export interface NurturingConfig {
     enabled: boolean;
     maxAttempts: number;
     delays: number[];
+    allowedChannels: string[];
     finalAction: 'mark_not_interested' | 'create_task';
 }
 
@@ -472,6 +473,27 @@ export class NurturingService {
 
         const conversation = await this.getConversation(schemaName, conversationId);
         const channelType = conversation?.channel_type || 'whatsapp';
+
+        // Meta policy: IG and Messenger only allow messages within 24h of last inbound
+        if (channelType === 'instagram' || channelType === 'messenger') {
+            const withinWindow = await this.isWithinMessagingWindow(schemaName, conversationId);
+            if (!withinWindow) {
+                this.logger.warn(
+                    `[Nurturing] Skipping ${channelType} message for conv ${conversationId} — outside 24h messaging window`,
+                );
+                return;
+            }
+        }
+
+        // Check allowed channels from nurturing config
+        const config = await this.getNurturingConfig(tenantId);
+        if (config.allowedChannels && config.allowedChannels.length > 0) {
+            if (!config.allowedChannels.includes(channelType)) {
+                this.logger.debug(`[Nurturing] Channel ${channelType} not in allowed list — skipping`);
+                return;
+            }
+        }
+
         const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
 
         const outbound: OutboundMessage = {
@@ -484,6 +506,23 @@ export class NurturingService {
 
         await this.outboundQueue.enqueue(outbound, accessToken);
         await this.saveOutboundMessage(schemaName, conversationId, text);
+    }
+
+    /**
+     * Check if the last inbound message from the customer was within 24 hours.
+     * Required by Meta policy for Instagram and Messenger channels.
+     */
+    private async isWithinMessagingWindow(schemaName: string, conversationId: string): Promise<boolean> {
+        const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT EXISTS(
+                SELECT 1 FROM messages
+                WHERE conversation_id = $1::uuid
+                  AND direction = 'inbound'
+                  AND created_at > NOW() - INTERVAL '24 hours'
+            ) AS within_window`,
+            [conversationId],
+        );
+        return result?.[0]?.within_window === true;
     }
 
     private async saveOutboundMessage(schemaName: string, conversationId: string, text: string): Promise<void> {
@@ -592,29 +631,81 @@ export class NurturingService {
         );
     }
 
-    private async getNurturingConfig(tenantId: string): Promise<NurturingConfig> {
-        // Try to read from persona config
+    async getNurturingConfig(tenantId: string): Promise<NurturingConfig> {
+        const defaults: NurturingConfig = {
+            enabled: false,
+            maxAttempts: DEFAULT_MAX_ATTEMPTS,
+            delays: DEFAULT_DELAYS,
+            allowedChannels: ['whatsapp'],
+            finalAction: 'create_task',
+        };
+
+        // 1. Read from tenant.settings.nurturing (set by tenant admin)
+        try {
+            const cacheKey = `nurturing:config:${tenantId}`;
+            const cached = await this.redis.getJson<NurturingConfig>(cacheKey);
+            if (cached) return { ...defaults, ...cached };
+
+            const rows = await this.prisma.$queryRaw<any[]>`
+                SELECT settings FROM tenants WHERE id = ${tenantId}::uuid
+            `;
+            const settings = rows?.[0]?.settings;
+            const nurturing = settings?.nurturing;
+            if (nurturing) {
+                const config: NurturingConfig = {
+                    enabled: nurturing.enabled ?? defaults.enabled,
+                    maxAttempts: nurturing.maxAttempts || defaults.maxAttempts,
+                    delays: nurturing.delays || defaults.delays,
+                    allowedChannels: nurturing.allowedChannels || defaults.allowedChannels,
+                    finalAction: nurturing.finalAction || defaults.finalAction,
+                };
+                await this.redis.setJson(cacheKey, config, 120);
+                return config;
+            }
+        } catch {
+            // fallback to persona
+        }
+
+        // 2. Fallback: read from persona config (legacy)
         try {
             const personaConfig = await this.personaService.getActivePersona(tenantId);
             const nurturing = (personaConfig as any)?.nurturing;
             if (nurturing) {
                 return {
                     enabled: nurturing.enabled !== false,
-                    maxAttempts: nurturing.maxAttempts || DEFAULT_MAX_ATTEMPTS,
-                    delays: nurturing.delays || DEFAULT_DELAYS,
-                    finalAction: nurturing.finalAction || 'mark_not_interested',
+                    maxAttempts: nurturing.maxAttempts || defaults.maxAttempts,
+                    delays: nurturing.delays || defaults.delays,
+                    allowedChannels: nurturing.allowedChannels || defaults.allowedChannels,
+                    finalAction: nurturing.finalAction || defaults.finalAction,
                 };
             }
         } catch {
-            // ignore — use defaults
+            // ignore
         }
 
-        return {
-            enabled: true,
-            maxAttempts: DEFAULT_MAX_ATTEMPTS,
-            delays: DEFAULT_DELAYS,
-            finalAction: 'mark_not_interested',
+        return defaults;
+    }
+
+    async updateNurturingConfig(tenantId: string, config: Partial<NurturingConfig>): Promise<NurturingConfig> {
+        const current = await this.getNurturingConfig(tenantId);
+        const updated: NurturingConfig = {
+            enabled: config.enabled ?? current.enabled,
+            maxAttempts: Math.min(Math.max(config.maxAttempts || current.maxAttempts, 1), 5),
+            delays: config.delays || current.delays,
+            allowedChannels: config.allowedChannels || current.allowedChannels,
+            finalAction: config.finalAction || current.finalAction,
         };
+
+        await this.prisma.$executeRaw`
+            UPDATE tenants
+            SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{nurturing}', ${JSON.stringify(updated)}::jsonb)
+            WHERE id = ${tenantId}::uuid
+        `;
+
+        // Invalidate cache
+        await this.redis.del(`nurturing:config:${tenantId}`);
+
+        return updated;
     }
 
     private async resolveChannelCredentials(tenantId: string, channelType = 'whatsapp'): Promise<{ accessToken: string; accountId: string }> {

@@ -726,6 +726,10 @@
         "label": "Booking public",
         "description": "Page publique pour que les clients réservent eux-mêmes"
       },
+      "nurturing": {
+        "label": "Suivi automatique",
+        "description": "Contrôlez les messages de rappel aux leads sans réponse"
+      },
       "emailTemplates": {
         "label": "Modèles email",
         "description": "Confirmations, rappels et bienvenues"
@@ -1134,6 +1138,32 @@
         "sunday": "Dim"
       },
       "timeSeparator": "à"
+    },
+    "nurturingPage": {
+      "title": "Suivi Automatique",
+      "description": "Contrôlez les messages de rappel envoyés aux leads qui ne répondent pas",
+      "warning": "Instagram et Messenger n'autorisent les messages que dans les 24 heures suivant le dernier message du client",
+      "warningDetail": "Si un lead n'a pas interagi dans les dernières 24h, le système ignorera automatiquement l'envoi sur ces canaux pour éviter les erreurs et les blocages.",
+      "enableLabel": "Activer le suivi automatique",
+      "enableDesc": "Envoyer des messages de rappel aux leads qui ne répondent pas après un certain temps",
+      "channelsTitle": "Canaux autorisés",
+      "channelsDesc": "Sélectionnez les canaux pour l'envoi des messages de suivi",
+      "channelsNote": "Instagram et Messenger ont une fenêtre de 24h. Seul WhatsApp permet l'envoi de modèles en dehors de cette fenêtre.",
+      "frequencyTitle": "Intervalles de suivi",
+      "frequencyDesc": "Définissez le délai d'attente avant chaque tentative de suivi",
+      "attempt": "Tentative",
+      "hours": "heures",
+      "afterLastMessage": "après le dernier message",
+      "afterPrevious": "après la tentative précédente",
+      "attemptsTitle": "Nombre maximum de tentatives",
+      "attemptsDesc": "Combien de messages de suivi envoyer avant l'action finale",
+      "maxFollowUps": "suivis maximum",
+      "finalActionTitle": "Action finale",
+      "finalActionDesc": "Que faire quand le lead ne répond pas après toutes les tentatives",
+      "actionCreateTask": "Créer une tâche pour un agent humain",
+      "actionCreateTaskDesc": "Une tâche de suivi manuel est créée et assignée à l'équipe. Le lead reste actif.",
+      "actionMarkLost": "Marquer comme non intéressé",
+      "actionMarkLostDesc": "Le lead est marqué comme 'non intéressé' et la conversation est automatiquement fermée."
     },
     "appearancePage": {
       "title": "Apparence",

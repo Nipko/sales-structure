@@ -726,6 +726,10 @@
         "label": "Booking público",
         "description": "Página pública para que clientes agenden citas solos"
       },
+      "nurturing": {
+        "label": "Seguimiento automático",
+        "description": "Controla los mensajes de recordatorio a leads sin respuesta"
+      },
       "emailTemplates": {
         "label": "Plantillas de email",
         "description": "Confirmaciones, recordatorios y bienvenidas"
@@ -1132,6 +1136,32 @@
         "sunday": "Dom"
       },
       "timeSeparator": "a"
+    },
+    "nurturingPage": {
+      "title": "Seguimiento automático",
+      "description": "Controla los mensajes de recordatorio que se envían a leads que no responden",
+      "warning": "Los canales Instagram y Messenger solo permiten mensajes dentro de las 24 horas posteriores al último mensaje del cliente",
+      "warningDetail": "Si un lead no ha interactuado en las últimas 24h, el sistema omitirá automáticamente el envío por esos canales para evitar errores y bloqueos.",
+      "enableLabel": "Activar seguimiento automático",
+      "enableDesc": "Envía mensajes de recordatorio a leads que no responden después de un tiempo",
+      "channelsTitle": "Canales permitidos",
+      "channelsDesc": "Selecciona en qué canales se pueden enviar los mensajes de seguimiento",
+      "channelsNote": "Instagram y Messenger tienen una ventana de 24h. Solo WhatsApp permite enviar plantillas fuera de esa ventana.",
+      "frequencyTitle": "Intervalos de seguimiento",
+      "frequencyDesc": "Define cuánto tiempo esperar antes de cada intento de seguimiento",
+      "attempt": "Intento",
+      "hours": "horas",
+      "afterLastMessage": "después del último mensaje",
+      "afterPrevious": "después del intento anterior",
+      "attemptsTitle": "Número máximo de intentos",
+      "attemptsDesc": "Cuántos mensajes de seguimiento enviar antes de tomar una acción final",
+      "maxFollowUps": "seguimientos máximos",
+      "finalActionTitle": "Acción final",
+      "finalActionDesc": "Qué hacer cuando el lead no responde después de todos los intentos",
+      "actionCreateTask": "Crear tarea para agente humano",
+      "actionCreateTaskDesc": "Se crea una tarea de seguimiento manual asignada al equipo. El lead permanece activo.",
+      "actionMarkLost": "Marcar como no interesado",
+      "actionMarkLostDesc": "El lead se marca como 'no interesado' y la conversación se cierra automáticamente."
     },
     "appearancePage": {
       "title": "Apariencia",

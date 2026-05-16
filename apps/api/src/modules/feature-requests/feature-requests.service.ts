@@ -142,6 +142,9 @@ export class FeatureRequestsService {
         if (!input.title?.trim() || !input.description?.trim()) {
             throw new BadRequestException('Title and description required');
         }
+        if (!input.userId) {
+            throw new BadRequestException('userId is required');
+        }
         if (input.category && !CATEGORIES.includes(input.category)) {
             throw new BadRequestException('Invalid category');
         }

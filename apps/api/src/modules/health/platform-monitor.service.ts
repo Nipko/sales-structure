@@ -41,7 +41,7 @@ export class PlatformMonitorService implements OnModuleInit {
                 where: { role: 'super_admin', isActive: true },
                 select: { email: true },
             });
-            this.adminEmails = admins.map(a => a.email).filter(Boolean);
+            this.adminEmails = admins.map((a: { email: string }) => a.email).filter(Boolean);
         } catch {
             this.adminEmails = [];
         }

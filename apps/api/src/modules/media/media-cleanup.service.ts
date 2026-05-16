@@ -62,7 +62,7 @@ export class MediaCleanupService {
         }
 
         // Also clean directories for deleted/inactive tenants
-        const activeTenantIds = new Set(tenants.map(t => t.id));
+        const activeTenantIds = new Set(tenants.map((t: { id: string }) => t.id));
         try {
             const dirs = fs.readdirSync(this.storagePath, { withFileTypes: true });
             for (const dir of dirs) {

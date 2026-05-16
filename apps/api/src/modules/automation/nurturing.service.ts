@@ -29,6 +29,10 @@ export interface NurturingConfig {
     delays: number[];
     allowedChannels: string[];
     finalAction: 'mark_not_interested' | 'create_task';
+    /** WhatsApp template name to use outside 24h window. If empty, no message sent outside window */
+    whatsappTemplateName?: string;
+    /** Max 1 nurturing message per conversation per day */
+    maxPerDay: number;
 }
 
 @Injectable()
@@ -474,19 +478,9 @@ export class NurturingService {
         const conversation = await this.getConversation(schemaName, conversationId);
         const channelType = conversation?.channel_type || 'whatsapp';
 
-        // Meta policy: IG and Messenger only allow messages within 24h of last inbound
-        if (channelType === 'instagram' || channelType === 'messenger') {
-            const withinWindow = await this.isWithinMessagingWindow(schemaName, conversationId);
-            if (!withinWindow) {
-                this.logger.warn(
-                    `[Nurturing] Skipping ${channelType} message for conv ${conversationId} — outside 24h messaging window`,
-                );
-                return;
-            }
-        }
-
-        // Check allowed channels from nurturing config
         const config = await this.getNurturingConfig(tenantId);
+
+        // Check allowed channels
         if (config.allowedChannels && config.allowedChannels.length > 0) {
             if (!config.allowedChannels.includes(channelType)) {
                 this.logger.debug(`[Nurturing] Channel ${channelType} not in allowed list — skipping`);
@@ -494,6 +488,43 @@ export class NurturingService {
             }
         }
 
+        // Rate limit: max 1 nurturing message per conversation per day
+        const alreadySentToday = await this.hasNurturingSentToday(schemaName, conversationId);
+        if (alreadySentToday) {
+            this.logger.debug(`[Nurturing] Already sent nurturing message today for conv ${conversationId} — skipping`);
+            return;
+        }
+
+        // 24h messaging window applies to ALL channels (WhatsApp, IG, Messenger)
+        const withinWindow = await this.isWithinMessagingWindow(schemaName, conversationId);
+
+        if (!withinWindow) {
+            // Outside 24h window — IG/Messenger cannot send anything
+            if (channelType === 'instagram' || channelType === 'messenger') {
+                this.logger.warn(
+                    `[Nurturing] Skipping ${channelType} for conv ${conversationId} — outside 24h window, no template option`,
+                );
+                return;
+            }
+
+            // WhatsApp: can ONLY send approved template (HSM)
+            if (channelType === 'whatsapp') {
+                if (!config.whatsappTemplateName) {
+                    this.logger.warn(
+                        `[Nurturing] Outside 24h window for conv ${conversationId} — no WhatsApp template configured, skipping`,
+                    );
+                    return;
+                }
+                await this.sendWhatsAppTemplate(tenantId, schemaName, conversationId, contact, config.whatsappTemplateName);
+                return;
+            }
+
+            // Other channels outside window: skip
+            this.logger.warn(`[Nurturing] Outside 24h window for ${channelType} conv ${conversationId} — skipping`);
+            return;
+        }
+
+        // Within 24h window: send free-form text
         const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
 
         const outbound: OutboundMessage = {
@@ -506,6 +537,69 @@ export class NurturingService {
 
         await this.outboundQueue.enqueue(outbound, accessToken);
         await this.saveOutboundMessage(schemaName, conversationId, text);
+    }
+
+    /**
+     * Send a WhatsApp approved template (HSM) for follow-up outside 24h window.
+     */
+    private async sendWhatsAppTemplate(
+        tenantId: string,
+        schemaName: string,
+        conversationId: string,
+        contact: any,
+        templateName: string,
+    ): Promise<void> {
+        const phone = contact?.external_id || contact?.phone;
+        if (!phone) return;
+
+        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, 'whatsapp');
+
+        const outbound: OutboundMessage = {
+            tenantId,
+            channelType: 'whatsapp',
+            channelAccountId: accountId,
+            to: phone,
+            content: {
+                type: 'text',
+                text: `[Template: ${templateName}]`,
+            },
+            metadata: {
+                isTemplate: true,
+                templateName,
+                templateLanguage: 'es',
+                templateComponents: [
+                    {
+                        type: 'body',
+                        parameters: [
+                            { type: 'text', text: contact?.name || 'cliente' },
+                        ],
+                    },
+                ],
+            },
+        };
+
+        await this.outboundQueue.enqueue(outbound, accessToken);
+        await this.saveOutboundMessage(schemaName, conversationId,
+            `[Plantilla WA: ${templateName}] Seguimiento enviado a ${contact?.name || 'cliente'}`);
+
+        this.logger.log(`[Nurturing] WhatsApp template "${templateName}" sent for conv ${conversationId}`);
+    }
+
+    /**
+     * Check if a nurturing message was already sent today for this conversation.
+     */
+    private async hasNurturingSentToday(schemaName: string, conversationId: string): Promise<boolean> {
+        const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT EXISTS(
+                SELECT 1 FROM messages
+                WHERE conversation_id = $1::uuid
+                  AND direction = 'outbound'
+                  AND metadata->>'source' = 'nurturing'
+                  AND created_at > CURRENT_DATE
+            ) AS sent_today`,
+            [conversationId],
+        );
+        return result?.[0]?.sent_today === true;
     }
 
     /**
@@ -638,6 +732,8 @@ export class NurturingService {
             delays: DEFAULT_DELAYS,
             allowedChannels: ['whatsapp'],
             finalAction: 'create_task',
+            whatsappTemplateName: '',
+            maxPerDay: 1,
         };
 
         // 1. Read from tenant.settings.nurturing (set by tenant admin)
@@ -658,6 +754,8 @@ export class NurturingService {
                     delays: nurturing.delays || defaults.delays,
                     allowedChannels: nurturing.allowedChannels || defaults.allowedChannels,
                     finalAction: nurturing.finalAction || defaults.finalAction,
+                    whatsappTemplateName: nurturing.whatsappTemplateName || defaults.whatsappTemplateName,
+                    maxPerDay: nurturing.maxPerDay ?? defaults.maxPerDay,
                 };
                 await this.redis.setJson(cacheKey, config, 120);
                 return config;
@@ -677,6 +775,8 @@ export class NurturingService {
                     delays: nurturing.delays || defaults.delays,
                     allowedChannels: nurturing.allowedChannels || defaults.allowedChannels,
                     finalAction: nurturing.finalAction || defaults.finalAction,
+                    whatsappTemplateName: nurturing.whatsappTemplateName || defaults.whatsappTemplateName,
+                    maxPerDay: nurturing.maxPerDay ?? defaults.maxPerDay,
                 };
             }
         } catch {
@@ -694,6 +794,8 @@ export class NurturingService {
             delays: config.delays || current.delays,
             allowedChannels: config.allowedChannels || current.allowedChannels,
             finalAction: config.finalAction || current.finalAction,
+            whatsappTemplateName: config.whatsappTemplateName ?? current.whatsappTemplateName,
+            maxPerDay: Math.min(Math.max(config.maxPerDay ?? current.maxPerDay, 1), 3),
         };
 
         await this.prisma.$executeRaw`

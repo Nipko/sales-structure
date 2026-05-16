@@ -14,6 +14,8 @@ interface NurturingConfig {
     delays: number[];
     allowedChannels: string[];
     finalAction: "mark_not_interested" | "create_task";
+    whatsappTemplateName?: string;
+    maxPerDay: number;
 }
 
 const CHANNEL_OPTIONS = [
@@ -35,6 +37,8 @@ export default function NurturingSettingsPage() {
         delays: [14400, 86400, 259200],
         allowedChannels: ["whatsapp"],
         finalAction: "create_task",
+        whatsappTemplateName: "",
+        maxPerDay: 1,
     });
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -191,6 +195,41 @@ export default function NurturingSettingsPage() {
                             {t("channelsNote")}
                         </div>
                     </div>
+
+                    {/* 24h Window Explanation */}
+                    <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                        <Info size={18} className="shrink-0 mt-0.5" />
+                        <div>
+                            <p className="font-medium">{t("windowRuleTitle")}</p>
+                            <ul className="mt-1 text-xs opacity-80 space-y-1 list-disc list-inside">
+                                <li>{t("windowRuleWa")}</li>
+                                <li>{t("windowRuleIgFb")}</li>
+                                <li>{t("windowRuleLimit")}</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    {/* WhatsApp Template config */}
+                    {config.allowedChannels.includes("whatsapp") && (
+                        <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+                            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                                {t("waTemplateTitle")}
+                            </h3>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+                                {t("waTemplateDesc")}
+                            </p>
+                            <input
+                                type="text"
+                                value={config.whatsappTemplateName || ""}
+                                onChange={e => { setConfig(p => ({ ...p, whatsappTemplateName: e.target.value })); setSaved(false); }}
+                                placeholder={t("waTemplatePlaceholder")}
+                                className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+                            />
+                            <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
+                                {t("waTemplateHint")}
+                            </p>
+                        </div>
+                    )}
 
                     {/* Frequency / Delays */}
                     <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">

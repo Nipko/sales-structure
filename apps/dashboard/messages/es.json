@@ -2873,6 +2873,7 @@
       "pt-BR": "Português (BR)"
     },
     "plans": {
+      "emprendedor": "Emprendedor",
       "starter": "Starter",
       "professional": "Professional",
       "enterprise": "Enterprise",
@@ -2930,19 +2931,24 @@
     "cardReady": "Tarjeta lista. Terminamos el registro abajo.",
     "changeCard": "Cambiar tarjeta",
     "plans": {
+      "emprendedor": {
+        "name": "Emprendedor",
+        "price": "$125.700/mes",
+        "desc": "1 agente IA, 1.000 mensajes/mes, solo WhatsApp, 7 dias de prueba"
+      },
       "starter": {
         "name": "Starter",
-        "price": "USD $49/mes",
-        "desc": "1 agente IA, 5.000 mensajes/mes, 7 dias de prueba"
+        "price": "$215.800/mes",
+        "desc": "1 agente IA, 5.000 mensajes/mes, 3 canales, 7 dias de prueba"
       },
       "pro": {
         "name": "Pro",
-        "price": "USD $129/mes",
-        "desc": "3 agentes IA, 25.000 mensajes/mes, 15 dias de prueba"
+        "price": "$679.500/mes",
+        "desc": "3 agentes IA, 25.000 mensajes/mes, 5 canales, 15 dias de prueba"
       },
       "enterprise": {
         "name": "Enterprise",
-        "price": "USD $349/mes",
+        "price": "$1.789.800/mes",
         "desc": "10 agentes IA, 100.000 mensajes/mes, SSO, soporte prioritario"
       }
     },

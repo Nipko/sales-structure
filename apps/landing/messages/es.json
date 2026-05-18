@@ -270,16 +270,27 @@
     "monthly": "Mensual",
     "annual": "Anual",
     "popular": "Más popular",
-    "freeTrial": "Prueba gratuita · Sin tarjeta para Starter · Cancelación en un click",
+    "freeTrial": "Prueba gratuita · Sin tarjeta para Emprendedor y Starter · Cancelacion en un click",
     "annualDiscount": "-17%",
+    "emprendedorName": "Emprendedor",
+    "emprendedorDesc": "Para negocios que empiezan con WhatsApp.",
+    "emprendedorCta": "Empezar gratis",
+    "emprendedorFeatures": [
+      "1 canal (WhatsApp)",
+      "1.000 mensajes IA/mes",
+      "1 agente IA",
+      "Pipeline basico",
+      "1 calendario Google",
+      "7 dias de prueba gratis"
+    ],
     "starterName": "Starter",
-    "starterDesc": "Para emprendedores que arrancan.",
+    "starterDesc": "Para emprendedores que quieren mas canales.",
     "starterCta": "Empezar con Starter",
     "starterFeatures": [
-      "1 canal conectado",
+      "3 canales (WA + IG + Messenger)",
       "5.000 mensajes IA/mes",
       "1 agente IA",
-      "CRM básico + pipeline",
+      "CRM basico + pipeline",
       "1 calendario Google",
       "Soporte por email"
     ],
@@ -287,7 +298,7 @@
     "proDesc": "Para equipos que quieren crecer.",
     "proCta": "Empezar con Pro",
     "proFeatures": [
-      "Canales ilimitados",
+      "5 canales (todos)",
       "25.000 mensajes IA/mes",
       "3 agentes IA",
       "CRM avanzado + automatizaciones",
@@ -296,20 +307,19 @@
       "Soporte prioritario"
     ],
     "enterpriseName": "Enterprise",
-    "enterpriseDesc": "Para empresas con necesidades especiales.",
-    "enterpriseCta": "Contactar ventas",
+    "enterpriseDesc": "Para empresas con operacion seria.",
+    "enterpriseCta": "Empezar con Enterprise",
     "enterprisePrice": "A medida",
     "enterpriseFeatures": [
-      "Todo ilimitado",
-      "100.000+ mensajes IA/mes",
+      "Todos los canales + SMS",
+      "100.000 mensajes IA/mes",
       "10 agentes IA",
-      "SLA garantizado",
+      "SSO + audit log",
       "10 calendarios Google",
-      "Onboarding personalizado",
-      "Soporte dedicado 24/7"
+      "Soporte prioritario dedicado"
     ],
     "perMonth": "/mes",
-    "currencyHint": "Precios en moneda local — se calculan al pagar"
+    "currencyHint": "Precios en COP (pesos colombianos)"
   },
   "faq": {
     "title": "Preguntas frecuentes",
@@ -333,7 +343,7 @@
   },
   "cta": {
     "title": "Esto es lo que necesita tu negocio",
-    "subtitle": "7 días de prueba. Sin tarjeta para Starter. Configuración en 1 hora con soporte en español.",
+    "subtitle": "7 dias de prueba. Sin tarjeta para Emprendedor y Starter. Configuracion en 1 hora con soporte en español.",
     "button": "Empezar prueba gratis",
     "secondaryButton": "Hablar con ventas",
     "guarantees": "✓ Sin contratos · ✓ Cancelación al instante · ✓ Soporte 24/7 en español"

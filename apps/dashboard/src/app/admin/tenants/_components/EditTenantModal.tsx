@@ -76,6 +76,7 @@ export default function EditTenantModal({ tenant, onClose, onSave }: Props) {
           <div>
             <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">{t("plan")}</label>
             <select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm">
+              <option value="emprendedor">{t("plans.emprendedor")}</option>
               <option value="starter">{t("plans.starter")}</option>
               <option value="professional">{t("plans.professional")}</option>
               <option value="enterprise">{t("plans.enterprise")}</option>

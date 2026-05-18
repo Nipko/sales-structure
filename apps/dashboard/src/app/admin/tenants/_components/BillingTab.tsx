@@ -11,6 +11,7 @@ interface Props {
 }
 
 const PLAN_COLORS: Record<string, string> = {
+  emprendedor: "#10b981",
   starter: "#6b7280",
   professional: "#6366f1",
   pro: "#6366f1",

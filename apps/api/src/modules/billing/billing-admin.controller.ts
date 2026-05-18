@@ -20,7 +20,7 @@ class RefundPaymentDto {
 
 class CompPlanDto {
     @IsString()
-    @IsIn(['starter', 'pro', 'enterprise', 'custom'])
+    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom'])
     planSlug!: string;
 
     @IsInt()

@@ -15,7 +15,7 @@ import MpCardForm from "@/components/billing/MpCardForm";
 
 const STEP_KEYS = ["step1", "step2", "step3", "step4", "step5"];
 
-const PLAN_SLUGS = ["starter", "pro", "enterprise"] as const;
+const PLAN_SLUGS = ["emprendedor", "starter", "pro", "enterprise"] as const;
 type PlanSlug = typeof PLAN_SLUGS[number];
 
 const INDUSTRY_KEYS = [
@@ -434,7 +434,7 @@ export default function OnboardingPage() {
     const [referralOther, setReferralOther] = useState("");
 
     // Step 5 — plan picker + card for paid tiers
-    const [planSlug, setPlanSlug] = useState<PlanSlug>("starter");
+    const [planSlug, setPlanSlug] = useState<PlanSlug>("emprendedor");
     const [cardTokenId, setCardTokenId] = useState<string | null>(null);
 
     // Protected
@@ -468,7 +468,7 @@ export default function OnboardingPage() {
             case 4:
                 // Starter is always valid. Pro/Enterprise require a card
                 // token (collected via the MP card form below).
-                if (planSlug === "starter") return true;
+                if (planSlug === "emprendedor" || planSlug === "starter") return true;
                 return !!cardTokenId;
             default:
                 return false;
@@ -514,7 +514,7 @@ export default function OnboardingPage() {
                 : goals,
             referral: referral === "other" ? `other:${referralOther}` : referral,
             plan: planSlug,
-            cardTokenId: planSlug !== "starter" ? cardTokenId : undefined,
+            cardTokenId: planSlug !== "emprendedor" && planSlug !== "starter" ? cardTokenId : undefined,
         };
 
         try {
@@ -971,7 +971,7 @@ export default function OnboardingPage() {
 
                             <div className="space-y-3">
                                 {PLAN_SLUGS.map((slug) => {
-                                    const requiresCard = slug !== 'starter';
+                                    const requiresCard = slug !== 'emprendedor' && slug !== 'starter';
                                     const active = planSlug === slug;
                                     return (
                                         <label
@@ -1010,7 +1010,7 @@ export default function OnboardingPage() {
                             </div>
 
                             {/* Inline card form for Pro/Enterprise */}
-                            {planSlug !== "starter" && !cardTokenId && (
+                            {planSlug !== "emprendedor" && planSlug !== "starter" && !cardTokenId && (
                                 <div className="mt-5 p-4 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900">
                                     <h3 className="text-sm font-semibold mb-3">{t('cardSectionTitle')}</h3>
                                     <MpCardForm
@@ -1020,7 +1020,7 @@ export default function OnboardingPage() {
                                 </div>
                             )}
 
-                            {planSlug !== "starter" && cardTokenId && (
+                            {planSlug !== "emprendedor" && planSlug !== "starter" && cardTokenId && (
                                 <div className="mt-5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-sm text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
                                     <span>✓ {t('cardReady')}</span>
                                     <button

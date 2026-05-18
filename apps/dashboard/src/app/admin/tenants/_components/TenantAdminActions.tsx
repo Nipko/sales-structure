@@ -423,7 +423,7 @@ function CompPlanModal({
 }: { tenant: TenantSummary; onClose: () => void; onSuccess: () => void }) {
     const t = useTranslations("tenantAdminActions");
     const tc = useTranslations("common");
-    const [planSlug, setPlanSlug] = useState<"starter" | "pro" | "enterprise" | "custom">("pro");
+    const [planSlug, setPlanSlug] = useState<"emprendedor" | "starter" | "pro" | "enterprise" | "custom">("pro");
     const [days, setDays] = useState(30);
     const [reason, setReason] = useState("");
     const [busy, setBusy] = useState(false);
@@ -473,6 +473,7 @@ function CompPlanModal({
                             onChange={e => setPlanSlug(e.target.value as any)}
                             className="w-full bg-card border border-border rounded-lg px-3 py-2"
                         >
+                            <option value="emprendedor">Emprendedor</option>
                             <option value="starter">Starter</option>
                             <option value="pro">Pro</option>
                             <option value="enterprise">Enterprise</option>

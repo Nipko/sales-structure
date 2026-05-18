@@ -32,6 +32,60 @@ const prisma = new PrismaClient();
 
 const PLANS = [
     {
+        slug: 'emprendedor',
+        name: 'Emprendedor',
+        priceUsdCents: 2100,
+        trialDays: 7,
+        requiresCardForTrial: false,
+        maxAgents: 1,
+        maxAiMessages: 1_000,
+        sortOrder: 0,
+        priceLocalOverrides: {
+            CO: { currency: 'COP', amountCents: 12_570_000 },
+        },
+        features: {
+            // ── Resource limits ──
+            seats: 1,
+            maxCalendars: 1,
+            maxContacts: 100,
+            maxProperties: 0,
+            automationRules: 0,
+            broadcastCampaigns: 0,
+            appointmentsServices: 1,
+            knowledgeArticles: 5,
+            customAttributes: 0,
+            emailTemplates: 2,
+            pipelineStages: 3,
+            segments: 0,
+            mediaStorageMb: 50,
+            externalCrm: 0,
+            outboundWebhooks: 0,
+
+            // ── Channel access ──
+            channels: ['whatsapp'],
+
+            // ── AI & engagement ──
+            llmTier: 'tier_4',
+            customPrompt: false,
+            customTemplates: false,
+            aiInsights: false,
+            recall: false,
+
+            // ── Operational ──
+            scheduledReports: false,
+            dataRetentionDays: 90,
+            whatsappCreditUsdCents: 500,
+
+            // ── Enterprise features ──
+            sso: false,
+            auditLog: false,
+            biApi: false,
+            customDomainKb: false,
+            whiteLabel: false,
+            prioritySupport: false,
+        },
+    },
+    {
         slug: 'starter',
         name: 'Starter',
         priceUsdCents: 4900,
@@ -40,6 +94,9 @@ const PLANS = [
         maxAgents: 1,
         maxAiMessages: 5_000,
         sortOrder: 1,
+        priceLocalOverrides: {
+            CO: { currency: 'COP', amountCents: 21_580_000 },
+        },
         features: {
             // ── Resource limits ──
             seats: 3,
@@ -59,7 +116,7 @@ const PLANS = [
             outboundWebhooks: 0,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
+            channels: ['whatsapp', 'instagram', 'messenger'],
 
             // ── AI & engagement ──
             llmTier: 'tier_3',
@@ -91,6 +148,9 @@ const PLANS = [
         maxAgents: 3,
         maxAiMessages: 25_000,
         sortOrder: 2,
+        priceLocalOverrides: {
+            CO: { currency: 'COP', amountCents: 67_950_000 },
+        },
         features: {
             // ── Resource limits ──
             seats: 5,
@@ -110,7 +170,7 @@ const PLANS = [
             outboundWebhooks: 3,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
 
             // ── AI & engagement ──
             llmTier: 'tier_2',
@@ -142,6 +202,9 @@ const PLANS = [
         maxAgents: 10,
         maxAiMessages: 100_000,
         sortOrder: 3,
+        priceLocalOverrides: {
+            CO: { currency: 'COP', amountCents: 178_980_000 },
+        },
         features: {
             // ── Resource limits ──
             seats: -1,
@@ -244,6 +307,10 @@ async function main() {
     for (const plan of PLANS) {
         const existing = await prisma.billingPlan.findUnique({ where: { slug: plan.slug } });
         if (existing) {
+            const mergedOverrides = { ...((existing.priceLocalOverrides && typeof existing.priceLocalOverrides === 'object') ? existing.priceLocalOverrides : {}), ...(plan.priceLocalOverrides ?? {}) };
+            for (const [country, vals] of Object.entries(plan.priceLocalOverrides ?? {})) {
+                mergedOverrides[country] = { ...(mergedOverrides[country] ?? {}), ...vals };
+            }
             await prisma.billingPlan.update({
                 where: { slug: plan.slug },
                 data: {
@@ -255,6 +322,7 @@ async function main() {
                     maxAiMessages: plan.maxAiMessages,
                     sortOrder: plan.sortOrder,
                     features: plan.features,
+                    priceLocalOverrides: mergedOverrides,
                     isActive: true,
                 },
             });
@@ -271,6 +339,7 @@ async function main() {
                     maxAiMessages: plan.maxAiMessages,
                     sortOrder: plan.sortOrder,
                     features: plan.features,
+                    priceLocalOverrides: plan.priceLocalOverrides ?? {},
                     isActive: true,
                 },
             });

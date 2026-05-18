@@ -36,9 +36,10 @@ export interface QuotaOverrides {
 }
 
 const PLAN_LIMITS: Record<string, PlanLimits> = {
-    starter:    { automation: 50,   outbound: 200,   broadcast: 500,    priority: 5, maxPendingJobs: 50 },
-    pro:        { automation: 500,  outbound: 2000,  broadcast: 5000,   priority: 3, maxPendingJobs: 200 },
-    enterprise: { automation: 5000, outbound: 20000, broadcast: 50000,  priority: 1, maxPendingJobs: 1000 },
+    emprendedor: { automation: 0,    outbound: 100,   broadcast: 0,      priority: 6, maxPendingJobs: 20 },
+    starter:     { automation: 50,   outbound: 200,   broadcast: 500,    priority: 5, maxPendingJobs: 50 },
+    pro:         { automation: 500,  outbound: 2000,  broadcast: 5000,   priority: 3, maxPendingJobs: 200 },
+    enterprise:  { automation: 5000, outbound: 20000, broadcast: 50000,  priority: 1, maxPendingJobs: 1000 },
 };
 
 const DEFAULT_PLAN = 'starter';

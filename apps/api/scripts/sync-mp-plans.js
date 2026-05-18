@@ -6,17 +6,25 @@
 // (the prod API image does). No ts-node or build step required.
 //
 // Usage (from inside parallext-api container or any host with the env set):
-//   docker exec parallext-api sh -c \
-//     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200 --dry-run'
 //
+//   # Use fixed local prices from priceLocalOverrides (seeded in DB):
 //   docker exec parallext-api sh -c \
-//     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --fx=4200'
+//     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=CO --dry-run'
+//
+//   # Or convert from USD with an explicit FX rate:
+//   docker exec parallext-api sh -c \
+//     'MP_ACCESS_TOKEN=$MP_ACCESS_TOKEN node scripts/sync-mp-plans.js --country=MX --fx=17.5'
 //
 // For each active paid plan (starter, pro, enterprise — custom is sales-led
-// and skipped), converts USD cents → local currency cents via --fx, POSTs
-// /preapproval_plan, and saves the returned plan id into billing_plans:
-//   - mpPlanId (top-level column, CO only for now — Sprint 3 adds per-country resolver)
+// and skipped), POSTs /preapproval_plan and saves the returned plan id into
+// billing_plans:
+//   - mpPlanId (top-level column, CO only for now)
 //   - priceLocalOverrides[COUNTRY] = { currency, amountCents, mpPlanId }
+//
+// Price resolution order:
+//   1. priceLocalOverrides[country].amountCents from DB (fixed local prices)
+//   2. priceUsdCents × --fx (dynamic conversion)
+//   If neither is available, the plan is skipped with an error.
 //
 // Idempotent: skips tiers already synced for that country unless --force.
 
@@ -45,14 +53,13 @@ function parseArgs() {
         process.exit(1);
     }
     const fxRaw = get('fx');
-    if (!fxRaw) {
-        console.error('Missing --fx=<usd_to_local_rate> (e.g., --fx=4200 for 1 USD = 4,200 COP)');
-        process.exit(1);
-    }
-    const fx = Number(fxRaw);
-    if (!Number.isFinite(fx) || fx <= 0) {
-        console.error(`Invalid --fx value ${fxRaw}`);
-        process.exit(1);
+    let fx = null;
+    if (fxRaw) {
+        fx = Number(fxRaw);
+        if (!Number.isFinite(fx) || fx <= 0) {
+            console.error(`Invalid --fx value ${fxRaw}`);
+            process.exit(1);
+        }
     }
     return {
         country,
@@ -72,26 +79,36 @@ async function main() {
         process.exit(1);
     }
 
-    console.log(`\nSync plans to MercadoPago — country=${args.country} currency=${currency} fx=${args.fx}${args.dryRun ? ' [DRY-RUN]' : ''}\n`);
+    const priceMode = args.fx ? `fx=${args.fx}` : 'local (from DB)';
+    console.log(`\nSync plans to MercadoPago — country=${args.country} currency=${currency} prices=${priceMode}${args.dryRun ? ' [DRY-RUN]' : ''}\n`);
 
     const prisma = new PrismaClient();
     const mpConfig = new MercadoPagoConfig({ accessToken, options: { timeout: 10_000 } });
     const preApprovalPlan = new PreApprovalPlan(mpConfig);
 
     const plans = await prisma.billingPlan.findMany({
-        where: { isActive: true, slug: { in: ['starter', 'pro', 'enterprise'] } },
+        where: { isActive: true, slug: { in: ['emprendedor', 'starter', 'pro', 'enterprise'] } },
         orderBy: { sortOrder: 'asc' },
     });
 
     for (const plan of plans) {
-        const localAmountCents = Math.round(plan.priceUsdCents * args.fx);
         const priceLocalOverrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
             ? { ...plan.priceLocalOverrides }
             : {};
-        const existing = priceLocalOverrides[args.country];
+        const existingOverride = priceLocalOverrides[args.country];
 
-        if (existing && existing.mpPlanId && !args.force) {
-            console.log(`  [${plan.slug}] already synced for ${args.country} (mpPlanId=${existing.mpPlanId}) — skipping. Use --force to re-create.`);
+        if (existingOverride && existingOverride.mpPlanId && !args.force) {
+            console.log(`  [${plan.slug}] already synced for ${args.country} (mpPlanId=${existingOverride.mpPlanId}) — skipping. Use --force to re-create.`);
+            continue;
+        }
+
+        let localAmountCents;
+        if (existingOverride?.amountCents) {
+            localAmountCents = existingOverride.amountCents;
+        } else if (args.fx) {
+            localAmountCents = Math.round(plan.priceUsdCents * args.fx);
+        } else {
+            console.error(`  [${plan.slug}] no local price in DB for ${args.country} and no --fx provided — skipping.`);
             continue;
         }
 
@@ -109,7 +126,7 @@ async function main() {
             back_url: 'https://admin.parallly-chat.cloud/admin/settings/billing?status=return',
         };
 
-        console.log(`  [${plan.slug}] creating MP plan: ${currency} ${(localAmountCents / 100).toFixed(2)}, trial=${plan.trialDays}d…`);
+        console.log(`  [${plan.slug}] creating MP plan: ${currency} ${(localAmountCents / 100).toLocaleString('es-CO')}/mes…`);
 
         if (args.dryRun) {
             console.log(`    (dry-run) body:`, JSON.stringify(body, null, 2));
@@ -123,6 +140,7 @@ async function main() {
         }
 
         priceLocalOverrides[args.country] = {
+            ...(existingOverride ?? {}),
             currency,
             amountCents: localAmountCents,
             mpPlanId: res.id,

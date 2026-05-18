@@ -39,6 +39,7 @@ const industryColor: Record<string, string> = {
 };
 
 const planColor: Record<string, string> = {
+  emprendedor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   starter: "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300",
   professional: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
   pro: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",

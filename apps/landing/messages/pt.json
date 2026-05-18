@@ -270,46 +270,56 @@
     "monthly": "Mensal",
     "annual": "Anual",
     "popular": "Mais popular",
-    "freeTrial": "Teste grátis · Sem cartão para Starter · Cancele com um clique",
+    "freeTrial": "Teste gratis · Sem cartao para Empreendedor e Starter · Cancele com um clique",
     "annualDiscount": "-17%",
-    "starterName": "Starter",
-    "starterDesc": "Para empreendedores começando.",
-    "starterCta": "Começar com Starter",
-    "starterFeatures": [
-      "1 canal conectado",
-      "5.000 mensagens IA/mês",
+    "emprendedorName": "Empreendedor",
+    "emprendedorDesc": "Para negocios comecando com WhatsApp.",
+    "emprendedorCta": "Comecar gratis",
+    "emprendedorFeatures": [
+      "1 canal (WhatsApp)",
+      "1.000 mensagens IA/mes",
       "1 agente IA",
-      "CRM básico + pipeline",
+      "Pipeline basico",
+      "1 Google Calendar",
+      "7 dias de teste gratis"
+    ],
+    "starterName": "Starter",
+    "starterDesc": "Para empreendedores que querem mais canais.",
+    "starterCta": "Comecar com Starter",
+    "starterFeatures": [
+      "3 canais (WA + IG + Messenger)",
+      "5.000 mensagens IA/mes",
+      "1 agente IA",
+      "CRM basico + pipeline",
       "1 Google Calendar",
       "Suporte por email"
     ],
     "proName": "Pro",
     "proDesc": "Para equipes que querem crescer.",
-    "proCta": "Começar com Pro",
+    "proCta": "Comecar com Pro",
     "proFeatures": [
-      "Canais ilimitados",
-      "25.000 mensagens IA/mês",
+      "5 canais (todos)",
+      "25.000 mensagens IA/mes",
       "3 agentes IA",
-      "CRM avançado + automações",
+      "CRM avancado + automacoes",
       "3 Google Calendars",
       "Templates customizados + analytics completo",
-      "Suporte prioritário"
+      "Suporte prioritario"
     ],
     "enterpriseName": "Enterprise",
-    "enterpriseDesc": "Para empresas com necessidades especiais.",
-    "enterpriseCta": "Falar com vendas",
+    "enterpriseDesc": "Para empresas com operacao seria.",
+    "enterpriseCta": "Comecar com Enterprise",
     "enterprisePrice": "Sob medida",
     "enterpriseFeatures": [
-      "Tudo ilimitado",
-      "100.000+ mensagens IA/mês",
+      "Todos os canais + SMS",
+      "100.000 mensagens IA/mes",
       "10 agentes IA",
-      "SLA garantido",
+      "SSO + audit log",
       "10 Google Calendars",
-      "Onboarding personalizado",
-      "Suporte dedicado 24/7"
+      "Suporte prioritario dedicado"
     ],
-    "perMonth": "/mês",
-    "currencyHint": "Preços em moeda local — calculados no checkout"
+    "perMonth": "/mes",
+    "currencyHint": "Precos em COP (pesos colombianos)"
   },
   "faq": {
     "title": "Perguntas frequentes",

@@ -1691,15 +1691,19 @@ export default function LandingPage() {
   /* ---------------- Pricing ---------------- */
   const plans = [
     {
-      nameKey: "starterName", priceCOP: annual ? "$199.000" : "$239.000", priceUSD: annual ? "~$49 USD" : "~$59 USD",
+      nameKey: "emprendedorName", priceCOP: annual ? "$105.000" : "$125.700", priceUSD: "",
+      descKey: "emprendedorDesc", featuresKey: "emprendedorFeatures", ctaKey: "emprendedorCta", highlighted: false,
+    },
+    {
+      nameKey: "starterName", priceCOP: annual ? "$179.000" : "$215.800", priceUSD: "",
       descKey: "starterDesc", featuresKey: "starterFeatures", ctaKey: "starterCta", highlighted: false,
     },
     {
-      nameKey: "proName", priceCOP: annual ? "$499.000" : "$599.000", priceUSD: annual ? "~$119 USD" : "~$149 USD",
+      nameKey: "proName", priceCOP: annual ? "$569.000" : "$679.500", priceUSD: "",
       descKey: "proDesc", featuresKey: "proFeatures", ctaKey: "proCta", highlighted: true, badgeKey: "popular",
     },
     {
-      nameKey: "enterpriseName", priceCOP: null, priceUSD: "",
+      nameKey: "enterpriseName", priceCOP: annual ? "$1.499.000" : "$1.789.800", priceUSD: "",
       descKey: "enterpriseDesc", featuresKey: "enterpriseFeatures", ctaKey: "enterpriseCta", highlighted: false,
     },
   ];

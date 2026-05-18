@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
-    Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag,
+    Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
 
@@ -93,6 +93,7 @@ function formatDate(iso: string | null | undefined, locale: string): string {
 }
 
 const PLAN_ICON: Record<string, any> = {
+    emprendedor: Lightbulb,
     starter: Zap,
     pro: Rocket,
     enterprise: Briefcase,

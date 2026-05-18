@@ -24,7 +24,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 class StartTrialDto {
     @IsString()
-    @IsIn(['starter', 'pro', 'enterprise', 'custom'])
+    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom'])
     planSlug!: string;
 
     @IsOptional()
@@ -42,7 +42,7 @@ class StartTrialDto {
 
 class ChangePlanDto {
     @IsString()
-    @IsIn(['starter', 'pro', 'enterprise'])
+    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise'])
     planSlug!: string;
 
     @IsOptional()
@@ -109,7 +109,7 @@ export class BillingController {
 
         // Resolve display price per plan based on requested country.
         // Order of precedence:
-        //  1. priceLocalOverrides[country].priceLocalCents (curated, manual)
+        //  1. priceLocalOverrides[country].amountCents (fixed local price)
         //  2. latest ExchangeRate USD→localCurrency (auto, fallback)
         //  3. USD (no override, no FX rate available)
         const localPrice = country ? await this.resolveLocalPrice(country) : null;
@@ -122,9 +122,9 @@ export class BillingController {
             let displayPriceCents: number = p.priceUsdCents;
             let priceSource: 'override' | 'fx' | 'usd' = 'usd';
 
-            if (countryOverride?.priceLocalCents && countryOverride?.currency) {
+            if (countryOverride?.amountCents && countryOverride?.currency) {
                 displayCurrency = countryOverride.currency;
-                displayPriceCents = countryOverride.priceLocalCents;
+                displayPriceCents = countryOverride.amountCents;
                 priceSource = 'override';
             } else if (localPrice) {
                 displayCurrency = localPrice.currency;

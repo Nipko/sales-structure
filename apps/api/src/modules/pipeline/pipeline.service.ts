@@ -303,7 +303,10 @@ export class PipelineService {
                  FROM opportunities o
                  LEFT JOIN leads l ON l.id = o.lead_id
                  LEFT JOIN conversations c ON c.id = o.conversation_id
-                 WHERE o.deal_id = $1::uuid
+                 WHERE o.lead_id IN (
+                     SELECT id FROM leads WHERE contact_id = (SELECT contact_id FROM deals WHERE id = $1::uuid)
+                 )
+                 ORDER BY o.updated_at DESC
                  LIMIT 1`,
                 [dealId],
             ),
@@ -554,11 +557,13 @@ export class PipelineService {
             await this.prisma.executeInTenantSchema(
                 schema,
                 `INSERT INTO notes (lead_id, content, created_by, created_at)
-                 SELECT o.lead_id,
+                 SELECT l.id,
                         $2,
                         'system',
                         NOW()
-                 FROM opportunities o WHERE o.deal_id = $1 LIMIT 1`,
+                 FROM leads l
+                 WHERE l.contact_id = (SELECT contact_id FROM deals WHERE id = $1::uuid)
+                 LIMIT 1`,
                 [
                     deal.id,
                     `[SLA BREACHED] Deal "${deal.title}" exceeded SLA in stage "${deal.stage_name}". ` +

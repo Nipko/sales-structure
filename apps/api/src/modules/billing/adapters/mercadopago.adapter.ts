@@ -436,8 +436,8 @@ export class MercadoPagoAdapter implements IPaymentProvider {
                     ? BillingEventType.PAYMENT_SUCCEEDED
                     : BillingEventType.PAYMENT_FAILED,
             providerPaymentId: String(payment.id),
-            // MP includes preapproval id on recurring charges via metadata or external_reference
-            providerSubscriptionId: (payment as any).preapproval_id ?? (payment.external_reference ? String(payment.external_reference) : undefined),
+            providerSubscriptionId: (payment as any).preapproval_id ?? undefined,
+            tenantId: payment.external_reference ? String(payment.external_reference) : undefined,
             payment: normalizedPayment,
             rawPayload: { ...(base.rawPayload as any), _fetched_payment: payment },
         };

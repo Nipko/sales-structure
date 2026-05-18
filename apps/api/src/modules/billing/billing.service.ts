@@ -831,9 +831,12 @@ export class BillingService {
         }
 
         // Resolve the subscription this event concerns (if any)
-        const sub = event.providerSubscriptionId
+        let sub = event.providerSubscriptionId
             ? await this.prisma.billingSubscription.findUnique({ where: { providerSubscriptionId: event.providerSubscriptionId } })
             : null;
+        if (!sub && event.tenantId) {
+            sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId: event.tenantId } });
+        }
 
         await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.billingEvent.create({

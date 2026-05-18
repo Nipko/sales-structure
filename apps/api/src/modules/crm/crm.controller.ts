@@ -545,14 +545,14 @@ export class CrmController {
 
         if (existing?.length > 0) {
             await this.prisma.executeInTenantSchema(schema,
-                `UPDATE scoring_config SET weights = $1::jsonb, purchase_keywords = $2::text[], decay_enabled = $3, decay_days = $4, decay_factor = $5, updated_at = NOW()
+                `UPDATE scoring_config SET weights = $1::jsonb, purchase_keywords = $2::text[], decay_enabled = $3::boolean, decay_days = $4::int, decay_factor = $5::numeric, updated_at = NOW()
                  WHERE id = $6::uuid`,
                 [JSON.stringify(body.weights || {}), body.purchase_keywords || [], body.decay_enabled ?? false, body.decay_days ?? 30, body.decay_factor ?? 0.5, existing[0].id],
             );
         } else {
             await this.prisma.executeInTenantSchema(schema,
                 `INSERT INTO scoring_config (tenant_id, weights, purchase_keywords, decay_enabled, decay_days, decay_factor)
-                 VALUES ($1::uuid, $2::jsonb, $3::text[], $4, $5, $6)`,
+                 VALUES ($1::uuid, $2::jsonb, $3::text[], $4::boolean, $5::int, $6::numeric)`,
                 [tenantId, JSON.stringify(body.weights || {}), body.purchase_keywords || [], body.decay_enabled ?? false, body.decay_days ?? 30, body.decay_factor ?? 0.5],
             );
         }

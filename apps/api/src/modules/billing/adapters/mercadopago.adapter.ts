@@ -103,12 +103,8 @@ export class MercadoPagoAdapter implements IPaymentProvider {
             auto_recurring: {
                 frequency,
                 frequency_type: frequencyType,
-                // MP wants a decimal value, not cents
                 transaction_amount: input.amountCents / 100,
                 currency_id: input.currency,
-                ...(input.trialDays && input.trialDays > 0
-                    ? { free_trial: { frequency: input.trialDays, frequency_type: 'days' } }
-                    : {}),
             },
             // Hardcoded to cards + account money — the two payment types MP
             // supports for subscriptions. Customising this is rarely useful.
@@ -438,6 +434,7 @@ export class MercadoPagoAdapter implements IPaymentProvider {
             providerPaymentId: String(payment.id),
             providerSubscriptionId: (payment as any).preapproval_id ?? undefined,
             tenantId: payment.external_reference ? String(payment.external_reference) : undefined,
+            payerEmail: (payment.payer as any)?.email ?? undefined,
             payment: normalizedPayment,
             rawPayload: { ...(base.rawPayload as any), _fetched_payment: payment },
         };

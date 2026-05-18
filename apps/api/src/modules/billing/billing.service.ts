@@ -98,13 +98,12 @@ export class BillingService {
         const providerName = (tenant.paymentProvider || 'mercadopago') as PaymentProviderName;
         const provider = this.providerFactory.getByName(providerName);
 
-        // Free trial without a card: skip the provider entirely. MP cannot
-        // create a preapproval without card_token_id, so we'd just 400. Keep
-        // the subscription local in 'trialing' state until the user adds a
-        // payment method via /subscription/payment-method, at which point we
-        // create the provider subscription. The plan's requiresCardForTrial
-        // flag has already gated this above for Pro/Enterprise.
-        const skipProviderCreate = !input.cardTokenId && plan.trialDays > 0 && !plan.requiresCardForTrial;
+        // Trial periods are managed entirely by Parallly (not the provider).
+        // MP plans are created without free_trial so upgrades don't get a
+        // second trial. During the trial we keep the subscription local in
+        // 'trialing' state; when the trial ends the reconciliation cron or
+        // the upgrade flow creates the provider subscription and charges.
+        const skipProviderCreate = plan.trialDays > 0;
 
         // Create the customer on the provider side (or reuse existing one).
         // We still create the customer up front when possible so subsequent
@@ -837,6 +836,12 @@ export class BillingService {
         const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
         if (!sub && event.tenantId && isUuid(event.tenantId)) {
             sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId: event.tenantId } });
+        }
+        if (!sub && event.payerEmail) {
+            const tenant = await this.prisma.tenant.findFirst({ where: { billingEmail: event.payerEmail }, select: { id: true } });
+            if (tenant) {
+                sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId: tenant.id } });
+            }
         }
 
         await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {

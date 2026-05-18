@@ -102,9 +102,6 @@ async function main() {
                 frequency_type: 'months',
                 transaction_amount: localAmountCents / 100,
                 currency_id: currency,
-                ...(plan.trialDays > 0
-                    ? { free_trial: { frequency: plan.trialDays, frequency_type: 'days' } }
-                    : {}),
             },
             payment_methods_allowed: {
                 payment_types: [{ id: 'credit_card' }, { id: 'debit_card' }],

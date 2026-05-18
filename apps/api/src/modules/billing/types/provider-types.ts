@@ -148,6 +148,8 @@ export interface NormalizedBillingEvent {
     providerSubscriptionId?: string;
     providerCustomerId?: string;
     providerPaymentId?: string;
+    /** Payer email from the payment — used as last-resort tenant resolution when providerSubscriptionId and tenantId are missing. */
+    payerEmail?: string;
 
     /** The subscription state the provider is reporting (post-event). Undefined for non-subscription events. */
     subscription?: ProviderSubscription;

@@ -834,14 +834,15 @@ export class BillingService {
         let sub = event.providerSubscriptionId
             ? await this.prisma.billingSubscription.findUnique({ where: { providerSubscriptionId: event.providerSubscriptionId } })
             : null;
-        if (!sub && event.tenantId) {
+        const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+        if (!sub && event.tenantId && isUuid(event.tenantId)) {
             sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId: event.tenantId } });
         }
 
         await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.billingEvent.create({
                 data: {
-                    tenantId: sub?.tenantId ?? event.tenantId ?? null,
+                    tenantId: sub?.tenantId ?? (event.tenantId && isUuid(event.tenantId) ? event.tenantId : null),
                     subscriptionId: sub?.id ?? null,
                     provider: event.provider,
                     providerEventId: event.providerEventId,
@@ -903,7 +904,7 @@ export class BillingService {
         // Re-emit via EventEmitter2 so rest of the platform (emails, analytics,
         // feature gates) can react without coupling to BillingService.
         this.eventEmitter.emit(event.type, {
-            tenantId: sub?.tenantId ?? event.tenantId,
+            tenantId: sub?.tenantId ?? (event.tenantId && isUuid(event.tenantId) ? event.tenantId : undefined),
             subscriptionId: sub?.id,
             event,
         });

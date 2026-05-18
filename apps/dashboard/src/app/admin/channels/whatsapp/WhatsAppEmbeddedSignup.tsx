@@ -53,17 +53,15 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        console.log("[EmbeddedSignup] Window message received:", data);
         if (data.type === "WA_EMBEDDED_SIGNUP") {
           if (data.event === "FINISH" || data.event === "FINISH_ONLY_WABA") {
-            console.log("[EmbeddedSignup] Signup FINISH event:", data.data);
             // Store in ref (synchronous, available immediately for handleFBResponse)
             sessionDataRef.current = {
               waba_id: data.data?.waba_id,
               phone_number_id: data.data?.phone_number_id,
             };
           } else if (data.event === "CANCEL") {
-            console.log("[EmbeddedSignup] User cancelled signup");
+            // user closed the popup
           } else if (data.event === "ERROR") {
             console.error("[EmbeddedSignup] Signup error event:", data.data);
           }
@@ -112,37 +110,19 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   const handleFBResponse = useCallback(
     (response: any) => {
       const processResponse = async () => {
-        console.log("[EmbeddedSignup] FB.login() raw response:", JSON.stringify(response, null, 2));
-        console.log("[EmbeddedSignup] authResponse:", response.authResponse);
-        console.log("[EmbeddedSignup] status:", response.status);
-
         if (!response.authResponse?.code) {
-          console.error("[EmbeddedSignup] No auth code received. Full response:", response);
           onError("Authorization code not received from Meta. The user cancelled or an error occurred.");
           setLaunching(false);
           return;
         }
 
         const code = response.authResponse.code;
-        console.log("[EmbeddedSignup] Auth code received:", code.substring(0, 20) + "...");
 
         // Extract session info: try authResponse first, then ref from window message (synchronous)
         const sessionPhoneNumberId = response.authResponse.phone_number_id || sessionDataRef.current.phone_number_id || null;
         const sessionWabaId = response.authResponse.waba_id || sessionDataRef.current.waba_id || null;
 
-        if (!sessionPhoneNumberId || !sessionWabaId) {
-          console.warn(
-            "[EmbeddedSignup] Session info missing from authResponse. " +
-            "phone_number_id:", sessionPhoneNumberId,
-            "waba_id:", sessionWabaId,
-            "— backend will attempt API discovery as fallback.",
-          );
-        } else {
-          console.log(
-            "[EmbeddedSignup] Session info captured. phone_number_id:",
-            sessionPhoneNumberId, "waba_id:", sessionWabaId,
-          );
-        }
+        // sessionPhoneNumberId/sessionWabaId may be null — backend does API discovery as fallback
 
         setLaunching(false);
         setProcessing(true);
@@ -167,11 +147,10 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
               if (meData.token) {
                 token = meData.token;
                 localStorage.setItem("accessToken", token!);
-                console.log("[EmbeddedSignup] Token refreshed successfully");
               }
             }
           } catch {
-            console.warn("[EmbeddedSignup] Token refresh failed, using existing token");
+            // token refresh failed, continue with existing token
           }
 
           setStep(t("registeringAccount"));
@@ -186,9 +165,6 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
             phoneNumberId: sessionPhoneNumberId,
             wabaId: sessionWabaId,
           };
-          console.log("[EmbeddedSignup] Sending to backend:", `${WA_SERVICE_URL}/onboarding/start`);
-          console.log("[EmbeddedSignup] Payload:", JSON.stringify(payload, null, 2));
-
           const res = await fetch(`${WA_SERVICE_URL}/onboarding/start`, {
             method: "POST",
             headers: {
@@ -199,8 +175,6 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
           });
 
           const responseText = await res.text();
-          console.log("[EmbeddedSignup] Backend response status:", res.status);
-          console.log("[EmbeddedSignup] Backend response body:", responseText);
 
           if (!res.ok) {
             let errorData: any = {};
@@ -210,7 +184,6 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
 
           const result = JSON.parse(responseText);
           setStep(t("connectionSuccess"));
-          console.log("[EmbeddedSignup] Onboarding complete:", result);
           onSuccess(result);
         } catch (err: any) {
           console.error("[EmbeddedSignup] Error:", err);
@@ -232,7 +205,6 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code) {
-      console.log("[EmbeddedSignup] Redirect callback detected with code:", code.substring(0, 20) + "...");
       window.history.replaceState({}, "", window.location.pathname);
       handleFBResponse({ authResponse: { code }, status: "connected" });
     }
@@ -264,10 +236,6 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
         version: "v4",
       },
     };
-
-    console.log("[EmbeddedSignup] Launching FB.login() with options:", JSON.stringify(loginOptions, null, 2));
-    console.log("[EmbeddedSignup] META_APP_ID:", META_APP_ID);
-    console.log("[EmbeddedSignup] META_CONFIG_ID:", META_CONFIG_ID);
 
     FB.login(handleFBResponse, loginOptions);
   };

@@ -18,6 +18,7 @@ type Plan = {
     maxAgents: number;
     maxAiMessages: number;
     features: Record<string, any>;
+    priceLocalOverrides: Record<string, { currency: string; amountCents: number; mpPlanId?: string }>;
     isActive: boolean;
     sortOrder: number;
     tenantCount: number;
@@ -41,7 +42,7 @@ const ENTERPRISE_KEYS = [
 
 const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
 
-const LLM_TIERS = ["tier_1", "tier_2", "tier_3"];
+const LLM_TIERS = ["tier_1", "tier_2", "tier_3", "tier_4"];
 
 export default function PlansPage() {
     const t = useTranslations("plansPage");
@@ -95,6 +96,7 @@ export default function PlansPage() {
                 maxAgents: editBuffer.maxAgents,
                 maxAiMessages: editBuffer.maxAiMessages,
                 features: editBuffer.features,
+                priceLocalOverrides: editBuffer.priceLocalOverrides,
                 isActive: editBuffer.isActive,
             });
             if (res.success) {
@@ -305,8 +307,54 @@ export default function PlansPage() {
                         {/* Plan Info */}
                         <tr><td colSpan={plans.length + 1} className={catCls}>{tc("planInfo")}</td></tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>{t("price")}</td>
+                            <td className={`${tdCls} font-medium`}>{t("planName")}</td>
+                            {plans.map(p => {
+                                const isEditing = editSlug === p.slug && editBuffer;
+                                return (
+                                    <td key={p.slug} className={tdCls}>
+                                        {isEditing ? (
+                                            <input type="text" className={inputCls} value={editBuffer.name} onChange={e => updateTopLevel("name", e.target.value)} />
+                                        ) : (
+                                            <span className="text-sm font-medium">{p.name}</span>
+                                        )}
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                            <td className={`${tdCls} font-medium`}>{t("priceRef")}</td>
                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "priceUsdCents", "")}</td>)}
+                        </tr>
+                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                            <td className={`${tdCls} font-medium`}>{t("priceCOP")}</td>
+                            {plans.map(p => {
+                                const isEditing = editSlug === p.slug && editBuffer;
+                                const overrides = isEditing ? editBuffer.priceLocalOverrides : p.priceLocalOverrides;
+                                const copCents = overrides?.CO?.amountCents ?? 0;
+                                if (!isEditing) {
+                                    return <td key={p.slug} className={tdCls}><span className="font-mono text-xs">{copCents ? `$${(copCents / 100).toLocaleString("es-CO")}` : "—"}</span></td>;
+                                }
+                                return (
+                                    <td key={p.slug} className={tdCls}>
+                                        <input
+                                            type="number"
+                                            className={inputCls}
+                                            value={copCents}
+                                            onChange={e => {
+                                                const val = parseInt(e.target.value) || 0;
+                                                setEditBuffer({
+                                                    ...editBuffer,
+                                                    priceLocalOverrides: {
+                                                        ...editBuffer.priceLocalOverrides,
+                                                        CO: { ...(editBuffer.priceLocalOverrides?.CO ?? { currency: "COP" }), amountCents: val },
+                                                    },
+                                                });
+                                            }}
+                                        />
+                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">{t("copHint")}</span>
+                                    </td>
+                                );
+                            })}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("trialDays")}</td>

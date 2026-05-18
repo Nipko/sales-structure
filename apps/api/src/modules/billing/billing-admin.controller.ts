@@ -39,6 +39,7 @@ class UpdatePlanDto {
     @IsOptional() @IsInt() @Min(0) maxAgents?: number;
     @IsOptional() @IsInt() maxAiMessages?: number;
     @IsOptional() @IsObject() features?: Record<string, any>;
+    @IsOptional() @IsObject() priceLocalOverrides?: Record<string, any>;
     @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
@@ -91,6 +92,10 @@ export class BillingAdminController {
         const existing = await this.prisma.billingPlan.findUnique({ where: { slug } });
         if (!existing) throw new NotFoundException('Plan not found');
 
+        const mergedOverrides = body.priceLocalOverrides
+            ? { ...((existing.priceLocalOverrides as any) ?? {}), ...body.priceLocalOverrides }
+            : (existing.priceLocalOverrides as any);
+
         const updated = await this.prisma.billingPlan.update({
             where: { slug },
             data: {
@@ -101,6 +106,7 @@ export class BillingAdminController {
                 maxAgents: body.maxAgents ?? existing.maxAgents,
                 maxAiMessages: body.maxAiMessages ?? existing.maxAiMessages,
                 features: body.features ?? (existing.features as any),
+                priceLocalOverrides: mergedOverrides,
                 isActive: body.isActive ?? existing.isActive,
             },
         });

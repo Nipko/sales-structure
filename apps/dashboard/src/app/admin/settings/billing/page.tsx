@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -98,6 +98,20 @@ const PLAN_ICON: Record<string, any> = {
     enterprise: Briefcase,
     custom: Sparkles,
 };
+
+function MpSecurityScript() {
+    const loaded = useRef(false);
+    useEffect(() => {
+        if (loaded.current) return;
+        loaded.current = true;
+        const s = document.createElement("script");
+        s.src = "https://www.mercadopago.com/v2/security.js";
+        s.setAttribute("view", "checkout");
+        s.async = true;
+        document.head.appendChild(s);
+    }, []);
+    return null;
+}
 
 export default function BillingPage() {
     const t = useTranslations("billingPage");
@@ -373,6 +387,7 @@ export default function BillingPage() {
 
     return (
         <div className="max-w-4xl space-y-6">
+            <MpSecurityScript />
             <header>
                 <h1 className="text-2xl font-semibold flex items-center gap-2">
                     <CreditCard size={22} />

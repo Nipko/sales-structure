@@ -131,7 +131,7 @@ export class CalendarIntegrationService {
 
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, label, assignment_type, assignment_id, connected_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, 'google', $3, 'primary', $4, $5, $6, $7, NOW(), NOW())`,
+             VALUES ($1::uuid, $2::uuid, 'google', $3, 'primary', $4, $5, $6, $7::uuid, NOW(), NOW())`,
             [id, userId, encrypted, accountEmail, accountEmail, assignmentType, assignmentId],
         );
 
@@ -171,7 +171,7 @@ export class CalendarIntegrationService {
 
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO calendar_integrations (id, user_id, provider, encrypted_refresh_token, calendar_id, account_email, label, assignment_type, assignment_id, connected_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, 'microsoft', $3, 'primary', $4, $5, $6, $7, NOW(), NOW())`,
+             VALUES ($1::uuid, $2::uuid, 'microsoft', $3, 'primary', $4, $5, $6, $7::uuid, NOW(), NOW())`,
             [id, userId, encrypted, accountEmail, accountEmail, assignmentType, assignmentId],
         );
 

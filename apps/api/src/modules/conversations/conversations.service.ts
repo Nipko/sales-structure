@@ -810,10 +810,13 @@ export class ConversationsService {
 
             if (isGreetOrFarewell && isIdleOrBooked) {
                 this.logger.log(`[Pipeline] ${intent.intent} (idle): LLM handles with full persona`);
-                // Always refresh services from DB (honors is_active changes)
+                // Refresh services from DB and update cache so booking engine gets fresh data next turn
                 try {
                     const result = await this.toolExecutor.execute(schemaName, tenantId, conversation.contact_id || '', 'list_services', {});
                     bookingState.services = result?.services?.length ? result.services : [];
+                    // Update the tenantId-scoped cache so next booking engine call is consistent
+                    const svcCacheKey = `booking:services:${tenantId}`;
+                    await this.redis.set(svcCacheKey, JSON.stringify(bookingState.services), 300).catch(() => {});
                 } catch {}
                 await this.persistBookingState(schemaName, conversation.id, bookingState);
                 // Skip engine entirely — fall through to LLM

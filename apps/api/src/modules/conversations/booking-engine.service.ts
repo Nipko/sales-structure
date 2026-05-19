@@ -176,12 +176,18 @@ export class BookingEngineService {
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
 
-        // ── Bug #6: Cache list_services in Redis (TTL 5min) to avoid hitting DB on every message ──
+        // ── Reload services fresh on EVERY process() call ──────────────────────────────────
+        // We ALWAYS overwrite state.services from the tenantId-scoped cache or DB.
+        // We never trust state.services from the persisted conversation state because
+        // it could be hours old (created before the admin deactivated/edited a service).
+        // The booking:services:{tenantId} cache has a 5min TTL and is invalidated
+        // immediately when any service is created/updated/deleted from the panel.
         const cacheKey = `booking:services:${tenantId}`;
         try {
             const cached = await this.redis.get(cacheKey);
             if (cached) {
                 state.services = JSON.parse(cached);
+                this.logger.debug(`[Engine] Services loaded from cache (${state.services?.length ?? 0} active)`);
             } else {
                 const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'list_services', {});
                 if (result?.services?.length) {
@@ -190,10 +196,13 @@ export class BookingEngineService {
                 } else {
                     state.services = [];
                 }
+                this.logger.debug(`[Engine] Services reloaded from DB (${state.services?.length ?? 0} active)`);
             }
-        } catch {
-            // Non-blocking: if cache/DB fails, keep previous state.services
+        } catch (err: any) {
+            this.logger.warn(`[Engine] Failed to reload services (non-fatal): ${err.message}`);
+            // Keep previous state.services as last resort — better than crashing
         }
+
 
         // ── If selected service was disabled/deleted, reset booking flow ──
         if (state.serviceId && state.services?.length) {

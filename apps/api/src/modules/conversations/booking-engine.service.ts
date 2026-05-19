@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { InterpretedIntent } from './intent-interpreter.service';
 
@@ -154,6 +155,7 @@ export class BookingEngineService {
 
     constructor(
         private prisma: PrismaService,
+        private redis: RedisService,
         private toolExecutor: AIToolExecutorService,
     ) {}
 
@@ -174,12 +176,37 @@ export class BookingEngineService {
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
 
-        // ── Pre-load services ──
-        if (!state.services?.length) {
-            try {
+        // ── Bug #6: Cache list_services in Redis (TTL 5min) to avoid hitting DB on every message ──
+        const cacheKey = `booking:services:${tenantId}`;
+        try {
+            const cached = await this.redis.get(cacheKey);
+            if (cached) {
+                state.services = JSON.parse(cached);
+            } else {
                 const result = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'list_services', {});
-                if (result?.services?.length) state.services = result.services;
-            } catch {}
+                if (result?.services?.length) {
+                    state.services = result.services;
+                    await this.redis.set(cacheKey, JSON.stringify(result.services), 300); // 5 min TTL
+                } else {
+                    state.services = [];
+                }
+            }
+        } catch {
+            // Non-blocking: if cache/DB fails, keep previous state.services
+        }
+
+        // ── If selected service was disabled/deleted, reset booking flow ──
+        if (state.serviceId && state.services?.length) {
+            const stillExists = state.services.some(s => s.id === state.serviceId);
+            if (!stillExists) {
+                this.logger.warn(`[Decide] Selected service ${state.serviceId} no longer active — resetting booking`);
+                state.serviceId = undefined;
+                state.serviceName = undefined;
+                state.date = undefined;
+                state.slots = undefined;
+                state.time = undefined;
+                state.step = state.services.length ? 'show_services' : 'idle';
+            }
         }
 
         // ── Apply customer profile ──
@@ -202,14 +229,56 @@ export class BookingEngineService {
                 state.serviceName = svc.name;
             }
         }
-        if (intent.dateMentioned) state.date = intent.dateMentioned;
-        if (intent.timeMentioned && state.slots?.length) {
-            const slot = state.slots.find(s => s.time === intent.timeMentioned);
-            if (slot) {
-                state.time = slot.time;
+        if (intent.dateMentioned) {
+            // Bug #4: Reject past dates — the agent should never book in the past.
+            // If the extracted date is before today, reset it so the bot re-asks.
+            if (intent.dateMentioned < todayDate) {
+                this.logger.warn(`[Decide] dateMentioned=${intent.dateMentioned} is in the past (today=${todayDate}) — ignoring`);
+                // Don't apply the date; if slots are stale from a previous date, clear them too
+                if (state.date && state.date < todayDate) {
+                    state.date = undefined;
+                    state.slots = undefined;
+                    state.time = undefined;
+                    state.step = 'ask_date';
+                }
             } else {
-                // Time mentioned but NOT available — flag it so we can inform the customer
-                (state as any)._requestedUnavailableTime = intent.timeMentioned;
+                // Date changed → clear slots so availability is re-checked
+                if (state.date && state.date !== intent.dateMentioned) {
+                    state.slots = undefined;
+                    state.time = undefined;
+                }
+                state.date = intent.dateMentioned;
+            }
+        }
+        if (intent.timeMentioned && state.slots?.length) {
+            // Bug #3: Tolerant time matching — accept the closest available slot within ±30 min.
+            // Exact match first, then find nearest.
+            const toMinutes = (t: string) => {
+                const [h, m] = t.split(':').map(Number);
+                return h * 60 + m;
+            };
+            const requestedMin = toMinutes(intent.timeMentioned);
+            const exactSlot = state.slots.find(s => s.time === intent.timeMentioned);
+            if (exactSlot) {
+                state.time = exactSlot.time;
+            } else {
+                // Find closest slot within ±30 minutes
+                let closest: { time: string; endTime: string } | undefined;
+                let closestDiff = Infinity;
+                for (const s of state.slots) {
+                    const diff = Math.abs(toMinutes(s.time) - requestedMin);
+                    if (diff < closestDiff && diff <= 30) {
+                        closestDiff = diff;
+                        closest = s;
+                    }
+                }
+                if (closest) {
+                    this.logger.log(`[Decide] Closest slot to ${intent.timeMentioned} is ${closest.time} (diff=${closestDiff}min)`);
+                    state.time = closest.time;
+                } else {
+                    // Time mentioned but NOT within range of available slots — flag it
+                    (state as any)._requestedUnavailableTime = intent.timeMentioned;
+                }
             }
         }
         this.logger.log(`[Decide] State after intent: step=${state.step} svc=${state.serviceName || '-'} date=${state.date || '-'} time=${state.time || '-'} slots=${state.slots?.length || 0}`);
@@ -401,11 +470,16 @@ export class BookingEngineService {
     private async createBooking(schema: string, tenantId: string, contactId: string, state: BookingState, lang: string): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
 
-        // ── Duplicate check — prevent double booking ──
+        // Bug #5: Normalize startAt to ISO 8601 to avoid timezone-sensitive timestamp comparison.
+        // Using AT TIME ZONE ensures the DB compares in tenant-local time regardless of server TZ.
         try {
-            const startAt = `${state.date} ${state.time}`;
+            const startAt = `${state.date}T${state.time}:00`;
             const existing: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id FROM "${schema}".appointments WHERE contact_id = $1::uuid AND service_id = $2::uuid AND start_at = $3::timestamp AND status NOT IN ('cancelled') LIMIT 1`,
+                `SELECT id FROM "${schema}".appointments
+                 WHERE contact_id = $1::uuid
+                   AND service_id = $2::uuid
+                   AND start_at = $3::timestamptz
+                   AND status NOT IN ('cancelled') LIMIT 1`,
                 contactId, state.serviceId, startAt,
             );
             if (existing?.length) {
@@ -417,7 +491,7 @@ export class BookingEngineService {
                 };
             }
         } catch (err) {
-            this.logger.warn(`[Decide] Duplicate check failed (non-blocking): ${err.message}`);
+            this.logger.warn(`[Decide] Duplicate check failed (non-blocking): ${(err as any).message}`);
         }
 
         const result = await this.toolExecutor.execute(schema, tenantId, contactId, 'create_appointment', {

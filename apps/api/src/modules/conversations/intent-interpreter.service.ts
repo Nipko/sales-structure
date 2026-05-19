@@ -261,16 +261,29 @@ export class IntentInterpreterService {
             if (!base.intent || base.intent === 'unknown') base.intent = 'ask_availability';
         }
 
-        // ── Detect name (only when step is ask_name) ──
+        // ── Bug #8: Detect name (only when step is ask_name) ──
+        // Strengthened to reject: intent words, date/time words, single chars, confirmations.
         if (step === 'ask_name' && !base.isConfirmation && !base.isNegation) {
-            const cleaned = text.replace(/[.,!?]/g, '').trim();
+            const cleaned = text.replace(/[.,!?¿¡]/g, '').trim();
             const words = cleaned.split(/\s+/);
-            const skip = /^(si|no|ok|hola|quiero|para|yes|gracias|el|la|los|las|un|una)\b/i;
-            if (words.length >= 1 && words.length <= 5 && !/\d/.test(cleaned) && !skip.test(words[0])) {
+            // Extended blocklist: greetings, confirmations, dates, times, intents, pronouns
+            const skipPattern = /^(si|sí|no|ok|hola|quiero|para|yes|gracias|el|la|los|las|un|una|de|del|me|mi|yo|tu|ya|con|por|que|qué|como|cómo|cuándo|cuando|donde|dónde|mañana|manana|hoy|today|tomorrow|lunes|martes|miercoles|jueves|viernes|sabado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|am|pm|este|esta|ese|esa|los|las|hay|ver|quiero|necesito|puedo|puede|quisiera|agenda|cita|turno|reservar|agendar|book|appointment)$/i;
+            const firstWordBlocked = skipPattern.test(words[0]);
+            // Reject if: first word is blocked, contains digits, or is a single char
+            const isValidName =
+                words.length >= 1 &&
+                words.length <= 5 &&
+                !/\d/.test(cleaned) &&
+                !firstWordBlocked &&
+                cleaned.length >= 2 &&
+                // Single-word names must be at least 3 chars (avoids "ok", "si", etc.)
+                !(words.length === 1 && cleaned.length < 3);
+            if (isValidName) {
                 base.nameProvided = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                 base.intent = 'provide_info';
             }
         }
+
 
         // ── If we detected something useful, return ──
         if (base.intent !== 'unknown' || base.serviceMentioned || base.dateMentioned || base.timeMentioned || base.emailProvided || base.nameProvided) {

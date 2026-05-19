@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { randomUUID } from 'crypto';
 
 export interface BookableService {
@@ -22,7 +23,10 @@ export interface BookableService {
 export class ServicesService {
     private readonly logger = new Logger(ServicesService.name);
 
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private redis: RedisService,
+    ) {}
 
     async list(schemaName: string, activeOnly = false): Promise<BookableService[]> {
         let sql = `SELECT * FROM services`;
@@ -41,7 +45,7 @@ export class ServicesService {
         return this.mapRow(rows[0]);
     }
 
-    async create(schemaName: string, data: any): Promise<BookableService> {
+    async create(schemaName: string, data: any, tenantId?: string): Promise<BookableService> {
         const id = randomUUID();
         const duration = data.durationMinutes || data.duration || 30;
         const buffer = data.bufferMinutes || data.buffer || 0;
@@ -53,10 +57,12 @@ export class ServicesService {
              data.category || null, data.maxConcurrent || 1,
              JSON.stringify(data.requiredFields || [])],
         );
+        // Invalidate booking services cache so next conversation gets fresh list
+        if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
         return this.getById(schemaName, id);
     }
 
-    async update(schemaName: string, serviceId: string, data: any): Promise<BookableService> {
+    async update(schemaName: string, serviceId: string, data: any, tenantId?: string): Promise<BookableService> {
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
@@ -82,13 +88,17 @@ export class ServicesService {
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE services SET ${sets.join(', ')} WHERE id = $${idx}::uuid`, params,
         );
+        // Invalidate booking services cache
+        if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
         return this.getById(schemaName, serviceId);
     }
 
-    async delete(schemaName: string, serviceId: string): Promise<void> {
+    async delete(schemaName: string, serviceId: string, tenantId?: string): Promise<void> {
         await this.prisma.executeInTenantSchema(schemaName,
             `DELETE FROM services WHERE id = $1::uuid`, [serviceId],
         );
+        // Invalidate booking services cache
+        if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
     }
 
     // ── Service-Staff Assignment ────────────────────────────────

@@ -37,7 +37,7 @@ export class AppointmentsController {
         const activeCount = existing.filter(s => s.isActive !== false).length;
         await this.throttle.enforcePlanLimit(tenantId, 'appointmentsServices', activeCount, 'servicios de agenda');
 
-        const data = await this.servicesService.create(user.schemaName, body);
+        const data = await this.servicesService.create(user.schemaName, body, tenantId);
         return { success: true, data };
     }
 
@@ -48,14 +48,14 @@ export class AppointmentsController {
         @Body() body: any,
         @CurrentUser() user: any,
     ) {
-        const data = await this.servicesService.update(user.schemaName, serviceId, body);
+        const data = await this.servicesService.update(user.schemaName, serviceId, body, tenantId);
         return { success: true, data };
     }
 
     @Delete(':tenantId/services/:serviceId')
     @HttpCode(HttpStatus.OK)
     async deleteService(@Param('tenantId') tenantId: string, @Param('serviceId') serviceId: string, @CurrentUser() user: any) {
-        await this.servicesService.delete(user.schemaName, serviceId);
+        await this.servicesService.delete(user.schemaName, serviceId, tenantId);
         return { success: true };
     }
 

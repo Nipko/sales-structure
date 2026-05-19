@@ -605,6 +605,8 @@ export class AIToolExecutorService {
 
         const duration = svcRows[0].duration_minutes || 30;
         const buffer = svcRows[0].buffer_minutes || 0;
+        // Total block time = service duration + post-buffer
+        const totalBlock = duration + buffer;
 
         // Get availability slots for the day
         const dayOfWeek = new Date(date + 'T12:00:00').getDay();
@@ -675,44 +677,55 @@ export class AIToolExecutorService {
             const slotStartMin = startH * 60 + startM;
             const slotEndMin = endH * 60 + endM;
 
-            // Generate slots every 30 min
-            for (let min = slotStartMin; min + duration <= slotEndMin; min += 30) {
+            // Generate slots every 30 min (or service duration if shorter).
+            // A slot must fit entirely within the window INCLUDING the post-service buffer.
+            // Advance by min(30, duration+buffer) so slots don't overlap for long services.
+            const stepMin = Math.min(30, totalBlock);
+            for (let min = slotStartMin; min + totalBlock <= slotEndMin; min += stepMin) {
                 const timeStr = `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
                 const endMin = min + duration;
                 const endTimeStr = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
 
-                // Check conflicts — use simple time comparison (minutes since midnight)
-                // to avoid timezone issues. Both slot times and busy times are
-                // converted to minutes-of-day for comparison.
+                // ── All conflict checks use minutes-of-day in TENANT timezone ──
+                // This avoids the UTC vs local-time mismatch bug when the Node.js
+                // process runs in UTC but the tenant is in a different offset.
                 const slotStartMinOfDay = min;
-                const slotEndMinOfDay = min + duration;
+                // Block includes buffer so an appointment ending at 09:30 + 5min buffer
+                // blocks 09:30-09:35, not just 09:30-09:30.
+                const slotBlockEndMinOfDay = min + totalBlock;
 
                 const hasConflict = existing.some(apt => {
                     if (slot.user_id && apt.assigned_to && slot.user_id !== apt.assigned_to) return false;
-                    const aptStart = new Date(apt.start_at);
-                    const aptEnd = new Date(apt.end_at);
-                    // Compare using full datetime for DB appointments (stored in tenant TZ)
-                    const slotStart = new Date(`${date}T${timeStr}:00`);
-                    const slotEnd = new Date(`${date}T${endTimeStr}:00`);
-                    return slotStart < aptEnd && slotEnd > aptStart;
+                    // Convert DB timestamps to minutes-of-day in tenant timezone
+                    const aptStartLocal = new Date(apt.start_at).toLocaleTimeString('en-GB', {
+                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
+                    });
+                    const aptEndLocal = new Date(apt.end_at).toLocaleTimeString('en-GB', {
+                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
+                    });
+                    const [asH, asM] = aptStartLocal.split(':').map(Number);
+                    const [aeH, aeM] = aptEndLocal.split(':').map(Number);
+                    const aptStartMin = asH * 60 + asM;
+                    const aptEndMin = aeH * 60 + aeM;
+                    // Overlap: proposed slot block overlaps existing appointment
+                    return slotStartMinOfDay < aptEndMin && slotBlockEndMinOfDay > aptStartMin;
                 });
 
                 // Check conflicts with external calendar (Google/Microsoft) busy times.
-                // Google Calendar returns times in UTC/ISO format, so we extract
-                // hours:minutes and compare as minutes-of-day in local time.
                 const calendarConflict = googleBusy.some(busy => {
-                    // Parse busy times — could be UTC ("Z") or offset ("+05:00")
                     const busyStartDate = new Date(busy.start);
                     const busyEndDate = new Date(busy.end);
-                    // Get hours/minutes in tenant timezone (America/Bogota etc.)
-                    // We use the date's local representation for comparison
-                    const busyStartLocal = busyStartDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz });
-                    const busyEndLocal = busyEndDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz });
+                    const busyStartLocal = busyStartDate.toLocaleTimeString('en-GB', {
+                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
+                    });
+                    const busyEndLocal = busyEndDate.toLocaleTimeString('en-GB', {
+                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
+                    });
                     const [bsH, bsM] = busyStartLocal.split(':').map(Number);
                     const [beH, beM] = busyEndLocal.split(':').map(Number);
                     const busyStartMin = bsH * 60 + bsM;
                     const busyEndMin = beH * 60 + beM;
-                    return slotStartMinOfDay < busyEndMin && slotEndMinOfDay > busyStartMin;
+                    return slotStartMinOfDay < busyEndMin && slotBlockEndMinOfDay > busyStartMin;
                 });
 
                 if (!hasConflict && !calendarConflict) {

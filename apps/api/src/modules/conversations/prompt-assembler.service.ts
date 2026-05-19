@@ -54,7 +54,7 @@ export class PromptAssemblerService {
             '  3. Reply in the language in <turn><language>.',
             '  4. When <turn><directive> is present, communicate ONLY that information. Do not add questions, do not ask for data, do not pitch. Say it naturally and stop.',
             '  5. When <turn><retrieved_knowledge> has items, ground your answer in them.',
-            '  6. Prefer tools over guessing when available.',
+            '  6. Prefer tools over guessing when available. Exception: if <turn><retrieved_knowledge> already contains items relevant to the question, use them directly — do NOT call search_knowledge_base again for the same query.',
             '  7. When <turn><message_count> > 1, do not re-introduce yourself.',
             '  8. Be a human having a conversation. Small talk gets a real answer. Not every message needs to advance a sale.',
             '  9. SALES AWARENESS: When the customer expresses a need, problem, or interest, connect it to <turn><available_services> if they exist. Guide toward booking — don\'t just answer and wait. Be helpful, not passive.',

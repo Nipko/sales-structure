@@ -4,6 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import OpenAI from 'openai';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfParse = require('pdf-parse');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mammoth = require('mammoth');
 
 /** Approximate max characters per chunk (~500 tokens at ~4 chars/token) */
 const CHUNK_MAX_CHARS = 2000;
@@ -30,30 +34,57 @@ export class KnowledgeService {
 
     // ─── Document Ingestion ──────────────────────────────────────────────────
 
+    /**
+     * Ingest a document into the knowledge base.
+     *
+     * Accepts two modes:
+     * 1. Plain text: pass `file.content` as extracted text.
+     * 2. Binary file: pass `file.fileBase64` (base64) + `file.mimeType`.
+     *    The method auto-parses PDF and DOCX files server-side.
+     *
+     * Supported mimeTypes for binary:
+     *   - application/pdf         → pdf-parse
+     *   - application/vnd.openxmlformats-officedocument.wordprocessingml.document → mammoth
+     *   - text/plain, text/markdown → used as-is
+     */
     async ingestDocument(
         tenantId: string,
-        file: { name: string; content: string; mimeType?: string },
+        file: {
+            name: string;
+            content?: string;          // pre-extracted text (existing flow)
+            fileBase64?: string;       // base64 encoded binary (new flow)
+            mimeType?: string;
+        },
     ) {
         const schema = await this.tenantSchema(tenantId);
+
+        // ── Resolve final text content ──────────────────────────────────────
+        let textContent = file.content || '';
+        if (!textContent && file.fileBase64) {
+            textContent = await this.parseFileContent(file.fileBase64, file.mimeType || 'application/octet-stream', file.name);
+        }
+        if (!textContent.trim()) {
+            throw new Error('No extractable text found in document. Ensure the file contains readable text (not scanned images).');
+        }
 
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COUNT(*)::int AS c FROM knowledge_documents WHERE status != 'deleted'`);
         await this.throttle.enforcePlanLimit(tenantId, 'knowledgeArticles', cnt?.[0]?.c || 0, 'documentos de conocimiento');
 
-        this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId}`);
+        this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId} (${textContent.length} chars)`);
 
         // 1. Create document record
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status)
              VALUES ($1, $2, $3, $4, 'processing') RETURNING *`,
-            [file.name, file.name, file.mimeType || 'text/plain', file.content],
+            [file.name, file.name, file.mimeType || 'text/plain', textContent],
         );
         const document = rows[0];
 
         try {
             // 2. Chunk the content
-            const chunks = this.chunkText(file.content);
+            const chunks = this.chunkText(textContent);
 
             // 3. Generate embeddings and store
             for (let i = 0; i < chunks.length; i++) {
@@ -276,6 +307,61 @@ export class KnowledgeService {
         }
 
         return chunks;
+    }
+
+    // ─── File Parsing ─────────────────────────────────────────────────────────
+
+    /**
+     * Parse a base64-encoded binary file to plain text.
+     * Supports PDF (via pdf-parse) and DOCX (via mammoth).
+     * Plain text and markdown files are decoded directly.
+     */
+    async parseFileContent(base64: string, mimeType: string, fileName = ''): Promise<string> {
+        const buffer = Buffer.from(base64, 'base64');
+        const mime = mimeType.toLowerCase();
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+
+        // PDF
+        if (mime === 'application/pdf' || ext === 'pdf') {
+            try {
+                const data = await pdfParse(buffer);
+                const text = (data.text || '').replace(/\x00/g, ' ').trim();
+                if (!text) throw new Error('pdf-parse returned empty text — file may be image-based (scanned)');
+                this.logger.log(`[Parse] PDF parsed: ${data.numpages} pages, ${text.length} chars`);
+                return text;
+            } catch (e: any) {
+                throw new Error(`PDF parsing failed: ${e.message}`);
+            }
+        }
+
+        // DOCX
+        if (
+            mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+            mime === 'application/msword' ||
+            ext === 'docx' || ext === 'doc'
+        ) {
+            try {
+                const result = await mammoth.extractRawText({ buffer });
+                const text = (result.value || '').trim();
+                if (!text) throw new Error('mammoth returned empty text');
+                this.logger.log(`[Parse] DOCX parsed: ${text.length} chars`);
+                return text;
+            } catch (e: any) {
+                throw new Error(`DOCX parsing failed: ${e.message}`);
+            }
+        }
+
+        // Plain text / Markdown / CSV — decode directly
+        if (
+            mime.startsWith('text/') ||
+            ext === 'txt' || ext === 'md' || ext === 'csv'
+        ) {
+            return buffer.toString('utf-8');
+        }
+
+        // Unknown type — try UTF-8 decoding as fallback
+        this.logger.warn(`[Parse] Unknown mimeType "${mimeType}" for "${fileName}" — attempting UTF-8 decode`);
+        return buffer.toString('utf-8');
     }
 
     // ─── Embedding ───────────────────────────────────────────────────────────

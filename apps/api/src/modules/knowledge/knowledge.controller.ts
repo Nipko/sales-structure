@@ -23,14 +23,32 @@ export class KnowledgeController {
 
     // ─── Document RAG Endpoints ──────────────────────────────────────────────
 
+    /**
+     * Upload / ingest a document into the knowledge base.
+     *
+     * Supports two payload modes:
+     * 1. Pre-extracted text: `{ name, content, mimeType? }`
+     * 2. Binary file (PDF/DOCX): `{ name, fileBase64, mimeType }`
+     *
+     * The backend auto-parses PDF and DOCX when `fileBase64` is provided.
+     */
     @Post('documents')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @ApiOperation({ summary: 'Upload / ingest a document into the knowledge base' })
-    async uploadDocument(@Req() req: any, @Body() payload: { name: string; content: string; mimeType?: string }) {
+    @ApiOperation({ summary: 'Upload / ingest a document (text or binary PDF/DOCX) into the knowledge base' })
+    async uploadDocument(
+        @Req() req: any,
+        @Body() payload: {
+            name: string;
+            content?: string;       // pre-extracted text
+            fileBase64?: string;    // base64 encoded binary (PDF, DOCX, TXT)
+            mimeType?: string;
+        },
+    ) {
         const tenantId = req.user?.tenantId;
         return this.knowledgeService.ingestDocument(tenantId, {
             name: payload.name,
             content: payload.content,
+            fileBase64: payload.fileBase64,
             mimeType: payload.mimeType,
         });
     }
@@ -125,14 +143,16 @@ export class KnowledgeController {
 
     @Get('search/:tenantId')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @ApiOperation({ summary: 'Search approved knowledge resources' })
+    @ApiOperation({ summary: 'Semantic search over the knowledge base (hybrid vector + keyword)' })
     async searchChunks(
         @Param('tenantId') tenantId: string,
         @Query('query') query: string,
         @Query('limit') limit?: number,
     ) {
         if (!query) return [];
-        return this.knowledgeService.searchChunks(await this.schemaFor(tenantId), query, limit ? Number(limit) : 5);
+        // Use the real hybrid search (vector + keyword boost) instead of legacy ILIKE-only.
+        // This is the same algorithm the pipeline uses, so results are consistent.
+        return this.knowledgeService.searchRelevant(tenantId, query, limit ? Number(limit) : 5);
     }
 
     private async schemaFor(tenantId: string): Promise<string> {

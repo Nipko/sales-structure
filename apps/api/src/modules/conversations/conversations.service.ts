@@ -810,13 +810,11 @@ export class ConversationsService {
 
             if (isGreetOrFarewell && isIdleOrBooked) {
                 this.logger.log(`[Pipeline] ${intent.intent} (idle): LLM handles with full persona`);
-                // Pre-load services so they're ready if user asks about them next turn
-                if (!bookingState.services?.length) {
-                    try {
-                        const result = await this.toolExecutor.execute(schemaName, tenantId, conversation.contact_id || '', 'list_services', {});
-                        if (result?.services?.length) bookingState.services = result.services;
-                    } catch {}
-                }
+                // Always refresh services from DB (honors is_active changes)
+                try {
+                    const result = await this.toolExecutor.execute(schemaName, tenantId, conversation.contact_id || '', 'list_services', {});
+                    bookingState.services = result?.services?.length ? result.services : [];
+                } catch {}
                 await this.persistBookingState(schemaName, conversation.id, bookingState);
                 // Skip engine entirely — fall through to LLM
             } else {
@@ -929,34 +927,36 @@ export class ConversationsService {
             };
         }
 
-        // 5. Knowledge retrieval — STRUCTURED items in turn context, not prose.
-        // Respects the agent's rag config (topK + similarityThreshold) which
-        // was previously dead code. Hybrid search handles the rest.
-        if (!engineProducedText) {
-            try {
-                const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
-                const ragConfig = config.rag;
-                const ragEnabled = ragConfig?.enabled !== false;
-                if (hasKnowledge && ragEnabled) {
-                    const topK = ragConfig?.topK ?? 5;
-                    const similarityThreshold = ragConfig?.similarityThreshold ?? 0;
-                    const ragResults = await this.knowledgeService.searchRelevant(
-                        tenantId, userText, topK, { similarityThreshold },
-                    );
-                    if (ragResults.length > 0) {
-                        turnContext.retrievedKnowledge = ragResults.map((r: any, idx: number) => ({
-                            source: 'kb_article' as const,
-                            id: String(r.id ?? r.document_id ?? idx),
-                            score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
-                            title: r.title,
-                            content: r.chunk_text,
-                        })) as RetrievedKnowledgeItem[];
-                        this.logger.log(`RAG: Injected ${ragResults.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
-                    }
+        // 5. Knowledge retrieval — runs on EVERY turn (booking and non-booking alike).
+        // When the booking engine produced a directive, the Layer 1 contract rule
+        // "When <directive> is present, communicate ONLY that information" ensures
+        // the LLM prioritizes the directive over RAG content. But RAG is still
+        // available in context so the LLM can enrich pricing/policy answers naturally.
+        try {
+            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
+            const ragConfig = config.rag;
+            const ragEnabled = ragConfig?.enabled !== false;
+            if (hasKnowledge && ragEnabled) {
+                const topK = ragConfig?.topK ?? 5;
+                // Default 0.35 — filters out irrelevant chunks. Agents can lower
+                // this in their RAG config if they need broader recall.
+                const similarityThreshold = ragConfig?.similarityThreshold ?? 0.35;
+                const ragResults = await this.knowledgeService.searchRelevant(
+                    tenantId, userText, topK, { similarityThreshold },
+                );
+                if (ragResults.length > 0) {
+                    turnContext.retrievedKnowledge = ragResults.map((r: any, idx: number) => ({
+                        source: 'kb_article' as const,
+                        id: String(r.id ?? r.document_id ?? idx),
+                        score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                        title: r.title,
+                        content: r.chunk_text,
+                    })) as RetrievedKnowledgeItem[];
+                    this.logger.log(`RAG: Injected ${ragResults.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
                 }
-            } catch (ragError: any) {
-                this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
             }
+        } catch (ragError: any) {
+            this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
         }
 
         // 6. Assemble system prompt.

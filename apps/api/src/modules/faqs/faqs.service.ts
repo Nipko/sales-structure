@@ -85,7 +85,8 @@ export class FaqsService {
         const schemaName = await this.ensureSchema(tenantId);
         const rows = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schemaName}"."faqs" (question, answer, category, tags, order_index, is_published, search_tsv)
-             VALUES ($1, $2, $3, $4::text[], $5, $6, to_tsvector('simple', $1 || ' ' || $2))
+             VALUES ($1, $2, $3, $4::text[], $5, $6,
+                     to_tsvector('simple', $1 || ' ' || $2 || ' ' || COALESCE($3, '')))
              RETURNING id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at`,
             input.question, input.answer,
             input.category ?? null,
@@ -108,9 +109,9 @@ export class FaqsService {
         if (input.tags !== undefined) { sets.push(`tags = $${idx++}::text[]`); params.push(input.tags); }
         if (input.orderIndex !== undefined) { sets.push(`order_index = $${idx++}`); params.push(input.orderIndex); }
         if (input.isPublished !== undefined) { sets.push(`is_published = $${idx++}`); params.push(input.isPublished); }
-        if (input.question !== undefined || input.answer !== undefined) {
-            // Re-index search vector when text changed
-            sets.push(`search_tsv = to_tsvector('simple', question || ' ' || answer)`);
+        if (input.question !== undefined || input.answer !== undefined || input.category !== undefined) {
+            // Re-index search vector when text or category changed
+            sets.push(`search_tsv = to_tsvector('simple', question || ' ' || answer || ' ' || COALESCE(category, ''))`);
         }
         params.push(id);
         const rows = await this.prisma.$queryRawUnsafe(

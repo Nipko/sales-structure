@@ -203,6 +203,47 @@ export class BookingEngineService {
             // Keep previous state.services as last resort — better than crashing
         }
 
+        // ── Numeric/ordinal service selection: "El 1", "el primero", "la segunda"... ──
+        // Runs AFTER services are loaded. Overrides intent when the user picks by index.
+        // This runs in the engine (not only in the intent interpreter) so it also covers
+        // the case where the interpreter already ran with the OLD step before this refresh.
+        if (state.services?.length && !intent.serviceMentioned) {
+            const tNorm = rawText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            // "El 1", "la 2", "opcion 3", "numero 1", "#2"
+            const numMatch = tNorm.match(/(?:el|la|opcion|numero|el numero|la opcion|quiero el|quiero la|#)\s*(\d+)/);
+            if (numMatch) {
+                const idx = parseInt(numMatch[1]) - 1;
+                if (idx >= 0 && idx < state.services.length) {
+                    intent.serviceMentioned = state.services[idx].name;
+                    intent.intent = 'select_service';
+                }
+            }
+            // Bare number: "1", "2" — only in show_services step to avoid false positives
+            if (!intent.serviceMentioned && (state.step === 'show_services') && /^\d+$/.test(tNorm)) {
+                const idx = parseInt(tNorm) - 1;
+                if (idx >= 0 && idx < state.services.length) {
+                    intent.serviceMentioned = state.services[idx].name;
+                    intent.intent = 'select_service';
+                }
+            }
+            // Ordinals: "el primero", "la primera", "el segundo"...
+            if (!intent.serviceMentioned) {
+                const ordinals: Record<string, number> = {
+                    primer: 0, primero: 0, primera: 0,
+                    segund: 1, segundo: 1, segunda: 1,
+                    tercer: 2, tercero: 2, tercera: 2,
+                    cuart: 3, cuarto: 3, cuarta: 3,
+                    quint: 4, quinto: 4, quinta: 4,
+                };
+                for (const [word, idx] of Object.entries(ordinals)) {
+                    if (tNorm.includes(word) && idx < state.services.length) {
+                        intent.serviceMentioned = state.services[idx].name;
+                        intent.intent = 'select_service';
+                        break;
+                    }
+                }
+            }
+        }
 
         // ── If selected service was disabled/deleted, reset booking flow ──
         if (state.serviceId && state.services?.length) {
@@ -418,9 +459,17 @@ export class BookingEngineService {
     // ── Show services ──
     private showServices(state: BookingState, lang: string): EngineResult {
         state.step = 'show_services';
-        const svcList = (state.services || []).map((s, i) =>
-            `${i + 1}. ${s.name} (${s.durationMinutes} ${msg(lang, 'minutes')}) - ${s.price.toLocaleString()} ${s.currency}`
-        ).join('\n');
+        const svcList = (state.services || []).map((s, i) => {
+            // Duration label: skip "(0 minutos)" when duration is 0 or unknown
+            const durLabel = s.durationMinutes > 0
+                ? ` (${s.durationMinutes} ${msg(lang, 'minutes')})`
+                : '';
+            // Price label: skip when price is 0
+            const priceLabel = s.price > 0
+                ? ` - ${s.price.toLocaleString('es-CO')} ${s.currency}`
+                : '';
+            return `${i + 1}. ${s.name}${durLabel}${priceLabel}`;
+        }).join('\n');
         return {
             handled: true, state,
             text: `${msg(lang, 'servicesHeader')}\n${svcList}\n${msg(lang, 'servicesFooter')}`,

@@ -47,8 +47,8 @@ export function VerticalChatDemo({ vertical }: VerticalChatDemoProps) {
   return (
     <div
       ref={ref}
-      className="bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl w-full"
-      style={{ boxShadow: `0 0 60px ${vertical.glow}` }}
+      className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xl w-full"
+      style={{ boxShadow: `0 0 24px ${vertical.glow}` }}
     >
       {/* Channel-skinned header */}
       <div

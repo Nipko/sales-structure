@@ -52,7 +52,7 @@ export default function ProductHubPage() {
       {/* Hero */}
       <section className="pt-12 pb-16 px-6 relative overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-[800px] h-[800px] bg-accent/5 rounded-full blur-3xl" />
+          <div className="w-[600px] h-[600px] bg-accent/5 rounded-full blur-3xl" />
         </div>
         <div className="mx-auto max-w-6xl text-center relative">
           <motion.div
@@ -85,7 +85,7 @@ export default function ProductHubPage() {
 
           <motion.a
             href={SIGNUP_URL}
-            className="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-bold text-base transition-colors shadow-[0_0_60px_rgba(56,151,240,0.3)]"
+            className="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-bold text-base transition-colors shadow-[0_0_20px_rgba(56,151,240,0.2)]"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}

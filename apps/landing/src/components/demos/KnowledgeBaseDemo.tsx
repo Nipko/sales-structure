@@ -65,7 +65,7 @@ export function KnowledgeBaseDemo() {
             <motion.div
               className="w-1.5 h-1.5 rounded-full bg-accent"
               animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1, repeat: Infinity }}
+              transition={{ duration: 1, repeat: 3 }}
             />
             <span>Buscando en KB...</span>
           </motion.div>

@@ -70,7 +70,7 @@ export default function ChannelsProductPage() {
 
             <a
               href={SIGNUP_URL}
-              className="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-bold text-base transition-colors shadow-[0_0_60px_rgba(56,151,240,0.3)]"
+              className="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-8 py-4 rounded-xl font-bold text-base transition-colors shadow-[0_0_20px_rgba(56,151,240,0.2)]"
             >
               {t("channelsCta")} {Icon.arrow()}
             </a>

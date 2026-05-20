@@ -51,7 +51,7 @@ export function HeroSection() {
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <a
                 href={SIGNUP_URL}
-                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_40px_rgba(56,151,240,0.35)] hover:shadow-[0_0_60px_rgba(56,151,240,0.5)] cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_20px_rgba(56,151,240,0.25)] hover:shadow-[0_0_28px_rgba(56,151,240,0.35)] cursor-pointer"
               >
                 {t("cta")} {Icon.arrow()}
               </a>

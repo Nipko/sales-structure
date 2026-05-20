@@ -7,16 +7,11 @@ interface HeroVisualProps {
 }
 
 export function HeroVisual({ className }: HeroVisualProps) {
-  // Particle positions
   const particles = [
     { cx: 60, cy: 80, r: 1.5, delay: 0 },
     { cx: 420, cy: 60, r: 1, delay: 0.5 },
-    { cx: 100, cy: 320, r: 1.2, delay: 1.2 },
     { cx: 440, cy: 300, r: 1.8, delay: 0.8 },
-    { cx: 200, cy: 50, r: 1, delay: 1.5 },
-    { cx: 350, cy: 370, r: 1.3, delay: 0.3 },
     { cx: 50, cy: 200, r: 1, delay: 2.0 },
-    { cx: 460, cy: 180, r: 1.4, delay: 1.0 },
   ];
 
   return (
@@ -189,8 +184,8 @@ export function HeroVisual({ className }: HeroVisualProps) {
         cy="205"
         r="60"
         fill="url(#hubGlow)"
-        animate={{ r: [55, 65, 55], opacity: [0.5, 0.8, 0.5] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ r: [57, 63, 57], opacity: [0.5, 0.7, 0.5] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* Outer ring */}
@@ -203,8 +198,8 @@ export function HeroVisual({ className }: HeroVisualProps) {
         strokeWidth="1"
         strokeOpacity="0.3"
         filter="url(#ringGlow)"
-        animate={{ r: [40, 44, 40] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ r: [41, 43, 41] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* Core circle */}
@@ -231,8 +226,8 @@ export function HeroVisual({ className }: HeroVisualProps) {
       {/* WhatsApp Card — top left */}
       <motion.g
         initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: [0, -6, 0] }}
-        transition={{ duration: 4, delay: 0.2, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ opacity: 1, y: [0, -3, 0] }}
+        transition={{ duration: 5, delay: 0.2, repeat: Infinity, ease: "easeInOut" }}
       >
         <rect x="60" y="65" width="100" height="60" rx="8" fill="#0f1012" stroke="#25D366" strokeWidth="1" strokeOpacity="0.4" filter="url(#cardShadow)" />
         {/* WA icon circle */}
@@ -248,8 +243,8 @@ export function HeroVisual({ className }: HeroVisualProps) {
       {/* Instagram Card — top right */}
       <motion.g
         initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: [0, -8, 0] }}
-        transition={{ duration: 4.5, delay: 0.5, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ opacity: 1, y: [0, -4, 0] }}
+        transition={{ duration: 5.5, delay: 0.5, repeat: Infinity, ease: "easeInOut" }}
       >
         <rect x="330" y="50" width="100" height="60" rx="8" fill="#0f1012" stroke="#E4405F" strokeWidth="1" strokeOpacity="0.4" filter="url(#cardShadow)" />
         <circle cx="355" cy="72" r="10" fill="url(#igGradient)" opacity="0.15" />
@@ -262,8 +257,8 @@ export function HeroVisual({ className }: HeroVisualProps) {
       {/* Messenger Card — bottom left */}
       <motion.g
         initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: [0, 6, 0] }}
-        transition={{ duration: 4.2, delay: 0.8, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ opacity: 1, y: [0, 3, 0] }}
+        transition={{ duration: 5.2, delay: 0.8, repeat: Infinity, ease: "easeInOut" }}
       >
         <rect x="50" y="280" width="100" height="60" rx="8" fill="#0f1012" stroke="#0084FF" strokeWidth="1" strokeOpacity="0.4" filter="url(#cardShadow)" />
         <circle cx="75" cy="302" r="10" fill="#0084FF" opacity="0.15" />
@@ -276,8 +271,8 @@ export function HeroVisual({ className }: HeroVisualProps) {
       {/* Telegram Card — bottom right */}
       <motion.g
         initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: [0, 7, 0] }}
-        transition={{ duration: 3.8, delay: 1.0, repeat: Infinity, ease: "easeInOut" }}
+        animate={{ opacity: 1, y: [0, 3.5, 0] }}
+        transition={{ duration: 4.8, delay: 1.0, repeat: Infinity, ease: "easeInOut" }}
       >
         <rect x="345" y="275" width="100" height="60" rx="8" fill="#0f1012" stroke="#0088CC" strokeWidth="1" strokeOpacity="0.4" filter="url(#cardShadow)" />
         <circle cx="370" cy="297" r="10" fill="#0088CC" opacity="0.15" />

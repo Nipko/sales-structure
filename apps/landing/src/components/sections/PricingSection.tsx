@@ -121,7 +121,7 @@ export function PricingSection() {
               key={plan.nameKey}
               className={`relative rounded-2xl p-7 border flex flex-col ${
                 plan.highlighted
-                  ? "bg-surface border-accent/40 shadow-[0_0_60px_rgba(56,151,240,0.12)] lg:-mt-4"
+                  ? "bg-surface border-accent/40 shadow-[0_0_28px_rgba(56,151,240,0.1)] lg:-mt-4"
                   : "bg-surface border-border"
               }`}
               initial={{ opacity: 0, y: 25 }}
@@ -165,7 +165,7 @@ export function PricingSection() {
                 href={SIGNUP_URL}
                 className={`block text-center py-3 px-6 rounded-xl font-semibold transition-colors cursor-pointer ${
                   plan.highlighted
-                    ? "bg-accent hover:bg-accent-hover text-white shadow-[0_0_30px_rgba(56,151,240,0.3)]"
+                    ? "bg-accent hover:bg-accent-hover text-white shadow-[0_0_16px_rgba(56,151,240,0.2)]"
                     : "bg-surface-light hover:bg-border border border-border text-text-primary"
                 }`}
               >

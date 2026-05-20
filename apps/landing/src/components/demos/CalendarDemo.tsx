@@ -51,7 +51,7 @@ export function CalendarDemo() {
             className={`py-2 px-2 rounded-lg text-xs font-medium border transition-all ${
               i === selectedIdx
                 ? step >= 1
-                  ? "bg-accent text-white border-accent shadow-[0_0_20px_rgba(56,151,240,0.4)]"
+                  ? "bg-accent text-white border-accent shadow-[0_0_16px_rgba(56,151,240,0.25)]"
                   : "bg-surface border-border text-text-primary"
                 : "bg-surface border-border text-text-secondary"
             }`}
@@ -60,8 +60,7 @@ export function CalendarDemo() {
             }
             transition={{
               duration: 0.4,
-              repeat: step === 1 ? Infinity : 0,
-              repeatType: "loop",
+              repeat: step === 1 ? 2 : 0,
             }}
           >
             {slot}

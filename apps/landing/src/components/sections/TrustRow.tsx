@@ -48,7 +48,12 @@ export function TrustRow() {
       descKey: "latamDesc",
       logo: null,
       logoAlt: "",
-      icon: <span className="text-4xl">🌎</span>,
+      icon: (
+        <svg className="w-9 h-9 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+        </svg>
+      ),
       badge: t("latamBadge"),
       bg: "bg-emerald-500/5",
       ring: "ring-emerald-500/20",

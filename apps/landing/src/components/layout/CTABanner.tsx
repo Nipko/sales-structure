@@ -12,7 +12,7 @@ export function CTABanner() {
     <Section>
       <div className="relative bg-gradient-to-br from-surface via-surface to-accent/10 border border-accent/30 rounded-3xl py-16 px-6 text-center overflow-hidden">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-[600px] h-[600px] bg-accent/15 rounded-full blur-3xl" />
+          <div className="w-[500px] h-[500px] bg-accent/8 rounded-full blur-3xl" />
         </div>
         <div className="relative">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-5 tracking-tight">
@@ -24,7 +24,7 @@ export function CTABanner() {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <a
               href={SIGNUP_URL}
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-accent hover:bg-accent-hover text-white font-bold rounded-xl text-base transition-colors shadow-[0_0_60px_rgba(56,151,240,0.4)] cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-accent hover:bg-accent-hover text-white font-bold rounded-xl text-base transition-colors shadow-[0_0_24px_rgba(56,151,240,0.25)] cursor-pointer"
             >
               {t("button")} {Icon.arrow()}
             </a>

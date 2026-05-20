@@ -32,6 +32,7 @@ import {
   Settings,
   BarChart3,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -155,6 +156,8 @@ export default function AppointmentsPage() {
   const [newBlockedReason, setNewBlockedReason] = useState("");
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
 
   // ---- Service modal ----
   const [showServiceModal, setShowServiceModal] = useState(false);
@@ -292,6 +295,32 @@ export default function AppointmentsPage() {
     }
   }, [activeTenantId, calendarIntegrations.length, weekStart]);
 
+  const handleSyncCalendar = useCallback(async () => {
+    if (syncing || !activeTenantId) return;
+    setSyncing(true);
+    try {
+      const startDate = toLocalDate(weekStart);
+      const endDate = toLocalDate(addDays(weekStart, 6));
+      const res = await api.syncCalendar(activeTenantId, startDate, endDate);
+      if (res?.success) {
+        setExternalEvents(res.data || []);
+      }
+      await loadAppointments();
+      setLastSyncAt(new Date());
+      showToast(t("syncComplete"));
+    } catch {
+      await loadExternalEvents();
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, activeTenantId, weekStart, loadAppointments, loadExternalEvents, showToast, t]);
+
+  const getTimeSince = useCallback((date: Date) => {
+    const diff = Math.floor((Date.now() - date.getTime()) / 60000);
+    if (diff < 1) return t("justNow");
+    return t("lastSynced", { time: t("minutesAgo", { min: String(diff) }) });
+  }, [t]);
+
   // Initial load (including calendar integrations for banner visibility)
   useEffect(() => {
     loadAppointments();
@@ -303,6 +332,17 @@ export default function AppointmentsPage() {
   useEffect(() => {
     loadExternalEvents();
   }, [loadExternalEvents]);
+
+  // Auto-refresh external events every 2 minutes when on calendar tab with connected calendar
+  useEffect(() => {
+    if (activeTab !== "calendar" || calendarIntegrations.length === 0) return;
+    const interval = setInterval(() => {
+      loadExternalEvents();
+      loadAppointments();
+      setLastSyncAt(new Date());
+    }, 120_000);
+    return () => clearInterval(interval);
+  }, [activeTab, calendarIntegrations.length, loadExternalEvents, loadAppointments]);
 
   // Live calendar updates via WebSocket
   useEffect(() => {
@@ -320,10 +360,16 @@ export default function AppointmentsPage() {
       socket.on("appointmentCreated", () => {
         loadAppointments();
         loadExternalEvents();
+        setLastSyncAt(new Date());
       });
       socket.on("appointmentUpdated", () => {
         loadAppointments();
         loadExternalEvents();
+        setLastSyncAt(new Date());
+      });
+      socket.on("calendarSynced", () => {
+        loadExternalEvents();
+        setLastSyncAt(new Date());
       });
     } catch { /* socket.io not available */ }
     return () => { socket?.disconnect(); };
@@ -798,13 +844,41 @@ export default function AppointmentsPage() {
           ))}
         </div>
 
-        {/* ── Calendar sync banner (minimal) ──────────────────── */}
+        {/* ── Calendar sync banner ─────────────────────────────── */}
         {calendarIntegrations.length > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-500/5">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs text-emerald-700 dark:text-emerald-400">
-              {calendarIntegrations.map((cal: any) => `${cal.provider === 'microsoft' ? 'Outlook' : 'Google'}: ${cal.account_email || t('connected')}`).join(' · ')}
-            </span>
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+            <div className="flex items-center gap-3 flex-1 min-w-0 overflow-x-auto">
+              {calendarIntegrations.map((cal: any, i: number) => (
+                <div key={cal.id} className="flex items-center gap-1.5 shrink-0">
+                  {i > 0 && <span className="text-neutral-300 dark:text-neutral-700 mx-1">·</span>}
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  {cal.provider === "google" ? <GoogleIcon size={14} /> : <MicrosoftIcon size={14} />}
+                  <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate max-w-[180px]">
+                    {cal.account_email || cal.email || t("connected")}
+                  </span>
+                  {(cal.label || cal.assignment_type) && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 shrink-0">
+                      {cal.label || t(cal.assignment_type === "service" ? "assignmentService" : cal.assignment_type === "staff" ? "assignmentStaff" : "assignmentGeneral")}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {lastSyncAt && (
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 hidden sm:inline">
+                  {getTimeSince(lastSyncAt)}
+                </span>
+              )}
+              <button
+                onClick={handleSyncCalendar}
+                disabled={syncing}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={syncing ? "animate-spin" : ""} />
+                {syncing ? t("syncingCalendar") : t("syncNowBtn")}
+              </button>
+            </div>
           </div>
         )}
 
@@ -844,6 +918,9 @@ export default function AppointmentsPage() {
             onCreateAppointment={openCreateModal}
             onEditAppointment={openEditModal}
             onReschedule={handleReschedule}
+            hasConnectedCalendar={calendarIntegrations.length > 0}
+            syncing={syncing}
+            onSync={handleSyncCalendar}
           />
         )}
 

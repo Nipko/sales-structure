@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, CalendarDays, Clock, Repeat } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, Repeat, RefreshCw } from "lucide-react";
 import {
   Appointment, Service, STATUS_CONFIG, DAY_KEYS, HOURS,
   fmt2, toLocalDate, addDays, getMondayOfWeek, formatTime, formatWeekRange,
@@ -31,6 +31,9 @@ interface CalendarGridProps {
   onCreateAppointment: (date?: Date, hour?: number) => void;
   onEditAppointment: (appt: Appointment) => void;
   onReschedule?: (apptId: string, newDate: string, newStartTime: string, newEndTime: string) => void;
+  hasConnectedCalendar?: boolean;
+  syncing?: boolean;
+  onSync?: () => void;
 }
 
 const HOUR_HEIGHT = 52; // px per hour row — fits 14 hours (~728px) without scroll on most screens
@@ -38,6 +41,7 @@ const HOUR_HEIGHT = 52; // px per hour row — fits 14 hours (~728px) without sc
 export default function CalendarGrid({
   appointments, services, externalEvents, weekStart, dateLocale,
   onWeekChange, onCreateAppointment, onEditAppointment, onReschedule,
+  hasConnectedCalendar, syncing, onSync,
 }: CalendarGridProps) {
   const t = useTranslations("appointments");
   const todayStr = toLocalDate(new Date());
@@ -239,6 +243,19 @@ export default function CalendarGrid({
           {navTitle}
         </span>
 
+        <div className="flex items-center gap-2">
+        {/* Sync button */}
+        {hasConnectedCalendar && onSync && (
+          <button
+            onClick={onSync}
+            disabled={syncing}
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-500 dark:text-neutral-400 disabled:opacity-50"
+            title={t("syncNowBtn")}
+          >
+            <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+          </button>
+        )}
+
         {/* View toggle */}
         <div className="flex gap-0.5 p-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
           <button onClick={() => setViewMode("week")}
@@ -255,6 +272,7 @@ export default function CalendarGrid({
                 : "bg-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700")}>
             <Clock size={13} /> {t('dayView')}
           </button>
+        </div>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Param, Body, Query, Res, UseGuards,
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
@@ -20,6 +21,7 @@ export class AppointmentsController {
         private servicesService: ServicesService,
         private calendarService: CalendarIntegrationService,
         private throttle: TenantThrottleService,
+        private eventEmitter: EventEmitter2,
     ) {}
 
     // ── Services CRUD ────────────────────────────────────────────
@@ -95,6 +97,21 @@ export class AppointmentsController {
     }
 
     // ── Calendar Integrations ────────────────────────────────────
+
+    @Post(':tenantId/calendar/sync')
+    @ApiOperation({ summary: 'Manually sync external calendar events and notify other users via WebSocket' })
+    async syncCalendar(
+        @Param('tenantId') tenantId: string,
+        @Query('startDate') startDate: string,
+        @Query('endDate') endDate: string,
+        @CurrentUser() user: any,
+    ) {
+        const events = await this.calendarService.listExternalEvents(
+            user.schemaName, user.id, startDate, endDate,
+        );
+        this.eventEmitter.emit('calendar.synced', { tenantId });
+        return { success: true, data: events };
+    }
 
     @Get(':tenantId/calendar/integrations')
     async listCalendarIntegrations(

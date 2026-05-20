@@ -645,6 +645,8 @@ export const api = {
         apiGet(`/appointments/${tenantId}/calendar/integrations?all=true`),
     getCalendarEvents: (tenantId: string, startDate: string, endDate: string) =>
         apiGet(`/appointments/${tenantId}/calendar/events?startDate=${startDate}&endDate=${endDate}`),
+    syncCalendar: (tenantId: string, startDate: string, endDate: string) =>
+        apiPost(`/appointments/${tenantId}/calendar/sync?startDate=${startDate}&endDate=${endDate}`, {}),
     connectGoogleCalendar: (tenantId: string, assignmentType?: string, assignmentId?: string) => {
         const params = new URLSearchParams();
         if (assignmentType) params.set('assignmentType', assignmentType);

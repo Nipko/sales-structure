@@ -124,6 +124,10 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
         this.server.to(tenantId).emit('appointmentUpdated', appointment);
     }
 
+    emitCalendarSynced(tenantId: string) {
+        this.server.to(tenantId).emit('calendarSynced', {});
+    }
+
     /** Relay appointment WebSocket events from EventEmitter (avoids circular DI) */
     @OnEvent('appointment.ws')
     onAppointmentWs(payload: { tenantId: string; type: string; appointment: any }) {
@@ -132,5 +136,10 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
         } else if (payload.type === 'updated') {
             this.emitAppointmentUpdated(payload.tenantId, payload.appointment);
         }
+    }
+
+    @OnEvent('calendar.synced')
+    onCalendarSynced(payload: { tenantId: string }) {
+        this.emitCalendarSynced(payload.tenantId);
     }
 }

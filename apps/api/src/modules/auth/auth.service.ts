@@ -17,7 +17,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
-    welcomeEmail, passwordChangedEmail,
+    welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail,
 } from '../email/email-layouts';
 
 interface SessionData {
@@ -35,6 +35,8 @@ const SESSION_TTL = 360; // 6 min — refreshed by activity ping (frontend sends
 const TWO_FA_TOKEN_TTL = 300; // 5 min — temporary token for 2FA verification
 const EXCHANGE_CODE_TTL = 60; // 60s — one-time code for OAuth redirect token exchange
 const BACKUP_CODE_COUNT = 10;
+const DEVICE_TRUST_TTL_DAYS = 30;
+const MAX_TRUSTED_DEVICES = 10;
 
 @Injectable()
 export class AuthService {
@@ -352,7 +354,7 @@ export class AuthService {
         };
     }
 
-    async login(email: string, password: string, rememberMe = false, force = false) {
+    async login(email: string, password: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string) {
         const user = await this.prisma.user.findUnique({
             where: { email },
             include: { tenant: true },
@@ -374,15 +376,31 @@ export class AuthService {
         // Enforce single-session + tenant session limits
         await this.enforceSessionPolicy(user, force);
 
-        // 2FA check — return temporary token instead of full session
+        // 2FA check — skip if device is trusted
         if (user.twoFactorEnabled) {
-            const twoFAToken = this.generate2FAToken(user.id);
-            return {
-                requires2FA: true,
-                twoFAToken,
-                twoFactorMethod: user.twoFactorMethod || 'totp',
-                user: { email: user.email, firstName: user.firstName },
-            };
+            if (deviceTrustToken) {
+                const trusted = await this.verifyTrustedDevice(user.id, deviceTrustToken, deviceFingerprint);
+                if (trusted) {
+                    this.logger.log(`[2FA] Skipped for user ${user.email} — trusted device`);
+                    // Fall through to normal login
+                } else {
+                    const twoFAToken = this.generate2FAToken(user.id);
+                    return {
+                        requires2FA: true,
+                        twoFAToken,
+                        twoFactorMethod: user.twoFactorMethod || 'totp',
+                        user: { email: user.email, firstName: user.firstName },
+                    };
+                }
+            } else {
+                const twoFAToken = this.generate2FAToken(user.id);
+                return {
+                    requires2FA: true,
+                    twoFAToken,
+                    twoFactorMethod: user.twoFactorMethod || 'totp',
+                    user: { email: user.email, firstName: user.firstName },
+                };
+            }
         }
 
         // Update last login
@@ -578,7 +596,7 @@ export class AuthService {
 
     // ── Google OAuth ──────────────────────────────────────────────
 
-    async googleLogin(idToken: string, rememberMe = false, force = false) {
+    async googleLogin(idToken: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string) {
         const googleUser = await this.googleAuthService.verifyIdToken(idToken);
 
         // Find existing user by email or googleId
@@ -624,15 +642,24 @@ export class AuthService {
             await this.enforceSessionPolicy(user, force);
         }
 
-        // 2FA check (skip for new users — they just registered)
+        // 2FA check (skip for new users or if device is trusted)
         if (!isNewUser && user.twoFactorEnabled) {
-            const twoFAToken = this.generate2FAToken(user.id);
-            return {
-                requires2FA: true,
-                twoFAToken,
-                twoFactorMethod: user.twoFactorMethod || 'totp',
-                user: { email: user.email, firstName: user.firstName },
-            };
+            let skipTwoFA = false;
+            if (deviceTrustToken) {
+                skipTwoFA = await this.verifyTrustedDevice(user.id, deviceTrustToken, deviceFingerprint);
+                if (skipTwoFA) {
+                    this.logger.log(`[2FA] Skipped for user ${user.email} — trusted device (Google login)`);
+                }
+            }
+            if (!skipTwoFA) {
+                const twoFAToken = this.generate2FAToken(user.id);
+                return {
+                    requires2FA: true,
+                    twoFAToken,
+                    twoFactorMethod: user.twoFactorMethod || 'totp',
+                    user: { email: user.email, firstName: user.firstName },
+                };
+            }
         }
 
         await this.prisma.user.update({
@@ -1007,6 +1034,7 @@ export class AuthService {
             },
         });
 
+        await this.revokeAllTrustedDevices(userId);
         this.logger.log(`[2FA] Disabled for user ${user.email}`);
         return { message: '2FA disabled' };
     }
@@ -1050,7 +1078,10 @@ export class AuthService {
         return { message: '2FA code sent to email' };
     }
 
-    async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false) {
+    async verify2FA(
+        twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false,
+        trustDevice = false, deviceInfo?: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string; ip?: string },
+    ) {
         const userId = this.verify2FAToken(twoFAToken);
 
         const attemptKey = `2fa:attempts:${userId}`;
@@ -1113,9 +1144,15 @@ export class AuthService {
 
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
+        let deviceTrustToken: string | undefined;
+        if (trustDevice && deviceInfo) {
+            deviceTrustToken = await this.registerTrustedDevice(user.id, deviceInfo);
+        }
+
         return {
             accessToken,
             refreshToken,
+            deviceTrustToken,
             user: {
                 id: user.id,
                 email: user.email,
@@ -1130,6 +1167,175 @@ export class AuthService {
                 onboardingCompleted: effectiveOnboarding,
             },
         };
+    }
+
+    // ── Trusted Devices ─────────────────────────────────────────
+
+    private parseDeviceName(userAgent?: string): string {
+        if (!userAgent) return 'Unknown Device';
+        const ua = userAgent.toLowerCase();
+        let browser = 'Browser';
+        if (ua.includes('edg/')) browser = 'Edge';
+        else if (ua.includes('chrome') && !ua.includes('edg')) browser = 'Chrome';
+        else if (ua.includes('firefox')) browser = 'Firefox';
+        else if (ua.includes('safari') && !ua.includes('chrome')) browser = 'Safari';
+        else if (ua.includes('opera') || ua.includes('opr')) browser = 'Opera';
+
+        let os = '';
+        if (ua.includes('windows')) os = 'Windows';
+        else if (ua.includes('macintosh') || ua.includes('mac os')) os = 'macOS';
+        else if (ua.includes('linux') && !ua.includes('android')) os = 'Linux';
+        else if (ua.includes('android')) os = 'Android';
+        else if (ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
+
+        return os ? `${browser} on ${os}` : browser;
+    }
+
+    private computeFingerprint(info: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string }): string {
+        const raw = `${info.userAgent || ''}|${info.screenWidth || 0}x${info.screenHeight || 0}|${info.timezone || ''}|${info.language || ''}`;
+        return crypto.createHash('sha256').update(raw).digest('hex');
+    }
+
+    async registerTrustedDevice(userId: string, deviceInfo: {
+        userAgent?: string; screenWidth?: number; screenHeight?: number;
+        timezone?: string; language?: string; ip?: string;
+    }): Promise<string> {
+        const existingCount = await this.prisma.trustedDevice.count({
+            where: { userId, isRevoked: false, expiresAt: { gt: new Date() } },
+        });
+        if (existingCount >= MAX_TRUSTED_DEVICES) {
+            const oldest = await this.prisma.trustedDevice.findFirst({
+                where: { userId, isRevoked: false },
+                orderBy: { lastUsedAt: 'asc' },
+            });
+            if (oldest) {
+                await this.prisma.trustedDevice.update({
+                    where: { id: oldest.id },
+                    data: { isRevoked: true },
+                });
+            }
+        }
+
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+        const fingerprintHash = this.computeFingerprint(deviceInfo);
+        const deviceName = this.parseDeviceName(deviceInfo.userAgent);
+        const expiresAt = new Date(Date.now() + DEVICE_TRUST_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+        await this.prisma.trustedDevice.create({
+            data: {
+                userId,
+                tokenHash,
+                deviceName,
+                userAgent: deviceInfo.userAgent?.substring(0, 500),
+                fingerprintHash,
+                ipAddress: deviceInfo.ip,
+                expiresAt,
+            },
+        });
+
+        // Cache in Redis for fast lookup
+        await this.redis.setJson(`trust:${tokenHash}`, { userId, expiresAt: expiresAt.toISOString() }, DEVICE_TRUST_TTL_DAYS * 24 * 60 * 60);
+
+        // Send email notification
+        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true } });
+        if (user) {
+            this.emailService.send({
+                to: user.email,
+                subject: 'Nuevo dispositivo de confianza — Parallly',
+                html: newTrustedDeviceEmail(user.firstName, deviceName, deviceInfo.ip || 'Unknown', new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })),
+            }).catch(() => { /* best effort */ });
+        }
+
+        this.logger.log(`[TrustedDevice] Registered "${deviceName}" for user ${userId}`);
+        return rawToken;
+    }
+
+    async verifyTrustedDevice(userId: string, rawToken: string, fingerprint?: string): Promise<boolean> {
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+        // Fast path: Redis cache
+        const cached = await this.redis.getJson<{ userId: string; expiresAt: string }>(`trust:${tokenHash}`);
+        if (cached) {
+            if (cached.userId !== userId || new Date(cached.expiresAt) < new Date()) {
+                return false;
+            }
+            // Update last used
+            this.prisma.trustedDevice.updateMany({
+                where: { tokenHash, isRevoked: false },
+                data: { lastUsedAt: new Date() },
+            }).catch(() => { /* best effort */ });
+            return true;
+        }
+
+        // Slow path: DB lookup
+        const device = await this.prisma.trustedDevice.findUnique({ where: { tokenHash } });
+        if (!device || device.isRevoked || device.userId !== userId || device.expiresAt < new Date()) {
+            return false;
+        }
+
+        // Re-cache
+        const ttlMs = device.expiresAt.getTime() - Date.now();
+        if (ttlMs > 0) {
+            await this.redis.setJson(`trust:${tokenHash}`, { userId, expiresAt: device.expiresAt.toISOString() }, Math.ceil(ttlMs / 1000));
+        }
+
+        await this.prisma.trustedDevice.update({
+            where: { id: device.id },
+            data: { lastUsedAt: new Date() },
+        });
+
+        return true;
+    }
+
+    async listTrustedDevices(userId: string) {
+        const devices = await this.prisma.trustedDevice.findMany({
+            where: { userId, isRevoked: false, expiresAt: { gt: new Date() } },
+            select: {
+                id: true, deviceName: true, ipAddress: true,
+                createdAt: true, lastUsedAt: true, expiresAt: true,
+            },
+            orderBy: { lastUsedAt: 'desc' },
+        });
+        return devices;
+    }
+
+    async revokeTrustedDevice(userId: string, deviceId: string) {
+        const device = await this.prisma.trustedDevice.findFirst({
+            where: { id: deviceId, userId },
+        });
+        if (!device) throw new NotFoundException('Device not found');
+
+        await this.prisma.trustedDevice.update({
+            where: { id: deviceId },
+            data: { isRevoked: true },
+        });
+
+        // Remove from Redis cache
+        await this.redis.del(`trust:${device.tokenHash}`);
+        this.logger.log(`[TrustedDevice] Revoked device ${device.deviceName} for user ${userId}`);
+        return { message: 'Device revoked' };
+    }
+
+    async revokeAllTrustedDevices(userId: string) {
+        const devices = await this.prisma.trustedDevice.findMany({
+            where: { userId, isRevoked: false },
+            select: { id: true, tokenHash: true },
+        });
+
+        if (devices.length === 0) return;
+
+        await this.prisma.trustedDevice.updateMany({
+            where: { userId, isRevoked: false },
+            data: { isRevoked: true },
+        });
+
+        // Remove all from Redis cache
+        for (const d of devices) {
+            await this.redis.del(`trust:${d.tokenHash}`);
+        }
+
+        this.logger.log(`[TrustedDevice] Revoked all ${devices.length} devices for user ${userId}`);
     }
 
     // ── Change password (authenticated) ──────────────────────────
@@ -1155,9 +1361,10 @@ export class AuthService {
             data: { password: hashedPassword },
         });
 
-        // Revoke all sessions — user must re-login with new password
+        // Revoke all sessions + trusted devices — user must re-login with new password
         await this.revokeAllUserSessions(userId);
         await this.destroySession(userId);
+        await this.revokeAllTrustedDevices(userId);
 
         this.emailService.send({
             to: user.email,

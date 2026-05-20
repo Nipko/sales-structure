@@ -1006,6 +1006,17 @@
       "valLowercase": "Au moins 1 lettre minuscule",
       "valNumber": "Au moins 1 chiffre",
       "valSpecial": "Au moins 1 caractere special (!@#$%^&*)",
+      "trustedDevices": {
+        "title": "Appareils de confiance",
+        "desc": "Appareils pouvant se connecter sans vérification à deux facteurs",
+        "noDevices": "Aucun appareil de confiance",
+        "noDevicesHint": "Lors de la connexion avec 2FA, cochez \"Faire confiance à cet appareil\" pour l'ajouter ici",
+        "lastUsed": "Dernière utilisation :",
+        "revoke": "Révoquer",
+        "revokeAll": "Révoquer tous les appareils",
+        "revokeAllConfirm": "Êtes-vous sûr ? Tous les appareils devront vérifier le 2FA lors de la prochaine connexion.",
+        "revokeAllConfirmButton": "Oui, tout révoquer"
+      },
       "sso": {
         "title": "Authentification unique (SSO)",
         "desc": "Configurez SAML SSO pour que les membres de votre organisation se connectent avec votre fournisseur d'identité",
@@ -5213,7 +5224,8 @@
     "useAuthenticator": "Utiliser l'application d'authentification",
     "useBackupCode": "Utiliser un code de secours",
     "backupPlaceholder": "Code de secours",
-    "backToLogin": "Retour à la connexion"
+    "backToLogin": "Retour à la connexion",
+    "trustDevice": "Faire confiance à cet appareil pendant 30 jours"
   },
   "notifications": {
     "title": "Notifications",

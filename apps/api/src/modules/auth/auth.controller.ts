@@ -25,6 +25,12 @@ class LoginDto {
 
     @IsOptional()
     force?: boolean;
+
+    @IsOptional()
+    deviceTrustToken?: string;
+
+    @IsOptional()
+    deviceFingerprint?: string;
 }
 
 class RegisterDto {
@@ -102,7 +108,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login with email and password' })
     async login(@Body() dto: LoginDto) {
-        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe, dto.force);
+        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe, dto.force, dto.deviceTrustToken, dto.deviceFingerprint);
         return { success: true, data: result };
     }
 
@@ -196,11 +202,11 @@ export class AuthController {
     @Post('google')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login or register with Google OAuth' })
-    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean }) {
+    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean; deviceTrustToken?: string; deviceFingerprint?: string }) {
         if (!body.idToken) {
             throw new BadRequestException('idToken is required');
         }
-        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force);
+        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force, body.deviceTrustToken, body.deviceFingerprint);
         return { success: true, data: result };
     }
 
@@ -490,8 +496,16 @@ export class AuthController {
     @AuthThrottle(10, 900) // 10 attempts per 15 minutes
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Verify 2FA code during login (public — uses twoFAToken)' })
-    async verify2FA(@Body() body: { twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup'; rememberMe?: boolean }) {
-        const result = await this.authService.verify2FA(body.twoFAToken, body.code, body.method, body.rememberMe);
+    async verify2FA(@Body() body: {
+        twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup';
+        rememberMe?: boolean; trustDevice?: boolean;
+        deviceInfo?: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string };
+    }, @Request() req: any) {
+        const deviceInfo = body.trustDevice ? {
+            ...body.deviceInfo,
+            ip: req.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req.ip,
+        } : undefined;
+        const result = await this.authService.verify2FA(body.twoFAToken, body.code, body.method, body.rememberMe, body.trustDevice, deviceInfo);
         return { success: true, data: result };
     }
 
@@ -512,5 +526,36 @@ export class AuthController {
     async regenerateBackupCodes(@Request() req: any, @Body() body: { password: string }) {
         const result = await this.authService.regenerateBackupCodes(req.user.id, body.password);
         return { success: true, data: result };
+    }
+
+    // ── Trusted Devices ─────────────────────────────────────────
+
+    @Get('trusted-devices')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @ApiOperation({ summary: 'List trusted devices for current user' })
+    async listTrustedDevices(@Request() req: any) {
+        const devices = await this.authService.listTrustedDevices(req.user.id);
+        return { success: true, data: devices };
+    }
+
+    @Post('trusted-devices/:deviceId/revoke')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Revoke a specific trusted device' })
+    async revokeTrustedDevice(@Param('deviceId') deviceId: string, @Request() req: any) {
+        const result = await this.authService.revokeTrustedDevice(req.user.id, deviceId);
+        return { success: true, data: result };
+    }
+
+    @Post('trusted-devices/revoke-all')
+    @UseGuards(AuthGuard('jwt'))
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Revoke all trusted devices for current user' })
+    async revokeAllTrustedDevices(@Request() req: any) {
+        await this.authService.revokeAllTrustedDevices(req.user.id);
+        return { success: true, data: { message: 'All devices revoked' } };
     }
 }

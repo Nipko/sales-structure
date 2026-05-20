@@ -1006,6 +1006,17 @@
       "valLowercase": "At least 1 lowercase letter",
       "valNumber": "At least 1 number",
       "valSpecial": "At least 1 special character (!@#$%^&*)",
+      "trustedDevices": {
+        "title": "Trusted Devices",
+        "desc": "Devices that can sign in without two-factor verification",
+        "noDevices": "No trusted devices",
+        "noDevicesHint": "When signing in with 2FA, check \"Trust this device\" to add it here",
+        "lastUsed": "Last used:",
+        "revoke": "Revoke",
+        "revokeAll": "Revoke all devices",
+        "revokeAllConfirm": "Are you sure? All devices will need to verify 2FA on next sign-in.",
+        "revokeAllConfirmButton": "Yes, revoke all"
+      },
       "sso": {
         "title": "Single Sign-On (SSO)",
         "desc": "Configure SAML SSO so your organization members can sign in with your identity provider",
@@ -5213,7 +5224,8 @@
     "useAuthenticator": "Use authenticator app",
     "useBackupCode": "Use backup code",
     "backupPlaceholder": "Backup code",
-    "backToLogin": "Back to login"
+    "backToLogin": "Back to login",
+    "trustDevice": "Trust this device for 30 days"
   },
   "notifications": {
     "title": "Notifications",

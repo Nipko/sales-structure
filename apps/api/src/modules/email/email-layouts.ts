@@ -213,6 +213,35 @@ export function passwordChangedEmail(firstName: string): string {
     );
 }
 
+export function newTrustedDeviceEmail(firstName: string, deviceName: string, ipAddress: string, dateStr: string): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#dbeafe;border-radius:50%;line-height:48px;font-size:22px;">&#128274;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Nuevo dispositivo de confianza</h1>
+      <p style="margin:0 0 16px;font-size:15px;color:#555;text-align:center;">
+        Hola ${firstName}, se agrego un nuevo dispositivo de confianza a tu cuenta de <a href="${SITE_URL}" style="color:${BRAND_COLOR};text-decoration:none;font-weight:600;">Parallly</a>.
+      </p>
+      <div style="margin:16px 0;padding:16px;background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Dispositivo</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;font-weight:600;">${deviceName}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Direccion IP</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;">${ipAddress}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Fecha</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;">${dateStr}</td></tr>
+        </table>
+      </div>
+      <p style="margin:16px 0 0;font-size:13px;color:#555;text-align:center;">
+        Este dispositivo podra iniciar sesion sin verificacion de dos factores por 30 dias.
+      </p>
+      <div style="margin:20px 0;padding:16px;background-color:#fef3c7;border-radius:8px;border-left:3px solid #f59e0b;">
+        <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">
+          <strong>&#9888;&#65039; Si no fuiste tu</strong>, ve a <a href="${DASHBOARD_URL}/admin/settings/security" style="color:${BRAND_COLOR};font-weight:600;">Configuracion de seguridad</a> y revoca todos los dispositivos de confianza. Luego cambia tu contrasena.
+        </p>
+      </div>
+    `,
+    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    );
+}
+
 /**
  * Invitation email — sent when a team member is invited.
  * Used by InvitationsService.

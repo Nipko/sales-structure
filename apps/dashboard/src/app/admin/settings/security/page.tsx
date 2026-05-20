@@ -5,7 +5,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle, ShieldCheck, ShieldOff, Key, Copy, Loader2, Globe, Download, ExternalLink } from "lucide-react";
+import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle, ShieldCheck, ShieldOff, Key, Copy, Loader2, Globe, Download, ExternalLink, Monitor, Trash2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 
 export default function SecurityPage() {
@@ -151,6 +151,9 @@ export default function SecurityPage() {
 
             {/* 2FA Section */}
             <TwoFactorSettings />
+
+            {/* Trusted Devices Section */}
+            <TrustedDevicesSettings />
 
             {/* SSO Section */}
             <SsoSettings />
@@ -424,6 +427,157 @@ function TwoFactorSettings() {
                         </button>
                     </div>
                 </div>
+            )}
+        </div>
+    );
+}
+
+function TrustedDevicesSettings() {
+    const t = useTranslations("settings.securityPage.trustedDevices");
+    const tc = useTranslations("common");
+
+    const [devices, setDevices] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [revoking, setRevoking] = useState<string | null>(null);
+    const [revokingAll, setRevokingAll] = useState(false);
+    const [showConfirmAll, setShowConfirmAll] = useState(false);
+
+    useEffect(() => {
+        loadDevices();
+    }, []);
+
+    const loadDevices = async () => {
+        setLoading(true);
+        try {
+            const res = await api.listTrustedDevices();
+            if (res.success && res.data) {
+                setDevices(res.data);
+            }
+        } catch { /* noop */ }
+        setLoading(false);
+    };
+
+    const handleRevoke = async (deviceId: string) => {
+        setRevoking(deviceId);
+        try {
+            const res = await api.revokeTrustedDevice(deviceId);
+            if (res.success) {
+                setDevices(prev => prev.filter(d => d.id !== deviceId));
+            }
+        } catch { /* noop */ }
+        setRevoking(null);
+    };
+
+    const handleRevokeAll = async () => {
+        setRevokingAll(true);
+        try {
+            const res = await api.revokeAllTrustedDevices();
+            if (res.success) {
+                setDevices([]);
+                try { localStorage.removeItem("deviceTrustToken"); } catch { /* noop */ }
+            }
+        } catch { /* noop */ }
+        setRevokingAll(false);
+        setShowConfirmAll(false);
+    };
+
+    const formatDate = (dateStr: string) => {
+        try {
+            return new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return dateStr; }
+    };
+
+    return (
+        <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-start justify-between mb-4">
+                <div>
+                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                        {t("title")}
+                    </h2>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {t("desc")}
+                    </p>
+                </div>
+                {devices.length > 0 && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                        <Monitor size={13} /> {devices.length}
+                    </span>
+                )}
+            </div>
+
+            {loading ? (
+                <div className="flex items-center gap-3 py-4">
+                    <Loader2 size={16} className="animate-spin text-neutral-400" />
+                    <span className="text-sm text-neutral-500">{tc("loading")}</span>
+                </div>
+            ) : devices.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                    <Monitor size={24} className="text-neutral-300 dark:text-neutral-600" />
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("noDevices")}</p>
+                    <p className="text-xs text-neutral-400">{t("noDevicesHint")}</p>
+                </div>
+            ) : (
+                <>
+                    <div className="space-y-3 mb-4">
+                        {devices.map((device) => (
+                            <div key={device.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0">
+                                        <Monitor size={16} className="text-blue-500" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                            {device.deviceName}
+                                        </p>
+                                        <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+                                            {device.ipAddress && <span>{device.ipAddress}</span>}
+                                            <span>·</span>
+                                            <span>{t("lastUsed")} {formatDate(device.lastUsedAt)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleRevoke(device.id)}
+                                    disabled={revoking === device.id}
+                                    className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 rounded-md border border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                >
+                                    {revoking === device.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                    {t("revoke")}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    {showConfirmAll ? (
+                        <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10">
+                            <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">{t("revokeAllConfirm")}</p>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setShowConfirmAll(false)}
+                                    className="px-3 py-1.5 text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                                >
+                                    {tc("cancel")}
+                                </button>
+                                <button
+                                    onClick={handleRevokeAll}
+                                    disabled={revokingAll}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                                >
+                                    {revokingAll && <Loader2 size={12} className="animate-spin" />}
+                                    {t("revokeAllConfirmButton")}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setShowConfirmAll(true)}
+                            className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors bg-transparent border-none cursor-pointer"
+                        >
+                            <RefreshCw size={13} /> {t("revokeAll")}
+                        </button>
+                    )}
+                </>
             )}
         </div>
     );

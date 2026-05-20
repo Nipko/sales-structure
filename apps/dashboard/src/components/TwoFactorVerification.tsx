@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { ShieldCheck, Mail, Key, ArrowLeft, Loader2 } from "lucide-react";
+import { ShieldCheck, Mail, Key, ArrowLeft, Loader2, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TwoFactorVerificationProps {
@@ -10,10 +10,18 @@ interface TwoFactorVerificationProps {
     twoFactorMethod: string;
     userEmail?: string;
     rememberMe: boolean;
-    onVerify: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe: boolean) => Promise<{ success: boolean; error?: string; redirect?: string }>;
+    onVerify: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe: boolean, trustDevice?: boolean, deviceInfo?: DeviceInfo) => Promise<{ success: boolean; error?: string; redirect?: string; deviceTrustToken?: string }>;
     onSendEmail: (twoFAToken: string) => Promise<boolean>;
     onBack: () => void;
     onSuccess: (redirect: string) => void;
+}
+
+interface DeviceInfo {
+    userAgent: string;
+    screenWidth: number;
+    screenHeight: number;
+    timezone: string;
+    language: string;
 }
 
 const CODE_LENGTH = 6;
@@ -32,6 +40,7 @@ export default function TwoFactorVerification({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [emailSent, setEmailSent] = useState(false);
     const [emailSending, setEmailSending] = useState(false);
+    const [trustDevice, setTrustDevice] = useState(false);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
     useEffect(() => {
@@ -77,11 +86,23 @@ export default function TwoFactorVerification({
         }
     };
 
+    const getDeviceInfo = (): DeviceInfo => ({
+        userAgent: navigator.userAgent,
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        language: navigator.language,
+    });
+
     const submitCode = async (codeStr: string, method: 'totp' | 'email' | 'backup') => {
         setIsSubmitting(true);
         setError("");
-        const result = await onVerify(twoFAToken, codeStr, method, rememberMe);
+        const deviceInfo = trustDevice ? getDeviceInfo() : undefined;
+        const result = await onVerify(twoFAToken, codeStr, method, rememberMe, trustDevice, deviceInfo);
         if (result.success && result.redirect) {
+            if (result.deviceTrustToken) {
+                try { localStorage.setItem("deviceTrustToken", result.deviceTrustToken); } catch { /* noop */ }
+            }
             onSuccess(result.redirect);
         } else {
             setError(result.error || t("invalidCode"));
@@ -195,6 +216,20 @@ export default function TwoFactorVerification({
                     ) : t("verify")}
                 </button>
             )}
+
+            {/* Trust device checkbox */}
+            <label className="flex items-center gap-2.5 mt-4 cursor-pointer select-none group">
+                <input
+                    type="checkbox"
+                    checked={trustDevice}
+                    onChange={(e) => setTrustDevice(e.target.checked)}
+                    className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30 bg-neutral-50 dark:bg-white/5 cursor-pointer"
+                />
+                <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground group-hover:text-foreground transition-colors">
+                    <Monitor size={14} />
+                    {t("trustDevice")}
+                </span>
+            </label>
 
             {/* Method switchers */}
             <div className="flex flex-col gap-2 mt-4">

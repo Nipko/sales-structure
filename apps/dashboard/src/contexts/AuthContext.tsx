@@ -59,7 +59,7 @@ interface AuthContextType {
     verticalConfig: any | null;
     login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
     googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
-    complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe?: boolean) => Promise<LoginResult>;
+    complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe?: boolean, trustDevice?: boolean, deviceInfo?: any) => Promise<LoginResult & { deviceTrustToken?: string }>;
     send2FAEmailFallback: (twoFAToken: string) => Promise<boolean>;
     logout: () => void;
     hasRole: (...roles: string[]) => boolean;
@@ -282,10 +282,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = useCallback(async (email: string, password: string, rememberMe = false, force = false): Promise<LoginResult> => {
         try {
+            const deviceTrustToken = localStorage.getItem("deviceTrustToken") || undefined;
             const res = await fetch(`${API_URL}/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password, rememberMe, force }),
+                body: JSON.stringify({ email, password, rememberMe, force, deviceTrustToken }),
             });
 
             if (res.status === 409) {
@@ -327,10 +328,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const googleLogin = useCallback(async (idToken: string, rememberMe = false, force = false): Promise<GoogleLoginResult> => {
         try {
+            const deviceTrustToken = localStorage.getItem("deviceTrustToken") || undefined;
             const res = await fetch(`${API_URL}/auth/google`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idToken, rememberMe, force }),
+                body: JSON.stringify({ idToken, rememberMe, force, deviceTrustToken }),
             });
 
             if (res.status === 409) {
@@ -370,12 +372,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, [getRedirectPath, fetchVerticalConfig]);
 
-    const complete2FALogin = useCallback(async (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false): Promise<LoginResult> => {
+    const complete2FALogin = useCallback(async (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false, trustDevice = false, deviceInfo?: any): Promise<LoginResult & { deviceTrustToken?: string }> => {
         try {
             const res = await fetch(`${API_URL}/auth/2fa/verify`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ twoFAToken, code, method, rememberMe }),
+                body: JSON.stringify({ twoFAToken, code, method, rememberMe, trustDevice, deviceInfo }),
             });
 
             const data = await res.json();
@@ -388,13 +390,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
+            if (data.data.deviceTrustToken) {
+                localStorage.setItem("deviceTrustToken", data.data.deviceTrustToken);
+            }
+
             setUser(data.data.user);
 
             if (data.data.user.tenantId) {
                 fetchVerticalConfig(data.data.user.tenantId);
             }
 
-            return { success: true, redirect: getRedirectPath(data.data.user) };
+            return { success: true, redirect: getRedirectPath(data.data.user), deviceTrustToken: data.data.deviceTrustToken };
         } catch {
             return { success: false, error: "Connection error" };
         }

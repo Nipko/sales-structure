@@ -92,7 +92,8 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trustedDevices TrustedDevice[]
 
   @@index([tenantId])
   @@map("users")
@@ -164,6 +165,27 @@ model TenantInvitation {
   @@index([tenantId, acceptedAt])
   @@index([email])
   @@map("tenant_invitations")
+  @@schema("public")
+}
+
+// ---- Trusted Devices (2FA bypass for remembered browsers) ----
+model TrustedDevice {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  tokenHash       String   @unique @map("token_hash")
+  deviceName      String   @map("device_name")
+  userAgent       String?  @map("user_agent")
+  fingerprintHash String?  @map("fingerprint_hash")
+  ipAddress       String?  @map("ip_address")
+  expiresAt       DateTime @map("expires_at")
+  lastUsedAt      DateTime @default(now()) @map("last_used_at")
+  isRevoked       Boolean  @default(false) @map("is_revoked")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("trusted_devices")
   @@schema("public")
 }
 

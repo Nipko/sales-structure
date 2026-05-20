@@ -89,6 +89,20 @@
     "subtitle": "Conecte WhatsApp, Instagram e Messenger em minutos. Seu agente IA responde em segundos, preenche seu CRM sozinho e agenda compromissos enquanto você dorme. Sem código. Adaptado ao seu negócio.",
     "cta": "Testar grátis 7 dias",
     "ctaSecondary": "Ver como funciona",
+    "beforeLabel": "Sem IA",
+    "beforeStat": "6h de espera em média",
+    "afterLabel": "Com Parallly",
+    "afterStat": "Resposta em 3 seg",
+    "pickIndustry": "Escolha sua indústria e veja a IA em ação",
+    "demoLabel": "Conversa real com seu agente IA",
+    "verticalName": {
+      "salud": "Saúde",
+      "restaurantes": "Restaurantes",
+      "inmobiliaria": "Imobiliária",
+      "belleza": "Beleza",
+      "gimnasios": "Academias",
+      "turismo": "Turismo"
+    },
     "noCard": "Sem cartão de crédito · Configuração em 1 hora",
     "trustline": "Mais de 500 negócios na LatAm já automatizam com Parallly"
   },

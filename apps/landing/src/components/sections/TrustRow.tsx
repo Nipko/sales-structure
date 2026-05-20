@@ -92,7 +92,7 @@ export function TrustRow() {
         {items.map((item, i) => (
           <motion.div
             key={item.key}
-            className={`bg-surface border border-border rounded-2xl p-5 hover:border-border-light transition-colors ring-1 ${item.ring}`}
+            className={`glass-card rounded-2xl p-5 hover:border-border-light transition-colors ring-1 ${item.ring}`}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}

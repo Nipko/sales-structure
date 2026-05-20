@@ -67,7 +67,7 @@ export function ToolsShowcase() {
         {tools.map((tool, i) => (
           <motion.div
             key={i}
-            className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-4 hover:border-accent/30 transition-colors"
+            className="glass-card rounded-2xl p-5 flex flex-col gap-4 hover:border-accent/30 transition-colors"
             initial={{ opacity: 0, y: 25 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}

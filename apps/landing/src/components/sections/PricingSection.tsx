@@ -119,10 +119,10 @@ export function PricingSection() {
           return (
             <motion.div
               key={plan.nameKey}
-              className={`relative rounded-2xl p-7 border flex flex-col ${
+              className={`relative rounded-2xl p-7 flex flex-col ${
                 plan.highlighted
-                  ? "bg-surface border-accent/40 shadow-[0_0_28px_rgba(56,151,240,0.1)] lg:-mt-4"
-                  : "bg-surface border-border"
+                  ? "glass-card border-accent/40 shadow-[0_0_28px_rgba(56,151,240,0.1)] lg:-mt-4"
+                  : "glass-card"
               }`}
               initial={{ opacity: 0, y: 25 }}
               whileInView={{ opacity: 1, y: 0 }}

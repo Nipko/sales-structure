@@ -36,7 +36,7 @@ export function FeaturesGrid() {
         {FEATURES.map((f, i) => (
           <motion.div
             key={f.key}
-            className="bg-surface border border-border rounded-2xl p-6 hover:border-accent/30 hover:bg-surface-light transition-all group"
+            className="glass-card rounded-2xl p-6 hover:border-accent/30 transition-all group"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}

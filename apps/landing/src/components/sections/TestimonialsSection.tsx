@@ -26,7 +26,7 @@ export function TestimonialsSection() {
         {TESTIMONIALS.map((tm, i) => (
           <motion.div
             key={tm.prefix}
-            className="bg-surface border border-border rounded-2xl p-7 flex flex-col"
+            className="glass-card rounded-2xl p-7 flex flex-col"
             initial={{ opacity: 0, y: 25 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}

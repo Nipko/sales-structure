@@ -30,7 +30,7 @@ export function HowItWorks() {
         {STEPS.map((step, i) => (
           <motion.div
             key={i}
-            className="relative bg-surface border border-border rounded-2xl p-7 hover:border-accent/40 transition-colors"
+            className="relative glass-card rounded-2xl p-7 hover:border-accent/40 transition-colors"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}

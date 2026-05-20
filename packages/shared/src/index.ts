@@ -404,12 +404,44 @@ export interface OrderItem {
 // ---- LLM Provider Types ----
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
+export type ContentPart = TextContentPart | ImageUrlContentPart;
+
+export interface TextContentPart {
+    type: 'text';
+    text: string;
+}
+
+export interface ImageUrlContentPart {
+    type: 'image_url';
+    image_url: { url: string; detail?: 'auto' | 'low' | 'high' };
+}
+
 export interface ChatMessage {
     role: ChatRole;
-    content: string;
+    content: string | ContentPart[];
     name?: string;
     toolCallId?: string;
     toolCalls?: ToolCall[];
+}
+
+// ---- Media Processing Types ----
+export interface MediaProcessingLimits {
+    audioPerMonth: number;
+    imagePerMonth: number;
+    maxAudioDurationSec: number;
+    perContactPerDay: number;
+    perConvPer5min: number;
+    perTenantPerHour: number;
+    dailyBudgetCentsUsd: number;
+}
+
+export interface MediaProcessingResult {
+    type: 'transcription' | 'vision';
+    text: string;
+    durationSec?: number;
+    costCentsUsd: number;
+    model: string;
+    provider: string;
 }
 
 export interface ToolDefinition {

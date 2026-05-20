@@ -475,6 +475,8 @@ export const api = {
         priority?: number; maxPendingJobs?: number;
         reason?: string;
     }) => apiPut(`/tenants/${tenantId}/quota-overrides`, data),
+    getMediaProcessingUsage: (tenantId: string) =>
+        apiGet(`/media-processing/${tenantId}/usage`),
     getComplianceAdminOverview: () => apiGet("/compliance/admin/overview"),
     getOnboardingFunnel: (days = 30) => apiGet(`/tenants/onboarding-funnel?days=${days}`),
     getQueueJobs: (queueName: string, state: string, limit = 50) =>

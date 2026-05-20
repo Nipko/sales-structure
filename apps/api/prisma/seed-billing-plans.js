@@ -83,6 +83,17 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+
+            // ── Media processing (audio transcription + image vision) ──
+            mediaProcessing: {
+                audioPerMonth: 30,
+                imagePerMonth: 50,
+                maxAudioDurationSec: 120,
+                perContactPerDay: 10,
+                perConvPer5min: 3,
+                perTenantPerHour: 20,
+                dailyBudgetCentsUsd: 10,
+            },
         },
     },
     {
@@ -137,6 +148,17 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+
+            // ── Media processing (audio transcription + image vision) ──
+            mediaProcessing: {
+                audioPerMonth: 150,
+                imagePerMonth: 250,
+                maxAudioDurationSec: 180,
+                perContactPerDay: 20,
+                perConvPer5min: 3,
+                perTenantPerHour: 50,
+                dailyBudgetCentsUsd: 25,
+            },
         },
     },
     {
@@ -191,6 +213,17 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+
+            // ── Media processing (audio transcription + image vision) ──
+            mediaProcessing: {
+                audioPerMonth: 500,
+                imagePerMonth: 1_000,
+                maxAudioDurationSec: 300,
+                perContactPerDay: 30,
+                perConvPer5min: 5,
+                perTenantPerHour: 200,
+                dailyBudgetCentsUsd: 100,
+            },
         },
     },
     {
@@ -245,6 +278,17 @@ const PLANS = [
             customDomainKb: true,
             whiteLabel: false,
             prioritySupport: true,
+
+            // ── Media processing (audio transcription + image vision) ──
+            mediaProcessing: {
+                audioPerMonth: 2_000,
+                imagePerMonth: 5_000,
+                maxAudioDurationSec: 300,
+                perContactPerDay: 50,
+                perConvPer5min: 5,
+                perTenantPerHour: 500,
+                dailyBudgetCentsUsd: 500,
+            },
         },
     },
     {
@@ -298,6 +342,17 @@ const PLANS = [
             prioritySupport: true,
             salesLed: true,
             multiTenantSubAccounts: true,
+
+            // ── Media processing (audio transcription + image vision) ──
+            mediaProcessing: {
+                audioPerMonth: -1,
+                imagePerMonth: -1,
+                maxAudioDurationSec: 600,
+                perContactPerDay: 100,
+                perConvPer5min: 10,
+                perTenantPerHour: 1_000,
+                dailyBudgetCentsUsd: 5_000,
+            },
         },
     },
 ];

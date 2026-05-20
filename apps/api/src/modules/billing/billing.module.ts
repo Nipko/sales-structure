@@ -17,6 +17,7 @@ import { StripeConfigService } from './adapters/stripe-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import { InvoiceGeneratorService } from './invoice-generator.service';
+import { MediaProcessingModule } from '../media-processing/media-processing.module';
 
 /**
  * Billing module — provider-agnostic subscription billing.
@@ -29,7 +30,7 @@ import { InvoiceGeneratorService } from './invoice-generator.service';
  * so it is consumable in BillingService without an explicit import here.
  */
 @Module({
-    imports: [PrismaModule, RedisModule, EmailModule],
+    imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule],
     controllers: [BillingController, BillingAdminController, CouponsController, BillingWebhookController],
     providers: [
         BillingService,

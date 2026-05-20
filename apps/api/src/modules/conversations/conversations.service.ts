@@ -39,6 +39,7 @@ import { BusinessInfoService } from '../business-info/business-info.service';
 import { ComplianceService as AnalyticsComplianceService } from '../analytics/compliance.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { MediaProcessingService } from '../media-processing/media-processing.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -72,6 +73,7 @@ export class ConversationsService {
         private languageDetector: LanguageDetectorService,
         private businessInfoService: BusinessInfoService,
         private throttle: TenantThrottleService,
+        private mediaProcessing: MediaProcessingService,
     ) {}
 
     /**
@@ -662,11 +664,43 @@ export class ConversationsService {
      * Includes smart history truncation to stay within context window limits.
      */
     private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any): Promise<string> {
-        if (msg.content.type !== 'text') {
-            return `He recibido tu mensaje multimedia, pero por ahora solo puedo procesar texto. ¿Puedes describirlo?`;
-        }
+        let userText = msg.content.text || '';
 
-        const userText = msg.content.text || '';
+        // ── Media processing: transcribe audio / describe images ──
+        if (msg.content.type === 'audio' || msg.content.type === 'image') {
+            const contactDbId = conversation.contact_id || contact?.id || '';
+            const recentContext = userText || msg.content.caption || '';
+
+            const mediaResult = await this.mediaProcessing.processMedia(
+                msg, contactDbId, conversation.id, recentContext,
+            );
+
+            if (mediaResult) {
+                userText = mediaResult.text;
+                this.logger.log(`[Pipeline] Media processed (${msg.content.type}): ${userText.substring(0, 100)}...`);
+
+                // Persist transcribed/described text so it shows up in future conversation history
+                const schemaForUpdate = await this.tenantSchema(tenantId);
+                this.prisma.executeInTenantSchema(schemaForUpdate,
+                    `UPDATE messages SET content_text = $1
+                     WHERE id = (SELECT id FROM messages WHERE conversation_id = $2::uuid AND direction = 'inbound' ORDER BY created_at DESC LIMIT 1)`,
+                    [userText, conversation.id],
+                ).catch(e => this.logger.warn(`Failed to persist media text (non-fatal): ${e.message}`));
+            } else {
+                const configuredLang = config.language || 'es';
+                return this.mediaProcessing.getFallbackMessage(msg.content.type, configuredLang);
+            }
+        } else if (msg.content.type !== 'text') {
+            const configuredLang = config.language || 'es';
+            const lang = (configuredLang).slice(0, 2).toLowerCase();
+            const fallbacks: Record<string, string> = {
+                es: 'Recibí tu mensaje, pero por ahora solo puedo procesar texto, imágenes y audios. ¿Podrías escribirme lo que necesitas?',
+                en: 'I received your message, but I can only process text, images, and audio right now. Could you type what you need?',
+                pt: 'Recebi sua mensagem, mas só consigo processar texto, imagens e áudios. Poderia escrever o que precisa?',
+                fr: 'J\'ai reçu votre message, mais je ne peux traiter que le texte, les images et l\'audio. Pourriez-vous écrire ce dont vous avez besoin ?',
+            };
+            return fallbacks[lang] || fallbacks.es;
+        }
 
         // 1. Analyze routing factors
         const complexity = this.llmRouter.analyzeComplexity(userText);

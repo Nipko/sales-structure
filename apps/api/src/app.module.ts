@@ -78,6 +78,7 @@ import { CustomerPortalModule } from './modules/customer-portal/customer-portal.
 import { WhiteLabelModule } from './modules/white-label/white-label.module';
 import { EcommerceModule } from './modules/ecommerce/ecommerce.module';
 import { ChannelManagerModule } from './modules/channel-manager/channel-manager.module';
+import { MediaProcessingModule } from './modules/media-processing/media-processing.module';
 
 // Configuration
 import appConfig from './config/app.config';
@@ -217,6 +218,7 @@ import llmConfig from './config/llm.config';
         WhiteLabelModule,
         EcommerceModule,
         ChannelManagerModule,
+        MediaProcessingModule,
     ],
 })
 export class AppModule { }

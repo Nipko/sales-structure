@@ -112,7 +112,7 @@ export class OpenAIProvider implements ILLMProvider {
         for (const msg of options.messages) {
             const formattedMsg: any = {
                 role: msg.role,
-                content: msg.content,
+                content: Array.isArray(msg.content) ? msg.content : msg.content,
             };
             if (msg.name) formattedMsg.name = msg.name;
             if (msg.toolCallId) formattedMsg.tool_call_id = msg.toolCallId;

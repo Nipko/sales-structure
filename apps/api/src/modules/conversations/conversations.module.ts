@@ -37,6 +37,7 @@ import { GymsModule } from '../gyms/gyms.module';
 import { EducationModule } from '../education/education.module';
 import { InsuranceModule } from '../insurance/insurance.module';
 import { HomeServicesModule } from '../home-services/home-services.module';
+import { MediaProcessingModule } from '../media-processing/media-processing.module';
 
 @Module({
     imports: [
@@ -65,6 +66,7 @@ import { HomeServicesModule } from '../home-services/home-services.module';
         EducationModule,
         InsuranceModule,
         HomeServicesModule,
+        forwardRef(() => MediaProcessingModule),
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => ({

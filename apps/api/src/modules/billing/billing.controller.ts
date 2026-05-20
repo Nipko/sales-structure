@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { MediaThrottleService } from '../media-processing/media-throttle.service';
 
 /**
  * Tenant-facing billing endpoints.
@@ -82,6 +83,7 @@ export class BillingController {
         private readonly billingService: BillingService,
         private readonly throttle: TenantThrottleService,
         private readonly invoiceGenerator: InvoiceGeneratorService,
+        private readonly mediaThrottle: MediaThrottleService,
     ) {}
 
     /**
@@ -343,10 +345,13 @@ export class BillingController {
             } catch { /* noop */ }
         }
 
-        const planRow = await this.prisma.billingPlan.findUnique({
-            where: { slug: aiMessages.plan },
-            select: { maxAgents: true },
-        });
+        const [planRow, mediaStats] = await Promise.all([
+            this.prisma.billingPlan.findUnique({
+                where: { slug: aiMessages.plan },
+                select: { maxAgents: true },
+            }),
+            this.mediaThrottle.getUsageStats(tenantId).catch(() => null),
+        ]);
 
         return {
             success: true,
@@ -362,6 +367,24 @@ export class BillingController {
                 conversations,
                 activeAgents,
                 maxAgents: planRow?.maxAgents ?? null,
+                media: mediaStats ? {
+                    audio: {
+                        used: mediaStats.audio.used,
+                        limit: Number.isFinite(mediaStats.audio.limit) ? mediaStats.audio.limit : null,
+                        percent: mediaStats.audio.limit > 0 && Number.isFinite(mediaStats.audio.limit)
+                            ? Math.min(100, Math.round((mediaStats.audio.used / mediaStats.audio.limit) * 100))
+                            : 0,
+                    },
+                    image: {
+                        used: mediaStats.image.used,
+                        limit: Number.isFinite(mediaStats.image.limit) ? mediaStats.image.limit : null,
+                        percent: mediaStats.image.limit > 0 && Number.isFinite(mediaStats.image.limit)
+                            ? Math.min(100, Math.round((mediaStats.image.used / mediaStats.image.limit) * 100))
+                            : 0,
+                    },
+                    dailyCostCents: mediaStats.dailyCostCents,
+                    dailyBudgetCents: Number.isFinite(mediaStats.dailyBudgetCents) ? mediaStats.dailyBudgetCents : null,
+                } : null,
             },
         };
     }

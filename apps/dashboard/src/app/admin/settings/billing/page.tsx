@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
+    Mic, Eye, ArrowUpRight,
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
 
@@ -134,6 +135,12 @@ export default function BillingPage() {
         conversations?: number;
         activeAgents?: number;
         maxAgents?: number | null;
+        media?: {
+            audio: { used: number; limit: number | null; percent: number };
+            image: { used: number; limit: number | null; percent: number };
+            dailyCostCents: number;
+            dailyBudgetCents: number | null;
+        } | null;
     } | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
@@ -167,6 +174,7 @@ export default function BillingPage() {
                     conversations: d.conversations,
                     activeAgents: d.activeAgents,
                     maxAgents: d.maxAgents,
+                    media: d.media ?? null,
                 } : null);
             }
         } catch (err: any) {
@@ -608,11 +616,23 @@ export default function BillingPage() {
                                     style={{ width: `${Math.min(usage.percent, 100)}%` }}
                                 />
                             </div>
-                            {usage.percent >= 90 && (
-                                <p className="text-xs text-red-600 dark:text-red-400 mt-3 flex items-start gap-1.5">
-                                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                                    <span>{t("usageNearLimit")}</span>
-                                </p>
+                            {usage.percent >= 95 && (
+                                <div className="mt-3 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 flex items-start gap-2">
+                                    <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+                                    <p className="text-xs font-semibold text-red-700 dark:text-red-300 flex-1">{t("warningCritical", { percent: usage.percent })}</p>
+                                    <a href="#plans" className="text-xs font-semibold px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 flex-shrink-0">
+                                        {t("upgradeNow")} <ArrowUpRight size={12} />
+                                    </a>
+                                </div>
+                            )}
+                            {usage.percent >= 80 && usage.percent < 95 && (
+                                <div className="mt-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex items-start gap-2">
+                                    <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                                    <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">{t("warningApproaching", { percent: usage.percent })}</p>
+                                    <a href="#plans" className="text-xs font-medium px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1 flex-shrink-0">
+                                        {t("upgradeNow")} <ArrowUpRight size={12} />
+                                    </a>
+                                </div>
                             )}
                         </>
                     )}
@@ -635,6 +655,129 @@ export default function BillingPage() {
                                     <p className="text-[11px] text-neutral-400">{t("usageActiveAgents")}</p>
                                 </div>
                             )}
+                        </div>
+                    )}
+                </section>
+            )}
+
+            {/* Media processing usage */}
+            {usage?.media && (usage.media.audio.limit !== null || usage.media.image.limit !== null) && (
+                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                                {t("mediaUsageTitle")}
+                            </h2>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                {t("mediaUsageHint")}
+                            </p>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+                            {usage.monthKey}
+                        </span>
+                    </div>
+
+                    <div className="space-y-4">
+                        {/* Audio transcription */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-2">
+                                    <Mic size={14} className="text-indigo-500" />
+                                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("mediaAudio")}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm tabular-nums text-neutral-600 dark:text-neutral-400">
+                                        {usage.media.audio.used.toLocaleString()}
+                                        {usage.media.audio.limit !== null
+                                            ? ` / ${usage.media.audio.limit.toLocaleString()}`
+                                            : ` (${t("mediaUnlimited")})`}
+                                    </span>
+                                    {usage.media.audio.limit !== null && (
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            usage.media.audio.percent >= 95 ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                                : usage.media.audio.percent >= 80 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                        }`}>
+                                            {usage.media.audio.percent}%
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            {usage.media.audio.limit !== null && (
+                                <div className="h-1.5 w-full bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${
+                                            usage.media.audio.percent >= 95 ? "bg-red-500"
+                                                : usage.media.audio.percent >= 80 ? "bg-amber-500"
+                                                    : "bg-emerald-500"
+                                        }`}
+                                        style={{ width: `${Math.min(usage.media.audio.percent, 100)}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Image analysis */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-2">
+                                    <Eye size={14} className="text-indigo-500" />
+                                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("mediaImage")}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm tabular-nums text-neutral-600 dark:text-neutral-400">
+                                        {usage.media.image.used.toLocaleString()}
+                                        {usage.media.image.limit !== null
+                                            ? ` / ${usage.media.image.limit.toLocaleString()}`
+                                            : ` (${t("mediaUnlimited")})`}
+                                    </span>
+                                    {usage.media.image.limit !== null && (
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            usage.media.image.percent >= 95 ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                                : usage.media.image.percent >= 80 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                        }`}>
+                                            {usage.media.image.percent}%
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            {usage.media.image.limit !== null && (
+                                <div className="h-1.5 w-full bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${
+                                            usage.media.image.percent >= 95 ? "bg-red-500"
+                                                : usage.media.image.percent >= 80 ? "bg-amber-500"
+                                                    : "bg-emerald-500"
+                                        }`}
+                                        style={{ width: `${Math.min(usage.media.image.percent, 100)}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Media warnings */}
+                    {(usage.media.audio.percent >= 95 || usage.media.image.percent >= 95) && (
+                        <div className="mt-4 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 flex items-start gap-2">
+                            <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs font-semibold text-red-700 dark:text-red-300 flex-1">
+                                {t("mediaWarningCritical")}
+                            </p>
+                            <a href="#plans" className="text-xs font-semibold px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 flex-shrink-0">
+                                {t("upgradeNow")} <ArrowUpRight size={12} />
+                            </a>
+                        </div>
+                    )}
+                    {!(usage.media.audio.percent >= 95 || usage.media.image.percent >= 95) && (usage.media.audio.percent >= 80 || usage.media.image.percent >= 80) && (
+                        <div className="mt-4 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex items-start gap-2">
+                            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">
+                                {t("mediaWarningApproaching")}
+                            </p>
+                            <a href="#plans" className="text-xs font-medium px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1 flex-shrink-0">
+                                {t("upgradeNow")} <ArrowUpRight size={12} />
+                            </a>
                         </div>
                     )}
                 </section>
@@ -669,7 +812,7 @@ export default function BillingPage() {
             )}
 
             {/* Plans grid */}
-            <section>
+            <section id="plans">
                 <h2 className="text-lg font-semibold mb-3">{t("availablePlans")}</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {plans

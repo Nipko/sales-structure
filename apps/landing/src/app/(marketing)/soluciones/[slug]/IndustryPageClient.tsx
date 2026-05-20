@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { getVerticalBySlug, getVerticalsByCluster } from "../../../../data/verticals";
 import { Section } from "../../../../components/ui/Section";
-import { Icon } from "../../../../components/ui/Icon";
+import { Icon, getVerticalIcon } from "../../../../components/ui/Icon";
 import { CTABanner } from "../../../../components/layout/CTABanner";
 import { JsonLd } from "../../../../components/ui/JsonLd";
 import { industryPageJsonLd } from "../../../../lib/seo";
@@ -62,7 +62,7 @@ export default function IndustryPageClient() {
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-4"
                 style={{ backgroundColor: `${vertical.color}15`, color: vertical.color }}
               >
-                <span className="text-lg">{vertical.emoji}</span>
+                {getVerticalIcon(slug, "w-4 h-4")}
                 {t(`verticals.${slug}.subtitle`)}
               </span>
 
@@ -102,13 +102,13 @@ export default function IndustryPageClient() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2 }}
             >
-              <div className="bg-surface border border-border rounded-2xl p-6 shadow-xl">
+              <div className="glass-card rounded-2xl p-6 shadow-xl">
                 <div className="flex items-center gap-3 mb-5">
                   <div
-                    className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl"
-                    style={{ backgroundColor: `${vertical.color}15` }}
+                    className="w-14 h-14 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: `${vertical.color}15`, color: vertical.color }}
                   >
-                    {vertical.emoji}
+                    {getVerticalIcon(slug, "w-7 h-7")}
                   </div>
                   <div>
                     <p className="font-bold text-lg">{t(`verticals.${slug}.agentName`)}</p>
@@ -152,14 +152,14 @@ export default function IndustryPageClient() {
             {[1, 2, 3].map((n) => (
               <motion.div
                 key={n}
-                className="bg-surface border border-border rounded-2xl p-6"
+                className="glass-card rounded-2xl p-6"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: n * 0.08 }}
               >
                 <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center mb-4">
-                  <span className="text-lg">{"⚠️"}</span>
+                  {Icon.zap("w-5 h-5")}
                 </div>
                 <p className="text-text-secondary leading-relaxed">{t(`industryPage.pain${n}`)}</p>
               </motion.div>
@@ -177,7 +177,7 @@ export default function IndustryPageClient() {
           {[1, 2, 3].map((n) => (
             <motion.div
               key={n}
-              className="bg-surface border border-border rounded-2xl p-7"
+              className="glass-card rounded-2xl p-7"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -203,7 +203,7 @@ export default function IndustryPageClient() {
           {[1, 2, 3].map((n) => (
             <motion.div
               key={n}
-              className="text-center p-8 bg-surface border border-border rounded-2xl"
+              className="text-center p-8 glass-card rounded-2xl"
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
@@ -227,14 +227,14 @@ export default function IndustryPageClient() {
               <Link
                 key={v.slug}
                 href={`/soluciones/${v.slug}`}
-                className="bg-surface border border-border rounded-2xl p-5 hover:border-accent/40 transition-all group"
+                className="glass-card rounded-2xl p-5 hover:border-accent/40 transition-all group"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <span
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
-                    style={{ backgroundColor: `${v.color}15` }}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: `${v.color}15`, color: v.color }}
                   >
-                    {v.emoji}
+                    {getVerticalIcon(v.slug, "w-5 h-5")}
                   </span>
                   <div>
                     <p className="font-bold group-hover:text-accent transition-colors">

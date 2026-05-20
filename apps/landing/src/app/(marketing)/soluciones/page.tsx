@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { VERTICALS, type VerticalCluster, CLUSTER_LABELS } from "../../../data/verticals";
 import { Section } from "../../../components/ui/Section";
-import { Icon } from "../../../components/ui/Icon";
+import { Icon, getVerticalIcon } from "../../../components/ui/Icon";
 import { CTABanner } from "../../../components/layout/CTABanner";
 import { JsonLd } from "../../../components/ui/JsonLd";
 import { breadcrumbJsonLd } from "../../../lib/seo";
@@ -103,15 +103,15 @@ export default function SolutionsPage() {
               >
                 <Link
                   href={`/soluciones/${v.slug}`}
-                  className="block bg-surface border border-border rounded-2xl p-6 hover:border-accent/40 transition-all group h-full"
+                  className="block glass-card rounded-2xl p-6 hover:border-accent/40 transition-all group h-full"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <span
-                        className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                        style={{ backgroundColor: `${v.color}15` }}
+                        className="w-12 h-12 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: `${v.color}15`, color: v.color }}
                       >
-                        {v.emoji}
+                        {getVerticalIcon(v.slug, "w-6 h-6")}
                       </span>
                       <div>
                         <h3 className="font-bold text-text-primary group-hover:text-accent transition-colors">
@@ -138,8 +138,8 @@ export default function SolutionsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs text-text-muted">
                       <span>{t("solutions.agentLabel")}:</span>
-                      <span className="font-semibold" style={{ color: v.color }}>
-                        {v.emoji} {t(`verticals.${v.slug}.agentName`)}
+                      <span className="font-semibold flex items-center gap-1" style={{ color: v.color }}>
+                        {getVerticalIcon(v.slug, "w-3.5 h-3.5")} {t(`verticals.${v.slug}.agentName`)}
                       </span>
                     </div>
                     <span className="text-xs text-accent opacity-0 group-hover:opacity-100 transition-opacity">
@@ -155,7 +155,7 @@ export default function SolutionsPage() {
 
       {/* Bottom CTA */}
       <Section>
-        <div className="text-center bg-surface border border-border rounded-2xl p-12">
+        <div className="text-center glass-card rounded-2xl p-12">
           <h2 className="text-2xl font-bold mb-3">{t("solutions.ctaTitle")}</h2>
           <p className="text-text-secondary mb-6 max-w-lg mx-auto">{t("solutions.ctaSubtitle")}</p>
           <a

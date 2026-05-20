@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
 import { SIGNUP_URL } from "../../lib/constants";
-import { Icon } from "../ui/Icon";
+import { Icon, getVerticalIcon } from "../ui/Icon";
 import { VerticalChatDemo } from "../demos/VerticalChatDemo";
 import { VERTICALS } from "../../data/verticals";
 
@@ -108,7 +108,7 @@ export function HeroSection() {
                     : "bg-surface-light/50 text-text-muted border border-border hover:border-border-light hover:text-text-secondary"
                 }`}
               >
-                <span>{v.emoji}</span>
+                <span style={{ color: i === activeIdx ? "white" : v.color }}>{getVerticalIcon(v.slug, "w-3.5 h-3.5")}</span>
                 {t(`verticalName.${v.slug}`)}
               </button>
             ))}

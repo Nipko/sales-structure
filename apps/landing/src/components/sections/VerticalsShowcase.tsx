@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
 import { VERTICALS } from "../../data/verticals";
 import { VerticalChatDemo } from "../demos/VerticalChatDemo";
-import { Icon } from "../ui/Icon";
+import { Section } from "../ui/Section";
+import { Icon, getVerticalIcon } from "../ui/Icon";
 
 /** Only the first 11 verticals have i18n keys in es.json */
 const SHOWCASE_VERTICALS = VERTICALS.slice(0, 11);
@@ -17,9 +18,16 @@ export function VerticalsShowcase() {
     SHOWCASE_VERTICALS.find((v) => v.slug === active) || SHOWCASE_VERTICALS[0];
 
   return (
-    <div className="space-y-8">
+    <Section id="industrias">
+      <div className="text-center mb-10">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+          {t("title")}
+        </h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">{t("subtitle")}</p>
+      </div>
+
       {/* Industry pills */}
-      <div className="flex flex-wrap gap-2 justify-center">
+      <div className="flex flex-wrap gap-2 justify-center mb-10">
         {SHOWCASE_VERTICALS.map((v) => {
           const isActive = v.slug === active;
           return (
@@ -40,7 +48,9 @@ export function VerticalsShowcase() {
                   : {}
               }
             >
-              <span className="text-base">{v.emoji}</span>
+              <span className="w-4 h-4" style={isActive ? { color: "white" } : { color: v.color }}>
+                {getVerticalIcon(v.slug, "w-4 h-4")}
+              </span>
               <span>{t(`${v.slug}.name`)}</span>
               {isActive && (
                 <motion.span
@@ -88,7 +98,7 @@ export function VerticalsShowcase() {
                   color: current.color,
                 }}
               >
-                <span>{current.emoji}</span>
+                {getVerticalIcon(current.slug, "w-3.5 h-3.5")}
                 <span>{t(`${active}.subtitle`)}</span>
               </span>
               <h3 className="text-2xl font-bold mb-2">
@@ -132,7 +142,7 @@ export function VerticalsShowcase() {
                 Agente IA recomendado
               </p>
               <p className="font-semibold flex items-center gap-2">
-                <span className="text-xl">{current.emoji}</span>
+                <span style={{ color: current.color }}>{getVerticalIcon(current.slug, "w-5 h-5")}</span>
                 <span>{t(`${active}.agentName`)}</span>
                 <span className="text-xs text-text-muted font-normal">
                   · Pre-configurado
@@ -142,6 +152,6 @@ export function VerticalsShowcase() {
           </motion.div>
         </AnimatePresence>
       </div>
-    </div>
+    </Section>
   );
 }

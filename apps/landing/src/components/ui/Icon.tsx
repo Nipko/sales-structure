@@ -125,4 +125,143 @@ export const Icon = {
       <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+
+  // ── Vertical-specific icons (professional line style) ──
+  stethoscope: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.8 2.3A.3.3 0 105 2H4a2 2 0 00-2 2v5a6 6 0 0012 0V4a2 2 0 00-2-2h-1a.2.2 0 10.3.3" />
+      <path d="M8 15v1a6 6 0 006 6 6 6 0 006-6v-4" />
+      <circle cx="20" cy="10" r="2" />
+    </svg>
+  ),
+  utensils: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2M7 2v20M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7" />
+    </svg>
+  ),
+  building: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01M12 14h.01" />
+    </svg>
+  ),
+  scissors: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12" />
+    </svg>
+  ),
+  dumbbell: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.4 14.4L9.6 9.6M18.657 21.485l2.828-2.828-1.414-1.414-2.829 2.828zM2.515 5.343l2.828-2.828 1.414 1.414-2.828 2.828zM6.343 9.172l-2.829 2.828 1.414 1.414 2.829-2.828zM17.657 14.828l2.829-2.828-1.414-1.414-2.829 2.828z" />
+    </svg>
+  ),
+  compass: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </svg>
+  ),
+  graduationCap: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+      <path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" />
+    </svg>
+  ),
+  shieldCheck: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  ),
+  paw: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="4" r="2" /><circle cx="4.5" cy="9" r="2" /><circle cx="17.5" cy="9" r="2" />
+      <circle cx="8" cy="15" r="2" /><circle cx="16" cy="15" r="2" />
+      <path d="M12 18c-2 2-4 3-4 5h8c0-2-2-3-4-5z" />
+    </svg>
+  ),
+  car: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-3-5H9L6 10l-2.5 1.1C2.7 11.3 2 12.1 2 13v3c0 .6.4 1 1 1h2" />
+      <circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" />
+    </svg>
+  ),
+  wrench: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
+    </svg>
+  ),
+  camera: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.5 4h-5L7 7H4a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2h-3l-2.5-3z" />
+      <circle cx="12" cy="13" r="3" />
+    </svg>
+  ),
+  trendingUp: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  ),
+  briefcase: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2" />
+      <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" />
+    </svg>
+  ),
+  code: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+    </svg>
+  ),
+  sparkles: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3zM19 16l.5 2 2 .5-2 .5-.5 2-.5-2-2-.5 2-.5.5-2zM5 19l.5 1.5L7 21l-1.5.5L5 23l-.5-1.5L3 21l1.5-.5L5 19z" />
+    </svg>
+  ),
+  shoppingBag: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" />
+    </svg>
+  ),
+  heart: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+    </svg>
+  ),
+  grid: (cls?: string) => (
+    <svg className={s(cls)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+    </svg>
+  ),
 };
+
+const VERTICAL_ICON_MAP: Record<string, (cls?: string) => React.ReactNode> = {
+  salud: Icon.stethoscope,
+  restaurantes: Icon.utensils,
+  inmobiliaria: Icon.building,
+  belleza: Icon.scissors,
+  gimnasios: Icon.dumbbell,
+  turismo: Icon.compass,
+  educacion: Icon.graduationCap,
+  seguros: Icon.shieldCheck,
+  veterinaria: Icon.paw,
+  automotriz: Icon.car,
+  "servicios-hogar": Icon.wrench,
+  fotografia: Icon.camera,
+  finanzas: Icon.trendingUp,
+  "servicios-profesionales": Icon.briefcase,
+  tecnologia: Icon.code,
+  "moda-belleza": Icon.sparkles,
+  retail: Icon.shoppingBag,
+  "pet-services": Icon.heart,
+  otro: Icon.grid,
+};
+
+export function getVerticalIcon(slug: string, cls?: string): React.ReactNode {
+  const fn = VERTICAL_ICON_MAP[slug];
+  return fn ? fn(cls) : Icon.grid(cls);
+}

@@ -3433,7 +3433,20 @@
     "endsTomorrow": "Votre essai gratuit se termine demain.",
     "endsIn": "Votre essai gratuit se termine dans {days} jours.",
     "managePlan": "Gerer le plan",
-    "dismiss": "Fermer"
+    "dismiss": "Fermer",
+    "softLock": "Votre compte est en mode lecture seule. Il vous reste {days} jours pour payer.",
+    "payNow": "Payer maintenant",
+    "graceWarning": "Votre plan a expire. Vous avez {days} jours pour choisir un plan avant de perdre l'acces."
+  },
+  "suspendedScreen": {
+    "title": "Compte suspendu",
+    "description": "Votre compte a ete suspendu pour defaut de paiement. Vous pouvez le reactiver a tout moment en effectuant un paiement.",
+    "dataStatus": "Etat de vos donnees",
+    "dataPreserved": "Toutes vos donnees et configurations sont en securite",
+    "conversationsPreserved": "Votre historique de conversations est preserve",
+    "retentionNotice": "Vos donnees sont conservees pendant 90 jours",
+    "reactivate": "Reactiver le compte",
+    "logout": "Se deconnecter"
   },
   "billingPage": {
     "title": "Facturation et plan",

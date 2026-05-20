@@ -343,3 +343,115 @@ export function agentAssignmentEmail(leadName: string, stage: string): string {
       ${tipBox('Revisa el perfil del contacto y su historial de conversaciones para dar seguimiento efectivo.')}
     `);
 }
+
+// ── Billing lifecycle emails ──────────────────────────────────
+
+export function trialEndingSoonEmail(firstName: string, daysLeft: number, planName: string): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#fef3c7;border-radius:50%;line-height:48px;font-size:22px;">&#9200;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu prueba gratuita termina pronto</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
+        Hola <strong>${firstName}</strong>, tu prueba del plan <strong>${planName}</strong> termina en <strong>${daysLeft} día${daysLeft !== 1 ? 's' : ''}</strong>.
+      </p>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        Elige un plan antes de que termine para mantener todas tus conversaciones, contactos y configuración.
+      </p>
+      ${actionButton('Elegir plan', `${DASHBOARD_URL}/admin/settings/billing`)}
+      ${tipBox('Si necesitas más tiempo, contacta a nuestro equipo de soporte.')}
+    `);
+}
+
+export function trialEndedEmail(firstName: string, planName: string): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#fee2e2;border-radius:50%;line-height:48px;font-size:22px;">&#128680;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu prueba gratuita ha terminado</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
+        Hola <strong>${firstName}</strong>, tu período de prueba del plan <strong>${planName}</strong> ha finalizado.
+      </p>
+      <p style="margin:0 0 12px;font-size:14px;color:#666;text-align:center;">
+        Tienes <strong>7 días</strong> para elegir un plan. Durante este período:
+      </p>
+      <ul style="margin:0 0 20px;padding-left:20px;font-size:14px;color:#666;">
+        <li style="margin-bottom:6px;"><strong>Días 1-3:</strong> Acceso completo con aviso</li>
+        <li style="margin-bottom:6px;"><strong>Días 3-7:</strong> Modo solo lectura (no podrás enviar mensajes ni crear contenido)</li>
+        <li><strong>Después del día 7:</strong> Cuenta suspendida</li>
+      </ul>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        Tus datos están seguros. Al pagar, el acceso se restaura al instante.
+      </p>
+      ${actionButton('Elegir plan ahora', `${DASHBOARD_URL}/admin/settings/billing`)}
+    `);
+}
+
+export function paymentFailedEmail(firstName: string, planName: string): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#fee2e2;border-radius:50%;line-height:48px;font-size:22px;">&#128179;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu pago no pudo procesarse</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
+        Hola <strong>${firstName}</strong>, no pudimos procesar el pago de tu plan <strong>${planName}</strong>.
+      </p>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        Tienes <strong>7 días</strong> para actualizar tu método de pago. Después de ese plazo, tu cuenta será suspendida.
+      </p>
+      ${actionButton('Actualizar método de pago', `${DASHBOARD_URL}/admin/settings/billing`)}
+      ${tipBox('Verifica que tu tarjeta tenga fondos suficientes y que los datos estén actualizados.')}
+    `);
+}
+
+export function softLockEmail(firstName: string, daysRemaining: number): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#fef3c7;border-radius:50%;line-height:48px;font-size:22px;">&#128274;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu cuenta ha sido restringida</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
+        Hola <strong>${firstName}</strong>, tu cuenta ahora está en <strong>modo solo lectura</strong>.
+      </p>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        No podrás enviar mensajes, crear contenido ni modificar configuraciones. Te quedan <strong>${daysRemaining} día${daysRemaining !== 1 ? 's' : ''}</strong> antes de que tu cuenta sea completamente suspendida.
+      </p>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        Realiza un pago ahora para restaurar el acceso completo al instante.
+      </p>
+      ${actionButton('Pagar y restaurar acceso', `${DASHBOARD_URL}/admin/settings/billing`)}
+    `);
+}
+
+export function accountSuspendedEmail(firstName: string): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#fee2e2;border-radius:50%;line-height:48px;font-size:22px;">&#128683;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu cuenta ha sido suspendida</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
+        Hola <strong>${firstName}</strong>, tu cuenta de Parallly ha sido suspendida por falta de pago.
+      </p>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        Tus datos están seguros y se conservarán por 90 días. Puedes reactivar tu cuenta en cualquier momento realizando un pago.
+      </p>
+      ${actionButton('Reactivar cuenta', `${DASHBOARD_URL}/admin/settings/billing`)}
+      ${tipBox('Si crees que esto es un error, contacta a nuestro equipo de soporte.')}
+    `);
+}
+
+export function paymentSucceededEmail(firstName: string, planName: string, amountFormatted: string): string {
+    return emailLayout(`
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="display:inline-block;width:48px;height:48px;background-color:#dcfce7;border-radius:50%;line-height:48px;font-size:22px;">&#9989;</div>
+      </div>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Pago recibido exitosamente</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
+        Hola <strong>${firstName}</strong>, hemos recibido tu pago de <strong>${amountFormatted}</strong> por el plan <strong>${planName}</strong>.
+      </p>
+      <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
+        Tu acceso completo ha sido restaurado. ¡Gracias por confiar en Parallly!
+      </p>
+      ${actionButton('Ir al dashboard', `${DASHBOARD_URL}/admin`)}
+    `);
+}

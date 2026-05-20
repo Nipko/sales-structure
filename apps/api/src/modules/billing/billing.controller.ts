@@ -379,6 +379,13 @@ export class BillingController {
         return { success: true, data: result };
     }
 
+    @Get(':tenantId/restriction-status')
+    @UseGuards(AuthGuard('jwt'))
+    async getRestrictionStatus(@Param('tenantId') tenantId: string) {
+        const result = await this.billingService.getRestrictionStatus(tenantId);
+        return { success: true, data: result };
+    }
+
     /**
      * Download PDF invoice for a payment. Generated on demand (not persisted)
      * until fiscal integration is wired. Tenant scope enforced via tenantId

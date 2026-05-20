@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { OffboardingService } from './offboarding.service';
+import { BillingEventType } from '../billing/types/billing-event.enum';
 
 @Injectable()
 export class OffboardingCronService {
@@ -13,7 +15,58 @@ export class OffboardingCronService {
         private prisma: PrismaService,
         private redis: RedisService,
         private offboardingService: OffboardingService,
+        private eventEmitter: EventEmitter2,
     ) {}
+
+    /**
+     * Runs every 30 min — detects trials that have expired and transitions
+     * them to past_due, starting the 7-day grace countdown.
+     */
+    @Cron('*/30 * * * *')
+    async trialExpiryDetector(): Promise<void> {
+        try {
+            const expired = await this.prisma.billingSubscription.findMany({
+                where: {
+                    status: 'trialing',
+                    trialEndsAt: { lt: new Date() },
+                },
+                select: { id: true, tenantId: true, trialEndsAt: true },
+            });
+            if (expired.length === 0) return;
+            this.logger.log(`[TrialExpiry] Found ${expired.length} expired trial(s)`);
+
+            for (const sub of expired) {
+                try {
+                    await this.prisma.billingSubscription.update({
+                        where: { id: sub.id },
+                        data: { status: 'past_due' },
+                    });
+                    await this.prisma.tenant.update({
+                        where: { id: sub.tenantId },
+                        data: { subscriptionStatus: 'past_due' },
+                    });
+                    await this.redis.del(`sub_status:${sub.tenantId}`);
+                    await this.redis.del(`tenant_plan:${sub.tenantId}`);
+
+                    const key = `offboard:past_due:${sub.tenantId}`;
+                    const existing = await this.redis.get(key);
+                    if (!existing) {
+                        await this.redis.set(key, new Date().toISOString(), 30 * 24 * 60 * 60);
+                    }
+
+                    this.eventEmitter.emit(BillingEventType.TRIAL_ENDED, {
+                        tenantId: sub.tenantId,
+                        subscriptionId: sub.id,
+                    });
+                    this.logger.log(`[TrialExpiry] Tenant ${sub.tenantId} trial expired → past_due (7d grace)`);
+                } catch (error) {
+                    this.logger.error(`[TrialExpiry] Failed for tenant ${sub.tenantId}: ${error}`);
+                }
+            }
+        } catch (error) {
+            this.logger.error(`[TrialExpiry] Detector failed: ${error}`);
+        }
+    }
 
     /**
      * Runs at 3 AM daily — enforces grace period for past_due and
@@ -23,7 +76,7 @@ export class OffboardingCronService {
     async graceEnforcer(): Promise<void> {
         this.logger.log('Running grace period enforcer...');
 
-        // 1. Past-due tenants: offboard if past_due > 7 days
+        // 1. Past-due tenants: transition to expired after 7 days, emit soft_lock at day 3
         try {
             const pastDueTenants = await this.prisma.tenant.findMany({
                 where: {
@@ -37,20 +90,43 @@ export class OffboardingCronService {
                 try {
                     const pastDueSince = await this.redis.get(`offboard:past_due:${tenant.id}`);
                     if (!pastDueSince) {
-                        // No record of when past_due started — set it now
                         await this.redis.set(
                             `offboard:past_due:${tenant.id}`,
                             new Date().toISOString(),
-                            30 * 24 * 60 * 60, // 30 days TTL
+                            30 * 24 * 60 * 60,
                         );
                         continue;
                     }
 
                     const daysSincePastDue = (Date.now() - new Date(pastDueSince).getTime()) / (1000 * 60 * 60 * 24);
-                    if (daysSincePastDue > 7) {
-                        this.logger.log(`Tenant ${tenant.id} (${tenant.name}) has been past_due for ${Math.floor(daysSincePastDue)} days — offboarding`);
-                        await this.offboardingService.executeOffboarding(tenant.id, 'grace_period_expired');
+
+                    if (daysSincePastDue >= 7) {
+                        this.logger.log(`Tenant ${tenant.id} (${tenant.name}) past_due ${Math.floor(daysSincePastDue)}d → expired`);
+                        await this.prisma.billingSubscription.updateMany({
+                            where: { tenantId: tenant.id, status: 'past_due' },
+                            data: { status: 'expired' },
+                        });
+                        await this.prisma.tenant.update({
+                            where: { id: tenant.id },
+                            data: { subscriptionStatus: 'expired' },
+                        });
+                        await this.redis.del(`sub_status:${tenant.id}`);
+                        await this.redis.del(`tenant_plan:${tenant.id}`);
                         await this.redis.del(`offboard:past_due:${tenant.id}`);
+
+                        this.eventEmitter.emit(BillingEventType.SUBSCRIPTION_EXPIRED, {
+                            tenantId: tenant.id,
+                        });
+                    } else if (daysSincePastDue >= 3) {
+                        const softLockKey = `billing:soft_lock_notified:${tenant.id}`;
+                        const alreadyNotified = await this.redis.get(softLockKey);
+                        if (!alreadyNotified) {
+                            this.eventEmitter.emit('billing.subscription.soft_locked', {
+                                tenantId: tenant.id,
+                                daysRemaining: Math.max(0, 7 - Math.floor(daysSincePastDue)),
+                            });
+                            await this.redis.set(softLockKey, '1', 7 * 24 * 60 * 60);
+                        }
                     }
                 } catch (error) {
                     this.logger.error(`Failed to process past_due tenant ${tenant.id}: ${error}`);
@@ -228,8 +304,10 @@ export class OffboardingCronService {
         const { tenantId } = payload;
         if (!tenantId) return;
 
-        const key = `offboard:past_due:${tenantId}`;
-        await this.redis.del(key);
-        this.logger.log(`Payment succeeded for tenant ${tenantId} — past_due timer cleared`);
+        await this.redis.del(`offboard:past_due:${tenantId}`);
+        await this.redis.del(`billing:soft_lock_notified:${tenantId}`);
+        await this.redis.del(`sub_status:${tenantId}`);
+        await this.redis.del(`tenant_plan:${tenantId}`);
+        this.logger.log(`Payment succeeded for tenant ${tenantId} — grace timers cleared, access restored`);
     }
 }

@@ -3431,7 +3431,20 @@
     "endsTomorrow": "Tu prueba gratuita termina manana.",
     "endsIn": "Tu prueba gratuita termina en {days} dias.",
     "managePlan": "Administrar plan",
-    "dismiss": "Cerrar"
+    "dismiss": "Cerrar",
+    "softLock": "Tu cuenta esta en modo solo lectura. Te quedan {days} dias para pagar.",
+    "payNow": "Pagar ahora",
+    "graceWarning": "Tu plan vencio. Tienes {days} dias para elegir un plan antes de perder acceso."
+  },
+  "suspendedScreen": {
+    "title": "Cuenta suspendida",
+    "description": "Tu cuenta ha sido suspendida por falta de pago. Puedes reactivarla en cualquier momento realizando un pago.",
+    "dataStatus": "Estado de tus datos",
+    "dataPreserved": "Todos tus datos y configuraciones estan seguros",
+    "conversationsPreserved": "Tu historial de conversaciones esta preservado",
+    "retentionNotice": "Tus datos se conservan por 90 dias",
+    "reactivate": "Reactivar cuenta",
+    "logout": "Cerrar sesion"
   },
   "billingPage": {
     "title": "Facturacion y plan",

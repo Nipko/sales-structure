@@ -3433,7 +3433,20 @@
     "endsTomorrow": "Your free trial ends tomorrow.",
     "endsIn": "Your free trial ends in {days} days.",
     "managePlan": "Manage plan",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "softLock": "Your account is in read-only mode. You have {days} days left to pay.",
+    "payNow": "Pay now",
+    "graceWarning": "Your plan has expired. You have {days} days to choose a plan before losing access."
+  },
+  "suspendedScreen": {
+    "title": "Account suspended",
+    "description": "Your account has been suspended due to non-payment. You can reactivate it at any time by making a payment.",
+    "dataStatus": "Your data status",
+    "dataPreserved": "All your data and settings are safe",
+    "conversationsPreserved": "Your conversation history is preserved",
+    "retentionNotice": "Your data is retained for 90 days",
+    "reactivate": "Reactivate account",
+    "logout": "Log out"
   },
   "billingPage": {
     "title": "Billing & plan",

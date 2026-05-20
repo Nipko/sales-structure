@@ -775,6 +775,7 @@ export const api = {
     syncBillingSubscription: (tenantId: string) =>
         apiPost(`/billing/${tenantId}/subscription/sync`, {}),
     getBillingUsage: (tenantId: string) => apiGet(`/billing/${tenantId}/usage`),
+    getRestrictionStatus: (tenantId: string) => apiGet(`/billing/${tenantId}/restriction-status`),
     cancelPendingDowngrade: (tenantId: string) =>
         apiPost(`/billing/${tenantId}/subscription/cancel-pending-downgrade`, {}),
 

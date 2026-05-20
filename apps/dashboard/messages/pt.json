@@ -3433,7 +3433,20 @@
     "endsTomorrow": "Seu teste gratis termina amanha.",
     "endsIn": "Seu teste gratis termina em {days} dias.",
     "managePlan": "Gerenciar plano",
-    "dismiss": "Fechar"
+    "dismiss": "Fechar",
+    "softLock": "Sua conta esta em modo somente leitura. Voce tem {days} dias para pagar.",
+    "payNow": "Pagar agora",
+    "graceWarning": "Seu plano expirou. Voce tem {days} dias para escolher um plano antes de perder o acesso."
+  },
+  "suspendedScreen": {
+    "title": "Conta suspensa",
+    "description": "Sua conta foi suspensa por falta de pagamento. Voce pode reativa-la a qualquer momento realizando um pagamento.",
+    "dataStatus": "Status dos seus dados",
+    "dataPreserved": "Todos os seus dados e configuracoes estao seguros",
+    "conversationsPreserved": "Seu historico de conversas esta preservado",
+    "retentionNotice": "Seus dados sao mantidos por 90 dias",
+    "reactivate": "Reativar conta",
+    "logout": "Sair"
   },
   "billingPage": {
     "title": "Faturamento e plano",

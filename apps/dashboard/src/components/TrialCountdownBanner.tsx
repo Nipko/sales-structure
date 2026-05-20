@@ -3,21 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Sparkles, AlertTriangle, X } from "lucide-react";
+import { Sparkles, AlertTriangle, Lock, X } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { RestrictionInfo } from "@/app/admin/layout";
 
-/**
- * Persistent header banner that shows the tenant's trial countdown.
- * Disappears once subscription is active/cancelled/expired or when the
- * tenant dismisses the current day's notice.
- *
- * Dismissal is stored in localStorage keyed by tenantId + day-of-year so
- * the banner re-appears every day — nagging but not overwhelming.
- */
-export default function TrialCountdownBanner() {
+interface Props {
+    restriction?: RestrictionInfo;
+}
+
+export default function TrialCountdownBanner({ restriction }: Props) {
     const t = useTranslations("trialBanner");
     const { activeTenantId } = useTenant();
     const { isSuperAdmin, impersonating } = useRole();
@@ -47,7 +44,6 @@ export default function TrialCountdownBanner() {
         return () => { cancelled = true; };
     }, [activeTenantId]);
 
-    // Per-day dismissal — re-shows every calendar day so the tenant stays reminded.
     const dismissalKey = activeTenantId
         ? `trial-banner-dismissed:${activeTenantId}:${new Date().toISOString().slice(0, 10)}`
         : null;
@@ -64,6 +60,53 @@ export default function TrialCountdownBanner() {
         setDismissed(true);
     };
 
+    // Soft lock banner — NOT dismissable
+    if (restriction?.level === "soft_lock") {
+        return (
+            <div
+                className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm border-b bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200"
+                role="alert"
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <Lock size={16} className="shrink-0" />
+                    <span className="font-medium">
+                        {t("softLock", { days: restriction.daysRemaining })}
+                    </span>
+                    <Link
+                        href="/admin/settings/billing"
+                        className="font-semibold underline hover:no-underline shrink-0"
+                    >
+                        {t("payNow")}
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
+    // Warning banner (past_due, days 0-2) — NOT dismissable
+    if (restriction?.level === "warning") {
+        return (
+            <div
+                className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm border-b bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200"
+                role="alert"
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <AlertTriangle size={16} className="shrink-0" />
+                    <span className="font-medium">
+                        {t("graceWarning", { days: restriction.daysRemaining })}
+                    </span>
+                    <Link
+                        href="/admin/settings/billing"
+                        className="font-semibold underline hover:no-underline shrink-0"
+                    >
+                        {t("managePlan")}
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
+    // Normal trial countdown — dismissable
     if (daysLeft === null || dismissed) return null;
 
     const isUrgent = daysLeft <= 3;

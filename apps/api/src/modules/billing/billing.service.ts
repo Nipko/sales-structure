@@ -919,6 +919,46 @@ export class BillingService {
     }
 
     // -------------------------------------------------------------------------
+    // Grace period helpers
+    // -------------------------------------------------------------------------
+
+    async getRestrictionStatus(tenantId: string): Promise<{
+        level: 'none' | 'warning' | 'soft_lock' | 'hard_lock';
+        daysElapsed: number;
+        daysRemaining: number;
+        status: string;
+    }> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { subscriptionStatus: true },
+        });
+        const status = tenant?.subscriptionStatus ?? 'active';
+
+        if (status === 'expired') {
+            return { level: 'hard_lock', daysElapsed: 7, daysRemaining: 0, status };
+        }
+        if (status !== 'past_due') {
+            return { level: 'none', daysElapsed: 0, daysRemaining: 7, status };
+        }
+
+        const pastDueSince = await this.redis.get(`offboard:past_due:${tenantId}`);
+        if (!pastDueSince) {
+            return { level: 'warning', daysElapsed: 0, daysRemaining: 7, status };
+        }
+
+        const daysElapsed = Math.floor((Date.now() - new Date(pastDueSince).getTime()) / 86_400_000);
+        const daysRemaining = Math.max(0, 7 - daysElapsed);
+
+        if (daysElapsed >= 7) {
+            return { level: 'hard_lock', daysElapsed, daysRemaining: 0, status };
+        }
+        if (daysElapsed >= 3) {
+            return { level: 'soft_lock', daysElapsed, daysRemaining, status };
+        }
+        return { level: 'warning', daysElapsed, daysRemaining, status };
+    }
+
+    // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------
 
@@ -1002,11 +1042,8 @@ export class BillingService {
             case BillingEventType.SUBSCRIPTION_ACTIVATED:
                 return { status: SubscriptionStatus.ACTIVE };
             case BillingEventType.TRIAL_ENDED:
-                // Provider reported trial over; actual transition depends on
-                // whether a payment also succeeded. We only clear trialing
-                // here if nothing else is driving the state.
                 if (currentStatus === SubscriptionStatus.TRIALING) {
-                    return { status: SubscriptionStatus.PENDING_AUTH };
+                    return { status: SubscriptionStatus.PAST_DUE };
                 }
                 return null;
             default:

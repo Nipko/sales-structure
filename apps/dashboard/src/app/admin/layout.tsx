@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-// Setup wizard renders as a modal overlay on the dashboard
 import AppSidebar from "@/components/layout/AppSidebar";
 import TopBar from "@/components/layout/TopBar";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
@@ -18,6 +17,15 @@ import { api } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { canAccessPath, defaultLandingForRole } from "@/lib/roles";
 
+export type RestrictionLevel = "none" | "warning" | "soft_lock" | "hard_lock";
+
+export interface RestrictionInfo {
+  level: RestrictionLevel;
+  daysElapsed: number;
+  daysRemaining: number;
+  status: string;
+}
+
 export default function AdminLayout({
   children,
 }: {
@@ -28,9 +36,12 @@ export default function AdminLayout({
   const pathname = usePathname();
   const { role, impersonating } = useRole();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isSuspended, setIsSuspended] = useState(false);
-
-  // Setup wizard renders as modal overlay on top of dashboard
+  const [restriction, setRestriction] = useState<RestrictionInfo>({
+    level: "none",
+    daysElapsed: 0,
+    daysRemaining: 7,
+    status: "active",
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -38,12 +49,6 @@ export default function AdminLayout({
     }
   }, [isLoading, isAuthenticated, router]);
 
-  // URL-level role guard. Each role only has access to a curated set of
-  // pages (see PAGE_RULES in lib/roles.ts). super_admin without
-  // impersonation gets bounced to /admin/tenants when they hit a
-  // tenant-operational URL; agents bounced to /admin/inbox when they
-  // try /admin/users, /admin/agent, etc. Prevents URL bookmarking
-  // around the redesigned sidebar.
   useEffect(() => {
     if (isLoading || !isAuthenticated || !role) return;
     if (!pathname || !pathname.startsWith("/admin")) return;
@@ -52,28 +57,21 @@ export default function AdminLayout({
     if (pathname !== landing) router.replace(landing);
   }, [pathname, role, impersonating, isLoading, isAuthenticated, router]);
 
-  // Check if tenant account is suspended
   useEffect(() => {
     if (!user?.tenantId || user.role === "super_admin") return;
 
-    async function checkSuspension() {
+    async function checkRestriction() {
       try {
-        const result = await api.getOffboardingStatus(user!.tenantId!);
+        const result = await api.getRestrictionStatus(user!.tenantId!);
         if (result.success && result.data) {
-          const { subscriptionStatus, currentPeriodEnd } = result.data;
-          const isExpiredOrCancelled =
-            subscriptionStatus === "expired" || subscriptionStatus === "cancelled";
-          const periodEnded = currentPeriodEnd
-            ? new Date(currentPeriodEnd) < new Date()
-            : true;
-          setIsSuspended(isExpiredOrCancelled && periodEnded);
+          setRestriction(result.data as RestrictionInfo);
         }
       } catch {
-        // Silently fail — don't block access on network errors
+        // Don't block access on network errors
       }
     }
 
-    checkSuspension();
+    checkRestriction();
   }, [user]);
 
   if (isLoading) {
@@ -91,8 +89,11 @@ export default function AdminLayout({
 
   if (!isAuthenticated) return null;
 
-  if (isSuspended) {
-    return <SuspendedScreen />;
+  if (restriction.level === "hard_lock") {
+    const isBillingPage = pathname === "/admin/settings/billing";
+    if (!isBillingPage) {
+      return <SuspendedScreen restriction={restriction} />;
+    }
   }
 
   return (
@@ -106,7 +107,7 @@ export default function AdminLayout({
           <MaintenanceBanner />
           <ImpersonationBanner />
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
-          <TrialCountdownBanner />
+          <TrialCountdownBanner restriction={restriction} />
           <div className="flex-1 flex overflow-hidden">
             <main className="flex-1 overflow-auto p-6">{children}</main>
             <OnboardingChecklist />

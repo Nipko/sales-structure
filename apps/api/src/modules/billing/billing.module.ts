@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
-import { EmailTemplatesModule } from '../email-templates/email-templates.module';
+import { EmailModule } from '../email/email.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingAdminController } from './billing-admin.controller';
@@ -29,7 +29,7 @@ import { InvoiceGeneratorService } from './invoice-generator.service';
  * so it is consumable in BillingService without an explicit import here.
  */
 @Module({
-    imports: [PrismaModule, RedisModule, EmailTemplatesModule],
+    imports: [PrismaModule, RedisModule, EmailModule],
     controllers: [BillingController, BillingAdminController, CouponsController, BillingWebhookController],
     providers: [
         BillingService,

@@ -69,12 +69,16 @@ jobs:
 
       - name: Smoke test API — verify module graph resolves
         run: |
+          for i in 1 2 3; do
+            docker pull ${{ env.API_IMAGE }}:${{ github.sha }} && break
+            echo "Pull attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
           docker run --rm \
             -w /app \
             --entrypoint node \
             ${{ env.API_IMAGE }}:${{ github.sha }} \
             -e "
-              // Verify all compiled modules can be required (catches missing deps, bad imports)
               try {
                 const m = require('./dist/app.module');
                 if (!m.AppModule) throw new Error('AppModule not exported');
@@ -85,7 +89,7 @@ jobs:
                 process.exit(1);
               }
             "
-        timeout-minutes: 1
+        timeout-minutes: 2
 
       - name: Build and push Worker image
         uses: docker/build-push-action@v5
@@ -138,7 +142,11 @@ jobs:
 
       - name: Smoke test WhatsApp image modules
         run: |
-          docker pull ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }}
+          for i in 1 2 3; do
+            docker pull ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }} && break
+            echo "Pull attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
           docker run --rm --entrypoint node ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }} -e "require('@nestjs/axios'); console.log('WhatsApp image module check OK')"
 
       - name: Build and push Landing image

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://parallly-chat.cloud/sitemap.xml
+
+# Block admin/API paths (not on this domain, but just in case)
+Disallow: /api/
+Disallow: /_next/

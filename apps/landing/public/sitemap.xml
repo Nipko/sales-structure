@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <!-- Homepage -->
+  <url>
+    <loc>https://parallly-chat.cloud/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Pricing -->
+  <url>
+    <loc>https://parallly-chat.cloud/precios</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Solutions Hub -->
+  <url>
+    <loc>https://parallly-chat.cloud/soluciones</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Industry Pages (18) -->
+  <url><loc>https://parallly-chat.cloud/soluciones/salud</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/restaurantes</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/inmobiliaria</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/belleza</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/gimnasios</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/turismo</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/educacion</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/seguros</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/veterinaria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/fotografia</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/automotriz</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/hogar</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/finanzas</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/servicios-profesionales</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/tecnologia</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/retail</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/pet-services</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://parallly-chat.cloud/soluciones/otro</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+
+  <!-- Product Pages -->
+  <url><loc>https://parallly-chat.cloud/producto</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/producto/agente-ia</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/producto/canales</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/producto/reservas</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/producto/crm</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+
+  <!-- Legal -->
+  <url><loc>https://parallly-chat.cloud/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://parallly-chat.cloud/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://parallly-chat.cloud/data-policy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+</urlset>

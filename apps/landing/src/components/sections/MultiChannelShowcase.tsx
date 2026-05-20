@@ -1,0 +1,250 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
+import { CHANNELS, type ChannelKey } from "../../data/channels";
+import { Section } from "../ui/Section";
+
+/* ------------------------------------------------------------------ */
+/*  Scenario data (inline, industry-specific per channel)              */
+/* ------------------------------------------------------------------ */
+
+interface ChannelScenario {
+  channel: ChannelKey;
+  emoji: string;
+  agentName: string;
+  business: string;
+  messages: { from: "customer" | "ai"; text: string }[];
+}
+
+const CHANNEL_SCENARIOS: ChannelScenario[] = [
+  {
+    channel: "whatsapp",
+    emoji: "\u{1FA7A}",
+    agentName: "Sofía",
+    business: "Clínica Dental",
+    messages: [
+      { from: "customer", text: "Quiero agendar limpieza dental" },
+      {
+        from: "ai",
+        text: "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál preferís?",
+      },
+      { from: "customer", text: "Jueves 10am" },
+      { from: "ai", text: "Confirmado ✅ Te recuerdo el miércoles." },
+    ],
+  },
+  {
+    channel: "instagram",
+    emoji: "📸",
+    agentName: "Diego",
+    business: "Foto Studio",
+    messages: [
+      {
+        from: "customer",
+        text: "Vi tu trabajo, cuánto vale una sesión de boda?",
+      },
+      {
+        from: "ai",
+        text: "¡Gracias! Tenemos 3 paquetes. ¿Cuándo es la fecha?",
+      },
+      { from: "customer", text: "15 de junio" },
+      {
+        from: "ai",
+        text: "Disponible 🙌 Te paso opciones por aquí.",
+      },
+    ],
+  },
+  {
+    channel: "messenger",
+    emoji: "💪",
+    agentName: "Coach",
+    business: "FitPro Gym",
+    messages: [
+      { from: "customer", text: "Hola, info sobre membresías" },
+      {
+        from: "ai",
+        text: "¡Hola! Mensual $89k, trimestral $240k (ahorrás $27k). ¿Visitamos?",
+      },
+      { from: "customer", text: "Sí, mañana puedo" },
+      { from: "ai", text: "Te agendo a las 10am ✅" },
+    ],
+  },
+  {
+    channel: "telegram",
+    emoji: "🔧",
+    agentName: "Iván",
+    business: "ServicioYA",
+    messages: [
+      { from: "customer", text: "Se me tapó el desagüe, urgente" },
+      {
+        from: "ai",
+        text: "Marco como prioridad alta 🚨 Dirección por favor",
+      },
+      { from: "customer", text: "Calle 50 #15-20" },
+      {
+        from: "ai",
+        text: "Carlos llega en 35min. Te aviso cuando salga.",
+      },
+    ],
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/*  MiniChannelDemo — compact animated chat for one channel            */
+/* ------------------------------------------------------------------ */
+
+function MiniChannelDemo({
+  scenario,
+  delay,
+}: {
+  scenario: ChannelScenario;
+  delay: number;
+}) {
+  const skin = CHANNELS[scenario.channel];
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [cycle, setCycle] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: "-100px" });
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!isInView) return;
+    setVisibleCount(0);
+    const total = scenario.messages.length;
+    const showNext = (i: number) => {
+      if (i > total) {
+        timerRef.current = setTimeout(() => setCycle((c) => c + 1), 3500);
+        return;
+      }
+      timerRef.current = setTimeout(
+        () => {
+          setVisibleCount(i);
+          showNext(i + 1);
+        },
+        i === 0 ? delay : 800,
+      );
+    };
+    showNext(1);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [cycle, isInView, scenario.messages.length, delay]);
+
+  return (
+    <div
+      ref={ref}
+      className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xl"
+    >
+      {/* Header */}
+      <div
+        className="px-3 py-2.5 flex items-center gap-2.5"
+        style={{ background: skin.headerBg }}
+      >
+        <div className="w-7 h-7 rounded-full bg-white/25 flex items-center justify-center text-sm">
+          {scenario.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-xs font-semibold truncate">
+            {scenario.business}
+          </p>
+          <p className="text-white/75 text-[10px] truncate">
+            {skin.statusText}
+          </p>
+        </div>
+        {skin.logoSrc && (
+          <img
+            src={skin.logoSrc}
+            alt={skin.name}
+            className="w-4 h-4 opacity-90"
+          />
+        )}
+      </div>
+      {/* Body */}
+      <div
+        className="p-3 min-h-[200px] flex flex-col gap-1.5"
+        style={{ backgroundColor: skin.bodyBg }}
+      >
+        {scenario.messages.map((msg, i) => (
+          <AnimatePresence key={`${cycle}-${i}`}>
+            {i < visibleCount && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.25 }}
+                className={`flex ${msg.from === "customer" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] px-2.5 py-1.5 rounded-xl text-[11px] leading-snug ${
+                    msg.from === "customer" ? "rounded-br-sm" : "rounded-bl-sm"
+                  }`}
+                  style={{
+                    background:
+                      msg.from === "customer"
+                        ? skin.outgoingBg
+                        : skin.incomingBg,
+                    color:
+                      msg.from === "customer"
+                        ? skin.outgoingText
+                        : skin.incomingText,
+                  }}
+                >
+                  {msg.text}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        ))}
+      </div>
+      {/* Footer */}
+      <div className="bg-surface border-t border-border px-2.5 py-1.5 flex items-center justify-between">
+        <span
+          className="text-[9px] font-bold uppercase tracking-wider"
+          style={{ color: skin.accent }}
+        >
+          {skin.name}
+        </span>
+        <span className="text-[9px] text-text-muted">IA respondiendo</span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  MultiChannelShowcase — section wrapper                             */
+/* ------------------------------------------------------------------ */
+
+export function MultiChannelShowcase() {
+  const t = useTranslations("channels");
+
+  return (
+    <Section id="canales">
+      <div className="text-center mb-12">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+          {t("title")}
+        </h2>
+        <p className="text-text-secondary max-w-2xl mx-auto">
+          {t("subtitle")}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {CHANNEL_SCENARIOS.map((s, i) => (
+          <motion.div
+            key={s.channel}
+            initial={{ opacity: 0, y: 25 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ delay: i * 0.1, duration: 0.5 }}
+          >
+            <MiniChannelDemo scenario={s} delay={400 + i * 300} />
+          </motion.div>
+        ))}
+      </div>
+
+      <p className="text-center text-xs text-text-muted mt-8 max-w-2xl mx-auto">
+        {t("note")}
+      </p>
+    </Section>
+  );
+}

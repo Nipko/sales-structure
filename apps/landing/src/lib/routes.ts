@@ -1,0 +1,15 @@
+export const routes = {
+  home: "/",
+  solutions: "/soluciones",
+  solutionDetail: (slug: string) => `/soluciones/${slug}`,
+  product: "/producto",
+  productAgent: "/producto/agente-ia",
+  productChannels: "/producto/canales",
+  productBooking: "/producto/reservas",
+  productCrm: "/producto/crm",
+  pricing: "/precios",
+  privacy: "/privacy",
+  terms: "/terms",
+  dataPolicy: "/data-policy",
+  dataDeletion: "/data-deletion",
+} as const;

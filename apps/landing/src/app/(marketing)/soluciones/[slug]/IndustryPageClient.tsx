@@ -1,0 +1,256 @@
+"use client";
+
+import { useParams } from "next/navigation";
+import { motion } from "motion/react";
+import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { getVerticalBySlug, getVerticalsByCluster } from "../../../../data/verticals";
+import { Section } from "../../../../components/ui/Section";
+import { Icon } from "../../../../components/ui/Icon";
+import { CTABanner } from "../../../../components/layout/CTABanner";
+import { JsonLd } from "../../../../components/ui/JsonLd";
+import { industryPageJsonLd } from "../../../../lib/seo";
+import { SIGNUP_URL } from "../../../../lib/constants";
+
+export default function IndustryPageClient() {
+  const params = useParams();
+  const slug = params.slug as string;
+  const vertical = getVerticalBySlug(slug);
+  const t = useTranslations();
+
+  if (!vertical) return null;
+
+  const related = getVerticalsByCluster(vertical.cluster)
+    .filter((v) => v.slug !== slug)
+    .slice(0, 3);
+
+  const industryName = t(`verticals.${slug}.name`);
+
+  return (
+    <>
+      <JsonLd
+        data={industryPageJsonLd({
+          name: industryName,
+          description: t(`verticals.${slug}.tagline`),
+          slug,
+        })}
+      />
+
+      {/* Hero */}
+      <section
+        className="pt-12 pb-20 px-6 relative overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, ${vertical.color}08, transparent 60%)`,
+        }}
+      >
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full blur-3xl pointer-events-none" style={{ background: `${vertical.color}08` }} />
+        <div className="mx-auto max-w-6xl relative">
+          <div className="flex flex-col lg:flex-row items-center gap-12">
+            <motion.div
+              className="flex-1 text-center lg:text-left"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <Link
+                href="/soluciones"
+                className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary mb-6 transition-colors"
+              >
+                {"←"} Soluciones
+              </Link>
+
+              <span
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-4"
+                style={{ backgroundColor: `${vertical.color}15`, color: vertical.color }}
+              >
+                <span className="text-lg">{vertical.emoji}</span>
+                {t(`verticals.${slug}.subtitle`)}
+              </span>
+
+              <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
+                Parallly para{" "}
+                <span style={{ color: vertical.color }}>{industryName}</span>
+              </h1>
+
+              <p className="text-lg text-text-secondary max-w-xl mb-8">
+                {t(`verticals.${slug}.tagline`)}
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
+                <a
+                  href={SIGNUP_URL}
+                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 text-white font-semibold rounded-xl transition-all cursor-pointer"
+                  style={{
+                    backgroundColor: vertical.color,
+                    boxShadow: `0 0 40px ${vertical.color}35`,
+                  }}
+                >
+                  {t("industryPage.heroCtaPrimary", { industry: industryName })} {Icon.arrow()}
+                </a>
+                <Link
+                  href="/precios"
+                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 border border-border hover:border-border-light text-text-primary rounded-xl font-medium transition-colors"
+                >
+                  {t("industryPage.heroCtaSecondary")}
+                </Link>
+              </div>
+            </motion.div>
+
+            {/* Agent card */}
+            <motion.div
+              className="flex-1 w-full max-w-sm"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <div className="bg-surface border border-border rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center gap-3 mb-5">
+                  <div
+                    className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl"
+                    style={{ backgroundColor: `${vertical.color}15` }}
+                  >
+                    {vertical.emoji}
+                  </div>
+                  <div>
+                    <p className="font-bold text-lg">{t(`verticals.${slug}.agentName`)}</p>
+                    <p className="text-xs text-text-muted">{t("industryPage.agentSpotlightDesc", { industry: industryName })}</p>
+                  </div>
+                </div>
+                <div className="space-y-2.5">
+                  {[1, 2, 3, 4].map((n) => (
+                    <div key={n} className="flex items-start gap-2.5">
+                      <span
+                        className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
+                        style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}
+                      >
+                        {Icon.check("w-3 h-3")}
+                      </span>
+                      <span className="text-sm text-text-secondary">
+                        {t(`verticals.${slug}.feature${n}`)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: vertical.color }} />
+                  <span className="text-xs font-semibold" style={{ color: vertical.color }}>
+                    Activo · 24/7
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pain Points (Tier 1-2) */}
+      {vertical.tier <= 2 && (
+        <Section>
+          <h2 className="text-3xl font-bold text-center mb-10">
+            {t("industryPage.painTitle", { industry: industryName })}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[1, 2, 3].map((n) => (
+              <motion.div
+                key={n}
+                className="bg-surface border border-border rounded-2xl p-6"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: n * 0.08 }}
+              >
+                <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center mb-4">
+                  <span className="text-lg">{"⚠️"}</span>
+                </div>
+                <p className="text-text-secondary leading-relaxed">{t(`industryPage.pain${n}`)}</p>
+              </motion.div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Solution Steps */}
+      <Section className="bg-surface/30">
+        <h2 className="text-3xl font-bold text-center mb-12">
+          {t("industryPage.solutionTitle", { industry: industryName })}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map((n) => (
+            <motion.div
+              key={n}
+              className="bg-surface border border-border rounded-2xl p-7"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: n * 0.1 }}
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 text-white font-bold"
+                style={{ backgroundColor: vertical.color }}
+              >
+                {n}
+              </div>
+              <h3 className="font-bold mb-2">{t(`industryPage.solutionStep${n}`, { industry: industryName })}</h3>
+              <p className="text-sm text-text-secondary">{t(`industryPage.solutionStep${n}Desc`)}</p>
+            </motion.div>
+          ))}
+        </div>
+      </Section>
+
+      {/* ROI Stats */}
+      <Section>
+        <h2 className="text-3xl font-bold text-center mb-12">{t("industryPage.roiTitle")}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map((n) => (
+            <motion.div
+              key={n}
+              className="text-center p-8 bg-surface border border-border rounded-2xl"
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: n * 0.08 }}
+            >
+              <p className="text-4xl font-bold mb-2" style={{ color: vertical.color }}>
+                {t(`industryPage.roiStat${n}`)}
+              </p>
+              <p className="text-text-secondary">{t(`industryPage.roiStat${n}Label`)}</p>
+            </motion.div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Related Industries */}
+      {related.length > 0 && (
+        <Section className="bg-surface/30">
+          <h2 className="text-2xl font-bold text-center mb-8">{t("industryPage.relatedTitle")}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            {related.map((v) => (
+              <Link
+                key={v.slug}
+                href={`/soluciones/${v.slug}`}
+                className="bg-surface border border-border rounded-2xl p-5 hover:border-accent/40 transition-all group"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <span
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                    style={{ backgroundColor: `${v.color}15` }}
+                  >
+                    {v.emoji}
+                  </span>
+                  <div>
+                    <p className="font-bold group-hover:text-accent transition-colors">
+                      {t(`verticals.${v.slug}.name`)}
+                    </p>
+                    <p className="text-xs text-text-muted">{t(`verticals.${v.slug}.subtitle`)}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-text-secondary">{t(`verticals.${v.slug}.tagline`)}</p>
+              </Link>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      <CTABanner />
+    </>
+  );
+}

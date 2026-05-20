@@ -54,6 +54,25 @@ export class OffboardingCronService {
                         await this.redis.set(key, new Date().toISOString(), 30 * 24 * 60 * 60);
                     }
 
+                    // Dedup via billing_events UNIQUE(provider, providerEventId) —
+                    // prevents duplicate emails when multiple API instances run this cron.
+                    const providerEventId = `synthetic_trial_ended_${sub.id}`;
+                    try {
+                        await this.prisma.billingEvent.create({
+                            data: {
+                                tenantId: sub.tenantId,
+                                subscriptionId: sub.id,
+                                provider: 'system',
+                                providerEventId,
+                                eventType: BillingEventType.TRIAL_ENDED,
+                                payload: { trialEndsAt: sub.trialEndsAt, source: 'cron_trial_expiry' } as any,
+                            },
+                        });
+                    } catch {
+                        this.logger.debug(`[TrialExpiry] Tenant ${sub.tenantId} TRIAL_ENDED already emitted — skipping`);
+                        continue;
+                    }
+
                     this.eventEmitter.emit(BillingEventType.TRIAL_ENDED, {
                         tenantId: sub.tenantId,
                         subscriptionId: sub.id,
@@ -113,6 +132,22 @@ export class OffboardingCronService {
                         await this.redis.del(`sub_status:${tenant.id}`);
                         await this.redis.del(`tenant_plan:${tenant.id}`);
                         await this.redis.del(`offboard:past_due:${tenant.id}`);
+
+                        const expiredEventId = `synthetic_subscription_expired_${tenant.id}`;
+                        try {
+                            await this.prisma.billingEvent.create({
+                                data: {
+                                    tenantId: tenant.id,
+                                    provider: 'system',
+                                    providerEventId: expiredEventId,
+                                    eventType: BillingEventType.SUBSCRIPTION_EXPIRED,
+                                    payload: { daysSincePastDue: Math.floor(daysSincePastDue), source: 'cron_grace_enforcer' } as any,
+                                },
+                            });
+                        } catch {
+                            this.logger.debug(`[GraceEnforcer] Tenant ${tenant.id} SUBSCRIPTION_EXPIRED already emitted — skipping`);
+                            continue;
+                        }
 
                         this.eventEmitter.emit(BillingEventType.SUBSCRIPTION_EXPIRED, {
                             tenantId: tenant.id,

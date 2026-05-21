@@ -486,13 +486,18 @@ export default function AppointmentsPage() {
         assignedTo: modalForm.assignedTo || undefined,
         contactId: modalForm.contactId || undefined,
       };
+      let response: any;
       if (editingAppointment) {
-        await api.updateAppointment(activeTenantId, editingAppointment.id, payload);
-        showToast(t("editAppointment") + " ✓");
+        response = await api.updateAppointment(activeTenantId, editingAppointment.id, payload);
       } else {
-        await api.createAppointment(activeTenantId, payload);
-        showToast(t("newAppointment") + " ✓");
+        response = await api.createAppointment(activeTenantId, payload);
       }
+      if (response && response.success === false) {
+        showToast(response.error || t("errors.saveAppointment"));
+        setSaving(false);
+        return;
+      }
+      showToast(editingAppointment ? t("editAppointment") + " ✓" : t("newAppointment") + " ✓");
       setShowModal(false);
       loadAppointments();
     } catch {

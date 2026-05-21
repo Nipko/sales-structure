@@ -466,6 +466,20 @@ export class AppointmentsService {
         return Number(rows[0]?.cnt) > 0;
     }
 
+    private toNaiveIso(val: any): string {
+        if (!val) return val;
+        if (val instanceof Date) {
+            const y = val.getUTCFullYear();
+            const mo = String(val.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(val.getUTCDate()).padStart(2, '0');
+            const h = String(val.getUTCHours()).padStart(2, '0');
+            const mi = String(val.getUTCMinutes()).padStart(2, '0');
+            const s = String(val.getUTCSeconds()).padStart(2, '0');
+            return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
+        }
+        return String(val).replace(/\.000Z$/, '').replace(/Z$/, '');
+    }
+
     private mapRow(row: any): Appointment {
         return {
             id: row.id,
@@ -475,8 +489,8 @@ export class AppointmentsService {
             assignedTo: row.assigned_to,
             assignedName: row.assigned_name,
             serviceName: row.service_name,
-            startAt: row.start_at,
-            endAt: row.end_at,
+            startAt: this.toNaiveIso(row.start_at),
+            endAt: this.toNaiveIso(row.end_at),
             status: row.status,
             location: row.location,
             notes: row.notes,

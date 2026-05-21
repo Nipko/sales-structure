@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
 import { SIGNUP_URL } from "../../lib/constants";
+import { useSpotlight } from "../../hooks/useSpotlight";
 
 interface PlanDef {
   nameKey: string;
@@ -59,6 +60,79 @@ const PLANS: PlanDef[] = [
   },
 ];
 
+interface PricingCardProps {
+  plan: PlanDef;
+  annual: boolean;
+  index: number;
+  t: any;
+}
+
+function PricingCard({ plan, annual, index, t }: PricingCardProps) {
+  const spotlightRef = useSpotlight();
+  const price = annual ? plan.annualPrice : plan.monthlyPrice;
+
+  return (
+    <motion.div
+      ref={spotlightRef}
+      className={`relative rounded-2xl p-7 flex flex-col spotlight-card ${
+        plan.highlighted
+          ? "glass-card border-accent/40 shadow-[0_0_28px_rgba(56,151,240,0.12)] lg:-mt-4"
+          : "glass-card"
+      }`}
+      initial={{ opacity: 0, y: 25 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ delay: index * 0.08, duration: 0.45 }}
+    >
+      {/* "Mas popular" badge */}
+      {plan.badgeKey && (
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-lg shadow-accent/25">
+          {t(plan.badgeKey)}
+        </span>
+      )}
+
+      {/* Plan name & description */}
+      <h3 className="text-xl font-bold mb-1 mt-1">{t(plan.nameKey)}</h3>
+      <p className="text-text-muted text-sm mb-5 leading-snug">{t(plan.descKey)}</p>
+
+      {/* Price */}
+      <div className="mb-6 min-h-[60px]">
+        <span className="text-4xl font-extrabold tabular tracking-tight">{price}</span>
+        <span className="text-sm text-text-muted ml-1">
+          {t("perMonth")}
+        </span>
+      </div>
+
+      {/* Feature list */}
+      <ul className="space-y-3 mb-8 flex-1">
+        {(t.raw(plan.featuresKey) as string[]).map((f, fi) => (
+          <li key={fi} className="flex items-start gap-2.5 text-sm leading-relaxed">
+            <span className="text-accent flex-shrink-0 mt-0.5 shadow-sm">
+              {Icon.check("w-4 h-4")}
+            </span>
+            <span className="text-text-secondary">{f}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* CTA button with spring micro-interaction */}
+      <motion.a
+        whileHover={{ scale: 1.02, y: -2 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 400, damping: 15 }}
+        href={SIGNUP_URL}
+        className={`block text-center py-3 px-6 rounded-xl font-semibold transition-all cursor-pointer z-20 ${
+          plan.highlighted
+            ? "bg-accent hover:bg-accent-hover text-white shadow-[0_0_16px_rgba(56,151,240,0.2)]"
+            : "bg-surface-light hover:bg-border border border-border/80 text-text-primary"
+        }`}
+      >
+        {t(plan.ctaKey)}
+      </motion.a>
+    </motion.div>
+  );
+}
+
 export function PricingSection() {
   const [annual, setAnnual] = useState(true);
   const t = useTranslations("pricing");
@@ -67,10 +141,10 @@ export function PricingSection() {
     <Section id="precios" className="bg-surface/30">
       {/* Header */}
       <div className="text-center mb-10">
-        <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+        <h2 className="text-3xl sm:text-5xl font-bold mb-4 tracking-tight">
           {t("title")}
         </h2>
-        <p className="text-text-secondary max-w-2xl mx-auto">
+        <p className="text-text-secondary max-w-2xl mx-auto text-sm sm:text-base">
           {t("freeTrial")}
         </p>
       </div>
@@ -105,75 +179,17 @@ export function PricingSection() {
           }`}
         >
           {t("annual")}
-          <span className="ml-1.5 text-emerald-400 text-xs font-bold">
+          <span className="ml-1.5 text-emerald-400 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
             {t("annualDiscount")}
           </span>
         </span>
       </div>
 
       {/* Plan cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
-        {PLANS.map((plan, i) => {
-          const price = annual ? plan.annualPrice : plan.monthlyPrice;
-
-          return (
-            <motion.div
-              key={plan.nameKey}
-              className={`relative rounded-2xl p-7 flex flex-col ${
-                plan.highlighted
-                  ? "glass-card border-accent/40 shadow-[0_0_28px_rgba(56,151,240,0.1)] lg:-mt-4"
-                  : "glass-card"
-              }`}
-              initial={{ opacity: 0, y: 25 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ delay: i * 0.08, duration: 0.45 }}
-            >
-              {/* "Mas popular" badge */}
-              {plan.badgeKey && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full">
-                  {t(plan.badgeKey)}
-                </span>
-              )}
-
-              {/* Plan name & description */}
-              <h3 className="text-xl font-bold mb-1">{t(plan.nameKey)}</h3>
-              <p className="text-text-muted text-sm mb-5">{t(plan.descKey)}</p>
-
-              {/* Price */}
-              <div className="mb-6 min-h-[60px]">
-                <span className="text-4xl font-bold tabular">{price}</span>
-                <span className="text-sm text-text-muted ml-1">
-                  {t("perMonth")}
-                </span>
-              </div>
-
-              {/* Feature list */}
-              <ul className="space-y-2.5 mb-7 flex-1">
-                {(t.raw(plan.featuresKey) as string[]).map((f, fi) => (
-                  <li key={fi} className="flex items-start gap-2.5 text-sm">
-                    <span className="text-accent flex-shrink-0 mt-0.5">
-                      {Icon.check("w-4 h-4")}
-                    </span>
-                    <span className="text-text-secondary">{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {/* CTA button */}
-              <a
-                href={SIGNUP_URL}
-                className={`block text-center py-3 px-6 rounded-xl font-semibold transition-colors cursor-pointer ${
-                  plan.highlighted
-                    ? "bg-accent hover:bg-accent-hover text-white shadow-[0_0_16px_rgba(56,151,240,0.2)]"
-                    : "bg-surface-light hover:bg-border border border-border text-text-primary"
-                }`}
-              >
-                {t(plan.ctaKey)}
-              </a>
-            </motion.div>
-          );
-        })}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start max-w-7xl mx-auto">
+        {PLANS.map((plan, i) => (
+          <PricingCard key={plan.nameKey} plan={plan} annual={annual} index={i} t={t} />
+        ))}
       </div>
 
       {/* Currency hint */}
@@ -185,7 +201,7 @@ export function PricingSection() {
       <div className="text-center mt-6">
         <Link
           href="/precios"
-          className="inline-flex items-center gap-1.5 text-sm text-accent hover:text-accent-hover font-medium transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-accent hover:text-accent-hover font-semibold transition-colors"
         >
           {t("fullComparison")}
           <svg
@@ -193,7 +209,7 @@ export function PricingSection() {
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={2}
+            strokeWidth={2.5}
           >
             <path
               d="M5 12h14M12 5l7 7-7 7"

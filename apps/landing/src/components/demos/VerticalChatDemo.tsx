@@ -7,9 +7,10 @@ import type { VerticalDef } from "../../data/verticals";
 
 interface VerticalChatDemoProps {
   vertical: VerticalDef;
+  onStepChange?: (step: number) => void;
 }
 
-export function VerticalChatDemo({ vertical }: VerticalChatDemoProps) {
+export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoProps) {
   const skin = CHANNELS[vertical.channel];
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
@@ -19,22 +20,25 @@ export function VerticalChatDemo({ vertical }: VerticalChatDemoProps) {
 
   const runAnimation = useCallback(() => {
     setVisibleCount(0);
+    if (onStepChange) onStepChange(0);
     const total = vertical.demoMessages.length;
     const showNext = (i: number) => {
       if (i > total) {
+        if (onStepChange) onStepChange(total + 1);
         timerRef.current = setTimeout(() => setCycle((c) => c + 1), 3500);
         return;
       }
       timerRef.current = setTimeout(
         () => {
           setVisibleCount(i);
+          if (onStepChange) onStepChange(i);
           showNext(i + 1);
         },
-        i === 0 ? 200 : 800,
+        i === 1 ? 200 : 1500, // slower cadence for realistic reading speed
       );
     };
     showNext(1);
-  }, [vertical.demoMessages.length]);
+  }, [vertical.demoMessages.length, onStepChange]);
 
   useEffect(() => {
     if (!isInView) return;

@@ -109,6 +109,43 @@ body {
   border-color: rgba(255,255,255,0.1);
 }
 
+/* Spotlight card border effect (premium Vercel/Linear style) */
+.spotlight-card {
+  position: relative;
+}
+
+.spotlight-card::before {
+  content: "";
+  position: absolute;
+  inset: 0px;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(
+    300px circle at var(--mouse-x, 0px) var(--mouse-y, 0px),
+    rgba(255, 255, 255, 0.15),
+    transparent 80%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.spotlight-card::after {
+  content: "";
+  position: absolute;
+  inset: 0px;
+  border-radius: inherit;
+  background: radial-gradient(
+    300px circle at var(--mouse-x, 0px) var(--mouse-y, 0px),
+    rgba(255, 255, 255, 0.03),
+    transparent 80%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* Aurora mesh gradient keyframes */
 @keyframes aurora-drift {
   0%, 100% { transform: translate(0, 0) rotate(0deg); }
@@ -122,3 +159,4 @@ body {
   33% { transform: translate(-40px, 30px) rotate(-4deg); }
   66% { transform: translate(30px, -40px) rotate(3deg); }
 }
+

@@ -647,7 +647,10 @@ export class AIToolExecutorService {
 
         // Get existing appointments for that date
         const existing: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT assigned_to, start_at, end_at FROM "${schema}".appointments
+            `SELECT assigned_to, 
+                    to_char(start_at, 'HH24:MI') as start_time, 
+                    to_char(end_at, 'HH24:MI') as end_time 
+             FROM "${schema}".appointments
              WHERE DATE(start_at) = $1::date AND status NOT IN ('cancelled')`,
             date,
         );
@@ -696,15 +699,8 @@ export class AIToolExecutorService {
 
                 const hasConflict = existing.some(apt => {
                     if (slot.user_id && apt.assigned_to && slot.user_id !== apt.assigned_to) return false;
-                    // Convert DB timestamps to minutes-of-day in tenant timezone
-                    const aptStartLocal = new Date(apt.start_at).toLocaleTimeString('en-GB', {
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
-                    });
-                    const aptEndLocal = new Date(apt.end_at).toLocaleTimeString('en-GB', {
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
-                    });
-                    const [asH, asM] = aptStartLocal.split(':').map(Number);
-                    const [aeH, aeM] = aptEndLocal.split(':').map(Number);
+                    const [asH, asM] = apt.start_time.split(':').map(Number);
+                    const [aeH, aeM] = apt.end_time.split(':').map(Number);
                     const aptStartMin = asH * 60 + asM;
                     const aptEndMin = aeH * 60 + aeM;
                     // Overlap: proposed slot block overlaps existing appointment

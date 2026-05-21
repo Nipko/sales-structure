@@ -281,7 +281,34 @@ export class HandoffService {
      */
     private async tryAutoAssign(tenantId: string, schemaName: string, conversationId: string, reason?: string): Promise<string | null> {
         try {
-            // Map handoff reasons to skill tags for routing
+            // 1. Get contact_id from the conversation
+            const convRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT contact_id FROM conversations WHERE id = $1::uuid`,
+                [conversationId]
+            );
+            const contactId = convRows?.[0]?.contact_id;
+            
+            // 2. Fetch the lead score (default to 0 if not found)
+            let leadScore = 0;
+            if (contactId) {
+                const leadRows = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT score FROM leads WHERE contact_id = $1::uuid LIMIT 1`,
+                    [contactId]
+                );
+                leadScore = leadRows?.[0]?.score || 0;
+            }
+
+            // 3. Fetch the vertical configuration for this tenant
+            const tenantRows = await this.prisma.$queryRawUnsafe(
+                `SELECT settings FROM public.tenants WHERE id = $1::uuid LIMIT 1`,
+                tenantId
+            ) as any[];
+            const settings = tenantRows?.[0]?.settings || {};
+            const vertical = settings.verticalConfig?.industry || '';
+
+            // 4. Map handoff reasons to skill tags for routing
             const skillMap: Record<string, string> = {
                 frustration_detected: 'complaints',
                 explicit_human_request: 'general',
@@ -289,13 +316,36 @@ export class HandoffService {
             };
             const preferredSkill = reason ? skillMap[reason] || null : null;
 
-            // Prefer agents with matching skills, then fallback to least-loaded
+            // 5. Build prioritized skills array
+            const targetSkills: string[] = [];
+
+            // A. VIP Lead (Score >= 80) -> route to senior or supervisor agents
+            if (leadScore >= 80) {
+                targetSkills.push('senior', 'supervisor');
+                this.logger.log(`[AutoAssign] VIP Lead detected (Score=${leadScore}) for conversation ${conversationId}. Prioritizing senior/supervisor agents.`);
+            }
+
+            // B. Health Vertical -> route to clinical or doctor agents
+            const isHealthVertical = ['salud', 'health', 'clinica', 'odontologia', 'medicina', 'bienestar'].some(v => 
+                vertical.toLowerCase().includes(v)
+            );
+            if (isHealthVertical) {
+                targetSkills.push('clinical', 'doctor');
+                this.logger.log(`[AutoAssign] Health vertical detected ("${vertical}") for conversation ${conversationId}. Prioritizing clinical/doctor agents.`);
+            }
+
+            // C. Fallback to mapped handoff reason skill tag
+            if (preferredSkill) {
+                targetSkills.push(preferredSkill);
+            }
+
+            // Prefer agents with the highest overlap of target skills, then fallback to least-loaded
             const agents = await this.prisma.$queryRawUnsafe(`
                 SELECT u.id, TRIM(u.first_name || ' ' || u.last_name) as name,
                     u.skill_tags,
                     (SELECT COUNT(*) FROM "${schemaName}".conversations c
                      WHERE c.assigned_to = u.id::text AND c.status = 'with_human') as active_count,
-                    CASE WHEN $2::text IS NOT NULL AND $2::text = ANY(u.skill_tags) THEN 0 ELSE 1 END as skill_priority
+                    (SELECT COUNT(*)::int FROM unnest(u.skill_tags) x WHERE x = ANY($2::text[])) as matching_skills_count
                 FROM public.users u
                 WHERE u.tenant_id = $1::uuid
                   AND u.is_active = true
@@ -303,9 +353,9 @@ export class HandoffService {
                   AND u.availability_status = 'online'
                   AND (SELECT COUNT(*) FROM "${schemaName}".conversations c
                        WHERE c.assigned_to = u.id::text AND c.status = 'with_human') < u.max_capacity
-                ORDER BY skill_priority ASC, active_count ASC
+                ORDER BY matching_skills_count DESC, active_count ASC
                 LIMIT 1
-            `, tenantId, preferredSkill) as any[];
+            `, tenantId, targetSkills) as any[];
 
             if (agents?.length) {
                 const agent = agents[0];
@@ -313,6 +363,7 @@ export class HandoffService {
                     `UPDATE conversations SET assigned_to = $2, status = 'with_human' WHERE id = $1::uuid`,
                     [conversationId, agent.id],
                 );
+                this.logger.log(`[AutoAssign] Automatically assigned conversation ${conversationId} to agent "${agent.name}" (Active Count=${agent.active_count}, Matching Skills=${agent.matching_skills_count})`);
                 return agent.id;
             }
         } catch (e: any) {

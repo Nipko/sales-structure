@@ -978,18 +978,35 @@ export class ConversationsService {
                 // Default 0.35 — filters out irrelevant chunks. Agents can lower
                 // this in their RAG config if they need broader recall.
                 const similarityThreshold = ragConfig?.similarityThreshold ?? 0.35;
+                const searchThreshold = Math.min(0.25, similarityThreshold);
                 const ragResults = await this.knowledgeService.searchRelevant(
-                    tenantId, userText, topK, { similarityThreshold },
+                    tenantId, userText, topK, { similarityThreshold: searchThreshold },
                 );
                 if (ragResults.length > 0) {
-                    turnContext.retrievedKnowledge = ragResults.map((r: any, idx: number) => ({
-                        source: 'kb_article' as const,
-                        id: String(r.id ?? r.document_id ?? idx),
-                        score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
-                        title: r.title,
-                        content: r.chunk_text,
-                    })) as RetrievedKnowledgeItem[];
-                    this.logger.log(`RAG: Injected ${ragResults.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
+                    const retrieved = ragResults.filter((r: any) => r.score >= similarityThreshold);
+                    const possible = ragResults.filter((r: any) => r.score >= 0.25 && r.score < similarityThreshold);
+
+                    if (retrieved.length > 0) {
+                        turnContext.retrievedKnowledge = retrieved.map((r: any, idx: number) => ({
+                            source: 'kb_article' as const,
+                            id: String(r.id ?? r.document_id ?? idx),
+                            score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                            title: r.title,
+                            content: r.chunk_text,
+                        })) as RetrievedKnowledgeItem[];
+                        this.logger.log(`RAG: Injected ${retrieved.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
+                    }
+
+                    if (possible.length > 0) {
+                        (turnContext as any).possibleKnowledge = possible.map((r: any, idx: number) => ({
+                            source: 'kb_article' as const,
+                            id: String(r.id ?? r.document_id ?? idx),
+                            score: typeof r.score === 'number' ? r.score : (typeof r.similarity === 'number' ? r.similarity : undefined),
+                            title: r.title,
+                            content: r.chunk_text,
+                        })) as RetrievedKnowledgeItem[];
+                        this.logger.log(`RAG (Fuzzy): Injected ${possible.length} possible chunks (score 0.25-${similarityThreshold}) for tenant ${tenantId}`);
+                    }
                 }
             }
         } catch (ragError: any) {

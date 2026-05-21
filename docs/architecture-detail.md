@@ -1,6 +1,6 @@
 # Arquitectura del Motor de IA Conversacional — Parallext Engine
 
-Referencia detallada de la arquitectura, flujos de datos y lógica interna del motor de IA de Parallext (Actualizado: Mayo 2026). Este documento complementa las especificaciones generales y detalla el diseño de las capas de prompt, la arquitectura de conocimiento inteligente con RAG difuso, la inmunidad de zona horaria nativa de base de datos y la orquestación del handoff dinámico basado en CRM.
+Referencia detallada de la arquitectura, flujos de datos y lógica interna del motor de IA de Parallext (Actualizado: Mayo 2026). Este documento detalla exhaustivamente el diseño de las capas de prompt, la arquitectura de conocimiento inteligente con RAG difuso, el paradigma del pipeline cognitivo, la inmunidad de zona horaria nativa y la orquestación del handoff dinámico basado en CRM.
 
 ---
 
@@ -39,7 +39,36 @@ graph TD
 
 ---
 
-## 2. Prompt Architecture (3 Capas de Seguridad y Ventas)
+## 2. Paradigma del Pipeline de Tres Fases (INTERPRET -> DECIDE -> EXPRESS)
+
+El motor de IA conversacional de Parallext procesa las interacciones utilizando un pipeline cognitivo estructurado en tres fases secuenciales para garantizar robustez, velocidad y exactitud en la comunicación:
+
+```mermaid
+graph LR
+    A[Mensaje de Usuario] --> B["Fase 1: INTERPRET<br>(Heurística + LLM JSON)"]
+    B --> C["Fase 2: DECIDE<br>(Booking Engine / RAG / Handoff)"]
+    C --> D["Fase 3: EXPRESS<br>(3-Layer Prompt + LLM Router)"]
+    D --> E[Respuesta Natural]
+```
+
+### Fase 1: INTERPRET (Detección de Intenciones e Idioma)
+- **LanguageDetectorService**: Detecta el idioma del cliente (`es` | `en` | `pt` | `fr`) analizando stop-words en tiempo récord (heurística local ligera, evitando costes de APIs externas). Exige una confianza mínima (el ganador debe superar al segundo lugar por al menos 2 puntos y tener un score $\ge$ 2); en caso contrario, utiliza el idioma configurado por defecto para el canal del agente.
+- **IntentInterpreterService**: Extrae la intención estructurada (`InterpretedIntent`) y variables clave (nombre, email, fecha, hora, selección de servicio, confirmación o negación).
+  - *Extracción Determinista (Fórmula del 80%)*: Para optimizar latencia y costos, un motor regex e indexador semántico local extrae intenciones comunes como saludos, despedidas, confirmaciones cortas ("sí", "dale"), negaciones ("no", "cancelar"), y selecciones numéricas de servicio en turnos de agendamiento.
+  - *Extracción Cognitiva por LLM*: Si la heurística no tiene alta certeza, delega a un modelo de lenguaje ligero configurado con salida forzada en JSON, abstrayéndose de la personalidad e inyectando solo el contexto inmediato del usuario.
+
+### Fase 2: DECIDE (Determinación del Estado de Negocio)
+El backend procesa la intención interpretada para decidir el curso lógico de la acción:
+- Si el cliente está en flujo de reserva, el **BookingEngineService** (apoyado en Redis) valida fechas, slots libres y actualiza el paso.
+- Si es una pregunta informativa, consulta los 5 niveles de conocimiento (FAQs, políticas o RAG difuso).
+- Si se detecta una condición crítica (frustración o intentos fallidos), se delega a `HandoffService`.
+
+### Fase 3: EXPRESS (Generación de Voz Empática y Humana)
+Una vez que el backend sabe **qué** comunicar (mediante una etiqueta `<directive>` inyectada), delega al **PromptAssemblerService** para ensamblar el prompt completo (Contrato + Persona + Turno) y llama al **LLMRouterService**. El LLM opera como el "actor" y la "voz de la marca", traduciendo instrucciones estructuradas en texto perfectamente natural, fluido y enfocado en la conversión.
+
+---
+
+## 3. Prompt Architecture (3 Capas de Seguridad y Ventas)
 
 El motor compila jerárquicamente tres capas estrictamente separadas en cada turno mediante `PromptAssemblerService.assemble(config, turnContext)`:
 
@@ -92,7 +121,7 @@ Estructura de datos dinámica serializada en XML estricto. **No se mezcla prosa 
 
 ---
 
-## 3. Arquitectura de Conocimiento de 5 Niveles y RAG Difuso
+## 4. Arquitectura de Conocimiento de 5 Niveles y RAG Difuso
 
 Parallext utiliza un sistema de resolución jerárquica de conocimiento para responder consultas de forma precisa sin inducir alucinaciones:
 
@@ -133,7 +162,7 @@ Para evitar que el agente dé respuestas evasivas cuando la consulta del cliente
 
 ---
 
-## 4. Inmunidad de Zona Horaria Nativa (SQL-Native Resolution)
+## 5. Inmunidad de Zona Horaria Nativa (SQL-Native Resolution)
 
 Uno de los mayores desafíos en sistemas de agendamiento multi-tenant es el desfase de zonas horarias entre el servidor (comúnmente operando en UTC), la base de datos, el cliente LLM y el huso horario local de la empresa.
 
@@ -155,7 +184,7 @@ WHERE DATE(start_at) = $1::date AND status NOT IN ('cancelled')
 
 ---
 
-## 5. Handoff Dinámico y Asignación por Habilidades basadas en CRM
+## 6. Handoff Dinámico y Asignación por Habilidades basadas en CRM
 
 El sistema de escalamiento humano no es un simple disparador lineal. Se conecta directamente al CRM de la plataforma para enrutar las conversaciones basándose en el valor del lead, la industria del negocio y la causa del handoff.
 
@@ -221,7 +250,7 @@ El sistema de escalamiento humano no es un simple disparador lineal. Se conecta 
 
 ---
 
-## 6. Autenticación y Gestión de Sesiones
+## 7. Autenticación y Gestión de Sesiones
 
 - **Access Token**: JWT firmado con duración de 15 minutos, renovado automáticamente de forma silenciosa cada 12 minutos por el cliente del Dashboard.
 - **Refresh Token**: 8 horas por defecto, extendible a 14 días al marcar "Remember Me". Se almacena cifrado en la base de datos y su ID único se persiste en Redis para revocación inmediata.
@@ -230,7 +259,7 @@ El sistema de escalamiento humano no es un simple disparador lineal. Se conecta 
 
 ---
 
-## 7. Flujos de Integración de Canales (OAuth & Calendars)
+## 8. Flujos de Integración de Canales (OAuth & Calendars)
 
 ### Instagram & Facebook OAuth
 - **Instagram Basic Display / Graph API**: El usuario inicia el enlace del canal desde el Dashboard. Se abre un popup seguro hacia `https://www.instagram.com/oauth/authorize` solicitando scopes para lectura y administración de mensajes. El callback procesa el código temporal, lo intercambia por un token de larga duración y lo almacena con encriptación AES-256 en la base de datos.
@@ -247,7 +276,7 @@ El sistema de escalamiento humano no es un simple disparador lineal. Se conecta 
 
 ---
 
-## 8. Pilas de Observabilidad y Monitoreo en Producción
+## 9. Pilas de Observabilidad y Monitoreo en Producción
 
 El ecosistema cuenta con monitoreo estructurado e integrado expuesto a través de Cloudflare Tunnels seguros:
 
@@ -264,7 +293,7 @@ Los servicios NestJS escriben logs structured JSON usando `pino` con contextos e
 
 ---
 
-## 9. Fortalecimiento del Pipeline y Resiliencia en Producción
+## 10. Fortalecimiento del Pipeline y Resiliencia en Producción
 
 ### Mitigación del Límite de Conexiones a Base de Datos:
 Tras identificar un cuello de botella crítico donde múltiples instancias de Prisma (API Principal, Worker BullMQ y WhatsApp) superaban las capacidades del pool de transacciones de PgBouncer (límite de 25), se implementaron las siguientes directrices:

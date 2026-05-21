@@ -231,7 +231,7 @@ export default function ConfigTab({
         }
     }, [assignmentType, activeTenantId, staffUsers.length]);
 
-    const is247 = availabilitySlots.every(s => s.active && s.startTime === "00:00" && s.endTime === "23:59");
+    const is247 = availabilitySlots.every(s => s.active && s.startTime.startsWith("00:00") && s.endTime.startsWith("23:59"));
 
     const toggle247 = (enabled: boolean) => {
         if (enabled) {

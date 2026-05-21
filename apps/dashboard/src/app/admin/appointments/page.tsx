@@ -210,13 +210,14 @@ export default function AppointmentsPage() {
     if (!activeTenantId) return;
     try {
       const res = await api.getAvailability(activeTenantId);
+      const trimTime = (t: string) => (t || "").slice(0, 5);
       if (res?.success && res.data?.length) {
         // res.data is the array directly (not res.data.slots)
         const slots = Array.isArray(res.data) ? res.data : (res.data?.slots || res.data);
         const merged = DAY_KEYS.map((_, i) => {
           const existing = (slots as any[]).find((s: any) => s.dayOfWeek === i + 1);
           return existing
-            ? { dayOfWeek: existing.dayOfWeek, startTime: existing.startTime, endTime: existing.endTime, active: existing.isActive !== false }
+            ? { dayOfWeek: existing.dayOfWeek, startTime: trimTime(existing.startTime), endTime: trimTime(existing.endTime), active: existing.isActive !== false }
             : { dayOfWeek: i + 1, startTime: "09:00", endTime: "18:00", active: false };
         });
         setAvailabilitySlots(merged);
@@ -226,7 +227,7 @@ export default function AppointmentsPage() {
         const merged = DAY_KEYS.map((_, i) => {
           const existing = res.data.slots.find((s: any) => s.dayOfWeek === i + 1);
           return existing
-            ? { dayOfWeek: existing.dayOfWeek, startTime: existing.startTime, endTime: existing.endTime, active: existing.isActive !== false }
+            ? { dayOfWeek: existing.dayOfWeek, startTime: trimTime(existing.startTime), endTime: trimTime(existing.endTime), active: existing.isActive !== false }
             : { dayOfWeek: i + 1, startTime: "09:00", endTime: "18:00", active: false };
         });
         setAvailabilitySlots(merged);

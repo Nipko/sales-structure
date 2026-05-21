@@ -112,6 +112,12 @@ export class CrmController {
             `SELECT COUNT(*)::int AS c FROM leads WHERE is_archived = false`);
         await this.throttle.enforcePlanLimit(tenantId, 'maxContacts', cnt?.[0]?.c || 0, 'contactos');
         const lead = await this.leadsRepo.createLead(tenantId, body);
+        if (lead?.id) {
+            await this.prisma.executeInTenantSchema(schema,
+                `INSERT INTO opportunities (lead_id, stage, score) VALUES ($1::uuid, 'nuevo', 10) ON CONFLICT DO NOTHING`,
+                [String(lead.id)],
+            );
+        }
         return { success: true, data: lead };
     }
 

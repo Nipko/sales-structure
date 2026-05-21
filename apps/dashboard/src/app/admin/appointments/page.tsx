@@ -644,13 +644,18 @@ export default function AppointmentsPage() {
     if (!activeTenantId || !serviceForm.name) return;
     setSavingService(true);
     try {
+      let response: any;
       if (editingService) {
-        await api.updateService(activeTenantId, editingService.id, serviceForm);
-        showToast(t("toasts.serviceUpdated"));
+        response = await api.updateService(activeTenantId, editingService.id, serviceForm);
       } else {
-        await api.createService(activeTenantId, serviceForm);
-        showToast(t("toasts.serviceCreated"));
+        response = await api.createService(activeTenantId, serviceForm);
       }
+      if (!response?.success) {
+        showToast(response?.error || t("errors.saveService"));
+        setSavingService(false);
+        return;
+      }
+      showToast(editingService ? t("toasts.serviceUpdated") : t("toasts.serviceCreated"));
       setShowServiceModal(false);
       loadServices();
     } catch {

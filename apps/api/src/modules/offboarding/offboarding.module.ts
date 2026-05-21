@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { OffboardingService } from './offboarding.service';
 import { OffboardingCronService } from './offboarding-cron.service';
 import { OffboardingController } from './offboarding.controller';
+import { ArchiveMaintenanceService } from './archive-maintenance.service';
 import { MediaModule } from '../media/media.module';
 
 @Module({
@@ -16,8 +17,8 @@ import { MediaModule } from '../media/media.module';
             { name: 'conversation-snooze' },
         ),
     ],
-    providers: [OffboardingService, OffboardingCronService],
+    providers: [OffboardingService, OffboardingCronService, ArchiveMaintenanceService],
     controllers: [OffboardingController],
-    exports: [OffboardingService],
+    exports: [OffboardingService, ArchiveMaintenanceService],
 })
 export class OffboardingModule {}

@@ -5,6 +5,7 @@ import { CannedResponsesService } from './canned-responses.service';
 import { AgentAvailabilityService } from './agent-availability.service';
 import { MacrosService } from './macros.service';
 import { SnoozeService } from './snooze.service';
+import { ArchiveMaintenanceService } from '../offboarding/archive-maintenance.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -18,6 +19,7 @@ export class AgentConsoleController {
         private availabilityService: AgentAvailabilityService,
         private macrosService: MacrosService,
         private snoozeService: SnoozeService,
+        private archiveMaintenanceService: ArchiveMaintenanceService,
     ) { }
 
     // ---- Inbox ----
@@ -50,6 +52,15 @@ export class AgentConsoleController {
     ) {
         const conversation = await this.agentConsoleService.getConversation(tenantId, conversationId);
         return { success: true, data: conversation };
+    }
+
+    @Get('conversation/:tenantId/:conversationId/archives')
+    async getArchivedMessages(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+    ) {
+        const archive = await this.archiveMaintenanceService.getArchivedMessages(tenantId, conversationId);
+        return { success: true, data: archive };
     }
 
     @Post('conversation/:tenantId/:conversationId/message')

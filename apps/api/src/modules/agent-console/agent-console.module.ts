@@ -13,6 +13,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AIModule } from '../ai/ai.module';
 import { CopilotModule } from '../copilot/copilot.module';
+import { OffboardingModule } from '../offboarding/offboarding.module';
 
 @Module({
     imports: [
@@ -20,6 +21,7 @@ import { CopilotModule } from '../copilot/copilot.module';
         forwardRef(() => WhatsappModule),
         AIModule,
         CopilotModule,
+        OffboardingModule,
         BullModule.registerQueue({ name: SNOOZE_QUEUE }),
         JwtModule.registerAsync({
             imports: [ConfigModule],

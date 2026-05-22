@@ -15,12 +15,13 @@ import {
     BookOpen, Search, Plus, X, FileText, Globe, HelpCircle,
     RefreshCw, Edit3, Trash2, BarChart3, ExternalLink, CheckCircle2,
     AlertCircle, TrendingUp, Target, Zap, Eye, Tag, GlobeLock, PlusCircle,
+    Upload, Sparkles, Award, Loader2,
 } from "lucide-react";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-type Tab = "library" | "search" | "analytics";
+type Tab = "library" | "search" | "analytics" | "quality";
 
 interface KBDocument {
     id: string;
@@ -101,6 +102,21 @@ export default function KnowledgePage() {
     const [analytics, setAnalytics] = useState<KBAnalytics | null>(null);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
     const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
+    // Bulk upload
+    const [showBulkModal, setShowBulkModal] = useState(false);
+    const [bulkFiles, setBulkFiles] = useState<Array<{ name: string; content?: string; fileBase64?: string; mimeType?: string }>>([]);
+    const [bulkUploading, setBulkUploading] = useState(false);
+    const [bulkResults, setBulkResults] = useState<any>(null);
+    const [bulkCategory, setBulkCategory] = useState("");
+
+    // Quality scores
+    const [qualityScores, setQualityScores] = useState<any[]>([]);
+    const [qualityLoading, setQualityLoading] = useState(false);
+
+    // AI Suggestions
+    const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
     // Toast
     const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -315,6 +331,78 @@ export default function KnowledgePage() {
         }
     };
 
+    // Bulk file selection
+    const handleBulkFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const fileList = e.target.files;
+        if (!fileList) return;
+        const entries: typeof bulkFiles = [];
+        Array.from(fileList).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = (reader.result as string).split(",")[1];
+                entries.push({ name: file.name, fileBase64: base64, mimeType: file.type });
+                if (entries.length === fileList.length) setBulkFiles(entries);
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const handleBulkUpload = async () => {
+        if (!bulkFiles.length) return;
+        setBulkUploading(true);
+        setBulkResults(null);
+        try {
+            const payload = bulkFiles.map(f => ({ ...f, category: bulkCategory || undefined }));
+            const res = await api.fetch("/knowledge/documents/bulk", {
+                method: "POST",
+                body: JSON.stringify({ files: payload }),
+            });
+            if (res?.success && res.data) {
+                setBulkResults(res.data);
+                showToast(t("bulk.successCount", { count: res.data.succeeded }));
+                // Reload docs
+                const docs = await api.fetch("/knowledge/documents").catch(() => []);
+                if (Array.isArray(docs)) setDocuments(docs);
+            } else {
+                showToast(res?.error || "Error", "error");
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        } finally {
+            setBulkUploading(false);
+        }
+    };
+
+    // Load quality scores
+    useEffect(() => {
+        if (tab !== "quality") return;
+        setQualityLoading(true);
+        api.fetch("/knowledge/documents/quality")
+            .then(res => {
+                if (res?.success && res.data) setQualityScores(res.data);
+            })
+            .catch(() => {})
+            .finally(() => setQualityLoading(false));
+    }, [tab]);
+
+    // AI suggestions
+    const handleGenerateSuggestions = async () => {
+        if (!activeTenantId) return;
+        setSuggestionsLoading(true);
+        try {
+            const res = await api.fetch(`/knowledge/suggestions/${activeTenantId}`, { method: "POST", body: JSON.stringify({}) });
+            if (res?.success && res.data?.suggestions) {
+                setSuggestions(res.data.suggestions);
+            } else if (res?.error === "plan_upgrade_required") {
+                showToast(t("analytics.planRequired"), "error");
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        } finally {
+            setSuggestionsLoading(false);
+        }
+    };
+
     const totalDocs = documents.length + resources.length;
 
     return (
@@ -325,6 +413,12 @@ export default function KnowledgePage() {
                 icon={BookOpen}
                 action={tab === "library" ? (
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowBulkModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground font-medium text-sm cursor-pointer hover:bg-muted press-effect"
+                        >
+                            <Upload size={16} /> {t("bulk.button")}
+                        </button>
                         <button
                             onClick={() => setShowCrawlModal(true)}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground font-medium text-sm cursor-pointer hover:bg-muted press-effect"
@@ -357,6 +451,9 @@ export default function KnowledgePage() {
                 </Link>
                 <button onClick={() => setTab("search")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "search" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <Search size={16} /> {t("tabs.search")}
+                </button>
+                <button onClick={() => setTab("quality")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "quality" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                    <Award size={16} /> {t("quality.tab")}
                 </button>
                 <button onClick={() => setTab("analytics")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "analytics" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <BarChart3 size={16} /> {t("analytics.tab")}
@@ -631,6 +728,119 @@ export default function KnowledgePage() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* AI Article Suggestions */}
+                            <div className="p-5 rounded-[14px] border border-border bg-card">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-semibold m-0 flex items-center gap-2">
+                                        <Sparkles size={16} className="text-amber-500" /> {t("suggestions.title")}
+                                    </h3>
+                                    <button
+                                        onClick={handleGenerateSuggestions}
+                                        disabled={suggestionsLoading}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs font-semibold cursor-pointer hover:bg-amber-500/20 disabled:opacity-50"
+                                    >
+                                        {suggestionsLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                                        {suggestionsLoading ? t("suggestions.generating") : t("suggestions.generate")}
+                                    </button>
+                                </div>
+
+                                {suggestions.length > 0 ? (
+                                    <div className="flex flex-col gap-3">
+                                        {suggestions.map((s, i) => (
+                                            <div key={i} className="p-3.5 rounded-xl bg-background border border-border">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1">
+                                                        <div className="font-semibold text-sm flex items-center gap-2">
+                                                            {s.title}
+                                                            <span className={cn(
+                                                                "text-[10px] px-2 py-0.5 rounded-md font-semibold",
+                                                                s.priority === "high" ? "bg-red-500/10 text-red-500" :
+                                                                s.priority === "medium" ? "bg-amber-500/10 text-amber-500" :
+                                                                "bg-blue-500/10 text-blue-400"
+                                                            )}>
+                                                                {s.priority}
+                                                            </span>
+                                                        </div>
+                                                        {s.category && (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-primary/10 text-primary font-semibold inline-block mt-1">
+                                                                {s.category}
+                                                            </span>
+                                                        )}
+                                                        {s.outline?.length > 0 && (
+                                                            <ul className="mt-2 ml-4 text-xs text-muted-foreground list-disc space-y-0.5">
+                                                                {s.outline.map((item: string, j: number) => <li key={j}>{item}</li>)}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleCreateFromQuery(s.title)}
+                                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-xs font-semibold cursor-pointer text-primary hover:bg-primary/20 shrink-0"
+                                                    >
+                                                        <PlusCircle size={12} /> {tc("create")}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 text-muted-foreground text-sm">
+                                        {t("suggestions.hint")}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Quality Tab */}
+            {tab === "quality" && (
+                <div>
+                    {qualityLoading && <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>}
+                    {!qualityLoading && qualityScores.length === 0 && (
+                        <div className="text-center py-10 text-muted-foreground">{t("quality.noData")}</div>
+                    )}
+                    {!qualityLoading && qualityScores.length > 0 && (
+                        <div className="flex flex-col gap-3">
+                            {qualityScores.sort((a, b) => b.qualityScore - a.qualityScore).map(doc => (
+                                <div key={doc.id} className="p-5 rounded-[14px] border border-border bg-card">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="text-[15px] font-semibold truncate flex-1 mr-3">{doc.title}</span>
+                                        <div className={cn(
+                                            "text-lg font-semibold px-3 py-1 rounded-lg",
+                                            doc.qualityScore >= 70 ? "bg-emerald-500/10 text-emerald-500" :
+                                            doc.qualityScore >= 40 ? "bg-amber-500/10 text-amber-500" :
+                                            "bg-red-500/10 text-red-500"
+                                        )}>
+                                            {doc.qualityScore}/100
+                                        </div>
+                                    </div>
+                                    <div className="h-2 rounded-full bg-muted overflow-hidden mb-3">
+                                        <div
+                                            className={cn("h-full rounded-full transition-all",
+                                                doc.qualityScore >= 70 ? "bg-emerald-500" :
+                                                doc.qualityScore >= 40 ? "bg-amber-500" : "bg-red-500"
+                                            )}
+                                            style={{ width: `${doc.qualityScore}%` }}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-2 text-xs">
+                                        {[
+                                            { key: "contentLength", label: t("quality.contentLength"), max: 25 },
+                                            { key: "chunkCount", label: t("quality.chunkCount"), max: 20 },
+                                            { key: "categorized", label: t("quality.categorized"), max: 10 },
+                                            { key: "retrievals", label: t("quality.retrievals"), max: 25 },
+                                            { key: "relevance", label: t("quality.relevance"), max: 20 },
+                                        ].map(f => (
+                                            <div key={f.key} className="text-center">
+                                                <div className="text-muted-foreground mb-1">{f.label}</div>
+                                                <div className="font-semibold">{doc.factors[f.key]}/{f.max}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -766,6 +976,101 @@ export default function KnowledgePage() {
                             <button onClick={() => setShowCreateModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
                             <button onClick={handleCreate} disabled={createSaving || !createForm.title || !createForm.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", createSaving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{createSaving ? tc("saving") : tc("create")}</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Upload Modal */}
+            {showBulkModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); }}>
+                    <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h2 className="text-xl font-semibold m-0">{t("bulk.title")}</h2>
+                            <button onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); }} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
+                        </div>
+
+                        {!bulkResults ? (
+                            <>
+                                <div className="mb-4">
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-2">{t("bulk.selectFiles")}</label>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        accept=".pdf,.docx,.doc,.txt,.md,.csv"
+                                        onChange={handleBulkFileSelect}
+                                        className="w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border file:border-border file:bg-background file:text-foreground file:font-semibold file:text-xs file:cursor-pointer"
+                                    />
+                                    <div className="text-[11px] text-muted-foreground mt-1">{t("bulk.formats")}</div>
+                                </div>
+
+                                {bulkFiles.length > 0 && (
+                                    <div className="mb-4 p-3 rounded-xl bg-background border border-border">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                            {t("bulk.filesSelected", { count: bulkFiles.length })}
+                                        </div>
+                                        <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                                            {bulkFiles.map((f, i) => (
+                                                <div key={i} className="text-xs text-foreground flex items-center gap-1.5">
+                                                    <FileText size={12} className="text-muted-foreground shrink-0" />
+                                                    <span className="truncate">{f.name}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mb-4">
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{tc("category")}</label>
+                                    <input
+                                        value={bulkCategory}
+                                        onChange={e => setBulkCategory(e.target.value)}
+                                        list="kb-bulk-categories"
+                                        placeholder={t("bulk.categoryHint")}
+                                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                                    />
+                                    <datalist id="kb-bulk-categories">
+                                        {categories.map(c => <option key={c} value={c} />)}
+                                    </datalist>
+                                </div>
+
+                                <div className="flex gap-2.5 mt-5">
+                                    <button onClick={() => { setShowBulkModal(false); setBulkFiles([]); }} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
+                                    <button
+                                        onClick={handleBulkUpload}
+                                        disabled={bulkUploading || bulkFiles.length === 0}
+                                        className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold flex items-center justify-center gap-2",
+                                            bulkUploading || !bulkFiles.length ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}
+                                    >
+                                        {bulkUploading && <Loader2 size={14} className="animate-spin" />}
+                                        {bulkUploading ? t("bulk.uploading") : t("bulk.upload")}
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="mb-4 text-center">
+                                    <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-500" />
+                                    <div className="text-lg font-semibold">{t("bulk.complete")}</div>
+                                    <div className="text-sm text-muted-foreground mt-1">
+                                        {t("bulk.resultSummary", { succeeded: bulkResults.succeeded, failed: bulkResults.failed, total: bulkResults.total })}
+                                    </div>
+                                </div>
+                                {bulkResults.results?.filter((r: any) => r.status === "error").length > 0 && (
+                                    <div className="mb-4 p-3 rounded-xl bg-red-500/5 border border-red-500/20">
+                                        <div className="text-xs font-semibold text-red-500 mb-2">{t("bulk.errors")}</div>
+                                        {bulkResults.results.filter((r: any) => r.status === "error").map((r: any, i: number) => (
+                                            <div key={i} className="text-xs text-muted-foreground">{r.name}: {r.error}</div>
+                                        ))}
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => { setShowBulkModal(false); setBulkResults(null); setBulkFiles([]); setBulkCategory(""); }}
+                                    className="w-full py-3 rounded-[10px] border-none bg-primary text-white text-sm font-semibold cursor-pointer"
+                                >
+                                    {tc("close")}
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

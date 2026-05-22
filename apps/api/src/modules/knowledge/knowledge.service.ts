@@ -272,6 +272,155 @@ export class KnowledgeService {
         }
     }
 
+    // ─── Bulk Import ─────────────────────────────────────────────────────────
+
+    async bulkIngest(
+        tenantId: string,
+        files: Array<{
+            name: string;
+            content?: string;
+            fileBase64?: string;
+            mimeType?: string;
+            category?: string;
+            isPublic?: boolean;
+        }>,
+    ) {
+        const results: Array<{ name: string; status: 'ok' | 'error'; error?: string; documentId?: string; chunkCount?: number }> = [];
+
+        for (const file of files) {
+            try {
+                const doc = await this.ingestDocument(tenantId, file);
+                results.push({ name: file.name, status: 'ok', documentId: doc.id, chunkCount: doc.chunk_count });
+            } catch (e: any) {
+                this.logger.warn(`[BulkIngest] Failed "${file.name}": ${e.message}`);
+                results.push({ name: file.name, status: 'error', error: e.message });
+            }
+        }
+
+        return {
+            total: files.length,
+            succeeded: results.filter(r => r.status === 'ok').length,
+            failed: results.filter(r => r.status === 'error').length,
+            results,
+        };
+    }
+
+    // ─── Content Quality Scoring ─────────────────────────────────────────────
+
+    async getDocumentQualityScores(tenantId: string) {
+        const schema = await this.tenantSchema(tenantId);
+
+        const docs = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT kd.id, kd.title, kd.chunk_count, kd.status,
+                    LENGTH(kd.content_text) AS content_length,
+                    kd.category, kd.source_type,
+                    COALESCE(stats.retrieval_count, 0)::int AS retrieval_count,
+                    COALESCE(stats.avg_score, 0) AS avg_score,
+                    COALESCE(stats.used_count, 0)::int AS used_count
+             FROM knowledge_documents kd
+             LEFT JOIN LATERAL (
+                 SELECT COUNT(*)::int AS retrieval_count,
+                        ROUND(AVG(score)::numeric, 3) AS avg_score,
+                        COUNT(CASE WHEN was_used THEN 1 END)::int AS used_count
+                 FROM kb_retrieval_log
+                 WHERE document_id = kd.id
+                   AND created_at >= NOW() - INTERVAL '30 days'
+             ) stats ON true
+             WHERE kd.status != 'deleted'
+             ORDER BY kd.created_at DESC`);
+
+        return (docs || []).map((d: any) => {
+            let score = 0;
+            const factors: Record<string, number> = {};
+
+            // Content length (0-25 pts): 500+ chars = full marks
+            const lenPts = Math.min(25, Math.round((d.content_length || 0) / 500 * 25));
+            factors.contentLength = lenPts;
+            score += lenPts;
+
+            // Chunk count (0-20 pts): 3+ chunks = full marks
+            const chunkPts = Math.min(20, (d.chunk_count || 0) * 7);
+            factors.chunkCount = chunkPts;
+            score += chunkPts;
+
+            // Category assigned (0-10 pts)
+            const catPts = d.category ? 10 : 0;
+            factors.categorized = catPts;
+            score += catPts;
+
+            // Retrieval performance (0-25 pts)
+            const retPts = Math.min(25, d.retrieval_count * 5);
+            factors.retrievals = retPts;
+            score += retPts;
+
+            // Avg relevance score (0-20 pts)
+            const relPts = Math.round((Number(d.avg_score) || 0) * 20);
+            factors.relevance = relPts;
+            score += relPts;
+
+            return {
+                id: d.id,
+                title: d.title,
+                qualityScore: Math.min(100, score),
+                factors,
+                stats: {
+                    contentLength: d.content_length || 0,
+                    chunkCount: d.chunk_count || 0,
+                    retrievalCount: d.retrieval_count,
+                    avgScore: Number(d.avg_score) || 0,
+                    usedCount: d.used_count,
+                    hasCategoryFlag: !!d.category,
+                },
+            };
+        });
+    }
+
+    // ─── AI Article Suggestions ──────────────────────────────────────────────
+
+    async generateArticleSuggestions(tenantId: string, maxSuggestions = 5) {
+        const schema = await this.tenantSchema(tenantId);
+
+        const unanswered = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT query, occurrences FROM kb_unanswered_queries
+             WHERE resolved = false
+             ORDER BY occurrences DESC, last_seen_at DESC
+             LIMIT 20`);
+
+        if (!unanswered?.length) return { suggestions: [], message: 'No hay queries sin respuesta para analizar.' };
+
+        const existingDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT title, category FROM knowledge_documents WHERE status = 'ready' ORDER BY created_at DESC LIMIT 30`);
+
+        const queryList = unanswered.map((q: any) => `- "${q.query}" (${q.occurrences}x)`).join('\n');
+        const docList = (existingDocs || []).map((d: any) => `- ${d.title}${d.category ? ` [${d.category}]` : ''}`).join('\n');
+
+        try {
+            const completion = await this.openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                temperature: 0.4,
+                max_tokens: 1500,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are a knowledge base content strategist. Analyze unanswered customer queries and suggest new articles to write. Output valid JSON only, no markdown.`,
+                    },
+                    {
+                        role: 'user',
+                        content: `Unanswered queries (sorted by frequency):\n${queryList}\n\nExisting articles:\n${docList || '(none)'}\n\nSuggest up to ${maxSuggestions} new articles. For each, provide:\n- title: article title (in Spanish)\n- category: suggested category\n- outline: 2-3 bullet points of what to cover\n- queriesCovered: which queries this would answer\n- priority: "high" | "medium" | "low"\n\nReturn JSON array: [{"title","category","outline":[],"queriesCovered":[],"priority"}]`,
+                    },
+                ],
+            });
+
+            const text = completion.choices[0]?.message?.content?.trim() || '[]';
+            const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const suggestions = JSON.parse(cleaned);
+            return { suggestions: Array.isArray(suggestions) ? suggestions.slice(0, maxSuggestions) : [], queriesAnalyzed: unanswered.length };
+        } catch (e: any) {
+            this.logger.error(`[AI Suggestions] LLM call failed: ${e.message}`);
+            return { suggestions: [], error: e.message };
+        }
+    }
+
     // ─── Vector Search ───────────────────────────────────────────────────────
 
     async searchRelevant(

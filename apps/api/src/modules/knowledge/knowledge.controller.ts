@@ -97,6 +97,53 @@ export class KnowledgeController {
         await this.knowledgeService.deleteDocument(tenantId, id);
     }
 
+    @Post('documents/bulk')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Bulk import multiple documents at once' })
+    async bulkUpload(
+        @Req() req: any,
+        @Body() payload: {
+            files: Array<{
+                name: string;
+                content?: string;
+                fileBase64?: string;
+                mimeType?: string;
+                category?: string;
+                isPublic?: boolean;
+            }>;
+        },
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!payload.files?.length) return { success: false, error: 'No files provided' };
+        if (payload.files.length > 20) return { success: false, error: 'Maximum 20 files per batch' };
+        const data = await this.knowledgeService.bulkIngest(tenantId, payload.files);
+        return { success: true, data };
+    }
+
+    @Get('documents/quality')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Get quality scores for all documents' })
+    async getQualityScores(@Req() req: any) {
+        const tenantId = req.user?.tenantId;
+        const data = await this.knowledgeService.getDocumentQualityScores(tenantId);
+        return { success: true, data };
+    }
+
+    @Post('suggestions/:tenantId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'AI-generated article suggestions based on unanswered queries' })
+    async getSuggestions(
+        @Param('tenantId') tenantId: string,
+        @Body() payload?: { maxSuggestions?: number },
+    ) {
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        if (!features.knowledgeAnalytics) {
+            return { success: false, error: 'plan_upgrade_required' };
+        }
+        const data = await this.knowledgeService.generateArticleSuggestions(tenantId, payload?.maxSuggestions || 5);
+        return { success: true, data };
+    }
+
     @Post('search')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Search the knowledge base (vector similarity)' })

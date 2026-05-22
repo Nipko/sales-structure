@@ -2564,6 +2564,35 @@
       "queries": "Queries",
       "hits": "Hits"
     },
+    "bulk": {
+      "button": "Bulk import",
+      "title": "Bulk document import",
+      "selectFiles": "Select files",
+      "formats": "Supported formats: PDF, DOCX, TXT, MD, CSV (max 20 files)",
+      "filesSelected": "{count} files selected",
+      "categoryHint": "Category for all files (optional)",
+      "upload": "Upload all",
+      "uploading": "Uploading...",
+      "complete": "Import complete",
+      "resultSummary": "{succeeded} succeeded, {failed} failed out of {total} files",
+      "errors": "Errors",
+      "successCount": "{count} documents imported successfully"
+    },
+    "quality": {
+      "tab": "Quality",
+      "noData": "No documents to analyze.",
+      "contentLength": "Content",
+      "chunkCount": "Chunks",
+      "categorized": "Category",
+      "retrievals": "Retrievals",
+      "relevance": "Relevance"
+    },
+    "suggestions": {
+      "title": "Article suggestions (AI)",
+      "generate": "Generate suggestions",
+      "generating": "Analyzing...",
+      "hint": "Click Generate to have AI analyze unanswered queries and suggest new articles."
+    },
     "limitReachedTitle": "Document limit reached",
     "limitReachedDesc": "You have reached the knowledge document limit on your current plan. Upgrade to add more."
   },

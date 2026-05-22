@@ -2564,6 +2564,35 @@
       "queries": "Consultas",
       "hits": "Acertos"
     },
+    "bulk": {
+      "button": "Importação em massa",
+      "title": "Importação em massa de documentos",
+      "selectFiles": "Selecionar arquivos",
+      "formats": "Formatos suportados: PDF, DOCX, TXT, MD, CSV (máx. 20 arquivos)",
+      "filesSelected": "{count} arquivos selecionados",
+      "categoryHint": "Categoria para todos os arquivos (opcional)",
+      "upload": "Enviar tudo",
+      "uploading": "Enviando...",
+      "complete": "Importação concluída",
+      "resultSummary": "{succeeded} bem-sucedidos, {failed} falharam de {total} arquivos",
+      "errors": "Erros",
+      "successCount": "{count} documentos importados com sucesso"
+    },
+    "quality": {
+      "tab": "Qualidade",
+      "noData": "Sem documentos para analisar.",
+      "contentLength": "Conteúdo",
+      "chunkCount": "Fragmentos",
+      "categorized": "Categoria",
+      "retrievals": "Consultas",
+      "relevance": "Relevância"
+    },
+    "suggestions": {
+      "title": "Sugestões de artigos (IA)",
+      "generate": "Gerar sugestões",
+      "generating": "Analisando...",
+      "hint": "Clique em Gerar para a IA analisar as perguntas sem resposta e sugerir novos artigos."
+    },
     "limitReachedTitle": "Limite de documentos atingido",
     "limitReachedDesc": "Você atingiu o limite de documentos de conhecimento no seu plano atual. Faça upgrade para adicionar mais."
   },

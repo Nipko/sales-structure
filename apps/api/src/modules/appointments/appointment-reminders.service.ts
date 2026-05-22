@@ -344,10 +344,10 @@ export class AppointmentRemindersService {
 
     private async getStaffName(schemaName: string, userId: string): Promise<string> {
         try {
-            const rows = await this.prisma.$queryRawUnsafe<any[]>(
+            const rows = await this.prisma.$queryRawUnsafe(
                 `SELECT first_name, last_name FROM public.users WHERE id = $1::uuid LIMIT 1`,
                 userId,
-            );
+            ) as any[];
             if (rows?.[0]) {
                 return `${rows[0].first_name || ''} ${rows[0].last_name || ''}`.trim() || '-';
             }

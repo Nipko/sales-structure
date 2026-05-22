@@ -195,9 +195,9 @@ export class ConversationsService {
                             await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
                         } else {
                             this.logger.log(`[Reminder] Client wants to reschedule appointment ${upcomingAppt[0].id}`);
-                            const tenantRows = await this.prisma.$queryRawUnsafe<any[]>(
+                            const tenantRows = await this.prisma.$queryRawUnsafe(
                                 `SELECT slug FROM tenants WHERE id = $1::uuid LIMIT 1`, tenantId,
-                            );
+                            ) as any[];
                             const slug = tenantRows?.[0]?.slug;
                             const dashboardUrl = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
                             const bookingLink = slug ? `${dashboardUrl}/book/${slug}` : '';

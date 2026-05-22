@@ -46,6 +46,11 @@
       "disconnecting": "Disconnecting..."
     },
     "clickToCopy": "Click to copy",
+    "category": "Category",
+    "public": "Public",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "lastUpdated": "Last updated",
     "stages": {
       "nuevo": "New",
       "contactado": "Contacted",
@@ -2485,7 +2490,10 @@
     "status": {
       "draft": "Draft",
       "approved": "Approved",
-      "archived": "Archived"
+      "archived": "Archived",
+      "ready": "Ready",
+      "processing": "Processing",
+      "error": "Error"
     },
     "modal": {
       "title": "New knowledge resource",
@@ -2493,6 +2501,58 @@
       "titlePlaceholder": "Course FAQ...",
       "contentLabel": "Text content",
       "contentPlaceholder": "Paste document content..."
+    },
+    "sourceType": {
+      "upload": "File",
+      "url": "URL"
+    },
+    "crawl": {
+      "button": "Import URL",
+      "title": "Import web page",
+      "urlLabel": "Page URL",
+      "urlPlaceholder": "https://yoursite.com/faq",
+      "titleLabel": "Title (optional)",
+      "titlePlaceholder": "Auto-detected",
+      "importing": "Importing...",
+      "success": "Page imported successfully",
+      "recrawl": "Refresh content",
+      "recrawling": "Refreshing...",
+      "noChanges": "No changes detected",
+      "updated": "Content updated",
+      "planRequired": "Your plan does not include URL importing",
+      "limitReached": "Imported pages limit reached"
+    },
+    "edit": {
+      "title": "Edit document",
+      "save": "Save changes",
+      "saving": "Saving...",
+      "success": "Document updated"
+    },
+    "analytics": {
+      "tab": "Analytics",
+      "title": "KB Analytics",
+      "subtitle": "Usage, performance and unanswered questions",
+      "period": "Last {days} days",
+      "overview": {
+        "uniqueQueries": "Unique queries",
+        "totalRetrievals": "Total retrievals",
+        "hitRate": "Hit rate",
+        "avgScore": "Avg score",
+        "medianScore": "Median score"
+      },
+      "topDocuments": "Most queried documents",
+      "retrievalCount": "Queries",
+      "usedCount": "Used",
+      "unanswered": "Unanswered questions",
+      "occurrences": "Times",
+      "lastSeen": "Last seen",
+      "resolve": "Resolve",
+      "resolved": "Resolved",
+      "noData": "No analytics data yet. Data is collected as conversations happen.",
+      "planRequired": "KB analytics require Starter plan or higher.",
+      "dailyVolume": "Daily volume",
+      "queries": "Queries",
+      "hits": "Hits"
     },
     "limitReachedTitle": "Document limit reached",
     "limitReachedDesc": "You have reached the knowledge document limit on your current plan. Upgrade to add more."

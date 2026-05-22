@@ -46,6 +46,11 @@
       "disconnecting": "Desconectando..."
     },
     "clickToCopy": "Clique para copiar",
+    "category": "Categoria",
+    "public": "Público",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
+    "lastUpdated": "Última atualização",
     "stages": {
       "nuevo": "Novo",
       "contactado": "Contatado",
@@ -2485,7 +2490,10 @@
     "status": {
       "draft": "Rascunho",
       "approved": "Aprovado",
-      "archived": "Arquivado"
+      "archived": "Arquivado",
+      "ready": "Pronto",
+      "processing": "Processando",
+      "error": "Erro"
     },
     "modal": {
       "title": "Novo recurso",
@@ -2493,6 +2501,58 @@
       "titlePlaceholder": "FAQ do curso...",
       "contentLabel": "Conteúdo de texto",
       "contentPlaceholder": "Cole o conteúdo do documento..."
+    },
+    "sourceType": {
+      "upload": "Arquivo",
+      "url": "URL"
+    },
+    "crawl": {
+      "button": "Importar URL",
+      "title": "Importar página web",
+      "urlLabel": "URL da página",
+      "urlPlaceholder": "https://seusite.com/faq",
+      "titleLabel": "Título (opcional)",
+      "titlePlaceholder": "Detectado automaticamente",
+      "importing": "Importando...",
+      "success": "Página importada com sucesso",
+      "recrawl": "Atualizar conteúdo",
+      "recrawling": "Atualizando...",
+      "noChanges": "Nenhuma alteração detectada",
+      "updated": "Conteúdo atualizado",
+      "planRequired": "Seu plano não inclui importação de URLs",
+      "limitReached": "Limite de páginas importadas atingido"
+    },
+    "edit": {
+      "title": "Editar documento",
+      "save": "Salvar alterações",
+      "saving": "Salvando...",
+      "success": "Documento atualizado"
+    },
+    "analytics": {
+      "tab": "Análises",
+      "title": "Análises de KB",
+      "subtitle": "Uso, desempenho e perguntas sem resposta",
+      "period": "Últimos {days} dias",
+      "overview": {
+        "uniqueQueries": "Consultas únicas",
+        "totalRetrievals": "Recuperações totais",
+        "hitRate": "Taxa de acerto",
+        "avgScore": "Score médio",
+        "medianScore": "Score mediano"
+      },
+      "topDocuments": "Documentos mais consultados",
+      "retrievalCount": "Consultas",
+      "usedCount": "Usados",
+      "unanswered": "Perguntas sem resposta",
+      "occurrences": "Vezes",
+      "lastSeen": "Última vez",
+      "resolve": "Resolver",
+      "resolved": "Resolvida",
+      "noData": "Ainda não há dados de análise. Os dados são coletados conforme as conversas acontecem.",
+      "planRequired": "As análises de KB requerem plano Starter ou superior.",
+      "dailyVolume": "Volume diário",
+      "queries": "Consultas",
+      "hits": "Acertos"
     },
     "limitReachedTitle": "Limite de documentos atingido",
     "limitReachedDesc": "Você atingiu o limite de documentos de conhecimento no seu plano atual. Faça upgrade para adicionar mais."

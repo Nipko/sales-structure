@@ -1,20 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import OpenAI from 'openai';
+import axios from 'axios';
+import * as crypto from 'crypto';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require('pdf-parse');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mammoth = require('mammoth');
 
-/** Approximate max characters per chunk (~500 tokens at ~4 chars/token) */
 const CHUNK_MAX_CHARS = 2000;
-/** Overlap in characters (~50 tokens) */
 const CHUNK_OVERLAP_CHARS = 200;
-/** Redis TTL for "tenant has knowledge" flag */
-const HAS_KNOWLEDGE_TTL = 300; // 5 minutes
+const HAS_KNOWLEDGE_TTL = 300;
+const CRAWL_TIMEOUT_MS = 15_000;
+const CRAWL_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
 @Injectable()
 export class KnowledgeService {
@@ -34,31 +35,21 @@ export class KnowledgeService {
 
     // ─── Document Ingestion ──────────────────────────────────────────────────
 
-    /**
-     * Ingest a document into the knowledge base.
-     *
-     * Accepts two modes:
-     * 1. Plain text: pass `file.content` as extracted text.
-     * 2. Binary file: pass `file.fileBase64` (base64) + `file.mimeType`.
-     *    The method auto-parses PDF and DOCX files server-side.
-     *
-     * Supported mimeTypes for binary:
-     *   - application/pdf         → pdf-parse
-     *   - application/vnd.openxmlformats-officedocument.wordprocessingml.document → mammoth
-     *   - text/plain, text/markdown → used as-is
-     */
     async ingestDocument(
         tenantId: string,
         file: {
             name: string;
-            content?: string;          // pre-extracted text (existing flow)
-            fileBase64?: string;       // base64 encoded binary (new flow)
+            content?: string;
+            fileBase64?: string;
             mimeType?: string;
+            sourceType?: 'upload' | 'url';
+            sourceUrl?: string;
+            category?: string;
+            isPublic?: boolean;
         },
     ) {
         const schema = await this.tenantSchema(tenantId);
 
-        // ── Resolve final text content ──────────────────────────────────────
         let textContent = file.content || '';
         if (!textContent && file.fileBase64) {
             textContent = await this.parseFileContent(file.fileBase64, file.mimeType || 'application/octet-stream', file.name);
@@ -73,46 +64,31 @@ export class KnowledgeService {
 
         this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId} (${textContent.length} chars)`);
 
-        // 1. Create document record
+        const contentHash = crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
+
+        const slug = file.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
+        const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
+
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status)
-             VALUES ($1, $2, $3, $4, 'processing') RETURNING *`,
-            [file.name, file.name, file.mimeType || 'text/plain', textContent],
+            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt)
+             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+            [file.name, file.name, file.mimeType || 'text/plain', textContent,
+             file.sourceType || 'upload', file.sourceUrl || null, contentHash,
+             file.category || null, file.isPublic ?? false, slug, excerpt],
         );
         const document = rows[0];
 
         try {
-            // 2. Chunk the content
+            await this.embedAndStoreChunks(schema, document.id, textContent);
+
             const chunks = this.chunkText(textContent);
-
-            // 3. Generate embeddings and store
-            for (let i = 0; i < chunks.length; i++) {
-                const embedding = await this.generateEmbedding(chunks[i]);
-                const embeddingStr = `[${embedding.join(',')}]`;
-
-                await this.prisma.executeInTenantSchema(
-                    schema,
-                    `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata)
-                     VALUES ($1, $2, $3, $4::vector, $5::jsonb)`,
-                    [
-                        document.id,
-                        i,
-                        chunks[i],
-                        embeddingStr,
-                        JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }),
-                    ],
-                );
-            }
-
-            // 4. Update document status
             await this.prisma.executeInTenantSchema(
                 schema,
                 `UPDATE knowledge_documents SET status = 'ready', chunk_count = $2, updated_at = NOW() WHERE id = $1`,
                 [document.id, chunks.length],
             );
 
-            // 5. Invalidate Redis cache
             await this.invalidateHasKnowledgeCache(tenantId);
 
             this.logger.log(`Document "${file.name}" ingested: ${chunks.length} chunks`);
@@ -128,23 +104,181 @@ export class KnowledgeService {
         }
     }
 
+    // ─── URL Crawling ────────────────────────────────────────────────────────
+
+    async crawlUrl(tenantId: string, url: string, title?: string, category?: string) {
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        const crawlLimit = features.knowledgeCrawlPages ?? 0;
+
+        if (crawlLimit === 0) {
+            throw new ForbiddenException({
+                error: 'plan_upgrade_required',
+                message: 'Tu plan no incluye la importación de URLs. Actualizá a Starter o superior.',
+            });
+        }
+
+        const schema = await this.tenantSchema(tenantId);
+        if (crawlLimit !== -1) {
+            const crawled = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS c FROM knowledge_documents WHERE source_type = 'url' AND status != 'deleted'`);
+            if ((crawled?.[0]?.c || 0) >= crawlLimit) {
+                throw new ForbiddenException({
+                    error: 'crawl_limit_reached',
+                    message: `Tu plan permite hasta ${crawlLimit} páginas importadas. Actualizá tu plan para agregar más.`,
+                });
+            }
+        }
+
+        let parsedUrl: URL;
+        try {
+            parsedUrl = new URL(url);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Invalid protocol');
+        } catch {
+            throw new BadRequestException({ error: 'invalid_url', message: 'La URL proporcionada no es válida.' });
+        }
+
+        this.logger.log(`[Crawl] Fetching ${url} for tenant ${tenantId}`);
+
+        const response = await axios.get(url, {
+            timeout: CRAWL_TIMEOUT_MS,
+            maxContentLength: CRAWL_MAX_BYTES,
+            headers: {
+                'User-Agent': 'ParallextBot/1.0 (+https://parallly-chat.cloud)',
+                Accept: 'text/html,application/xhtml+xml,text/plain',
+            },
+            responseType: 'text',
+        });
+
+        const contentType = (response.headers['content-type'] || '').toLowerCase();
+        let textContent: string;
+
+        if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
+            textContent = this.extractTextFromHtml(response.data);
+        } else {
+            textContent = typeof response.data === 'string' ? response.data : String(response.data);
+        }
+
+        if (!textContent.trim() || textContent.trim().length < 50) {
+            throw new BadRequestException({ error: 'no_content', message: 'No se pudo extraer contenido útil de la URL.' });
+        }
+
+        const docTitle = title || this.extractTitleFromHtml(response.data) || parsedUrl.hostname + parsedUrl.pathname;
+
+        return this.ingestDocument(tenantId, {
+            name: docTitle,
+            content: textContent,
+            mimeType: 'text/html',
+            sourceType: 'url',
+            sourceUrl: url,
+            category,
+        });
+    }
+
+    async recrawlUrl(tenantId: string, documentId: string) {
+        const schema = await this.tenantSchema(tenantId);
+        const docs = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, source_url, title, crawl_hash FROM knowledge_documents WHERE id = $1 AND source_type = 'url'`,
+            [documentId]);
+        if (!docs?.[0]) throw new BadRequestException({ error: 'not_url_doc', message: 'Este documento no fue importado desde una URL.' });
+
+        const doc = docs[0];
+        const response = await axios.get(doc.source_url, {
+            timeout: CRAWL_TIMEOUT_MS,
+            maxContentLength: CRAWL_MAX_BYTES,
+            headers: { 'User-Agent': 'ParallextBot/1.0 (+https://parallly-chat.cloud)', Accept: 'text/html,application/xhtml+xml,text/plain' },
+            responseType: 'text',
+        });
+
+        const contentType = (response.headers['content-type'] || '').toLowerCase();
+        const textContent = contentType.includes('text/html') || contentType.includes('application/xhtml')
+            ? this.extractTextFromHtml(response.data) : response.data;
+
+        const newHash = crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
+        if (newHash === doc.crawl_hash) {
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE knowledge_documents SET last_crawled_at = NOW() WHERE id = $1`, [documentId]);
+            return { changed: false, documentId };
+        }
+
+        return this.updateDocument(tenantId, documentId, { content: textContent, crawlHash: newHash });
+    }
+
+    // ─── Document Update (in-place re-chunk) ─────────────────────────────────
+
+    async updateDocument(
+        tenantId: string,
+        documentId: string,
+        update: {
+            name?: string; content?: string; fileBase64?: string; mimeType?: string; crawlHash?: string;
+            category?: string; isPublic?: boolean; autoRecrawl?: boolean;
+        },
+    ) {
+        const schema = await this.tenantSchema(tenantId);
+
+        const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, title, file_type FROM knowledge_documents WHERE id = $1`, [documentId]);
+        if (!existing?.[0]) throw new BadRequestException({ error: 'document_not_found' });
+
+        let textContent = update.content || '';
+        if (!textContent && update.fileBase64) {
+            textContent = await this.parseFileContent(
+                update.fileBase64, update.mimeType || existing[0].file_type || 'application/octet-stream', update.name || existing[0].title,
+            );
+        }
+        if (!textContent.trim()) {
+            throw new BadRequestException({ error: 'empty_content', message: 'El contenido del documento está vacío.' });
+        }
+
+        const contentHash = update.crawlHash || crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE knowledge_documents SET status = 'processing', updated_at = NOW() WHERE id = $1`, [documentId]);
+
+        try {
+            await this.prisma.executeInTenantSchema(schema,
+                `DELETE FROM knowledge_embeddings WHERE document_id = $1`, [documentId]);
+
+            await this.embedAndStoreChunks(schema, documentId, textContent);
+            const chunks = this.chunkText(textContent);
+
+            const slug = (update.name || existing[0].title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
+            const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
+
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE knowledge_documents
+                 SET title = COALESCE($2, title), content_text = $3, chunk_count = $4,
+                     status = 'ready', crawl_hash = $5,
+                     last_crawled_at = CASE WHEN source_type = 'url' THEN NOW() ELSE last_crawled_at END,
+                     category = COALESCE($6, category),
+                     is_public = COALESCE($7, is_public),
+                     auto_recrawl = COALESCE($8, auto_recrawl),
+                     slug = $9, excerpt = $10,
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [documentId, update.name || null, textContent, chunks.length, contentHash,
+                 update.category !== undefined ? update.category : null,
+                 update.isPublic !== undefined ? update.isPublic : null,
+                 update.autoRecrawl !== undefined ? update.autoRecrawl : null,
+                 slug, excerpt]);
+
+            await this.invalidateHasKnowledgeCache(tenantId);
+            this.logger.log(`Document ${documentId} updated: ${chunks.length} chunks re-embedded`);
+            return { documentId, chunkCount: chunks.length, status: 'ready' };
+        } catch (error: any) {
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1`,
+                [documentId, error.message]);
+            throw error;
+        }
+    }
+
     // ─── Vector Search ───────────────────────────────────────────────────────
 
-    /**
-     * Hybrid retrieval: vector similarity + keyword ILIKE, merged and scored.
-     *
-     * - Vector: pgvector cosine distance → similarity = 1 - distance
-     * - Keyword: ILIKE boost on the chunk text (flat +0.15 per hit, capped)
-     * - Final score = normalized sum, filtered by similarityThreshold
-     *
-     * Options `topK` and `similarityThreshold` come from the agent's
-     * `rag` config — values are respected for the first time here.
-     */
     async searchRelevant(
         tenantId: string,
         query: string,
         topK = 5,
-        options?: { similarityThreshold?: number; poolSize?: number },
+        options?: { similarityThreshold?: number; poolSize?: number; conversationId?: string },
     ): Promise<any[]> {
         const schema = await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
@@ -154,7 +288,6 @@ export class KnowledgeService {
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
         const keywordPattern = `%${query}%`;
 
-        // Pull a larger pool so we can rerank before truncating to topK.
         const results = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
@@ -191,33 +324,180 @@ export class KnowledgeService {
             .sort((a, b) => b.score - a.score)
             .slice(0, topK);
 
+        // Fire-and-forget analytics tracking
+        this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
+
         return enriched;
+    }
+
+    // ─── KB Analytics ────────────────────────────────────────────────────────
+
+    private async trackRetrieval(
+        schema: string, tenantId: string, query: string,
+        results: any[], threshold: number, conversationId?: string,
+    ) {
+        try {
+            if (results.length === 0) {
+                const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
+                await this.prisma.executeInTenantSchema(schema,
+                    `INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
+                     VALUES ($1, $2, 1, NOW())
+                     ON CONFLICT (query_hash) WHERE resolved = false
+                     DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
+                    [query.substring(0, 500), queryHash]);
+            }
+
+            for (const r of results.slice(0, 10)) {
+                await this.prisma.executeInTenantSchema(schema,
+                    `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [r.document_id, r.id, query.substring(0, 500), r.score,
+                     r.score >= threshold, conversationId || null]);
+            }
+        } catch (e: any) {
+            this.logger.warn(`[KB Analytics] tracking failed (non-fatal): ${e.message}`);
+        }
+    }
+
+    async getAnalytics(tenantId: string, days = 30) {
+        const schema = await this.tenantSchema(tenantId);
+        const since = new Date(Date.now() - days * 86_400_000).toISOString();
+
+        const [topDocs, totalQueries, unanswered, avgScore, dailyVolume] = await Promise.all([
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT kd.id, kd.title, kd.source_type,
+                        COUNT(krl.id)::int AS retrieval_count,
+                        COUNT(CASE WHEN krl.was_used THEN 1 END)::int AS used_count,
+                        ROUND(AVG(krl.score)::numeric, 3) AS avg_score
+                 FROM kb_retrieval_log krl
+                 JOIN knowledge_documents kd ON kd.id = krl.document_id
+                 WHERE krl.created_at >= $1::timestamp
+                 GROUP BY kd.id, kd.title, kd.source_type
+                 ORDER BY retrieval_count DESC LIMIT 20`,
+                [since]),
+
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(DISTINCT query)::int AS total,
+                        COUNT(CASE WHEN was_used THEN 1 END)::int AS hits,
+                        COUNT(*)::int AS total_retrievals
+                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp`,
+                [since]),
+
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT id, query, occurrences, last_seen_at
+                 FROM kb_unanswered_queries
+                 WHERE resolved = false AND last_seen_at >= $1::timestamp
+                 ORDER BY occurrences DESC LIMIT 20`,
+                [since]),
+
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT ROUND(AVG(score)::numeric, 3) AS avg,
+                        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score)::numeric, 3) AS median
+                 FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND was_used = true`,
+                [since]),
+
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT DATE(created_at) AS day,
+                        COUNT(*)::int AS queries,
+                        COUNT(CASE WHEN was_used THEN 1 END)::int AS hits
+                 FROM kb_retrieval_log
+                 WHERE created_at >= $1::timestamp
+                 GROUP BY DATE(created_at)
+                 ORDER BY day DESC LIMIT 30`,
+                [since]),
+        ]);
+
+        const total = totalQueries?.[0]?.total || 0;
+        const hits = totalQueries?.[0]?.hits || 0;
+        const hitRate = total > 0 ? Math.round((hits / (totalQueries?.[0]?.total_retrievals || 1)) * 100) : 0;
+
+        return {
+            period: { days, since },
+            overview: {
+                uniqueQueries: total,
+                totalRetrievals: totalQueries?.[0]?.total_retrievals || 0,
+                hitRate,
+                avgScore: avgScore?.[0]?.avg ?? 0,
+                medianScore: avgScore?.[0]?.median ?? 0,
+            },
+            topDocuments: topDocs || [],
+            unansweredQueries: unanswered || [],
+            dailyVolume: dailyVolume || [],
+        };
+    }
+
+    async resolveUnansweredQuery(tenantId: string, queryId: string) {
+        const schema = await this.tenantSchema(tenantId);
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE kb_unanswered_queries SET resolved = true WHERE id = $1`, [queryId]);
     }
 
     // ─── Document Management ─────────────────────────────────────────────────
 
-    async listDocuments(tenantId: string) {
+    async listDocuments(tenantId: string, category?: string) {
         const schema = await this.tenantSchema(tenantId);
-        return this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message, created_at, updated_at
+        if (category) {
+            return this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message,
+                        source_type, source_url, last_crawled_at, category, is_public, slug, excerpt,
+                        auto_recrawl, created_at, updated_at, content_text
+                 FROM knowledge_documents
+                 WHERE category = $1
+                 ORDER BY created_at DESC`,
+                [category]);
+        }
+        return this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message,
+                    source_type, source_url, last_crawled_at, category, is_public, slug, excerpt,
+                    auto_recrawl, created_at, updated_at, content_text
              FROM knowledge_documents
-             ORDER BY created_at DESC`,
-        );
+             ORDER BY created_at DESC`);
+    }
+
+    async getDocumentCategories(tenantId: string): Promise<string[]> {
+        const schema = await this.tenantSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT DISTINCT category FROM knowledge_documents WHERE category IS NOT NULL AND status = 'ready' ORDER BY category`);
+        return (rows || []).map(r => r.category);
     }
 
     async deleteDocument(tenantId: string, documentId: string) {
         const schema = await this.tenantSchema(tenantId);
-
-        // Embeddings are deleted via ON DELETE CASCADE
         await this.prisma.executeInTenantSchema(
             schema,
             `DELETE FROM knowledge_documents WHERE id = $1`,
             [documentId],
         );
-
         await this.invalidateHasKnowledgeCache(tenantId);
         this.logger.log(`Deleted document ${documentId} for tenant ${tenantId}`);
+    }
+
+    async updateDocumentMeta(
+        tenantId: string,
+        documentId: string,
+        meta: { category?: string; isPublic?: boolean; autoRecrawl?: boolean; name?: string },
+    ) {
+        const schema = await this.tenantSchema(tenantId);
+        const sets: string[] = ['updated_at = NOW()'];
+        const params: any[] = [documentId];
+        let idx = 2;
+
+        if (meta.name !== undefined) { sets.push(`title = $${idx}`); params.push(meta.name); idx++; }
+        if (meta.category !== undefined) { sets.push(`category = $${idx}`); params.push(meta.category || null); idx++; }
+        if (meta.isPublic !== undefined) { sets.push(`is_public = $${idx}`); params.push(meta.isPublic); idx++; }
+        if (meta.autoRecrawl !== undefined) { sets.push(`auto_recrawl = $${idx}`); params.push(meta.autoRecrawl); idx++; }
+
+        if (meta.name !== undefined) {
+            const slug = meta.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
+            sets.push(`slug = $${idx}`);
+            params.push(slug);
+            idx++;
+        }
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1`, params);
+
+        return { success: true };
     }
 
     // ─── Tenant Knowledge Check (cached) ─────────────────────────────────────
@@ -225,9 +505,7 @@ export class KnowledgeService {
     async tenantHasKnowledge(tenantId: string): Promise<boolean> {
         const cacheKey = this.redis.tenantKey(tenantId, 'has_knowledge');
         const cached = await this.redis.get(cacheKey);
-        if (cached !== null) {
-            return cached === '1';
-        }
+        if (cached !== null) return cached === '1';
 
         const schema = await this.tenantSchema(tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
@@ -235,37 +513,45 @@ export class KnowledgeService {
             `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings LIMIT 1`,
         );
         const hasKnowledge = rows[0]?.cnt > 0;
-
         await this.redis.set(cacheKey, hasKnowledge ? '1' : '0', HAS_KNOWLEDGE_TTL);
         return hasKnowledge;
     }
 
     private async invalidateHasKnowledgeCache(tenantId: string) {
-        const cacheKey = this.redis.tenantKey(tenantId, 'has_knowledge');
-        await this.redis.del(cacheKey);
+        await this.redis.del(this.redis.tenantKey(tenantId, 'has_knowledge'));
     }
 
-    // ─── Chunking ────────────────────────────────────────────────────────────
+    // ─── Chunking & Embedding ────────────────────────────────────────────────
+
+    private async embedAndStoreChunks(schema: string, documentId: string, text: string) {
+        const chunks = this.chunkText(text);
+        for (let i = 0; i < chunks.length; i++) {
+            const embedding = await this.generateEmbedding(chunks[i]);
+            const embeddingStr = `[${embedding.join(',')}]`;
+            await this.prisma.executeInTenantSchema(
+                schema,
+                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata)
+                 VALUES ($1, $2, $3, $4::vector, $5::jsonb)`,
+                [documentId, i, chunks[i], embeddingStr,
+                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) })],
+            );
+        }
+        return chunks.length;
+    }
 
     private chunkText(text: string): string[] {
         const chunks: string[] = [];
-
-        // Step 1: Split by paragraphs (double newline)
         const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-
         let currentChunk = '';
 
         for (const paragraph of paragraphs) {
             const trimmed = paragraph.trim();
 
-            // If adding this paragraph exceeds the limit, flush current chunk
             if (currentChunk.length + trimmed.length + 1 > CHUNK_MAX_CHARS && currentChunk.length > 0) {
                 chunks.push(currentChunk.trim());
-                // Keep overlap from the end of the current chunk
                 currentChunk = currentChunk.slice(-CHUNK_OVERLAP_CHARS);
             }
 
-            // If a single paragraph exceeds the limit, split by sentences
             if (trimmed.length > CHUNK_MAX_CHARS) {
                 if (currentChunk.length > 0) {
                     chunks.push(currentChunk.trim());
@@ -281,11 +567,7 @@ export class KnowledgeService {
             }
         }
 
-        // Flush remaining
-        if (currentChunk.trim().length > 0) {
-            chunks.push(currentChunk.trim());
-        }
-
+        if (currentChunk.trim().length > 0) chunks.push(currentChunk.trim());
         return chunks;
     }
 
@@ -301,27 +583,17 @@ export class KnowledgeService {
             }
             current += sentence;
         }
-
-        if (current.trim().length > 0) {
-            chunks.push(current.trim());
-        }
-
+        if (current.trim().length > 0) chunks.push(current.trim());
         return chunks;
     }
 
-    // ─── File Parsing ─────────────────────────────────────────────────────────
+    // ─── File Parsing ────────────────────────────────────────────────────────
 
-    /**
-     * Parse a base64-encoded binary file to plain text.
-     * Supports PDF (via pdf-parse) and DOCX (via mammoth).
-     * Plain text and markdown files are decoded directly.
-     */
     async parseFileContent(base64: string, mimeType: string, fileName = ''): Promise<string> {
         const buffer = Buffer.from(base64, 'base64');
         const mime = mimeType.toLowerCase();
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
 
-        // PDF
         if (mime === 'application/pdf' || ext === 'pdf') {
             try {
                 const data = await pdfParse(buffer);
@@ -334,7 +606,6 @@ export class KnowledgeService {
             }
         }
 
-        // DOCX
         if (
             mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             mime === 'application/msword' ||
@@ -351,17 +622,41 @@ export class KnowledgeService {
             }
         }
 
-        // Plain text / Markdown / CSV — decode directly
-        if (
-            mime.startsWith('text/') ||
-            ext === 'txt' || ext === 'md' || ext === 'csv'
-        ) {
+        if (mime.startsWith('text/') || ext === 'txt' || ext === 'md' || ext === 'csv') {
             return buffer.toString('utf-8');
         }
 
-        // Unknown type — try UTF-8 decoding as fallback
         this.logger.warn(`[Parse] Unknown mimeType "${mimeType}" for "${fileName}" — attempting UTF-8 decode`);
         return buffer.toString('utf-8');
+    }
+
+    // ─── HTML Extraction ─────────────────────────────────────────────────────
+
+    private extractTextFromHtml(html: string): string {
+        let text = html;
+        text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+        text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+        text = text.replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '');
+        text = text.replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '');
+        text = text.replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '');
+        text = text.replace(/<!--[\s\S]*?-->/g, '');
+        text = text.replace(/<(h[1-6]|p|br|div|li|tr|blockquote)[^>]*>/gi, '\n');
+        text = text.replace(/<[^>]+>/g, ' ');
+        text = text.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+                   .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'");
+        text = text.replace(/[ \t]+/g, ' ');
+        text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
+        return text.trim();
+    }
+
+    private extractTitleFromHtml(html: string): string | null {
+        const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (match?.[1]) return match[1].replace(/<[^>]+>/g, '').trim().substring(0, 200);
+
+        const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+        if (h1?.[1]) return h1[1].replace(/<[^>]+>/g, '').trim().substring(0, 200);
+
+        return null;
     }
 
     // ─── Embedding ───────────────────────────────────────────────────────────
@@ -380,31 +675,37 @@ export class KnowledgeService {
         const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
         if (!schemaName) return [];
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
-             FROM knowledge_resources
-             WHERE is_public = true AND status = 'ready'
-             ORDER BY category, published_at DESC`,
-        );
+        const [legacy, docs] = await Promise.all([
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, title, slug, category, excerpt, content, published_at, updated_at, 'resource' AS _source
+                 FROM knowledge_resources
+                 WHERE is_public = true AND status = 'ready'
+                 ORDER BY category, published_at DESC`).catch(() => []),
+            this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, title, slug, category, excerpt, content_text AS content, created_at AS published_at, updated_at, 'document' AS _source
+                 FROM knowledge_documents
+                 WHERE is_public = true AND status = 'ready'
+                 ORDER BY category, created_at DESC`).catch(() => []),
+        ]);
 
-        return rows || [];
+        return [...(legacy || []), ...(docs || [])];
     }
 
     async getPublicArticle(tenantSlug: string, slug: string): Promise<any | null> {
         const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
         if (!schemaName) return null;
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
+        const legacy = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
-             FROM knowledge_resources
-             WHERE is_public = true AND status = 'ready' AND slug = $1
-             LIMIT 1`,
-            [slug],
-        );
+             FROM knowledge_resources WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
+            [slug]).catch(() => []);
+        if (legacy?.[0]) return legacy[0];
 
-        return rows?.[0] || null;
+        const docs = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id, title, slug, category, excerpt, content_text AS content, created_at AS published_at, updated_at
+             FROM knowledge_documents WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
+            [slug]).catch(() => []);
+        return docs?.[0] || null;
     }
 
     private async resolveSchemaFromSlug(tenantSlug: string): Promise<string | null> {
@@ -440,7 +741,7 @@ export class KnowledgeService {
 
     async createResource(schemaName: string, tenantId: string, data: { title: string; type?: string; content?: string; source_url?: string }) {
         const contentHash = data.content
-            ? require('crypto').createHash('sha256').update(data.content).digest('hex').substring(0, 16)
+            ? crypto.createHash('sha256').update(data.content).digest('hex').substring(0, 16)
             : null;
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,

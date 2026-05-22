@@ -46,6 +46,11 @@
       "disconnecting": "Desconectando..."
     },
     "clickToCopy": "Clic para copiar",
+    "category": "Categoría",
+    "public": "Público",
+    "enabled": "Activado",
+    "disabled": "Desactivado",
+    "lastUpdated": "Última actualización",
     "stages": {
       "nuevo": "Nuevo",
       "contactado": "Contactado",
@@ -2483,7 +2488,10 @@
     "status": {
       "draft": "Borrador",
       "approved": "Aprobado",
-      "archived": "Archivado"
+      "archived": "Archivado",
+      "ready": "Listo",
+      "processing": "Procesando",
+      "error": "Error"
     },
     "modal": {
       "title": "Nuevo recurso",
@@ -2491,6 +2499,58 @@
       "titlePlaceholder": "FAQ del curso...",
       "contentLabel": "Contenido de texto",
       "contentPlaceholder": "Pega el contenido del documento..."
+    },
+    "sourceType": {
+      "upload": "Archivo",
+      "url": "URL"
+    },
+    "crawl": {
+      "button": "Importar URL",
+      "title": "Importar página web",
+      "urlLabel": "URL de la página",
+      "urlPlaceholder": "https://tusitio.com/faq",
+      "titleLabel": "Título (opcional)",
+      "titlePlaceholder": "Se detecta automáticamente",
+      "importing": "Importando...",
+      "success": "Página importada exitosamente",
+      "recrawl": "Actualizar contenido",
+      "recrawling": "Actualizando...",
+      "noChanges": "Sin cambios detectados",
+      "updated": "Contenido actualizado",
+      "planRequired": "Tu plan no incluye importación de URLs",
+      "limitReached": "Límite de páginas importadas alcanzado"
+    },
+    "edit": {
+      "title": "Editar documento",
+      "save": "Guardar cambios",
+      "saving": "Guardando...",
+      "success": "Documento actualizado"
+    },
+    "analytics": {
+      "tab": "Analíticas",
+      "title": "Analíticas de KB",
+      "subtitle": "Uso, rendimiento y preguntas sin respuesta",
+      "period": "Últimos {days} días",
+      "overview": {
+        "uniqueQueries": "Consultas únicas",
+        "totalRetrievals": "Recuperaciones totales",
+        "hitRate": "Tasa de acierto",
+        "avgScore": "Score promedio",
+        "medianScore": "Score mediano"
+      },
+      "topDocuments": "Documentos más consultados",
+      "retrievalCount": "Consultas",
+      "usedCount": "Usados",
+      "unanswered": "Preguntas sin respuesta",
+      "occurrences": "Veces",
+      "lastSeen": "Última vez",
+      "resolve": "Resolver",
+      "resolved": "Resuelta",
+      "noData": "No hay datos de analytics aún. Se empiezan a recopilar con las conversaciones.",
+      "planRequired": "Las analíticas de KB requieren plan Starter o superior.",
+      "dailyVolume": "Volumen diario",
+      "queries": "Consultas",
+      "hits": "Aciertos"
     },
     "limitReachedTitle": "Límite de documentos alcanzado",
     "limitReachedDesc": "Has llegado al límite de documentos de conocimiento en tu plan actual. Mejora tu plan para añadir más."

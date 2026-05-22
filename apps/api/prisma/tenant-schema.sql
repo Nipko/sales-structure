@@ -112,6 +112,46 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_embeddings" (
 );
 CREATE INDEX IF NOT EXISTS idx_ke_embedding_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_embeddings" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists = 100);
 
+-- ---- Knowledge Documents extra columns (URL crawling + categories) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
+    ADD COLUMN IF NOT EXISTS "source_type" VARCHAR(20) DEFAULT 'upload',
+    ADD COLUMN IF NOT EXISTS "source_url" VARCHAR(2000),
+    ADD COLUMN IF NOT EXISTS "last_crawled_at" TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS "crawl_hash" VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS "category" VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "slug" VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS "excerpt" TEXT,
+    ADD COLUMN IF NOT EXISTS "auto_recrawl" BOOLEAN DEFAULT true;
+CREATE INDEX IF NOT EXISTS idx_kd_category_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_documents" ("category") WHERE "status" = 'ready';
+CREATE INDEX IF NOT EXISTS idx_kd_public_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_documents" ("is_public") WHERE "is_public" = true AND "status" = 'ready';
+
+-- ---- KB Retrieval Analytics ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_retrieval_log" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "document_id" UUID REFERENCES "{{SCHEMA_NAME}}"."knowledge_documents"("id") ON DELETE SET NULL,
+    "chunk_id" UUID,
+    "query" TEXT NOT NULL,
+    "score" DECIMAL(5,4),
+    "was_used" BOOLEAN DEFAULT false,
+    "conversation_id" UUID,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_krl_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("document_id", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS idx_krl_created_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("created_at" DESC);
+
+-- ---- KB Unanswered Queries ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_unanswered_queries" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "query" TEXT NOT NULL,
+    "query_hash" VARCHAR(64) NOT NULL,
+    "occurrences" INTEGER DEFAULT 1,
+    "last_seen_at" TIMESTAMP DEFAULT NOW(),
+    "resolved" BOOLEAN DEFAULT false,
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kuq_hash_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_unanswered_queries" ("query_hash") WHERE resolved = false;
+
 -- ---- Conversation Memory (Long-term summaries) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_memory" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

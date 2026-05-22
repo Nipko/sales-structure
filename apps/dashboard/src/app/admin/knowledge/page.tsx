@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -12,74 +12,332 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
-    BookOpen, Search, Plus, CheckCircle, Clock, X, FileText, Globe, Key, File, HelpCircle,
+    BookOpen, Search, Plus, X, FileText, Globe, HelpCircle,
+    RefreshCw, Edit3, Trash2, BarChart3, ExternalLink, CheckCircle2,
+    AlertCircle, TrendingUp, Target, Zap, Eye, Tag, GlobeLock, PlusCircle,
 } from "lucide-react";
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from "recharts";
 
-type Tab = "library" | "search";
+type Tab = "library" | "search" | "analytics";
 
-const iconMap: Record<string, any> = { manual: FileText, pdf: File, url: Globe };
-const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ecc71", archived: "#95a5a6" };
+interface KBDocument {
+    id: string;
+    name: string;
+    title?: string;
+    content_text?: string;
+    source_type?: string;
+    source_url?: string;
+    chunk_count?: number;
+    last_crawled_at?: string;
+    category?: string;
+    is_public?: boolean;
+    auto_recrawl?: boolean;
+    created_at: string;
+    updated_at?: string;
+}
+
+interface KBAnalytics {
+    overview: {
+        uniqueQueries: number;
+        totalRetrievals: number;
+        hitRate: number;
+        avgScore: number;
+        medianScore: number;
+    };
+    topDocuments: Array<{ document_id: string; document_name: string; retrieval_count: number; used_count: number }>;
+    unansweredQueries: Array<{ id: string; query: string; occurrences: number; last_seen_at: string; resolved: boolean }>;
+    dailyVolume: Array<{ date: string; queries: number; hits: number }>;
+}
+
+const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ecc71", archived: "#95a5a6", ready: "#2ecc71", processing: "#f39c12", error: "#ff4757" };
 
 export default function KnowledgePage() {
-    const t = useTranslations('knowledge');
+    const t = useTranslations("knowledge");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit } = usePlanLimits();
+
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const [tab, setTab] = useState<Tab>("library");
-    const [resources, setResources] = useState<any[]>([]);
+
+    // Documents
+    const [documents, setDocuments] = useState<KBDocument[]>([]);
+    const [loadingDocs, setLoadingDocs] = useState(true);
+
+    // Search
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
-    const [showModal, setShowModal] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({ title: "", type: "manual", content: "", source_url: "" });
 
+    // Legacy resources (for plan limit counting)
+    const [resources, setResources] = useState<any[]>([]);
+
+    // Crawl modal
+    const [showCrawlModal, setShowCrawlModal] = useState(false);
+    const [crawlForm, setCrawlForm] = useState({ url: "", title: "", category: "" });
+    const [crawling, setCrawling] = useState(false);
+
+    // Edit modal
+    const [editDoc, setEditDoc] = useState<KBDocument | null>(null);
+    const [editForm, setEditForm] = useState({ name: "", content: "", category: "" });
+    const [editSaving, setEditSaving] = useState(false);
+
+    // Create modal (legacy)
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createForm, setCreateForm] = useState({ title: "", content: "", category: "" });
+    const [createSaving, setCreateSaving] = useState(false);
+
+    // Categories
+    const [categories, setCategories] = useState<string[]>([]);
+    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+    // Re-crawl state
+    const [recrawlingId, setRecrawlingId] = useState<string | null>(null);
+
+    // Analytics
+    const [analytics, setAnalytics] = useState<KBAnalytics | null>(null);
+    const [analyticsLoading, setAnalyticsLoading] = useState(false);
+    const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
+    // Toast
+    const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+    const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 3000);
+    }, []);
+
+    // Load documents
     useEffect(() => {
         if (!activeTenantId) return;
-        api.fetch(`/knowledge/resources/${activeTenantId}`)
-            .then(d => { if (Array.isArray(d)) setResources(d); })
-            .catch(() => []);
+        setLoadingDocs(true);
+
+        Promise.all([
+            api.fetch("/knowledge/documents").catch(() => []),
+            api.fetch(`/knowledge/resources/${activeTenantId}`).catch(() => []),
+            api.fetch("/knowledge/documents/categories").catch(() => []),
+        ]).then(([docs, res, cats]) => {
+            if (Array.isArray(docs)) setDocuments(docs);
+            if (Array.isArray(res)) setResources(res);
+            if (Array.isArray(cats)) setCategories(cats);
+        }).finally(() => setLoadingDocs(false));
     }, [activeTenantId]);
 
+    // Load analytics when tab changes
+    useEffect(() => {
+        if (tab !== "analytics" || !activeTenantId) return;
+        setAnalyticsLoading(true);
+        setAnalyticsError(null);
+        api.fetch(`/knowledge/analytics/${activeTenantId}`)
+            .then(result => {
+                if (result?.success === false) {
+                    setAnalyticsError(result.error === "plan_upgrade_required" ? t("analytics.planRequired") : (result.message || result.error));
+                } else if (result?.success && result.data) {
+                    setAnalytics(result.data);
+                } else {
+                    setAnalytics(result);
+                }
+            })
+            .catch(() => setAnalyticsError("Error loading analytics"))
+            .finally(() => setAnalyticsLoading(false));
+    }, [tab, activeTenantId, t]);
+
+    // Crawl URL
+    const handleCrawl = async () => {
+        if (!crawlForm.url) return;
+        setCrawling(true);
+        try {
+            const result = await api.fetch("/knowledge/documents/crawl", {
+                method: "POST",
+                body: JSON.stringify({ url: crawlForm.url, title: crawlForm.title || undefined, category: crawlForm.category || undefined }),
+            });
+            if (result?.success && result.data) {
+                setDocuments(prev => [result.data, ...prev]);
+                setShowCrawlModal(false);
+                setCrawlForm({ url: "", title: "", category: "" });
+                showToast(t("crawl.success"));
+            } else {
+                showToast(result?.message || result?.error || "Error", "error");
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        } finally {
+            setCrawling(false);
+        }
+    };
+
+    // Re-crawl
+    const handleRecrawl = async (docId: string) => {
+        setRecrawlingId(docId);
+        try {
+            const result = await api.fetch(`/knowledge/documents/${docId}/recrawl`, { method: "POST" });
+            if (result?.success) {
+                if (result.data?.changed === false) {
+                    showToast(t("crawl.noChanges"));
+                } else {
+                    setDocuments(prev => prev.map(d => d.id === docId ? { ...d, ...result.data } : d));
+                    showToast(t("crawl.updated"));
+                }
+            } else {
+                showToast(result?.message || "Error", "error");
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        } finally {
+            setRecrawlingId(null);
+        }
+    };
+
+    // Edit document
+    const handleEdit = (doc: KBDocument) => {
+        setEditDoc(doc);
+        setEditForm({ name: doc.name || doc.title || "", content: doc.content_text || "", category: doc.category || "" });
+    };
+
+    const handleEditSave = async () => {
+        if (!editDoc) return;
+        setEditSaving(true);
+        try {
+            const result = await api.fetch(`/knowledge/documents/${editDoc.id}`, {
+                method: "PUT",
+                body: JSON.stringify({ name: editForm.name, content: editForm.content, category: editForm.category || undefined }),
+            });
+            if (result?.id) {
+                setDocuments(prev => prev.map(d => d.id === editDoc.id ? { ...d, name: editForm.name, content_text: editForm.content, ...result } : d));
+                setEditDoc(null);
+                showToast(t("edit.success"));
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        } finally {
+            setEditSaving(false);
+        }
+    };
+
+    // Create document (legacy)
     const handleCreate = async () => {
-        if (!form.title || !activeTenantId) return;
-        setSaving(true);
+        if (!createForm.title || !createForm.content || !activeTenantId) return;
+        setCreateSaving(true);
         try {
-            const created = await api.fetch(`/knowledge/resources/${activeTenantId}`, { method: "POST", body: JSON.stringify(form) });
-            if (created?.id) { setResources([created, ...resources]); setShowModal(false); setForm({ title: "", type: "manual", content: "", source_url: "" }); }
-        } catch (e) { console.error(e); } finally { setSaving(false); }
+            const created = await api.fetch(`/knowledge/resources/${activeTenantId}`, {
+                method: "POST",
+                body: JSON.stringify({ title: createForm.title, content: createForm.content }),
+            });
+            if (created?.id) {
+                setResources(prev => [created, ...prev]);
+                setShowCreateModal(false);
+                setCreateForm({ title: "", content: "", category: "" });
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setCreateSaving(false);
+        }
     };
 
-    const handleApprove = async (id: string) => {
+    // Delete document
+    const handleDeleteDoc = async (docId: string) => {
         try {
-            await api.fetch(`/knowledge/resources/${activeTenantId}/${id}/approve`, { method: "POST", body: JSON.stringify({ approved_by: user?.email }) });
-            setResources(resources.map(r => r.id === id ? { ...r, status: "approved" } : r));
-        } catch (e) { console.error(e); }
+            await api.fetch(`/knowledge/documents/${docId}`, { method: "DELETE" });
+            setDocuments(prev => prev.filter(d => d.id !== docId));
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        }
     };
 
+    // Toggle public
+    const handleTogglePublic = async (doc: KBDocument) => {
+        try {
+            await api.fetch(`/knowledge/documents/${doc.id}/meta`, {
+                method: "PUT",
+                body: JSON.stringify({ isPublic: !doc.is_public }),
+            });
+            setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, is_public: !doc.is_public } : d));
+            showToast(doc.is_public ? tc("disabled") : tc("enabled"));
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        }
+    };
+
+    // Set category on document
+    const handleSetCategory = async (docId: string, category: string) => {
+        try {
+            await api.fetch(`/knowledge/documents/${docId}/meta`, {
+                method: "PUT",
+                body: JSON.stringify({ category: category || null }),
+            });
+            setDocuments(prev => prev.map(d => d.id === docId ? { ...d, category: category || undefined } : d));
+            if (category && !categories.includes(category)) {
+                setCategories(prev => [...prev, category].sort());
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        }
+    };
+
+    // Create article from unanswered query
+    const handleCreateFromQuery = (query: string) => {
+        setCreateForm({ title: query, content: "", category: "" });
+        setShowCreateModal(true);
+    };
+
+    // Search
     const handleSearch = async () => {
         if (!searchQuery) return setSearchResults([]);
         try {
-            const data = await api.fetch(`/knowledge/search/${activeTenantId}?query=${encodeURIComponent(searchQuery)}`);
+            const data = await api.fetch("/knowledge/search", {
+                method: "POST",
+                body: JSON.stringify({ query: searchQuery, topK: 10 }),
+            });
             setSearchResults(Array.isArray(data) ? data : []);
-        } catch (e) { console.error(e); }
+        } catch {
+            setSearchResults([]);
+        }
     };
+
+    // Resolve unanswered query
+    const handleResolve = async (queryId: string) => {
+        if (!activeTenantId) return;
+        try {
+            await api.fetch(`/knowledge/analytics/${activeTenantId}/resolve/${queryId}`, { method: "POST" });
+            if (analytics) {
+                setAnalytics({
+                    ...analytics,
+                    unansweredQueries: analytics.unansweredQueries.map(q =>
+                        q.id === queryId ? { ...q, resolved: true } : q
+                    ),
+                });
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        }
+    };
+
+    const totalDocs = documents.length + resources.length;
 
     return (
         <div>
             <PageHeader
-                title={t('title')}
-                subtitle={t('subtitle')}
+                title={t("title")}
+                subtitle={t("subtitle")}
                 icon={BookOpen}
                 action={tab === "library" ? (
-                    <button
-                        onClick={() => canCreate("knowledgeArticles", resources.length) ? setShowModal(true) : setShowUpgradeModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect"
-                    >
-                        <Plus size={16} /> {tc("create")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowCrawlModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground font-medium text-sm cursor-pointer hover:bg-muted press-effect"
+                        >
+                            <Globe size={16} /> {t("crawl.button")}
+                        </button>
+                        <button
+                            onClick={() => canCreate("knowledgeArticles", totalDocs) ? setShowCreateModal(true) : setShowUpgradeModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-medium text-sm cursor-pointer hover:opacity-90 press-effect"
+                        >
+                            <Plus size={16} /> {tc("create")}
+                        </button>
+                    </div>
                 ) : undefined}
             />
 
@@ -89,85 +347,296 @@ export default function KnowledgePage() {
                 tips={tHelp.raw("knowledge.tips") as string[]}
             />
 
+            {/* Tabs */}
             <div className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit">
                 <button onClick={() => setTab("library")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <BookOpen size={16} /> {t("tabs.library")}
                 </button>
-                <Link href="/admin/knowledge/faqs" className="px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200 bg-transparent text-muted-foreground hover:text-foreground">
+                <Link href="/admin/knowledge/faqs" className="px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200 bg-transparent text-muted-foreground hover:text-foreground no-underline">
                     <HelpCircle size={16} /> {t("tabs.faqs")}
                 </Link>
                 <button onClick={() => setTab("search")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "search" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <Search size={16} /> {t("tabs.search")}
                 </button>
+                <button onClick={() => setTab("analytics")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "analytics" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                    <BarChart3 size={16} /> {t("analytics.tab")}
+                </button>
             </div>
 
+            {/* Library Tab */}
             {tab === "library" && (
                 <div className="flex flex-col gap-3">
                     <UpgradeBanner
-                        current={resources.length}
+                        current={totalDocs}
                         limit={getLimit("knowledgeArticles")}
                         resourceLabel="documentos de conocimiento"
                     />
-                    {resources.map(r => {
-                        const Icon = iconMap[r.type] || FileText;
-                        return (
-                            <div key={r.id} className="flex items-center justify-between px-5 py-4 rounded-[14px] border border-border bg-card">
-                                <div className="flex items-center gap-3.5">
-                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-background">
-                                        <Icon size={20} className="text-primary" />
-                                    </div>
-                                    <div>
-                                        <div className="font-semibold text-[15px] flex items-center gap-2">
-                                            {r.title}
-                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">v{r.version}</span>
-                                        </div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
-                                            <span className="uppercase">{r.type}</span> • {new Date(r.created_at).toLocaleDateString()}
-                                            {r.content_hash && <span>• {t("hash")}: {r.content_hash.substring(0, 8)}</span>}
-                                        </div>
-                                    </div>
+
+                    {/* Category filter */}
+                    {categories.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap mb-1">
+                            <button
+                                onClick={() => setActiveCategory(null)}
+                                className={cn("px-3 py-1 rounded-lg text-xs font-semibold border cursor-pointer transition-all",
+                                    !activeCategory ? "bg-primary text-primary-foreground border-primary" : "bg-transparent text-muted-foreground border-border hover:text-foreground")}
+                            >
+                                {tc("all")}
+                            </button>
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
+                                    className={cn("px-3 py-1 rounded-lg text-xs font-semibold border cursor-pointer transition-all",
+                                        activeCategory === cat ? "bg-primary text-primary-foreground border-primary" : "bg-transparent text-muted-foreground border-border hover:text-foreground")}
+                                >
+                                    <Tag size={11} className="inline mr-1" />{cat}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* RAG Documents (new system) */}
+                    {documents.filter(d => !activeCategory || d.category === activeCategory).map(doc => (
+                        <div key={doc.id} className="flex items-center justify-between px-5 py-4 rounded-[14px] border border-border bg-card">
+                            <div className="flex items-center gap-3.5">
+                                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-background">
+                                    {doc.source_type === "url" ? <Globe size={20} className="text-blue-400" /> : <FileText size={20} className="text-primary" />}
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ color: statusColors[r.status] || undefined, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
-                                        {t(`status.${r.status}`)}
-                                    </span>
-                                    {r.status === "draft" && (
-                                        <button onClick={() => handleApprove(r.id)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border-none bg-emerald-500 text-white font-semibold text-xs cursor-pointer">
-                                            <CheckCircle size={14} /> {t("approve")}
-                                        </button>
-                                    )}
+                                <div>
+                                    <div className="font-semibold text-[15px] flex items-center gap-2 flex-wrap">
+                                        {doc.name || doc.title}
+                                        <span className={cn("text-[10px] px-2 py-0.5 rounded-md font-semibold", doc.source_type === "url" ? "bg-blue-500/10 text-blue-400" : "bg-primary/10 text-primary")}>
+                                            {t(`sourceType.${doc.source_type || "upload"}`)}
+                                        </span>
+                                        {doc.category && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 font-semibold">
+                                                {doc.category}
+                                            </span>
+                                        )}
+                                        {doc.is_public && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 font-semibold">
+                                                {tc("public")}
+                                            </span>
+                                        )}
+                                        {doc.chunk_count != null && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">
+                                                {doc.chunk_count} chunks
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                                        {new Date(doc.created_at).toLocaleDateString()}
+                                        {doc.source_url && (
+                                            <a href={doc.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline flex items-center gap-0.5 no-underline">
+                                                <ExternalLink size={11} /> {new URL(doc.source_url).hostname}
+                                            </a>
+                                        )}
+                                        {doc.last_crawled_at && <span>• {tc("lastUpdated")}: {new Date(doc.last_crawled_at).toLocaleDateString()}</span>}
+                                    </div>
                                 </div>
                             </div>
-                        );
-                    })}
-                    {resources.length === 0 && <div className="text-center py-10 text-muted-foreground">{t("empty.library")}</div>}
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleTogglePublic(doc)}
+                                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer",
+                                        doc.is_public ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-border bg-transparent text-muted-foreground")}
+                                    title={doc.is_public ? "Public" : "Private"}
+                                >
+                                    <GlobeLock size={13} />
+                                </button>
+                                {doc.source_type === "url" && (
+                                    <button
+                                        onClick={() => handleRecrawl(doc.id)}
+                                        disabled={recrawlingId === doc.id}
+                                        className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer", recrawlingId === doc.id && "opacity-50 cursor-wait")}
+                                    >
+                                        <RefreshCw size={13} className={recrawlingId === doc.id ? "animate-spin" : ""} />
+                                        {recrawlingId === doc.id ? t("crawl.recrawling") : t("crawl.recrawl")}
+                                    </button>
+                                )}
+                                <button onClick={() => handleEdit(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer">
+                                    <Edit3 size={13} />
+                                </button>
+                                <button onClick={() => handleDeleteDoc(doc.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
+                                    <Trash2 size={13} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Legacy resources */}
+                    {resources.map(r => (
+                        <div key={r.id} className="flex items-center justify-between px-5 py-4 rounded-[14px] border border-border bg-card">
+                            <div className="flex items-center gap-3.5">
+                                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-background">
+                                    <FileText size={20} className="text-primary" />
+                                </div>
+                                <div>
+                                    <div className="font-semibold text-[15px] flex items-center gap-2">
+                                        {r.title}
+                                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">v{r.version}</span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                                        <span className="uppercase">{r.type}</span> • {new Date(r.created_at).toLocaleDateString()}
+                                        {r.content_hash && <span>• {t("hash")}: {r.content_hash.substring(0, 8)}</span>}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ color: statusColors[r.status] || undefined, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
+                                    {t(`status.${r.status}`)}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+
+                    {totalDocs === 0 && !loadingDocs && (
+                        <div className="text-center py-10 text-muted-foreground">{t("empty.library")}</div>
+                    )}
+                    {loadingDocs && totalDocs === 0 && (
+                        <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>
+                    )}
                 </div>
             )}
 
+            {/* Search Tab */}
             {tab === "search" && (
                 <div>
                     <div className="flex gap-2.5 mb-5">
                         <div className="flex-1 relative">
                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder={t("searchPlaceholder")} className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border" />
+                            <input
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                onKeyDown={e => e.key === "Enter" && handleSearch()}
+                                placeholder={t("searchPlaceholder")}
+                                className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border"
+                            />
                         </div>
                         <button onClick={handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">{t("searchButton")}</button>
                     </div>
                     <div className="flex flex-col gap-2.5">
-                        {searchResults.map(s => (
-                            <div key={s.id} className="p-4 rounded-xl border border-border bg-card">
+                        {searchResults.map((s, i) => (
+                            <div key={s.id || i} className="p-4 rounded-xl border border-border bg-card">
                                 <div className="flex items-center gap-1.5 mb-2">
-                                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">{s.resource_title}</span>
-                                    <span className="text-[11px] text-muted-foreground">{t("chunk")} #{s.chunk_index}</span>
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">{s.document_name || s.resource_title}</span>
+                                    {s.score != null && <span className="text-[11px] text-muted-foreground">score: {(s.score * 100).toFixed(0)}%</span>}
                                 </div>
                                 <p className="text-sm text-foreground m-0 leading-relaxed">&ldquo;{s.content}&rdquo;</p>
                             </div>
                         ))}
-                        {searchResults.length === 0 && searchQuery && <div className="text-center py-10 text-muted-foreground">{t("empty.search")}</div>}
+                        {searchResults.length === 0 && searchQuery && (
+                            <div className="text-center py-10 text-muted-foreground">{t("empty.search")}</div>
+                        )}
                     </div>
                 </div>
             )}
 
+            {/* Analytics Tab */}
+            {tab === "analytics" && (
+                <div>
+                    {analyticsLoading && <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>}
+
+                    {analyticsError && (
+                        <div className="text-center py-10">
+                            <AlertCircle size={40} className="mx-auto mb-3 text-warning" />
+                            <p className="text-muted-foreground">{analyticsError}</p>
+                        </div>
+                    )}
+
+                    {!analyticsLoading && !analyticsError && !analytics && (
+                        <div className="text-center py-10 text-muted-foreground">{t("analytics.noData")}</div>
+                    )}
+
+                    {analytics && (
+                        <div className="flex flex-col gap-6">
+                            {/* KPI Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                <KPICard icon={Search} label={t("analytics.overview.uniqueQueries")} value={analytics.overview.uniqueQueries} />
+                                <KPICard icon={Zap} label={t("analytics.overview.totalRetrievals")} value={analytics.overview.totalRetrievals} />
+                                <KPICard icon={Target} label={t("analytics.overview.hitRate")} value={`${(analytics.overview.hitRate * 100).toFixed(1)}%`} />
+                                <KPICard icon={TrendingUp} label={t("analytics.overview.avgScore")} value={`${(analytics.overview.avgScore * 100).toFixed(0)}%`} />
+                                <KPICard icon={Eye} label={t("analytics.overview.medianScore")} value={`${(analytics.overview.medianScore * 100).toFixed(0)}%`} />
+                            </div>
+
+                            {/* Daily Volume Chart */}
+                            {analytics.dailyVolume.length > 0 && (
+                                <div className="p-5 rounded-[14px] border border-border bg-card">
+                                    <h3 className="text-sm font-semibold mb-4 m-0">{t("analytics.dailyVolume")}</h3>
+                                    <div className="h-[250px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={analytics.dailyVolume}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--text-secondary)" }} tickFormatter={d => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" })} />
+                                                <YAxis tick={{ fontSize: 11, fill: "var(--text-secondary)" }} />
+                                                <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                                                <Legend />
+                                                <Bar dataKey="queries" name={t("analytics.queries")} fill="var(--accent)" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="hits" name={t("analytics.hits")} fill="var(--success)" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {/* Top Documents */}
+                                <div className="p-5 rounded-[14px] border border-border bg-card">
+                                    <h3 className="text-sm font-semibold mb-4 m-0">{t("analytics.topDocuments")}</h3>
+                                    <div className="flex flex-col gap-2">
+                                        {analytics.topDocuments.map((doc, i) => (
+                                            <div key={doc.document_id || i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-background">
+                                                <span className="text-sm truncate flex-1 mr-3">{doc.document_name}</span>
+                                                <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                                                    <span>{t("analytics.retrievalCount")}: <strong className="text-foreground">{doc.retrieval_count}</strong></span>
+                                                    <span>{t("analytics.usedCount")}: <strong className="text-foreground">{doc.used_count}</strong></span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {analytics.topDocuments.length === 0 && (
+                                            <div className="text-center py-4 text-muted-foreground text-sm">{t("analytics.noData")}</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Unanswered Queries */}
+                                <div className="p-5 rounded-[14px] border border-border bg-card">
+                                    <h3 className="text-sm font-semibold mb-4 m-0">{t("analytics.unanswered")}</h3>
+                                    <div className="flex flex-col gap-2">
+                                        {analytics.unansweredQueries.map((q, i) => (
+                                            <div key={q.id || i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-background">
+                                                <div className="flex-1 mr-3">
+                                                    <span className={cn("text-sm", q.resolved && "line-through text-muted-foreground")}>{q.query}</span>
+                                                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                                                        {t("analytics.occurrences")}: {q.occurrences} • {t("analytics.lastSeen")}: {new Date(q.last_seen_at).toLocaleDateString()}
+                                                    </div>
+                                                </div>
+                                                {!q.resolved ? (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button onClick={() => handleCreateFromQuery(q.query)} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-primary/30 bg-primary/10 text-xs font-semibold cursor-pointer text-primary hover:bg-primary/20" title={tc("create")}>
+                                                            <PlusCircle size={12} />
+                                                        </button>
+                                                        <button onClick={() => handleResolve(q.id)} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-transparent text-xs font-semibold cursor-pointer text-foreground hover:bg-muted">
+                                                            <CheckCircle2 size={12} /> {t("analytics.resolve")}
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[11px] text-success font-semibold">{t("analytics.resolved")}</span>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {analytics.unansweredQueries.length === 0 && (
+                                            <div className="text-center py-4 text-muted-foreground text-sm">{t("analytics.noData")}</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Upgrade Modal */}
             <UpgradeModal
                 open={showUpgradeModal}
                 onClose={() => setShowUpgradeModal(false)}
@@ -175,28 +644,153 @@ export default function KnowledgePage() {
                 description={t("limitReachedDesc")}
             />
 
-            {showModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
+            {/* Crawl URL Modal */}
+            {showCrawlModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCrawlModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
-                            <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
+                            <h2 className="text-xl font-semibold m-0">{t("crawl.title")}</h2>
+                            <button onClick={() => setShowCrawlModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.titleLabel")}</label>
-                            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder={t("modal.titlePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("crawl.urlLabel")}</label>
+                            <input
+                                value={crawlForm.url}
+                                onChange={e => setCrawlForm({ ...crawlForm, url: e.target.value })}
+                                placeholder={t("crawl.urlPlaceholder")}
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
                         </div>
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.contentLabel")}</label>
-                            <textarea value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={10} placeholder={t("modal.contentPlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("crawl.titleLabel")}</label>
+                            <input
+                                value={crawlForm.title}
+                                onChange={e => setCrawlForm({ ...crawlForm, title: e.target.value })}
+                                placeholder={t("crawl.titlePlaceholder")}
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{tc("category")}</label>
+                            <input
+                                value={crawlForm.category}
+                                onChange={e => setCrawlForm({ ...crawlForm, category: e.target.value })}
+                                list="kb-categories"
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                            <datalist id="kb-categories">
+                                {categories.map(c => <option key={c} value={c} />)}
+                            </datalist>
                         </div>
                         <div className="flex gap-2.5 mt-6">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
-                            <button onClick={handleCreate} disabled={saving || !form.title || !form.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
+                            <button onClick={() => setShowCrawlModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
+                            <button onClick={handleCrawl} disabled={crawling || !crawlForm.url} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", crawling ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
+                                {crawling ? t("crawl.importing") : t("crawl.button")}
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Edit Document Modal */}
+            {editDoc && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEditDoc(null)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[600px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h2 className="text-xl font-semibold m-0">{t("edit.title")}</h2>
+                            <button onClick={() => setEditDoc(null)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.titleLabel")}</label>
+                            <input
+                                value={editForm.name}
+                                onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.contentLabel")}</label>
+                            <textarea
+                                value={editForm.content}
+                                onChange={e => setEditForm({ ...editForm, content: e.target.value })}
+                                rows={14}
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
+                            />
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{tc("category")}</label>
+                            <input
+                                value={editForm.category}
+                                onChange={e => setEditForm({ ...editForm, category: e.target.value })}
+                                list="kb-edit-categories"
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                            <datalist id="kb-edit-categories">
+                                {categories.map(c => <option key={c} value={c} />)}
+                            </datalist>
+                        </div>
+                        <div className="flex gap-2.5 mt-6">
+                            <button onClick={() => setEditDoc(null)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
+                            <button onClick={handleEditSave} disabled={editSaving || !editForm.name} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", editSaving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>
+                                {editSaving ? t("edit.saving") : t("edit.save")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Resource Modal (legacy) */}
+            {showCreateModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[520px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-center mb-5">
+                            <h2 className="text-xl font-semibold m-0">{t("modal.title")}</h2>
+                            <button onClick={() => setShowCreateModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.titleLabel")}</label>
+                            <input value={createForm.title} onChange={e => setCreateForm({ ...createForm, title: e.target.value })} placeholder={t("modal.titlePlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.contentLabel")}</label>
+                            <textarea value={createForm.content} onChange={e => setCreateForm({ ...createForm, content: e.target.value })} rows={10} placeholder={t("modal.contentPlaceholder")} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y" />
+                        </div>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{tc("category")}</label>
+                            <input value={createForm.category} onChange={e => setCreateForm({ ...createForm, category: e.target.value })} list="kb-create-categories" className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border" />
+                            <datalist id="kb-create-categories">
+                                {categories.map(c => <option key={c} value={c} />)}
+                            </datalist>
+                        </div>
+                        <div className="flex gap-2.5 mt-6">
+                            <button onClick={() => setShowCreateModal(false)} className="flex-1 py-3 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer font-semibold">{tc("cancel")}</button>
+                            <button onClick={handleCreate} disabled={createSaving || !createForm.title || !createForm.content} className={cn("flex-1 py-3 rounded-[10px] border-none text-white text-sm font-semibold", createSaving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{createSaving ? tc("saving") : tc("create")}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast */}
+            {toast && (
+                <div className={cn(
+                    "fixed bottom-6 right-6 z-[2000] px-5 py-3 rounded-xl text-sm font-semibold text-white shadow-lg transition-all",
+                    toast.type === "success" ? "bg-emerald-500" : "bg-red-500",
+                )}>
+                    {toast.msg}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function KPICard({ icon: Icon, label, value }: { icon: any; label: string; value: string | number }) {
+    return (
+        <div className="p-4 rounded-[14px] border border-border bg-card flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-muted-foreground">
+                <Icon size={16} />
+                <span className="text-xs font-semibold">{label}</span>
+            </div>
+            <div className="text-2xl font-semibold text-foreground">{value}</div>
         </div>
     );
 }

@@ -164,6 +164,7 @@ export class BillingService {
             await tx.tenant.update({
                 where: { id: tenant.id },
                 data: {
+                    plan: plan.slug,
                     paymentProvider: providerName,
                     paymentProviderCustomerId: providerCustomerId,
                     billingEmail: input.billingEmail ?? tenant.billingEmail,
@@ -180,6 +181,7 @@ export class BillingService {
         // Redis plan cache may be stale — invalidate so next throttle check sees the new state
         await this.redis.del(`tenant_plan:${tenant.id}`);
         await this.redis.del(`sub_status:${tenant.id}`);
+        await this.redis.del(`plan_features:${tenant.id}`);
 
         // Emit both subscription.created and trial.started (trial.started only if trialDays > 0)
         this.emit(BillingEventType.SUBSCRIPTION_CREATED, tenant.id, subscription.id);
@@ -290,12 +292,14 @@ export class BillingService {
         await this.prisma.tenant.update({
             where: { id: tenantId },
             data: {
+                plan: newPlan.slug,
                 subscriptionStatus: updatedStatus,
                 currentPeriodEnd: currentPeriodEnd ?? sub.currentPeriodEnd ?? null,
             },
         });
         await this.redis.del(`tenant_plan:${tenantId}`);
         await this.redis.del(`sub_status:${tenantId}`);
+        await this.redis.del(`plan_features:${tenantId}`);
 
         this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, tenantId, sub.id, { fromPlan: sub.planId, toPlan: newPlan.id });
         this.logger.log(`[Billing] Tenant ${tenantId} changed plan to ${newPlan.slug}`);
@@ -387,6 +391,10 @@ export class BillingService {
         let applied = 0;
         for (const sub of due) {
             try {
+                const newPlan = await this.prisma.billingPlan.findUnique({
+                    where: { id: sub.pendingPlanId! },
+                    select: { slug: true },
+                });
                 await this.prisma.billingSubscription.update({
                     where: { id: sub.id },
                     data: {
@@ -395,8 +403,15 @@ export class BillingService {
                         pendingPlanChangeAt: null,
                     },
                 });
+                if (newPlan) {
+                    await this.prisma.tenant.update({
+                        where: { id: sub.tenantId },
+                        data: { plan: newPlan.slug },
+                    });
+                }
                 await this.redis.del(`tenant_plan:${sub.tenantId}`);
-        await this.redis.del(`sub_status:${sub.tenantId}`);
+                await this.redis.del(`sub_status:${sub.tenantId}`);
+                await this.redis.del(`plan_features:${sub.tenantId}`);
                 this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
                     fromPlan: sub.planId, toPlan: sub.pendingPlanId, scheduled: true,
                 });

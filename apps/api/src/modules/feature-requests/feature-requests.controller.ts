@@ -32,7 +32,7 @@ export class FeatureRequestsController {
         @Query('search') search?: string,
         @Query('sort') sort?: string,
     ) {
-        return this.service.list({ status, category, search, sort, userId: req.user.sub });
+        return this.service.list({ status, category, search, sort, userId: req.user.id });
     }
 
     @Get('similar')
@@ -42,7 +42,7 @@ export class FeatureRequestsController {
 
     @Get(':id')
     async getById(@Param('id') id: string, @Req() req: any) {
-        return this.service.getById(id, req.user.sub);
+        return this.service.getById(id, req.user.id);
     }
 
     @Post()
@@ -54,19 +54,19 @@ export class FeatureRequestsController {
             title: body.title,
             description: body.description,
             category: body.category,
-            userId: req.user.sub,
+            userId: req.user.id,
             tenantId: req.user.tenantId,
         });
     }
 
     @Post(':id/vote')
     async vote(@Param('id') id: string, @Req() req: any) {
-        return this.service.vote(id, req.user.sub, req.user.tenantId);
+        return this.service.vote(id, req.user.id, req.user.tenantId);
     }
 
     @Delete(':id/vote')
     async unvote(@Param('id') id: string, @Req() req: any) {
-        return this.service.unvote(id, req.user.sub);
+        return this.service.unvote(id, req.user.id);
     }
 
     @Get(':id/comments')
@@ -77,7 +77,7 @@ export class FeatureRequestsController {
     @Post(':id/comments')
     async comment(@Param('id') id: string, @Body() body: { body: string }, @Req() req: any) {
         const isAdminReply = req.user.role === 'super_admin';
-        return this.service.comment(id, req.user.sub, body.body, isAdminReply, req.user.tenantId);
+        return this.service.comment(id, req.user.id, body.body, isAdminReply, req.user.tenantId);
     }
 
     @Patch(':id/status')

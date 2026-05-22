@@ -124,6 +124,10 @@
     "title": "Sur mesure pour votre industrie",
     "subtitle": "Parallly s'adapte automatiquement à 18 industries. L'agent IA, le pipeline, les FAQ et même le vocabulaire s'ajustent à votre activité. Opérationnel en 10 minutes.",
     "pickVertical": "Choisissez votre industrie",
+    "clusterHealth": "Santé et Bien-être",
+    "clusterCommerce": "Commerce et Services",
+    "clusterProfessional": "Professionnel et Finance",
+    "clusterLifestyle": "Lifestyle et Créatifs",
     "salud": {
       "name": "Santé",
       "subtitle": "Cabinets · Cliniques · Dentaire",

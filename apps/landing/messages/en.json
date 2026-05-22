@@ -124,6 +124,10 @@
     "title": "Tailored to your industry",
     "subtitle": "Parallly auto-adapts to 16 industries. The AI agent, pipeline, FAQs and even the vocabulary adjust to your business. Up and running in 10 minutes.",
     "pickVertical": "Pick your industry",
+    "clusterHealth": "Health & Wellness",
+    "clusterCommerce": "Commerce & Services",
+    "clusterProfessional": "Professional & Finance",
+    "clusterLifestyle": "Lifestyle & Creatives",
     "salud": {
       "name": "Healthcare",
       "subtitle": "Clinics · Practices · Dental",

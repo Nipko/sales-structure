@@ -98,7 +98,7 @@ export class ExternalCrmController {
         @Param('connectionId') connectionId: string,
         @Req() req: any,
     ) {
-        return { success: true, data: await this.importService.start(tenantId, connectionId, req.user.sub) };
+        return { success: true, data: await this.importService.start(tenantId, connectionId, req.user.id) };
     }
 
     @Get(':tenantId/imports/:importId')

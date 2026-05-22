@@ -47,6 +47,13 @@ interface ServiceOption {
     name: string;
 }
 
+interface ReminderSettings {
+    reminder24h: boolean;
+    reminder2h: boolean;
+    attendanceCheck: boolean;
+    autoComplete: boolean;
+}
+
 interface ConfigTabProps {
     activeTenantId: string;
     availabilitySlots: AvailabilitySlot[];
@@ -64,6 +71,8 @@ interface ConfigTabProps {
     showToast: (msg: string) => void;
     services?: ServiceOption[];
     maxCalendars?: number;
+    reminderSettings?: ReminderSettings;
+    onUpdateReminderSettings?: (settings: Partial<ReminderSettings>) => void;
 }
 
 const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -202,14 +211,21 @@ export default function ConfigTab({
     onConnectCalendar, onDisconnectCalendar, onSaveAvailability,
     onAddBlockedDate, onDeleteBlockedDate, onRefresh, showToast,
     services = [], maxCalendars = 5,
+    reminderSettings, onUpdateReminderSettings,
 }: ConfigTabProps) {
     const t = useTranslations("appointments");
     const { user } = useAuth();
     const [newBlockedDate, setNewBlockedDate] = useState("");
     const [newBlockedReason, setNewBlockedReason] = useState("");
-    const [reminder24h, setReminder24h] = useState(true);
-    const [reminder1h, setReminder1h] = useState(true);
-    const [noShowFollowUp, setNoShowFollowUp] = useState(true);
+
+    const reminder24h = reminderSettings?.reminder24h ?? true;
+    const reminder2h = reminderSettings?.reminder2h ?? true;
+    const attendanceCheck = reminderSettings?.attendanceCheck ?? true;
+    const autoComplete = reminderSettings?.autoComplete ?? true;
+
+    const handleReminderToggle = (key: keyof ReminderSettings, value: boolean) => {
+        onUpdateReminderSettings?.({ [key]: value });
+    };
 
     // ── Assignment selection for new calendar ──
     const [showAssignmentPicker, setShowAssignmentPicker] = useState(false);
@@ -522,20 +538,34 @@ export default function ConfigTab({
                     <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                         <div>
                             <p className="text-sm font-medium text-foreground">{t("configSection.reminder24h")}</p>
-                            <p className="text-xs text-muted-foreground">WhatsApp</p>
+                            <p className="text-xs text-muted-foreground">{t("configSection.reminder24hDesc")}</p>
                         </div>
-                        <Toggle enabled={reminder24h} onChange={setReminder24h} label={reminder24h ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
+                        <Toggle enabled={reminder24h} onChange={(v) => handleReminderToggle('reminder24h', v)} label={reminder24h ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
                         <div>
-                            <p className="text-sm font-medium text-foreground">{t("configSection.reminder1h")}</p>
-                            <p className="text-xs text-muted-foreground">WhatsApp</p>
+                            <p className="text-sm font-medium text-foreground">{t("configSection.reminder2h")}</p>
+                            <p className="text-xs text-muted-foreground">{t("configSection.reminder2hDesc")}</p>
                         </div>
-                        <Toggle enabled={reminder1h} onChange={setReminder1h} label={reminder1h ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
+                        <Toggle enabled={reminder2h} onChange={(v) => handleReminderToggle('reminder2h', v)} label={reminder2h ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
                     </div>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
-                        <AlertTriangle size={14} className="text-amber-500 shrink-0" />
-                        <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                        <div>
+                            <p className="text-sm font-medium text-foreground">{t("configSection.attendanceCheck")}</p>
+                            <p className="text-xs text-muted-foreground">{t("configSection.attendanceCheckDesc")}</p>
+                        </div>
+                        <Toggle enabled={attendanceCheck} onChange={(v) => handleReminderToggle('attendanceCheck', v)} label={attendanceCheck ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                        <div>
+                            <p className="text-sm font-medium text-foreground">{t("configSection.autoComplete")}</p>
+                            <p className="text-xs text-muted-foreground">{t("configSection.autoCompleteDesc")}</p>
+                        </div>
+                        <Toggle enabled={autoComplete} onChange={(v) => handleReminderToggle('autoComplete', v)} label={autoComplete ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")} />
+                    </div>
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20">
+                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                        <p className="text-xs text-emerald-700 dark:text-emerald-300">
                             {t('configSection.reminderNote')}
                         </p>
                     </div>
@@ -573,17 +603,7 @@ export default function ConfigTab({
                 </div>
             </ConfigCard>
 
-            {/* ── 5. No-Show Follow-up ── */}
-            <ConfigCard icon={AlertTriangle} iconColor="bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                title={t("configSection.noShow")} description={t("configSection.noShowDesc")}>
-                <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
-                    <div>
-                        <p className="text-sm font-medium text-foreground">{t("configSection.noShowFollowUp")}</p>
-                        <p className="text-xs text-muted-foreground">{t("configSection.noShowFollowUpDesc")}</p>
-                    </div>
-                    <Toggle enabled={noShowFollowUp} onChange={setNoShowFollowUp} />
-                </div>
-            </ConfigCard>
+            {/* No-show section removed — attendance check template handles this */}
         </div>
     );
 }

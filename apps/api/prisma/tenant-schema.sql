@@ -1279,6 +1279,7 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "customer_name" VARCHAR(255);
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_24h_sent" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_1h_sent" BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_2h_sent" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "source" VARCHAR(50) DEFAULT 'manual';
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "cancellation_reason" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false;

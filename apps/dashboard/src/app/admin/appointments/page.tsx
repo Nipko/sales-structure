@@ -159,6 +159,11 @@ export default function AppointmentsPage() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
 
+  // ---- Reminder settings ----
+  const [reminderSettings, setReminderSettings] = useState<{
+    reminder24h: boolean; reminder2h: boolean; attendanceCheck: boolean; autoComplete: boolean;
+  }>({ reminder24h: true, reminder2h: true, attendanceCheck: true, autoComplete: true });
+
   // ---- Service modal ----
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -376,14 +381,32 @@ export default function AppointmentsPage() {
     return () => { socket?.disconnect(); };
   }, [activeTenantId, loadAppointments, loadExternalEvents]);
 
+  const loadReminderSettings = useCallback(async () => {
+    if (!activeTenantId) return;
+    try {
+      const res = await api.getReminderSettings(activeTenantId);
+      if (res?.success && res.data) setReminderSettings(res.data);
+    } catch { /* ignore */ }
+  }, [activeTenantId]);
+
+  const handleUpdateReminderSettings = useCallback(async (update: Record<string, boolean>) => {
+    if (!activeTenantId) return;
+    setReminderSettings(prev => ({ ...prev, ...update }));
+    try {
+      const res = await api.updateReminderSettings(activeTenantId, update);
+      if (res?.success && res.data) setReminderSettings(res.data);
+    } catch { /* revert on error */ }
+  }, [activeTenantId]);
+
   // Tab-dependent loads
   useEffect(() => {
     if (activeTab === "config") {
       loadAvailability();
       loadBlockedDates();
       loadCalendarIntegrations();
+      loadReminderSettings();
     }
-  }, [activeTab, loadAvailability, loadBlockedDates, loadCalendarIntegrations]);
+  }, [activeTab, loadAvailability, loadBlockedDates, loadCalendarIntegrations, loadReminderSettings]);
 
   useEffect(() => {
     if (activeTab === "services") loadServices();
@@ -979,9 +1002,11 @@ export default function AppointmentsPage() {
             onSaveAvailability={handleSaveAvailability}
             onAddBlockedDate={handleAddBlockedDate}
             onDeleteBlockedDate={handleDeleteBlockedDate}
-            onRefresh={() => { loadCalendarIntegrations(); loadBlockedDates(); loadAvailability(); }}
+            onRefresh={() => { loadCalendarIntegrations(); loadBlockedDates(); loadAvailability(); loadReminderSettings(); }}
             showToast={showToast}
             services={services.map(s => ({ id: s.id, name: s.name }))}
+            reminderSettings={reminderSettings}
+            onUpdateReminderSettings={handleUpdateReminderSettings}
           />
         )}
 

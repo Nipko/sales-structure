@@ -9,11 +9,13 @@ import { AppointmentRemindersService } from './appointment-reminders.service';
 import { AppointmentNotificationsService } from './appointment-notifications.service';
 import { ChannelsModule } from '../channels/channels.module';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
     imports: [
         forwardRef(() => ChannelsModule),
         EmailTemplatesModule,
+        WhatsappModule,
     ],
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [

@@ -48,7 +48,7 @@ export interface MetaTemplatePayload {
     components: MetaTemplateComponent[];
 }
 
-type TemplateKey = 'appointment_reminder' | 'order_confirmation' | 'payment_received';
+type TemplateKey = 'appointment_reminder' | 'attendance_check' | 'order_confirmation' | 'payment_received';
 
 /**
  * Localized content for every seed template. Keeping the data flat makes it
@@ -144,7 +144,77 @@ const CONTENT: Record<TemplateKey, Record<MetaLanguage, {
     },
 
     // ─────────────────────────────────────────────────────────────
-    // 2. ORDER CONFIRMATION — 5 variables, no buttons (keep it clean)
+    // 2. ATTENDANCE CHECK — 4 variables, 2 buttons
+    // ─────────────────────────────────────────────────────────────
+    attendance_check: {
+        es_MX: {
+            header: 'Confirmación de asistencia',
+            body:
+                'Hola {{1}} 👋\n\n' +
+                'Tu cita ya finalizó:\n\n' +
+                '🗓️ Servicio: {{2}}\n' +
+                '📅 Fecha: {{3}}\n' +
+                '⏰ Hora: {{4}}\n\n' +
+                '¿Pudiste asistir?',
+            footer: 'Tu respuesta nos ayuda a mejorar',
+            bodyExample: ['Carlos', 'Corte de cabello', '15 de abril', '3:00 PM'],
+            buttons: [
+                { type: 'QUICK_REPLY', text: '✅ Sí, asistí' },
+                { type: 'QUICK_REPLY', text: '❌ No pude asistir' },
+            ],
+        },
+        en_US: {
+            header: 'Attendance confirmation',
+            body:
+                'Hi {{1}} 👋\n\n' +
+                'Your appointment has ended:\n\n' +
+                '🗓️ Service: {{2}}\n' +
+                '📅 Date: {{3}}\n' +
+                '⏰ Time: {{4}}\n\n' +
+                'Were you able to attend?',
+            footer: 'Your feedback helps us improve',
+            bodyExample: ['Charles', 'Haircut', 'April 15', '3:00 PM'],
+            buttons: [
+                { type: 'QUICK_REPLY', text: '✅ Yes, I attended' },
+                { type: 'QUICK_REPLY', text: '❌ Could not attend' },
+            ],
+        },
+        pt_BR: {
+            header: 'Confirmação de presença',
+            body:
+                'Olá {{1}} 👋\n\n' +
+                'Seu agendamento já terminou:\n\n' +
+                '🗓️ Serviço: {{2}}\n' +
+                '📅 Data: {{3}}\n' +
+                '⏰ Horário: {{4}}\n\n' +
+                'Você conseguiu comparecer?',
+            footer: 'Sua resposta nos ajuda a melhorar',
+            bodyExample: ['Carlos', 'Corte de cabelo', '15 de abril', '15:00'],
+            buttons: [
+                { type: 'QUICK_REPLY', text: '✅ Sim, compareci' },
+                { type: 'QUICK_REPLY', text: '❌ Não pude ir' },
+            ],
+        },
+        fr: {
+            header: 'Confirmation de présence',
+            body:
+                'Bonjour {{1}} 👋\n\n' +
+                'Votre rendez-vous est terminé:\n\n' +
+                '🗓️ Service: {{2}}\n' +
+                '📅 Date: {{3}}\n' +
+                '⏰ Heure: {{4}}\n\n' +
+                'Avez-vous pu y assister?',
+            footer: 'Votre réponse nous aide à nous améliorer',
+            bodyExample: ['Charles', 'Coupe de cheveux', '15 avril', '15h00'],
+            buttons: [
+                { type: 'QUICK_REPLY', text: '✅ Oui, j\'y étais' },
+                { type: 'QUICK_REPLY', text: '❌ Je n\'ai pas pu' },
+            ],
+        },
+    },
+
+    // ─────────────────────────────────────────────────────────────
+    // 3. ORDER CONFIRMATION — 5 variables, no buttons (keep it clean)
     // ─────────────────────────────────────────────────────────────
     order_confirmation: {
         es_MX: {
@@ -262,12 +332,12 @@ const CONTENT: Record<TemplateKey, Record<MetaLanguage, {
 
 /**
  * Build the final Meta Graph API payloads for a given tenant language.
- * Returns the 3 seed templates ready to POST to
+ * Returns the 4 seed templates ready to POST to
  * `/{waba-id}/message_templates`.
  */
 export function buildSeedTemplatePayloads(tenantLanguage?: string): MetaTemplatePayload[] {
     const lang = normalizeMetaLanguage(tenantLanguage);
-    const keys: TemplateKey[] = ['appointment_reminder', 'order_confirmation', 'payment_received'];
+    const keys: TemplateKey[] = ['appointment_reminder', 'attendance_check', 'order_confirmation', 'payment_received'];
 
     return keys.map((key) => {
         const content = CONTENT[key][lang];
@@ -292,9 +362,10 @@ export function buildSeedTemplatePayloads(tenantLanguage?: string): MetaTemplate
     });
 }
 
-/** Names of the 3 seed templates — useful for DB lookups and UI badging. */
+/** Names of the 4 seed templates — useful for DB lookups and UI badging. */
 export const SEED_TEMPLATE_NAMES: TemplateKey[] = [
     'appointment_reminder',
+    'attendance_check',
     'order_confirmation',
     'payment_received',
 ];

@@ -787,6 +787,11 @@ export const api = {
     updatePublicBookingConfig: (tenantId: string, data: { enabled?: boolean; welcomeText?: string; brandColor?: string }) =>
         apiPost(`/appointments/${tenantId}/public-booking-config`, data),
 
+    getReminderSettings: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/reminder-settings`),
+    updateReminderSettings: (tenantId: string, data: Record<string, boolean>) =>
+        apiPost(`/appointments/${tenantId}/reminder-settings`, data),
+
     getFinancialsForecast: (monthsAhead = 6, monthsHistory = 6) =>
         apiGet(`/financials/forecast?monthsAhead=${monthsAhead}&monthsHistory=${monthsHistory}`),
 

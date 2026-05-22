@@ -167,11 +167,60 @@ export class ConversationsService {
         await this.saveMessage(tenantId, conversation.id, normalizedMsg);
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
+        // 4.2 Check if this is a response to an appointment reminder template (Confirm/Reschedule buttons)
+        if (content?.text) {
+            const btnText = content.text.toLowerCase().trim();
+            const isConfirmBtn = /^(✅\s*)?(confirmar asistencia|confirm attendance|confirmar presen[çc]a|confirmer)/i.test(btnText);
+            const isRescheduleBtn = /^(🔄\s*)?(reagendar|reschedule|remarcar|reporter)/i.test(btnText);
+
+            if (isConfirmBtn || isRescheduleBtn) {
+                try {
+                    const upcomingAppt = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                        `SELECT id, service_name FROM appointments
+                         WHERE contact_id = $1::uuid
+                           AND status IN ('pending', 'confirmed')
+                           AND start_at > NOW()
+                         ORDER BY start_at ASC LIMIT 1`,
+                        [contact.id],
+                    );
+                    if (upcomingAppt?.length > 0) {
+                        if (isConfirmBtn) {
+                            await this.prisma.executeInTenantSchema(schemaName,
+                                `UPDATE appointments SET status = 'confirmed', updated_at = NOW() WHERE id = $1::uuid`,
+                                [upcomingAppt[0].id],
+                            );
+                            this.logger.log(`[Reminder] Client confirmed appointment ${upcomingAppt[0].id}`);
+                            const confirmMsg = `¡Perfecto! Tu cita de *${upcomingAppt[0].service_name}* ha sido confirmada. ¡Te esperamos!`;
+                            await this.sendResponse(tenantId, confirmMsg, normalizedMsg);
+                            await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
+                        } else {
+                            this.logger.log(`[Reminder] Client wants to reschedule appointment ${upcomingAppt[0].id}`);
+                            const tenantRows = await this.prisma.$queryRawUnsafe<any[]>(
+                                `SELECT slug FROM tenants WHERE id = $1::uuid LIMIT 1`, tenantId,
+                            );
+                            const slug = tenantRows?.[0]?.slug;
+                            const dashboardUrl = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
+                            const bookingLink = slug ? `${dashboardUrl}/book/${slug}` : '';
+                            const rescheduleMsg = bookingLink
+                                ? `¡Claro! Puedes reagendar tu cita aquí: ${bookingLink}\n\nSi prefieres, dime el día y hora que te convenga y te ayudo.`
+                                : `¡Claro! Dime el día y hora que te convenga y te ayudo a reagendar tu cita.`;
+                            await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg);
+                            await this.saveAiMessage(tenantId, conversation.id, rescheduleMsg, normalizedMsg.channelType);
+                        }
+                        return;
+                    }
+                } catch (e: any) {
+                    this.logger.warn(`Reminder button handler failed (non-fatal): ${e.message}`);
+                }
+            }
+        }
+
         // 4.3 Check if this is a response to an attendance confirmation
         if (content?.text) {
             const textLower = content.text.toLowerCase().trim();
-            const isYes = /^(s[ií]|yes|sim|oui|claro|por supuesto|asist[ií]|fui)\b/i.test(textLower);
-            const isNo = /^(no|n[aã]o|non|no pude|no asist[ií]|no fui)\b/i.test(textLower);
+            const cleanText = textLower.replace(/^[✅❌🔄\s]+/, '');
+            const isYes = /^(s[ií]|yes|sim|oui|claro|por supuesto|asist[ií]|fui|s[ií],?\s*asist[ií]|confirmar asistencia|confirm attendance|confirmar presen[çc]a|confirmer|yes,?\s*i attended|sim,?\s*compareci|oui,?\s*j'y [eé]tais)\b/i.test(cleanText);
+            const isNo = /^(no|n[aã]o|non|no pude|no asist[ií]|no fui|no pude asistir|could not attend|n[aã]o pude ir|je n'ai pas pu)\b/i.test(cleanText);
 
             if (isYes || isNo) {
                 try {

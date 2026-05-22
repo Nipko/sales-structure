@@ -659,6 +659,7 @@ function buildSQL(s) {
     `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "cancellation_reason" TEXT`,
     `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_24h_sent" BOOLEAN DEFAULT false`,
     `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_1h_sent" BOOLEAN DEFAULT false`,
+    `ALTER TABLE "${s}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_2h_sent" BOOLEAN DEFAULT false`,
 
     // -- CSAT surveys: appointment link
     `ALTER TABLE "${s}"."csat_surveys" ADD COLUMN IF NOT EXISTS "appointment_id" UUID`,

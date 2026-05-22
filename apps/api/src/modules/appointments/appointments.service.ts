@@ -48,6 +48,51 @@ export class AppointmentsService {
         private eventEmitter: EventEmitter2,
     ) {}
 
+    // ── Reminder Settings ─────────────────────────────────────
+
+    private readonly REMINDER_DEFAULTS = {
+        reminder24h: true,
+        reminder2h: true,
+        attendanceCheck: true,
+        autoComplete: true,
+    };
+
+    async getReminderSettings(tenantId: string): Promise<{
+        reminder24h: boolean; reminder2h: boolean;
+        attendanceCheck: boolean; autoComplete: boolean;
+    }> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const saved = (tenant?.settings as any)?.appointmentReminders;
+        return { ...this.REMINDER_DEFAULTS, ...saved };
+    }
+
+    async updateReminderSettings(tenantId: string, input: Partial<{
+        reminder24h: boolean; reminder2h: boolean;
+        attendanceCheck: boolean; autoComplete: boolean;
+    }>): Promise<typeof this.REMINDER_DEFAULTS> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const currentSettings = (tenant?.settings as any) || {};
+        const currentReminders = currentSettings.appointmentReminders || {};
+        const merged = { ...this.REMINDER_DEFAULTS, ...currentReminders, ...input };
+
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: {
+                    ...currentSettings,
+                    appointmentReminders: merged,
+                } as any,
+            },
+        });
+        return merged;
+    }
+
     // ── Appointments CRUD ─────────────────────────────────────
 
     async list(schemaName: string, filters?: {

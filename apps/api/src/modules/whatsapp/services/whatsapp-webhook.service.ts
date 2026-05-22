@@ -210,7 +210,10 @@ export class WhatsappWebhookService {
      }
 
      const fromPhone = msg?.from;
-     const messageText = msg?.text?.body || '';
+     const messageText = msg?.text?.body
+         || msg?.button?.text
+         || msg?.interactive?.button_reply?.title
+         || '';
 
      // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
      if (messageText && this.complianceService.detectOptOut(messageText)) {
@@ -229,7 +232,7 @@ export class WhatsappWebhookService {
          contactId: fromPhone,
          channelType: 'whatsapp',
          channelAccountId: phoneNumberId,
-         content: { type: msg.type, text: messageText },
+         content: { type: msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type, text: messageText },
          metadata: {
              contactName: contact?.profile?.name,
              waMessageId,

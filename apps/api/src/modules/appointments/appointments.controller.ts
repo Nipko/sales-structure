@@ -351,6 +351,25 @@ export class AppointmentsController {
         return { success: true, data };
     }
 
+    // ── Reminder Settings ──────────────────────────────────────────
+
+    @Get(':tenantId/reminder-settings')
+    @ApiOperation({ summary: 'Get appointment reminder settings' })
+    async getReminderSettings(@Param('tenantId') tenantId: string) {
+        const data = await this.service.getReminderSettings(tenantId);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/reminder-settings')
+    @ApiOperation({ summary: 'Update appointment reminder settings' })
+    async updateReminderSettings(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { reminder24h?: boolean; reminder2h?: boolean; attendanceCheck?: boolean; autoComplete?: boolean },
+    ) {
+        const data = await this.service.updateReminderSettings(tenantId, body);
+        return { success: true, data };
+    }
+
     // ── Dynamic routes AFTER static ones ─────────────────────────
 
     @Get(':tenantId')

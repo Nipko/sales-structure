@@ -31,9 +31,9 @@ export class PromptAssemblerService {
     /**
      * Assemble the full system prompt for a given turn.
      */
-    assemble(config: TenantConfig, turn: TurnContext): string {
+    assemble(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): string {
         const layer1 = this.buildContractLayer();
-        const layer2 = this.personaService.buildSystemPrompt(config);
+        const layer2 = this.personaService.buildSystemPrompt(config, tenantBusinessHours);
         const layer3 = this.buildTurnLayer(turn);
         return `${layer1}\n\n${layer2}\n\n${layer3}`;
     }

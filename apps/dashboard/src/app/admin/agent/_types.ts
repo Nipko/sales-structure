@@ -16,6 +16,8 @@ export interface PersonaConfig {
     timezone: string;
     schedule: Record<string, { start: string; end: string } | null>;
     afterHoursMessage: string;
+    aiOutsideHours?: boolean;
+    afterHoursMessageOverride?: string;
   };
   llm: {
     temperature: number;

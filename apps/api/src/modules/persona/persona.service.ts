@@ -121,7 +121,7 @@ export class PersonaService {
      * body but is still wrapped in <persona> tags so Layer 1 + Layer 3 can
      * still be applied by the assembler.
      */
-    buildSystemPrompt(config: TenantConfig): string {
+    buildSystemPrompt(config: TenantConfig, tenantBusinessHours?: any): string {
         const editorMode = (config.editorMode ?? (config as any)._mode) as 'guided' | 'prompt' | undefined;
         const customPrompt = config.customPrompt ?? (config as any)._customPrompt;
 
@@ -129,14 +129,14 @@ export class PersonaService {
             return `<persona>\n${customPrompt.trim()}\n</persona>`;
         }
 
-        return this.buildGuidedPersonaBlock(config);
+        return this.buildGuidedPersonaBlock(config, tenantBusinessHours);
     }
 
     /**
      * Build the guided persona block from the structured config.
      * All fields come from the user's agent config — no hardcoded rules.
      */
-    private buildGuidedPersonaBlock(config: TenantConfig): string {
+    private buildGuidedPersonaBlock(config: TenantConfig, tenantBusinessHours?: any): string {
         const persona = config.persona;
         const behavior = config.behavior;
         const hours = config.hours;
@@ -204,8 +204,32 @@ export class PersonaService {
             lines.push('  </required_information>');
         }
 
-        // Business hours schedule (static config — the COMPUTED open/closed goes in Layer 3)
-        if (hours?.schedule && Object.keys(hours.schedule).length > 0) {
+        // Business hours: prefer tenant-level settings, fall back to agent schedule
+        if (tenantBusinessHours) {
+            lines.push('  <business_hours>');
+            if (tenantBusinessHours.is247) {
+                lines.push('    <mode>24/7</mode>');
+            } else {
+                if (tenantBusinessHours.timezone) lines.push(`    <timezone>${tenantBusinessHours.timezone}</timezone>`);
+                const schedule = tenantBusinessHours.schedule || {};
+                for (const [day, value] of Object.entries(schedule)) {
+                    if (!value || typeof value !== 'object') continue;
+                    const v = value as any;
+                    if (v.enabled === false) {
+                        lines.push(`    <day name="${day}">closed</day>`);
+                    } else {
+                        lines.push(`    <day name="${day}" start="${v.open ?? v.start ?? ''}" end="${v.close ?? v.end ?? ''}" />`);
+                    }
+                }
+            }
+            const afterMsg = hours?.afterHoursMessageOverride || tenantBusinessHours.afterHoursMessage || hours?.afterHoursMessage;
+            if (afterMsg) {
+                lines.push(`    <after_hours_message>${afterMsg}</after_hours_message>`);
+            }
+            const aiOutside = hours?.aiOutsideHours ?? true;
+            lines.push(`    <ai_outside_hours>${aiOutside}</ai_outside_hours>`);
+            lines.push('  </business_hours>');
+        } else if (hours?.schedule && Object.keys(hours.schedule).length > 0) {
             lines.push('  <business_hours>');
             if (hours.timezone) lines.push(`    <timezone>${hours.timezone}</timezone>`);
             for (const [day, value] of Object.entries(hours.schedule)) {

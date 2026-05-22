@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Clock, Save, CheckCircle, AlertCircle } from "lucide-react";
+import { Clock, Save, CheckCircle, AlertCircle, Globe } from "lucide-react";
 
 interface DaySchedule {
     enabled: boolean;
@@ -14,7 +14,30 @@ interface DaySchedule {
     close: string;
 }
 
+interface BusinessHoursConfig {
+    is247: boolean;
+    timezone: string;
+    schedule: Record<string, DaySchedule>;
+    afterHoursMessage: string;
+}
+
 const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+const TIMEZONES = [
+    "America/Bogota",
+    "America/Mexico_City",
+    "America/Lima",
+    "America/Santiago",
+    "America/Buenos_Aires",
+    "America/Sao_Paulo",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "Europe/Madrid",
+    "Europe/London",
+    "UTC",
+];
 
 const defaultSchedule: Record<string, DaySchedule> = {
     monday: { enabled: true, open: "08:00", close: "18:00" },
@@ -26,16 +49,19 @@ const defaultSchedule: Record<string, DaySchedule> = {
     sunday: { enabled: false, open: "09:00", close: "13:00" },
 };
 
+const defaultConfig: BusinessHoursConfig = {
+    is247: false,
+    timezone: "America/Bogota",
+    schedule: defaultSchedule,
+    afterHoursMessage: "",
+};
+
 export default function BusinessHoursPage() {
     const tc = useTranslations("common");
     const t = useTranslations("settings.businessHoursPage");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
-    const [schedule, setSchedule] = useState<Record<string, DaySchedule>>(defaultSchedule);
-    const [outOfHoursMessage, setOutOfHoursMessage] = useState(
-        ""
-    );
-    const [outOfHoursEnabled, setOutOfHoursEnabled] = useState(true);
+    const [config, setConfig] = useState<BusinessHoursConfig>(defaultConfig);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
@@ -47,18 +73,32 @@ export default function BusinessHoursPage() {
             const result = await api.getTenant(tenantId);
             if (result.success && result.data) {
                 const s = (result.data as any).settings || {};
-                if (s.businessHours) setSchedule(s.businessHours);
-                if (s.outOfHoursMessage !== undefined) setOutOfHoursMessage(s.outOfHoursMessage);
-                if (s.outOfHoursEnabled !== undefined) setOutOfHoursEnabled(s.outOfHoursEnabled);
+                if (s.businessHours) {
+                    const bh = s.businessHours;
+                    setConfig({
+                        is247: bh.is247 ?? false,
+                        timezone: bh.timezone || "America/Bogota",
+                        schedule: bh.schedule || defaultSchedule,
+                        afterHoursMessage: bh.afterHoursMessage ?? s.outOfHoursMessage ?? "",
+                    });
+                } else if (s.outOfHoursMessage !== undefined) {
+                    setConfig(prev => ({
+                        ...prev,
+                        afterHoursMessage: s.outOfHoursMessage,
+                    }));
+                }
             }
         }
         load();
     }, [activeTenantId, user?.tenantId]);
 
     const updateDay = (day: string, field: keyof DaySchedule, value: any) => {
-        setSchedule(prev => ({
+        setConfig(prev => ({
             ...prev,
-            [day]: { ...prev[day], [field]: value },
+            schedule: {
+                ...prev.schedule,
+                [day]: { ...prev.schedule[day], [field]: value },
+            },
         }));
     };
 
@@ -70,9 +110,7 @@ export default function BusinessHoursPage() {
             if (!tenantId) return;
             const result = await api.updateTenant(tenantId, {
                 settings: {
-                    businessHours: schedule,
-                    outOfHoursEnabled,
-                    outOfHoursMessage,
+                    businessHours: config,
                 },
             });
             if (result.success) {
@@ -87,7 +125,7 @@ export default function BusinessHoursPage() {
         setSaving(false);
     };
 
-    const timeClasses = "h-9 w-24 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm text-center text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 transition-colors";
+    const timeClasses = "h-9 w-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm text-center text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 transition-colors";
 
     return (
         <div className="max-w-2xl space-y-6">
@@ -104,106 +142,135 @@ export default function BusinessHoursPage() {
                 </div>
             )}
 
-            {/* Schedule */}
+            {/* 24/7 Toggle */}
             <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                    {t("scheduleTitle")}
-                </h2>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
-                    {t("scheduleDesc")}
-                </p>
-
-                <div className="space-y-3">
-                    {DAY_KEYS.map((key) => {
-                        const day = schedule[key];
-                        return (
-                            <div
-                                key={key}
-                                className={cn(
-                                    "flex items-center gap-4 rounded-lg border p-3 transition-colors",
-                                    day.enabled
-                                        ? "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
-                                        : "border-neutral-100 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 opacity-60"
-                                )}
-                            >
-                                {/* Toggle */}
-                                <button
-                                    onClick={() => updateDay(key, "enabled", !day.enabled)}
-                                    className={cn(
-                                        "relative h-5 w-10 shrink-0 cursor-pointer rounded-full border-none transition-colors",
-                                        day.enabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
-                                    )}
-                                >
-                                    <div className={cn(
-                                        "absolute top-[2px] h-4 w-4 rounded-full bg-white transition-[left] duration-200",
-                                        day.enabled ? "left-[22px]" : "left-[2px]"
-                                    )} />
-                                </button>
-
-                                {/* Day name */}
-                                <span className="w-24 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                                    {t(`days.${key}`)}
-                                </span>
-
-                                {/* Time inputs */}
-                                {day.enabled ? (
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="time"
-                                            value={day.open}
-                                            onChange={(e) => updateDay(key, "open", e.target.value)}
-                                            className={timeClasses}
-                                        />
-                                        <span className="text-xs text-neutral-400">{t("timeSeparator")}</span>
-                                        <input
-                                            type="time"
-                                            value={day.close}
-                                            onChange={(e) => updateDay(key, "close", e.target.value)}
-                                            className={timeClasses}
-                                        />
-                                    </div>
-                                ) : (
-                                    <span className="text-xs text-neutral-400">{t("closed")}</span>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Out of hours */}
-            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between">
                     <div>
                         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-                            {t("outOfHoursTitle")}
+                            {t("is247")}
                         </h2>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            {t("outOfHoursDesc")}
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                            {t("is247Desc")}
                         </p>
                     </div>
                     <button
-                        onClick={() => setOutOfHoursEnabled(!outOfHoursEnabled)}
+                        onClick={() => setConfig(prev => ({ ...prev, is247: !prev.is247 }))}
                         className={cn(
-                            "relative h-6 w-12 shrink-0 cursor-pointer rounded-full border-none transition-colors",
-                            outOfHoursEnabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
+                            "relative h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                            config.is247 ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-700"
                         )}
                     >
-                        <div className={cn(
-                            "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[left] duration-200",
-                            outOfHoursEnabled ? "left-[27px]" : "left-[3px]"
+                        <span className={cn(
+                            "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                            config.is247 ? "translate-x-5" : "translate-x-0.5"
                         )} />
                     </button>
                 </div>
+            </div>
 
-                {outOfHoursEnabled && (
-                    <textarea
-                        value={outOfHoursMessage}
-                        onChange={(e) => setOutOfHoursMessage(e.target.value)}
-                        rows={3}
-                        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none transition-colors"
-                    />
-                )}
+            {/* Timezone */}
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="flex items-center gap-2 mb-1">
+                    <Globe size={16} className="text-neutral-400" />
+                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                        {t("timezone")}
+                    </h2>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+                    {t("timezoneDesc")}
+                </p>
+                <select
+                    value={config.timezone}
+                    onChange={(e) => setConfig(prev => ({ ...prev, timezone: e.target.value }))}
+                    className="h-9 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 transition-colors"
+                >
+                    {TIMEZONES.map(tz => (
+                        <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Schedule (hidden when 24/7) */}
+            {!config.is247 && (
+                <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                        {t("scheduleTitle")}
+                    </h2>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
+                        {t("scheduleDesc")}
+                    </p>
+
+                    <div className="space-y-3">
+                        {DAY_KEYS.map((key) => {
+                            const day = config.schedule[key];
+                            return (
+                                <div
+                                    key={key}
+                                    className={cn(
+                                        "flex items-center gap-4 rounded-lg border p-3 transition-colors",
+                                        day.enabled
+                                            ? "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
+                                            : "border-neutral-100 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 opacity-60"
+                                    )}
+                                >
+                                    <button
+                                        onClick={() => updateDay(key, "enabled", !day.enabled)}
+                                        className={cn(
+                                            "relative h-5 w-10 shrink-0 cursor-pointer rounded-full border-none transition-colors",
+                                            day.enabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "absolute top-[2px] h-4 w-4 rounded-full bg-white transition-[left] duration-200",
+                                            day.enabled ? "left-[22px]" : "left-[2px]"
+                                        )} />
+                                    </button>
+
+                                    <span className="w-24 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                        {t(`days.${key}`)}
+                                    </span>
+
+                                    {day.enabled ? (
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="time"
+                                                value={day.open}
+                                                onChange={(e) => updateDay(key, "open", e.target.value)}
+                                                className={timeClasses}
+                                            />
+                                            <span className="text-xs text-neutral-400">{t("timeSeparator")}</span>
+                                            <input
+                                                type="time"
+                                                value={day.close}
+                                                onChange={(e) => updateDay(key, "close", e.target.value)}
+                                                className={timeClasses}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-neutral-400">{t("closed")}</span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* After-hours message */}
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                    {t("outOfHoursTitle")}
+                </h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+                    {t("outOfHoursDesc")}
+                </p>
+                <textarea
+                    value={config.afterHoursMessage}
+                    onChange={(e) => setConfig(prev => ({ ...prev, afterHoursMessage: e.target.value }))}
+                    placeholder={t("outOfHoursPlaceholder")}
+                    rows={3}
+                    className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none transition-colors"
+                />
             </div>
 
             <div className="flex justify-end">

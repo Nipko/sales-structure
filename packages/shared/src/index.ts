@@ -177,6 +177,8 @@ export interface BusinessHoursConfig {
     timezone: string;
     schedule: Record<string, string>;
     afterHoursMessage: string;
+    aiOutsideHours?: boolean;
+    afterHoursMessageOverride?: string;
 }
 
 export interface ToolsConfig {

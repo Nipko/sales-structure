@@ -321,17 +321,9 @@ export default function AgentEditorPage() {
     ? te("toolsActiveSummary", { count: toolCount })
     : te("noToolsEnabled");
 
-  const is247 = Object.values(config.hours.schedule).every(
-    v => v !== null && (v as { start: string; end: string }).start === "00:00" && (v as { start: string; end: string }).end === "23:59"
-  );
-  const scheduleSummary = is247
+  const scheduleSummary = config.hours.aiOutsideHours !== false
     ? te("always247")
-    : (() => {
-        const activeDays = Object.entries(config.hours.schedule)
-          .filter(([, v]) => v !== null)
-          .length;
-        return te("daysActive", { count: activeDays, timezone: config.hours.timezone });
-      })();
+    : te("aiOffSummary");
 
   // ── Loading state ──────────────────────────────────────────
 

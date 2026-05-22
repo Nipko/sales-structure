@@ -145,9 +145,14 @@ export class ConversationsService {
             return;
         }
 
-        if (!this.isWithinBusinessHours(config)) {
-            this.logger.log(`[Pipeline] Outside business hours — sending after-hours message`);
-            await this.sendAfterHoursMessage(tenantId, normalizedMsg, config);
+        const bizHours = await this.loadTenantBusinessHours(tenantId);
+        const isOpen = this.isWithinBusinessHours(config, bizHours);
+        const aiOutsideHours = config.hours?.aiOutsideHours ?? true;
+
+        if (!isOpen && !aiOutsideHours) {
+            this.logger.log(`[Pipeline] Outside business hours & AI off — sending after-hours message`);
+            const afterHoursMsg = config.hours?.afterHoursMessageOverride || bizHours?.afterHoursMessage || config.hours?.afterHoursMessage;
+            await this.sendAfterHoursMessage(tenantId, normalizedMsg, config, afterHoursMsg);
             return;
         }
 
@@ -284,7 +289,7 @@ export class ConversationsService {
         this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
-        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt);
+        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
         // Track AI response event + increment monthly quota counter
@@ -469,14 +474,46 @@ export class ConversationsService {
         return { contact, lead, conversation };
     }
 
-    private isWithinBusinessHours(config: TenantConfig): boolean {
+    private async loadTenantBusinessHours(tenantId: string): Promise<any | null> {
+        const cacheKey = `biz_hours:${tenantId}`;
+        const cached = await this.redis.getJson(cacheKey);
+        if (cached) return cached;
+
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings as any) || {};
+            const bh = settings.businessHours || null;
+            if (bh) {
+                await this.redis.setJson(cacheKey, bh, 300);
+            }
+            return bh;
+        } catch (e) {
+            this.logger.warn(`Failed to load tenant business hours: ${(e as Error).message}`);
+            return null;
+        }
+    }
+
+    private isWithinBusinessHours(config: TenantConfig, bizHours?: any): boolean {
+        // Priority: tenant-level business hours > agent-level schedule (backward compat)
+        if (bizHours) {
+            if (bizHours.is247) return true;
+
+            const schedule = bizHours.schedule;
+            if (!schedule || Object.keys(schedule).length === 0) return true;
+
+            const timezone = bizHours.timezone || config.hours?.timezone || 'America/Bogota';
+            return this.checkScheduleTime(schedule, timezone, 'english');
+        }
+
+        // Fallback: agent-level schedule (legacy)
         if (!config.hours || !config.hours.schedule) return true;
 
         const schedule: Record<string, any> = config.hours.schedule as any;
-        // If schedule is empty, agent is always available
         if (Object.keys(schedule).length === 0) return true;
 
-        // Detect 24/7 pattern: all 7 days with 00:00-23:59
         const values = Object.values(schedule);
         if (values.length >= 7) {
             const all247 = values.every(v =>
@@ -485,51 +522,72 @@ export class ConversationsService {
             if (all247) return true;
         }
 
-        const now = new Date();
         const timezone = config.hours.timezone || 'America/Bogota';
+        return this.checkScheduleTime(schedule, timezone, 'spanish');
+    }
 
+    private checkScheduleTime(schedule: Record<string, any>, timezone: string, keyFormat: 'english' | 'spanish'): boolean {
+        const now = new Date();
         const localTime = new Intl.DateTimeFormat('en-US', {
             timeZone: timezone,
-            weekday: 'short',
+            weekday: 'long',
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
         }).formatToParts(now);
 
-        const dayPartEn = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase() || '';
+        const dayFull = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase() || '';
         const hourPart = localTime.find(p => p.type === 'hour')?.value || '0';
         const minutePart = localTime.find(p => p.type === 'minute')?.value || '0';
         const currentMinutes = parseInt(hourPart) * 60 + parseInt(minutePart);
 
-        // Map English day abbreviations to Spanish keys used in config
-        const dayMap: Record<string, string> = {
-            sun: 'dom', mon: 'lun', tue: 'mar', wed: 'mie', thu: 'jue', fri: 'vie', sat: 'sab',
-        };
-        const dayKey = dayMap[dayPartEn] || dayPartEn;
+        let todaySchedule: any;
 
-        // Try both Spanish key and English key (backward compat)
-        const todaySchedule = schedule[dayKey] || schedule[dayPartEn];
+        if (keyFormat === 'english') {
+            // Tenant business hours use English day keys (monday, tuesday, etc.)
+            todaySchedule = schedule[dayFull];
+            // New format: { enabled, open, close }
+            if (todaySchedule && typeof todaySchedule === 'object' && 'enabled' in todaySchedule) {
+                if (!todaySchedule.enabled) return false;
+                const openKey = todaySchedule.open || todaySchedule.start;
+                const closeKey = todaySchedule.close || todaySchedule.end;
+                if (!openKey || !closeKey) return false;
+                const [startH, startM] = openKey.split(':').map(Number);
+                const [endH, endM] = closeKey.split(':').map(Number);
+                return currentMinutes >= (startH * 60 + startM) && currentMinutes <= (endH * 60 + endM);
+            }
+        }
 
-        this.logger.debug(`[BusinessHours] day=${dayPartEn} key=${dayKey} time=${hourPart}:${minutePart} schedule=${JSON.stringify(todaySchedule)} keys=${Object.keys(schedule).join(',')}`);
+        if (keyFormat === 'spanish') {
+            // Agent schedule uses Spanish keys (lun, mar, etc.)
+            const dayMapToSpanish: Record<string, string> = {
+                sunday: 'dom', monday: 'lun', tuesday: 'mar', wednesday: 'mie',
+                thursday: 'jue', friday: 'vie', saturday: 'sab',
+            };
+            const dayKey = dayMapToSpanish[dayFull] || dayFull;
+            todaySchedule = schedule[dayKey] || schedule[dayFull];
+        }
 
-        // No schedule for today or explicitly closed (null or string like "cerrado")
+        this.logger.debug(`[BusinessHours] day=${dayFull} time=${hourPart}:${minutePart} schedule=${JSON.stringify(todaySchedule)} format=${keyFormat}`);
+
         if (!todaySchedule || typeof todaySchedule === 'string') return false;
 
-        const [startH, startM] = todaySchedule.start.split(':').map(Number);
-        const [endH, endM] = todaySchedule.end.split(':').map(Number);
-        const startMinutes = startH * 60 + startM;
-        const endMinutes = endH * 60 + endM;
+        const startKey = todaySchedule.start || todaySchedule.open;
+        const endKey = todaySchedule.end || todaySchedule.close;
+        if (!startKey || !endKey) return false;
 
-        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+        const [startH, startM] = startKey.split(':').map(Number);
+        const [endH, endM] = endKey.split(':').map(Number);
+        return currentMinutes >= (startH * 60 + startM) && currentMinutes <= (endH * 60 + endM);
     }
 
-    private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig) {
-        if (!config.hours?.afterHoursMessage) return;
+    private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig, afterHoursText?: string) {
+        const rawText = afterHoursText || config.hours?.afterHoursMessage;
+        if (!rawText) return;
 
         this.logger.log(`Sending after hours message to ${msg.contactId}`);
 
-        // Translate afterHoursMessage to tenant language via EXPRESS
-        let text = config.hours.afterHoursMessage;
+        let text = rawText;
         try {
             const lang = config.language || 'es-CO';
             const personaName = config.persona?.name || 'Assistant';
@@ -663,7 +721,7 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
-    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any): Promise<string> {
+    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any, bizHours?: any): Promise<string> {
         let userText = msg.content.text || '';
 
         // ── Media processing: transcribe audio / describe images ──
@@ -741,9 +799,9 @@ export class ConversationsService {
         const configuredLanguage = config.language || 'es-CO';
         const detectedLanguage = this.languageDetector.detect(userText, configuredLanguage);
         const userLanguage = detectedLanguage;
-        const tz = config.hours?.timezone || 'America/Bogota';
+        const tz = bizHours?.timezone || config.hours?.timezone || 'America/Bogota';
         const now = new Date();
-        const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config) ? 'open' : 'closed';
+        const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config, bizHours) ? 'open' : 'closed';
 
         const turnContext: TurnContext = {
             language: userLanguage,
@@ -1033,7 +1091,7 @@ export class ConversationsService {
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
         turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message already saved
 
-        const systemPrompt = this.promptAssembler.assemble(config, turnContext);
+        const systemPrompt = this.promptAssembler.assemble(config, turnContext, bizHours);
 
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {

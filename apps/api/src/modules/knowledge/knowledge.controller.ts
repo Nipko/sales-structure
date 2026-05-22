@@ -63,9 +63,9 @@ export class KnowledgeController {
     @Get('documents')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'List all knowledge documents for the tenant' })
-    async listDocuments(@Req() req: any, @Query('category') category?: string) {
+    async listDocuments(@Req() req: any, @Query('category') category?: string, @Query('language') language?: string) {
         const tenantId = req.user?.tenantId;
-        return this.knowledgeService.listDocuments(tenantId, category);
+        return this.knowledgeService.listDocuments(tenantId, category, language);
     }
 
     @Get('documents/categories')
@@ -141,6 +141,50 @@ export class KnowledgeController {
             return { success: false, error: 'plan_upgrade_required' };
         }
         const data = await this.knowledgeService.generateArticleSuggestions(tenantId, payload?.maxSuggestions || 5);
+        return { success: true, data };
+    }
+
+    @Get('documents/:id/versions')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Get version history for a document' })
+    async getVersions(@Req() req: any, @Param('id') id: string) {
+        const tenantId = req.user?.tenantId;
+        const data = await this.knowledgeService.getDocumentVersions(tenantId, id);
+        return { success: true, data };
+    }
+
+    @Post('documents/:id/restore')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Restore a document to a previous version' })
+    async restoreVersion(
+        @Req() req: any,
+        @Param('id') id: string,
+        @Body() payload: { versionId: string },
+    ) {
+        const tenantId = req.user?.tenantId;
+        const userId = req.user?.id || req.user?.userId;
+        const data = await this.knowledgeService.restoreDocumentVersion(tenantId, id, payload.versionId, userId);
+        return { success: true, data };
+    }
+
+    @Post('search/advanced')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @ApiOperation({ summary: 'Advanced filtered search across the knowledge base' })
+    async advancedSearch(
+        @Req() req: any,
+        @Body() payload: {
+            query: string;
+            category?: string;
+            sourceType?: string;
+            language?: string;
+            dateFrom?: string;
+            dateTo?: string;
+            topK?: number;
+        },
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!payload.query) return { success: true, data: [] };
+        const data = await this.knowledgeService.searchFiltered(tenantId, payload.query, payload);
         return { success: true, data };
     }
 

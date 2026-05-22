@@ -15,7 +15,8 @@ import {
     BookOpen, Search, Plus, X, FileText, Globe, HelpCircle,
     RefreshCw, Edit3, Trash2, BarChart3, ExternalLink, CheckCircle2,
     AlertCircle, TrendingUp, Target, Zap, Eye, Tag, GlobeLock, PlusCircle,
-    Upload, Sparkles, Award, Loader2,
+    Upload, Sparkles, Award, Loader2, History, Filter, Languages, RotateCcw,
+    Calendar, ChevronDown,
 } from "lucide-react";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -35,6 +36,8 @@ interface KBDocument {
     category?: string;
     is_public?: boolean;
     auto_recrawl?: boolean;
+    language?: string;
+    version?: number;
     created_at: string;
     updated_at?: string;
 }
@@ -117,6 +120,19 @@ export default function KnowledgePage() {
     // AI Suggestions
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
+    // Language filter
+    const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
+
+    // Version history
+    const [versionDoc, setVersionDoc] = useState<KBDocument | null>(null);
+    const [versions, setVersions] = useState<any[]>([]);
+    const [versionsLoading, setVersionsLoading] = useState(false);
+
+    // Advanced search
+    const [showAdvFilters, setShowAdvFilters] = useState(false);
+    const [advFilters, setAdvFilters] = useState({ category: "", sourceType: "", language: "", dateFrom: "", dateTo: "" });
+    const [advResults, setAdvResults] = useState<any[]>([]);
 
     // Toast
     const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -403,6 +419,66 @@ export default function KnowledgePage() {
         }
     };
 
+    // Load version history
+    const handleViewVersions = async (doc: KBDocument) => {
+        setVersionDoc(doc);
+        setVersionsLoading(true);
+        try {
+            const res = await api.fetch(`/knowledge/documents/${doc.id}/versions`);
+            if (res?.success && res.data) setVersions(res.data);
+            else setVersions([]);
+        } catch {
+            setVersions([]);
+        } finally {
+            setVersionsLoading(false);
+        }
+    };
+
+    // Restore version
+    const handleRestoreVersion = async (versionId: string) => {
+        if (!versionDoc) return;
+        try {
+            const res = await api.fetch(`/knowledge/documents/${versionDoc.id}/restore`, {
+                method: "POST",
+                body: JSON.stringify({ versionId }),
+            });
+            if (res?.success) {
+                showToast(t("versions.restored"));
+                setVersionDoc(null);
+                const docs = await api.fetch("/knowledge/documents").catch(() => []);
+                if (Array.isArray(docs)) setDocuments(docs);
+            } else {
+                showToast(res?.error || "Error", "error");
+            }
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        }
+    };
+
+    // Advanced search
+    const handleAdvancedSearch = async () => {
+        if (!searchQuery) return setAdvResults([]);
+        try {
+            const data = await api.fetch("/knowledge/search/advanced", {
+                method: "POST",
+                body: JSON.stringify({
+                    query: searchQuery, topK: 15,
+                    category: advFilters.category || undefined,
+                    sourceType: advFilters.sourceType || undefined,
+                    language: advFilters.language || undefined,
+                    dateFrom: advFilters.dateFrom || undefined,
+                    dateTo: advFilters.dateTo || undefined,
+                }),
+            });
+            if (data?.success && data.data) setAdvResults(data.data);
+            else setAdvResults([]);
+        } catch {
+            setAdvResults([]);
+        }
+    };
+
+    const langLabels: Record<string, string> = { es: "Español", en: "English", pt: "Português", fr: "Français", auto: t("language.auto") };
+
     const totalDocs = documents.length + resources.length;
 
     return (
@@ -492,8 +568,34 @@ export default function KnowledgePage() {
                         </div>
                     )}
 
+                    {/* Language filter */}
+                    {(() => {
+                        const docLangs = [...new Set(documents.map(d => d.language).filter(Boolean))] as string[];
+                        return docLangs.length > 1 ? (
+                            <div className="flex gap-1.5 flex-wrap mb-1">
+                                <button
+                                    onClick={() => setActiveLanguage(null)}
+                                    className={cn("px-3 py-1 rounded-lg text-xs font-semibold border cursor-pointer transition-all",
+                                        !activeLanguage ? "bg-primary text-primary-foreground border-primary" : "bg-transparent text-muted-foreground border-border hover:text-foreground")}
+                                >
+                                    <Languages size={11} className="inline mr-1" />{tc("all")}
+                                </button>
+                                {docLangs.map(lang => (
+                                    <button
+                                        key={lang}
+                                        onClick={() => setActiveLanguage(activeLanguage === lang ? null : lang)}
+                                        className={cn("px-3 py-1 rounded-lg text-xs font-semibold border cursor-pointer transition-all",
+                                            activeLanguage === lang ? "bg-primary text-primary-foreground border-primary" : "bg-transparent text-muted-foreground border-border hover:text-foreground")}
+                                    >
+                                        {langLabels[lang] || lang}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null;
+                    })()}
+
                     {/* RAG Documents (new system) */}
-                    {documents.filter(d => !activeCategory || d.category === activeCategory).map(doc => (
+                    {documents.filter(d => (!activeCategory || d.category === activeCategory) && (!activeLanguage || d.language === activeLanguage)).map(doc => (
                         <div key={doc.id} className="flex items-center justify-between px-5 py-4 rounded-[14px] border border-border bg-card">
                             <div className="flex items-center gap-3.5">
                                 <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-background">
@@ -518,6 +620,16 @@ export default function KnowledgePage() {
                                         {doc.chunk_count != null && (
                                             <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">
                                                 {doc.chunk_count} chunks
+                                            </span>
+                                        )}
+                                        {doc.language && doc.language !== "auto" && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-400 font-semibold uppercase">
+                                                {doc.language}
+                                            </span>
+                                        )}
+                                        {(doc.version ?? 1) > 1 && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">
+                                                v{doc.version}
                                             </span>
                                         )}
                                     </div>
@@ -551,6 +663,9 @@ export default function KnowledgePage() {
                                         {recrawlingId === doc.id ? t("crawl.recrawling") : t("crawl.recrawl")}
                                     </button>
                                 )}
+                                <button onClick={() => handleViewVersions(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer" title={t("versions.title")}>
+                                    <History size={13} />
+                                </button>
                                 <button onClick={() => handleEdit(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer">
                                     <Edit3 size={13} />
                                 </button>
@@ -599,30 +714,105 @@ export default function KnowledgePage() {
             {/* Search Tab */}
             {tab === "search" && (
                 <div>
-                    <div className="flex gap-2.5 mb-5">
+                    <div className="flex gap-2.5 mb-3">
                         <div className="flex-1 relative">
                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <input
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                onKeyDown={e => e.key === "Enter" && handleSearch()}
+                                onKeyDown={e => e.key === "Enter" && (showAdvFilters ? handleAdvancedSearch() : handleSearch())}
                                 placeholder={t("searchPlaceholder")}
                                 className="w-full py-3.5 pl-11 pr-4 rounded-xl border border-border bg-card text-foreground text-[15px] outline-none box-border"
                             />
                         </div>
-                        <button onClick={handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">{t("searchButton")}</button>
+                        <button
+                            onClick={() => setShowAdvFilters(!showAdvFilters)}
+                            className={cn("px-4 rounded-xl border font-semibold text-sm cursor-pointer flex items-center gap-1.5",
+                                showAdvFilters ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground")}
+                        >
+                            <Filter size={15} /> {t("advSearch.filters")}
+                            <ChevronDown size={13} className={cn("transition-transform", showAdvFilters && "rotate-180")} />
+                        </button>
+                        <button onClick={showAdvFilters ? handleAdvancedSearch : handleSearch} className="px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer">{t("searchButton")}</button>
                     </div>
-                    <div className="flex flex-col gap-2.5">
-                        {searchResults.map((s, i) => (
-                            <div key={s.id || i} className="p-4 rounded-xl border border-border bg-card">
-                                <div className="flex items-center gap-1.5 mb-2">
-                                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">{s.document_name || s.resource_title}</span>
-                                    {s.score != null && <span className="text-[11px] text-muted-foreground">score: {(s.score * 100).toFixed(0)}%</span>}
+
+                    {/* Advanced Filters Panel */}
+                    {showAdvFilters && (
+                        <div className="mb-5 p-4 rounded-xl border border-border bg-card">
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">{tc("category")}</label>
+                                    <select
+                                        value={advFilters.category}
+                                        onChange={e => setAdvFilters({ ...advFilters, category: e.target.value })}
+                                        className="w-full px-2.5 py-2 rounded-lg border border-border bg-background text-foreground text-xs outline-none"
+                                    >
+                                        <option value="">{tc("all")}</option>
+                                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
                                 </div>
-                                <p className="text-sm text-foreground m-0 leading-relaxed">&ldquo;{s.content}&rdquo;</p>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">{t("advSearch.sourceType")}</label>
+                                    <select
+                                        value={advFilters.sourceType}
+                                        onChange={e => setAdvFilters({ ...advFilters, sourceType: e.target.value })}
+                                        className="w-full px-2.5 py-2 rounded-lg border border-border bg-background text-foreground text-xs outline-none"
+                                    >
+                                        <option value="">{tc("all")}</option>
+                                        <option value="upload">{t("sourceType.upload")}</option>
+                                        <option value="url">{t("sourceType.url")}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">{t("advSearch.language")}</label>
+                                    <select
+                                        value={advFilters.language}
+                                        onChange={e => setAdvFilters({ ...advFilters, language: e.target.value })}
+                                        className="w-full px-2.5 py-2 rounded-lg border border-border bg-background text-foreground text-xs outline-none"
+                                    >
+                                        <option value="">{tc("all")}</option>
+                                        <option value="es">Español</option>
+                                        <option value="en">English</option>
+                                        <option value="pt">Português</option>
+                                        <option value="fr">Français</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">{t("advSearch.dateFrom")}</label>
+                                    <input
+                                        type="date"
+                                        value={advFilters.dateFrom}
+                                        onChange={e => setAdvFilters({ ...advFilters, dateFrom: e.target.value })}
+                                        className="w-full px-2.5 py-2 rounded-lg border border-border bg-background text-foreground text-xs outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">{t("advSearch.dateTo")}</label>
+                                    <input
+                                        type="date"
+                                        value={advFilters.dateTo}
+                                        onChange={e => setAdvFilters({ ...advFilters, dateTo: e.target.value })}
+                                        className="w-full px-2.5 py-2 rounded-lg border border-border bg-background text-foreground text-xs outline-none"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex flex-col gap-2.5">
+                        {(showAdvFilters ? advResults : searchResults).map((s, i) => (
+                            <div key={s.id || i} className="p-4 rounded-xl border border-border bg-card">
+                                <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">{s.title || s.document_name || s.resource_title}</span>
+                                    {s.score != null && <span className="text-[11px] text-muted-foreground">score: {(s.score * 100).toFixed(0)}%</span>}
+                                    {s.category && <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold">{s.category}</span>}
+                                    {s.language && s.language !== "auto" && <span className="text-[10px] px-2 py-0.5 rounded bg-violet-500/10 text-violet-400 font-semibold uppercase">{s.language}</span>}
+                                    {s.sourceType && <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-semibold">{s.sourceType}</span>}
+                                </div>
+                                <p className="text-sm text-foreground m-0 leading-relaxed">&ldquo;{s.chunk_text || s.content}&rdquo;</p>
                             </div>
                         ))}
-                        {searchResults.length === 0 && searchQuery && (
+                        {(showAdvFilters ? advResults : searchResults).length === 0 && searchQuery && (
                             <div className="text-center py-10 text-muted-foreground">{t("empty.search")}</div>
                         )}
                     </div>
@@ -1070,6 +1260,58 @@ export default function KnowledgePage() {
                                     {tc("close")}
                                 </button>
                             </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Version History Modal */}
+            {versionDoc && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setVersionDoc(null)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[560px] max-h-[80vh] p-7 rounded-[18px] bg-card border border-border shadow-2xl flex flex-col">
+                        <div className="flex justify-between items-center mb-5">
+                            <h2 className="text-xl font-semibold m-0 flex items-center gap-2">
+                                <History size={20} className="text-primary" /> {t("versions.title")}
+                            </h2>
+                            <button onClick={() => setVersionDoc(null)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
+                        </div>
+                        <div className="text-sm text-muted-foreground mb-4">
+                            {versionDoc.name || versionDoc.title} — {t("versions.current")}: v{versionDoc.version || 1}
+                        </div>
+
+                        {versionsLoading && <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>}
+
+                        {!versionsLoading && versions.length === 0 && (
+                            <div className="text-center py-10 text-muted-foreground">{t("versions.noVersions")}</div>
+                        )}
+
+                        {!versionsLoading && versions.length > 0 && (
+                            <div className="flex flex-col gap-2.5 overflow-y-auto flex-1">
+                                {versions.map(v => (
+                                    <div key={v.id} className="flex items-center justify-between p-4 rounded-xl bg-background border border-border">
+                                        <div className="flex-1 mr-3">
+                                            <div className="font-semibold text-sm flex items-center gap-2">
+                                                v{v.version}
+                                                {v.title && <span className="text-muted-foreground font-normal truncate">{v.title}</span>}
+                                            </div>
+                                            <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-2">
+                                                <Calendar size={11} /> {new Date(v.created_at).toLocaleString()}
+                                                {v.chunk_count != null && <span>• {v.chunk_count} chunks</span>}
+                                                {v.changed_by && <span>• {v.changed_by}</span>}
+                                            </div>
+                                            {v.change_summary && (
+                                                <div className="text-[11px] text-muted-foreground mt-0.5 italic">{v.change_summary}</div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => handleRestoreVersion(v.id)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs font-semibold cursor-pointer hover:bg-amber-500/20 shrink-0"
+                                        >
+                                            <RotateCcw size={12} /> {t("versions.restore")}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </div>

@@ -687,6 +687,21 @@ function buildSQL(s) {
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "max_concurrent" INTEGER DEFAULT 1`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "required_fields" JSONB DEFAULT '["name","phone"]'`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT true`,
+
+    // -- Knowledge Phase 4: language + versioning
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) DEFAULT 'auto'`,
+    `ALTER TABLE "${s}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "version" INTEGER DEFAULT 1`,
+    `CREATE TABLE IF NOT EXISTS "${s}"."knowledge_document_versions" (
+      "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      "document_id" UUID,
+      "version" INTEGER NOT NULL,
+      "title" VARCHAR(500),
+      "content_text" TEXT,
+      "chunk_count" INTEGER DEFAULT 0,
+      "changed_by" VARCHAR(255),
+      "change_summary" VARCHAR(500),
+      "created_at" TIMESTAMP DEFAULT NOW()
+    )`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "meeting_link" TEXT`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT`,
 

@@ -2593,6 +2593,24 @@
       "generating": "Analyzing...",
       "hint": "Click Generate to have AI analyze unanswered queries and suggest new articles."
     },
+    "versions": {
+      "title": "Version history",
+      "current": "Current version",
+      "noVersions": "No previous versions for this document.",
+      "restore": "Restore",
+      "restored": "Version restored successfully"
+    },
+    "language": {
+      "auto": "Auto-detected",
+      "filter": "Language"
+    },
+    "advSearch": {
+      "filters": "Filters",
+      "sourceType": "Source type",
+      "language": "Language",
+      "dateFrom": "From",
+      "dateTo": "To"
+    },
     "limitReachedTitle": "Document limit reached",
     "limitReachedDesc": "You have reached the knowledge document limit on your current plan. Upgrade to add more."
   },

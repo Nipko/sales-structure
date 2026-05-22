@@ -126,6 +126,25 @@ ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
 CREATE INDEX IF NOT EXISTS idx_kd_category_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_documents" ("category") WHERE "status" = 'ready';
 CREATE INDEX IF NOT EXISTS idx_kd_public_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_documents" ("is_public") WHERE "is_public" = true AND "status" = 'ready';
 
+-- ---- Knowledge Documents Phase 4 columns (language + versioning) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents"
+    ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) DEFAULT 'auto',
+    ADD COLUMN IF NOT EXISTS "version" INTEGER DEFAULT 1;
+
+-- ---- Knowledge Document Versions ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_document_versions" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "document_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."knowledge_documents"("id") ON DELETE CASCADE,
+    "version" INTEGER NOT NULL,
+    "title" VARCHAR(500),
+    "content_text" TEXT,
+    "chunk_count" INTEGER DEFAULT 0,
+    "changed_by" VARCHAR(255),
+    "change_summary" VARCHAR(500),
+    "created_at" TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kdv_doc_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."knowledge_document_versions" ("document_id", "version" DESC);
+
 -- ---- KB Retrieval Analytics ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_retrieval_log" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

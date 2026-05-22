@@ -69,13 +69,15 @@ export class KnowledgeService {
         const slug = file.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
         const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
 
+        const detectedLang = this.detectLanguage(textContent);
+
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt)
-             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+            `INSERT INTO knowledge_documents (title, file_name, file_type, content_text, status, source_type, source_url, crawl_hash, category, is_public, slug, excerpt, language)
+             VALUES ($1, $2, $3, $4, 'processing', $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
             [file.name, file.name, file.mimeType || 'text/plain', textContent,
              file.sourceType || 'upload', file.sourceUrl || null, contentHash,
-             file.category || null, file.isPublic ?? false, slug, excerpt],
+             file.category || null, file.isPublic ?? false, slug, excerpt, detectedLang],
         );
         const document = rows[0];
 
@@ -211,6 +213,7 @@ export class KnowledgeService {
         update: {
             name?: string; content?: string; fileBase64?: string; mimeType?: string; crawlHash?: string;
             category?: string; isPublic?: boolean; autoRecrawl?: boolean;
+            changedBy?: string; changeSummary?: string;
         },
     ) {
         const schema = await this.tenantSchema(tenantId);
@@ -231,6 +234,16 @@ export class KnowledgeService {
 
         const contentHash = update.crawlHash || crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
 
+        // Save current version before overwriting
+        const currentVersion = existing[0].version || 1;
+        await this.prisma.executeInTenantSchema(schema,
+            `INSERT INTO knowledge_document_versions (document_id, version, title, content_text, chunk_count, changed_by, change_summary)
+             SELECT id, COALESCE(version, 1), title, content_text, chunk_count, $2, $3
+             FROM knowledge_documents WHERE id = $1`,
+            [documentId, update.changedBy || null, update.changeSummary || null]);
+
+        const newVersion = currentVersion + 1;
+
         await this.prisma.executeInTenantSchema(schema,
             `UPDATE knowledge_documents SET status = 'processing', updated_at = NOW() WHERE id = $1`, [documentId]);
 
@@ -243,6 +256,7 @@ export class KnowledgeService {
 
             const slug = (update.name || existing[0].title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
             const excerpt = textContent.substring(0, 300).replace(/\s+/g, ' ').trim();
+            const detectedLang = this.detectLanguage(textContent);
 
             await this.prisma.executeInTenantSchema(schema,
                 `UPDATE knowledge_documents
@@ -253,17 +267,18 @@ export class KnowledgeService {
                      is_public = COALESCE($7, is_public),
                      auto_recrawl = COALESCE($8, auto_recrawl),
                      slug = $9, excerpt = $10,
+                     version = $11, language = $12,
                      updated_at = NOW()
                  WHERE id = $1`,
                 [documentId, update.name || null, textContent, chunks.length, contentHash,
                  update.category !== undefined ? update.category : null,
                  update.isPublic !== undefined ? update.isPublic : null,
                  update.autoRecrawl !== undefined ? update.autoRecrawl : null,
-                 slug, excerpt]);
+                 slug, excerpt, newVersion, detectedLang]);
 
             await this.invalidateHasKnowledgeCache(tenantId);
-            this.logger.log(`Document ${documentId} updated: ${chunks.length} chunks re-embedded`);
-            return { documentId, chunkCount: chunks.length, status: 'ready' };
+            this.logger.log(`Document ${documentId} updated to v${newVersion}: ${chunks.length} chunks re-embedded`);
+            return { documentId, chunkCount: chunks.length, status: 'ready', version: newVersion };
         } catch (error: any) {
             await this.prisma.executeInTenantSchema(schema,
                 `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1`,
@@ -419,6 +434,137 @@ export class KnowledgeService {
             this.logger.error(`[AI Suggestions] LLM call failed: ${e.message}`);
             return { suggestions: [], error: e.message };
         }
+    }
+
+    // ─── Document Versioning ────────────────────────────────────────────────
+
+    async getDocumentVersions(tenantId: string, documentId: string) {
+        const schema = await this.tenantSchema(tenantId);
+        return this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, version, title, chunk_count, changed_by, change_summary, created_at
+             FROM knowledge_document_versions
+             WHERE document_id = $1
+             ORDER BY version DESC`,
+            [documentId]);
+    }
+
+    async restoreDocumentVersion(tenantId: string, documentId: string, versionId: string, userId?: string) {
+        const schema = await this.tenantSchema(tenantId);
+
+        const versions = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, version, title, content_text, chunk_count FROM knowledge_document_versions WHERE id = $1 AND document_id = $2`,
+            [versionId, documentId]);
+        if (!versions?.[0]) throw new BadRequestException({ error: 'version_not_found' });
+
+        const v = versions[0];
+        return this.updateDocument(tenantId, documentId, {
+            name: v.title,
+            content: v.content_text,
+            changedBy: userId || undefined,
+            changeSummary: `Restored to v${v.version}`,
+        });
+    }
+
+    // ─── Language Detection ─────────────────────────────────────────────────
+
+    private detectLanguage(text: string): string {
+        const sample = text.substring(0, 1000).toLowerCase();
+
+        const patterns: Record<string, RegExp[]> = {
+            es: [/\b(el|la|los|las|de|en|que|por|con|para|como|está|tiene|puede|muy|también|más|pero|este|esta|son)\b/g],
+            en: [/\b(the|is|are|was|were|have|has|had|will|would|can|could|with|from|this|that|which|been|their|about)\b/g],
+            pt: [/\b(o|a|os|as|de|em|que|por|com|para|como|está|tem|pode|muito|também|mais|mas|este|esta|são)\b/g],
+            fr: [/\b(le|la|les|de|en|que|pour|avec|dans|est|sont|qui|pas|une|des|plus|mais|cette|nous|vous)\b/g],
+        };
+
+        let bestLang = 'es';
+        let bestCount = 0;
+
+        for (const [lang, regexps] of Object.entries(patterns)) {
+            let count = 0;
+            for (const re of regexps) {
+                const matches = sample.match(re);
+                count += matches?.length || 0;
+            }
+            if (count > bestCount) {
+                bestCount = count;
+                bestLang = lang;
+            }
+        }
+
+        return bestCount >= 3 ? bestLang : 'auto';
+    }
+
+    // ─── Advanced Search (filtered) ─────────────────────────────────────────
+
+    async searchFiltered(
+        tenantId: string,
+        query: string,
+        filters: { category?: string; sourceType?: string; language?: string; dateFrom?: string; dateTo?: string; topK?: number },
+    ) {
+        const schema = await this.tenantSchema(tenantId);
+        const topK = filters.topK || 10;
+
+        const queryEmbedding = await this.generateEmbedding(query);
+        const embeddingStr = `[${queryEmbedding.join(',')}]`;
+
+        const conditions: string[] = [`kd.status = 'ready'`];
+        const params: any[] = [embeddingStr];
+        let idx = 2;
+
+        if (filters.category) {
+            conditions.push(`kd.category = $${idx}`);
+            params.push(filters.category);
+            idx++;
+        }
+        if (filters.sourceType) {
+            conditions.push(`kd.source_type = $${idx}`);
+            params.push(filters.sourceType);
+            idx++;
+        }
+        if (filters.language && filters.language !== 'all') {
+            conditions.push(`kd.language = $${idx}`);
+            params.push(filters.language);
+            idx++;
+        }
+        if (filters.dateFrom) {
+            conditions.push(`kd.created_at >= $${idx}::timestamp`);
+            params.push(filters.dateFrom);
+            idx++;
+        }
+        if (filters.dateTo) {
+            conditions.push(`kd.created_at <= $${idx}::timestamp`);
+            params.push(filters.dateTo);
+            idx++;
+        }
+
+        params.push(topK);
+
+        const results = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index,
+                    kd.title, kd.id AS document_id, kd.category, kd.source_type, kd.language, kd.created_at,
+                    (ke.embedding <=> $1::vector) AS distance
+             FROM knowledge_embeddings ke
+             JOIN knowledge_documents kd ON kd.id = ke.document_id
+             WHERE ${conditions.join(' AND ')}
+             ORDER BY ke.embedding <=> $1::vector
+             LIMIT $${idx}`,
+            params,
+        );
+
+        return (results || []).map((r: any) => ({
+            id: r.chunk_id,
+            document_id: r.document_id,
+            title: r.title,
+            chunk_text: r.chunk_text,
+            chunk_index: r.chunk_index,
+            category: r.category,
+            sourceType: r.source_type,
+            language: r.language,
+            createdAt: r.created_at,
+            score: Math.max(0, 1 - Number(r.distance ?? 0)),
+        }));
     }
 
     // ─── Vector Search ───────────────────────────────────────────────────────
@@ -583,24 +729,33 @@ export class KnowledgeService {
 
     // ─── Document Management ─────────────────────────────────────────────────
 
-    async listDocuments(tenantId: string, category?: string) {
+    async listDocuments(tenantId: string, category?: string, language?: string) {
         const schema = await this.tenantSchema(tenantId);
+        const conditions: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+
         if (category) {
-            return this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message,
-                        source_type, source_url, last_crawled_at, category, is_public, slug, excerpt,
-                        auto_recrawl, created_at, updated_at, content_text
-                 FROM knowledge_documents
-                 WHERE category = $1
-                 ORDER BY created_at DESC`,
-                [category]);
+            conditions.push(`category = $${idx}`);
+            params.push(category);
+            idx++;
         }
+        if (language && language !== 'all') {
+            conditions.push(`language = $${idx}`);
+            params.push(language);
+            idx++;
+        }
+
+        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
         return this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, title, file_name, file_type, file_size, chunk_count, status, error_message,
                     source_type, source_url, last_crawled_at, category, is_public, slug, excerpt,
-                    auto_recrawl, created_at, updated_at, content_text
+                    auto_recrawl, language, version, created_at, updated_at, content_text
              FROM knowledge_documents
-             ORDER BY created_at DESC`);
+             ${where}
+             ORDER BY created_at DESC`,
+            params);
     }
 
     async getDocumentCategories(tenantId: string): Promise<string[]> {

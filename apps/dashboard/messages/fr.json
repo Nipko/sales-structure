@@ -2593,6 +2593,24 @@
       "generating": "Analyse en cours...",
       "hint": "Cliquez sur Générer pour que l'IA analyse les questions sans réponse et suggère de nouveaux articles."
     },
+    "versions": {
+      "title": "Historique des versions",
+      "current": "Version actuelle",
+      "noVersions": "Aucune version antérieure pour ce document.",
+      "restore": "Restaurer",
+      "restored": "Version restaurée avec succès"
+    },
+    "language": {
+      "auto": "Auto-détecté",
+      "filter": "Langue"
+    },
+    "advSearch": {
+      "filters": "Filtres",
+      "sourceType": "Type de source",
+      "language": "Langue",
+      "dateFrom": "Du",
+      "dateTo": "Au"
+    },
     "limitReachedTitle": "Limite de documents atteinte",
     "limitReachedDesc": "Vous avez atteint la limite de documents de connaissances de votre plan actuel. Mettez à niveau pour en ajouter davantage."
   },

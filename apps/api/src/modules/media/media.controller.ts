@@ -12,6 +12,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { MediaService } from './media.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 const storage = memoryStorage();
 
@@ -20,7 +21,10 @@ const storage = memoryStorage();
 export class MediaController {
     private readonly logger = new Logger(MediaController.name);
 
-    constructor(private mediaService: MediaService) {}
+    constructor(
+        private mediaService: MediaService,
+        private throttle: TenantThrottleService,
+    ) {}
 
     // ── Protected routes ─────────────────────────────────────────
 
@@ -37,6 +41,8 @@ export class MediaController {
         @Query('entityId') entityId?: string,
     ) {
         if (!file) throw new BadRequestException('No se recibio ningun archivo');
+        const usageMb = await this.mediaService.getTenantStorageUsageMb(user.schemaName);
+        await this.throttle.enforcePlanLimit(tenantId, 'mediaStorageMb', Math.ceil(usageMb), 'almacenamiento de medios (MB)');
         const result = await this.mediaService.upload(
             user.schemaName, tenantId, file, entityType || 'general', entityId,
         );

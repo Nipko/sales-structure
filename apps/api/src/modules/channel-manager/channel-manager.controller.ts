@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Query, Param, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -6,18 +6,33 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { ChannelManagerService, ChannelManagerConfig } from './channel-manager.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('channel-manager')
 @Controller('channel-manager')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class ChannelManagerController {
-    constructor(private readonly cm: ChannelManagerService) {}
+    constructor(
+        private readonly cm: ChannelManagerService,
+        private readonly throttle: TenantThrottleService,
+    ) {}
+
+    private async ensureFeatureEnabled(tenantId: string) {
+        if (!await this.throttle.isFeatureEnabled(tenantId, 'channelManager')) {
+            throw new ForbiddenException({
+                error: 'feature_not_available',
+                feature: 'channelManager',
+                message: 'Channel Manager no está disponible en tu plan actual. Actualiza tu plan para acceder.',
+            });
+        }
+    }
 
     @Get('config')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Get channel manager config' })
     async getConfig(@CurrentUser() user: any) {
+        await this.ensureFeatureEnabled(user.tenantId);
         const config = await this.cm.getConfig(user.tenantId);
         return {
             success: true,
@@ -46,7 +61,10 @@ export class ChannelManagerController {
     @Post('listings')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a new listing' })
-    async createListing(@CurrentTenant() schema: string, @Body() body: any) {
+    async createListing(@CurrentUser() user: any, @CurrentTenant() schema: string, @Body() body: any) {
+        await this.ensureFeatureEnabled(user.tenantId);
+        const existing = await this.cm.listListings(schema);
+        await this.throttle.enforcePlanLimit(user.tenantId, 'maxProperties', existing?.length ?? 0, 'propiedades');
         const listing = await this.cm.createListing(schema, body);
         return { success: true, data: listing };
     }

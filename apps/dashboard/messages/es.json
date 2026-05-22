@@ -5352,7 +5352,9 @@
       "channels": "Canales",
       "ai": "IA y engagement",
       "operational": "Operacional",
-      "enterprise": "Enterprise"
+      "enterprise": "Enterprise",
+      "modules": "Módulos",
+      "rateLimits": "Límites de tasa"
     },
     "features": {
       "seats": "Usuarios",
@@ -5384,7 +5386,17 @@
       "biApi": "API de BI",
       "customDomainKb": "Dominio personalizado KB",
       "whiteLabel": "White Label",
-      "prioritySupport": "Soporte prioritario"
+      "prioritySupport": "Soporte prioritario",
+      "staffScheduling": "Agenda de staff",
+      "vehicleInventory": "Inventario de vehículos",
+      "ecommerce": "E-commerce",
+      "channelManager": "Channel Manager",
+      "widget": "Widget de chat web",
+      "rateLimitsAutomation": "Tasa: Automatización/hr",
+      "rateLimitsOutbound": "Tasa: Outbound/hr",
+      "rateLimitsBroadcast": "Tasa: Broadcast/hr",
+      "rateLimitsPriority": "Prioridad de cola",
+      "rateLimitsMaxPendingJobs": "Máx. trabajos pendientes"
     }
   },
   "reportBuilder": {

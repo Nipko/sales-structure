@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 4.0 — Mayo 2026
+  Versión 4.1 — Mayo 2026
 </p>
 
 ---
@@ -44,7 +44,8 @@
 | 23 | [Sistema de ayuda contextual](#23-sistema-de-ayuda-contextual) |
 | 24 | [Conversaciones resueltas](#24-conversaciones-resueltas) |
 | 25 | [Subir fotos a catálogos](#25-subir-fotos-a-catálogos) |
-| 26 | [Preguntas frecuentes (FAQ)](#26-preguntas-frecuentes) |
+| 27 | [Procesamiento multimedia](#27-procesamiento-multimedia) |
+| 28 | [Preguntas frecuentes (FAQ)](#28-preguntas-frecuentes) |
 
 ---
 
@@ -1069,7 +1070,39 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 - Modelo por defecto del tenant
 - Configuración global de comportamiento del agente
 
-## 18.5 Avanzado (Admin)
+## 18.5 Seguridad (todos los roles)
+
+### Autenticación de dos factores (2FA)
+
+**Ruta:** Configuración → Seguridad
+
+Parallly soporta 2FA para proteger tu cuenta con un segundo paso al iniciar sesión.
+
+**Métodos disponibles:**
+1. **App autenticadora (TOTP)** — Google Authenticator, Authy, 1Password, etc. Escanea el QR y confirma el código de 6 dígitos
+2. **Código por email** — recibís un código temporal de 6 dígitos a tu email registrado
+3. **Códigos de respaldo** — 10 códigos de un solo uso que se generan al activar 2FA. Guardalos en un lugar seguro
+
+**Activar 2FA:**
+1. Configuración → Seguridad → "Activar 2FA"
+2. Escanea el QR con tu app autenticadora
+3. Ingresá el código de 6 dígitos para confirmar
+4. Descargá los códigos de respaldo (solo se muestran una vez)
+
+**Desactivar 2FA:**
+1. Configuración → Seguridad → "Desactivar 2FA"
+2. Confirma con tu contraseña actual
+
+### Dispositivos de confianza
+
+Cuando inicias sesión con 2FA, podés marcar **"Confiar en este dispositivo"**. Esto evita que te pida el segundo factor durante **30 días** en ese navegador.
+
+- Cada dispositivo de confianza aparece en la lista con nombre, navegador y fecha
+- Podés revocar dispositivos individualmente desde Configuración → Seguridad
+- Al confiar un nuevo dispositivo, recibís un email de notificación de seguridad
+- Si cambias tu contraseña, todos los dispositivos de confianza se revocan automáticamente
+
+## 18.6 Avanzado (Admin)
 - Compliance (consentimientos, opt-outs, GDPR)
 - Webhooks de salida (para integrar con sistemas externos)
 - Exportar datos
@@ -1222,7 +1255,19 @@ Si el trial vence sin tarjeta:
 - Acceso a la plataforma revocado (banner de "Suscripción vencida" al hacer login)
 - Datos preservados — se reactivan al pagar
 
-## 20.11 Pasos post-pago fallido
+## 20.11 Uso de procesamiento multimedia
+
+En la página de Facturación aparecen barras de uso para **audio** (transcripción de notas de voz) e **imágenes** (visión por IA):
+
+- Barra de progreso con porcentaje usado vs. límite del plan
+- Icono de micrófono (audio) y ojo (imagen)
+- **80% de uso** → advertencia ámbar: "Te estás acercando al límite"
+- **95% de uso** → advertencia roja: "Límite casi alcanzado" con botón "Mejorar plan"
+- Planes Custom muestran "Ilimitado"
+
+Esto te permite monitorear cuántos audios e imágenes ha procesado tu agente IA en el mes. Cuando se alcanza el límite, los mensajes multimedia se procesan como texto genérico ("El cliente envió un audio/imagen") sin transcripción ni análisis.
+
+## 20.12 Pasos post-pago fallido
 
 Cuando un cobro falla, MercadoPago reintenta automáticamente con su lógica de retries. Mientras tanto:
 1. Tu suscripción queda en `past_due`
@@ -1753,7 +1798,74 @@ Si una foto se rechaza (>2 MB o no es imagen), aparece mensaje específico con n
 
 ---
 
-# 26. Preguntas Frecuentes
+# 27. Procesamiento Multimedia
+
+Parallly permite que tus agentes IA comprendan mensajes de voz e imágenes enviados por los clientes, no solo texto.
+
+## 27.1 ¿Cómo funciona?
+
+Cuando un cliente envía un **audio** o **imagen** por cualquier canal (WhatsApp, Instagram, Messenger, Telegram):
+
+1. El sistema descarga el archivo del canal correspondiente
+2. Verifica que no se excedan los límites de tu plan (ver 27.3)
+3. Procesa el contenido:
+   - **Audio**: transcribe la nota de voz a texto usando IA (OpenAI Whisper)
+   - **Imagen**: describe el contenido visual usando IA (visión por computadora)
+4. Inyecta el resultado en la conversación antes de que el agente IA responda
+5. El agente IA puede entonces responder con contexto completo
+
+**Ejemplo audio:** El cliente envía un audio de 30 segundos preguntando por precios → el agente recibe `[El cliente envió un mensaje de voz: "Hola, quería saber cuánto cuesta el servicio de limpieza dental..."]` → responde con los precios.
+
+**Ejemplo imagen:** El cliente envía foto de un producto dañado → el agente recibe `[El cliente envió una imagen: Se observa un producto electrónico con la pantalla rota...]` → responde con instrucciones de garantía.
+
+## 27.2 Canales soportados
+
+| Canal | Audio | Imagen |
+|-------|-------|--------|
+| WhatsApp | ✅ | ✅ |
+| Instagram | ✅ | ✅ |
+| Messenger | ✅ | ✅ |
+| Telegram | ✅ | ✅ |
+| SMS | ❌ | ❌ |
+| Web Chat | ❌ | ❌ |
+
+## 27.3 Límites por plan
+
+Cada plan tiene cuotas mensuales de procesamiento multimedia:
+
+| Límite | Starter | Pro | Enterprise | Custom |
+|--------|---------|-----|------------|--------|
+| Audios/mes | 150 | 500 | 2.000 | Ilimitado |
+| Imágenes/mes | 250 | 1.000 | 5.000 | Ilimitado |
+| Duración máx. audio | 3 min | 5 min | 5 min | 10 min |
+| Por contacto/día | 20 | 30 | 50 | 100 |
+
+Además hay protecciones automáticas contra abuso:
+- Límite por conversación (ráfaga de 3-5 archivos en 5 minutos)
+- Límite por tenant por hora (50-1.000 según plan)
+- Presupuesto diario de costo (para evitar picos inesperados)
+
+## 27.4 ¿Qué pasa cuando se alcanza el límite?
+
+- El mensaje multimedia se registra normalmente en la conversación
+- Pero NO se transcribe ni analiza — el agente IA recibe un texto genérico: "El cliente envió un audio" / "El cliente envió una imagen"
+- El agente responde pidiendo que el cliente lo describa por texto
+- Puedes monitorear tu uso en **Configuración → Facturación** (barras de uso multimedia)
+
+## 27.5 Monitoreo de uso
+
+En la página de **Facturación** (Configuración → Facturación) verás:
+
+- **Barra de audio**: uso mensual con porcentaje (icono de micrófono)
+- **Barra de imagen**: uso mensual con porcentaje (icono de ojo)
+- Advertencia al 80%: banner ámbar "Te estás acercando al límite"
+- Advertencia al 95%: banner rojo "Límite casi alcanzado" con link directo a mejorar plan
+
+> **Tip:** Si necesitas procesar más multimedia, considera actualizar tu plan. El agente IA es más efectivo cuando puede entender audios e imágenes.
+
+---
+
+# 28. Preguntas Frecuentes
 
 ## General
 
@@ -1807,6 +1919,25 @@ Anti-doble-booking automático: el sistema verifica disponibilidad en el momento
 
 **¿Genera link de Meet o Teams?**
 Sí — automáticamente para servicios con tipo `online` o `hibrido`.
+
+## Multimedia
+
+**¿El agente IA entiende audios e imágenes?**
+Sí — transcribe notas de voz (Whisper) y describe imágenes (visión IA). Ver sección 27.
+
+**¿Qué pasa si supero el límite de multimedia?**
+Los mensajes se reciben pero no se procesan con IA. El agente responde pidiendo que el cliente escriba por texto. Ver límites en sección 27.3.
+
+**¿Me cobran extra por multimedia?**
+No — está incluido en tu plan con cuotas mensuales. Los límites varían según plan (Starter: 150 audios, Pro: 500, Enterprise: 2.000).
+
+## Seguridad
+
+**¿Puedo activar 2FA?**
+Sí — Configuración → Seguridad. Soporta app autenticadora (TOTP), código por email y códigos de respaldo.
+
+**¿Qué son los dispositivos de confianza?**
+Al marcar "Confiar en este dispositivo" al iniciar sesión con 2FA, no te pedirá el segundo factor por 30 días en ese navegador. Podés revocarlos en cualquier momento.
 
 ## Datos y Privacidad
 

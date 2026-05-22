@@ -1,22 +1,27 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CurrentTenant } from '../../common/decorators/tenant.decorator';
+import { CurrentTenant, CurrentUser } from '../../common/decorators/tenant.decorator';
 import { VehicleInventoryService } from './vehicle-inventory.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('vehicles')
 @Controller('vehicles')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class VehicleInventoryController {
-    constructor(private readonly vehicleService: VehicleInventoryService) {}
+    constructor(
+        private readonly vehicleService: VehicleInventoryService,
+        private readonly throttle: TenantThrottleService,
+    ) {}
 
     @Get(':tenantId')
     @ApiOperation({ summary: 'List vehicles with optional filters' })
     async listVehicles(
+        @CurrentUser() user: any,
         @CurrentTenant() schema: string,
         @Query('status') status?: string,
         @Query('make') make?: string,
@@ -27,6 +32,9 @@ export class VehicleInventoryController {
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
     ) {
+        if (!await this.throttle.isFeatureEnabled(user.tenantId, 'vehicleInventory')) {
+            throw new ForbiddenException({ error: 'feature_not_available', feature: 'vehicleInventory', message: 'Inventario de Vehículos no está disponible en tu plan actual.' });
+        }
         const result = await this.vehicleService.listVehicles(schema, {
             status, make, category, condition,
             minPrice: minPrice ? parseInt(minPrice) : undefined,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
 import { SIGNUP_URL } from "../../lib/constants";
 import { useSpotlight } from "../../hooks/useSpotlight";
+import { fetchPlans, formatCopPrice, type ApiPlan } from "../../lib/api";
 
 interface PlanDef {
   nameKey: string;
@@ -20,7 +21,7 @@ interface PlanDef {
   badgeKey?: string;
 }
 
-const PLANS: PlanDef[] = [
+const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "emprendedorName",
     descKey: "emprendedorDesc",
@@ -60,6 +61,29 @@ const PLANS: PlanDef[] = [
   },
 ];
 
+const SLUG_TO_PLAN_INDEX: Record<string, number> = {
+  emprendedor: 0,
+  starter: 1,
+  pro: 2,
+  enterprise: 3,
+};
+
+function mapApiPlans(apiPlans: ApiPlan[]): PlanDef[] {
+  const result = [...STATIC_FALLBACK];
+  for (const ap of apiPlans) {
+    const idx = SLUG_TO_PLAN_INDEX[ap.slug];
+    if (idx === undefined) continue;
+    const annualCents = ap.displayPriceCents;
+    const monthlyCents = Math.round(annualCents * 1.2);
+    result[idx] = {
+      ...result[idx],
+      annualPrice: formatCopPrice(annualCents),
+      monthlyPrice: formatCopPrice(monthlyCents),
+    };
+  }
+  return result;
+}
+
 interface PricingCardProps {
   plan: PlanDef;
   annual: boolean;
@@ -84,18 +108,15 @@ function PricingCard({ plan, annual, index, t }: PricingCardProps) {
       viewport={{ once: true, margin: "-40px" }}
       transition={{ delay: index * 0.08, duration: 0.45 }}
     >
-      {/* "Mas popular" badge */}
       {plan.badgeKey && (
         <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-lg shadow-accent/25">
           {t(plan.badgeKey)}
         </span>
       )}
 
-      {/* Plan name & description */}
       <h3 className="text-xl font-bold mb-1 mt-1">{t(plan.nameKey)}</h3>
       <p className="text-text-muted text-sm mb-5 leading-snug">{t(plan.descKey)}</p>
 
-      {/* Price */}
       <div className="mb-6 min-h-[60px]">
         <span className="text-4xl font-extrabold tabular tracking-tight">{price}</span>
         <span className="text-sm text-text-muted ml-1">
@@ -103,9 +124,8 @@ function PricingCard({ plan, annual, index, t }: PricingCardProps) {
         </span>
       </div>
 
-      {/* Feature list */}
       <ul className="space-y-3 mb-8 flex-1">
-        {(t.raw(plan.featuresKey) as string[]).map((f, fi) => (
+        {(t.raw(plan.featuresKey) as string[]).map((f: string, fi: number) => (
           <li key={fi} className="flex items-start gap-2.5 text-sm leading-relaxed">
             <span className="text-accent flex-shrink-0 mt-0.5 shadow-sm">
               {Icon.check("w-4 h-4")}
@@ -115,7 +135,6 @@ function PricingCard({ plan, annual, index, t }: PricingCardProps) {
         ))}
       </ul>
 
-      {/* CTA button with spring micro-interaction */}
       <motion.a
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
@@ -135,11 +154,19 @@ function PricingCard({ plan, annual, index, t }: PricingCardProps) {
 
 export function PricingSection() {
   const [annual, setAnnual] = useState(true);
+  const [plans, setPlans] = useState<PlanDef[]>(STATIC_FALLBACK);
   const t = useTranslations("pricing");
+
+  useEffect(() => {
+    fetchPlans('CO').then(data => {
+      if (data && data.length > 0) {
+        setPlans(mapApiPlans(data));
+      }
+    });
+  }, []);
 
   return (
     <Section id="precios" className="bg-surface/30">
-      {/* Header */}
       <div className="text-center mb-10">
         <h2 className="text-3xl sm:text-5xl font-bold mb-4 tracking-tight">
           {t("title")}
@@ -149,7 +176,6 @@ export function PricingSection() {
         </p>
       </div>
 
-      {/* Annual / Monthly toggle */}
       <div className="flex items-center justify-center gap-3 mb-12">
         <span
           className={`text-sm transition-colors ${
@@ -185,19 +211,16 @@ export function PricingSection() {
         </span>
       </div>
 
-      {/* Plan cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start max-w-7xl mx-auto">
-        {PLANS.map((plan, i) => (
+        {plans.map((plan, i) => (
           <PricingCard key={plan.nameKey} plan={plan} annual={annual} index={i} t={t} />
         ))}
       </div>
 
-      {/* Currency hint */}
       <p className="text-center text-xs text-text-muted mt-8">
         {t("currencyHint")}
       </p>
 
-      {/* Link to full comparison page */}
       <div className="text-center mt-6">
         <Link
           href="/precios"

@@ -26,8 +26,8 @@ const prisma = new PrismaClient();
 // Arrays:          kept as-is (e.g. channels)
 //
 // enforcePlanLimit() reads features[key] from this table.
-// PLAN_LIMITS (rate limits) stay hardcoded in tenant-throttle.service.ts
-// because they are per-hour sliding windows, not resource counts.
+// Rate limits (rateLimits.*) are also stored here so super admin can
+// edit them per plan. TenantThrottleService reads them at runtime.
 // ──────────────────────────────────────────────────────────────
 
 const PLANS = [
@@ -83,6 +83,22 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+
+            // ── Module access ──
+            staffScheduling: false,
+            vehicleInventory: false,
+            ecommerce: false,
+            channelManager: false,
+            widget: false,
+
+            // ── Rate limits (per-hour sliding windows) ──
+            rateLimits: {
+                automation: 0,
+                outbound: 100,
+                broadcast: 0,
+                priority: 6,
+                maxPendingJobs: 20,
+            },
 
             // ── Media processing (audio transcription + image vision) ──
             mediaProcessing: {
@@ -149,6 +165,22 @@ const PLANS = [
             whiteLabel: false,
             prioritySupport: false,
 
+            // ── Module access ──
+            staffScheduling: false,
+            vehicleInventory: false,
+            ecommerce: true,
+            channelManager: false,
+            widget: true,
+
+            // ── Rate limits (per-hour sliding windows) ──
+            rateLimits: {
+                automation: 50,
+                outbound: 200,
+                broadcast: 500,
+                priority: 5,
+                maxPendingJobs: 50,
+            },
+
             // ── Media processing (audio transcription + image vision) ──
             mediaProcessing: {
                 audioPerMonth: 150,
@@ -213,6 +245,22 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+
+            // ── Module access ──
+            staffScheduling: true,
+            vehicleInventory: true,
+            ecommerce: true,
+            channelManager: false,
+            widget: true,
+
+            // ── Rate limits (per-hour sliding windows) ──
+            rateLimits: {
+                automation: 500,
+                outbound: 2000,
+                broadcast: 5000,
+                priority: 3,
+                maxPendingJobs: 200,
+            },
 
             // ── Media processing (audio transcription + image vision) ──
             mediaProcessing: {
@@ -279,6 +327,22 @@ const PLANS = [
             whiteLabel: false,
             prioritySupport: true,
 
+            // ── Module access ──
+            staffScheduling: true,
+            vehicleInventory: true,
+            ecommerce: true,
+            channelManager: true,
+            widget: true,
+
+            // ── Rate limits (per-hour sliding windows) ──
+            rateLimits: {
+                automation: 5000,
+                outbound: 20000,
+                broadcast: 50000,
+                priority: 1,
+                maxPendingJobs: 1000,
+            },
+
             // ── Media processing (audio transcription + image vision) ──
             mediaProcessing: {
                 audioPerMonth: 2_000,
@@ -342,6 +406,22 @@ const PLANS = [
             prioritySupport: true,
             salesLed: true,
             multiTenantSubAccounts: true,
+
+            // ── Module access ──
+            staffScheduling: true,
+            vehicleInventory: true,
+            ecommerce: true,
+            channelManager: true,
+            widget: true,
+
+            // ── Rate limits (per-hour sliding windows) ──
+            rateLimits: {
+                automation: -1,
+                outbound: -1,
+                broadcast: -1,
+                priority: 1,
+                maxPendingJobs: -1,
+            },
 
             // ── Media processing (audio transcription + image vision) ──
             mediaProcessing: {

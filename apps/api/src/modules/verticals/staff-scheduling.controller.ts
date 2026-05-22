@@ -1,22 +1,29 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CurrentTenant } from '../../common/decorators/tenant.decorator';
+import { CurrentTenant, CurrentUser } from '../../common/decorators/tenant.decorator';
 import { StaffSchedulingService } from './staff-scheduling.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('staff')
 @Controller('staff')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class StaffSchedulingController {
-    constructor(private readonly staffService: StaffSchedulingService) {}
+    constructor(
+        private readonly staffService: StaffSchedulingService,
+        private readonly throttle: TenantThrottleService,
+    ) {}
 
     @Get(':tenantId')
     @ApiOperation({ summary: 'List all staff members' })
-    async listStaff(@CurrentTenant() schema: string) {
+    async listStaff(@CurrentUser() user: any, @CurrentTenant() schema: string) {
+        if (!await this.throttle.isFeatureEnabled(user.tenantId, 'staffScheduling')) {
+            throw new ForbiddenException({ error: 'feature_not_available', feature: 'staffScheduling', message: 'Staff Scheduling no está disponible en tu plan actual.' });
+        }
         const staff = await this.staffService.listStaff(schema);
         return { success: true, data: staff };
     }

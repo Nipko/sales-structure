@@ -5354,7 +5354,9 @@
       "channels": "Channels",
       "ai": "AI & engagement",
       "operational": "Operational",
-      "enterprise": "Enterprise"
+      "enterprise": "Enterprise",
+      "modules": "Modules",
+      "rateLimits": "Rate Limits"
     },
     "features": {
       "seats": "Users",
@@ -5386,7 +5388,17 @@
       "biApi": "BI API",
       "customDomainKb": "Custom KB domain",
       "whiteLabel": "White Label",
-      "prioritySupport": "Priority support"
+      "prioritySupport": "Priority support",
+      "staffScheduling": "Staff Scheduling",
+      "vehicleInventory": "Vehicle Inventory",
+      "ecommerce": "E-commerce",
+      "channelManager": "Channel Manager",
+      "widget": "Web Chat Widget",
+      "rateLimitsAutomation": "Rate: Automation/hr",
+      "rateLimitsOutbound": "Rate: Outbound/hr",
+      "rateLimitsBroadcast": "Rate: Broadcast/hr",
+      "rateLimitsPriority": "Queue Priority",
+      "rateLimitsMaxPendingJobs": "Max Pending Jobs"
     }
   },
   "reportBuilder": {

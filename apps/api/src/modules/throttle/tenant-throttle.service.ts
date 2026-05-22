@@ -5,8 +5,8 @@ import { RedisService } from '../redis/redis.service';
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
  *
- * Rate limits (per-hour sliding windows) are hardcoded here because they
- * are operational knobs, not customer-facing features.
+ * Rate limits are stored in billing_plans.features.rateLimits so they
+ * can be edited by super_admin via the admin plans page.
  *
  * Feature limits (resource counts, boolean flags) are read from the
  * billing_plans table — the seed file is the single source of truth.
@@ -35,11 +35,8 @@ export interface QuotaOverrides {
     setAt?: string;
 }
 
-const PLAN_LIMITS: Record<string, PlanLimits> = {
-    emprendedor: { automation: 0,    outbound: 100,   broadcast: 0,      priority: 6, maxPendingJobs: 20 },
-    starter:     { automation: 50,   outbound: 200,   broadcast: 500,    priority: 5, maxPendingJobs: 50 },
-    pro:         { automation: 500,  outbound: 2000,  broadcast: 5000,   priority: 3, maxPendingJobs: 200 },
-    enterprise:  { automation: 5000, outbound: 20000, broadcast: 50000,  priority: 1, maxPendingJobs: 1000 },
+const FALLBACK_LIMITS: PlanLimits = {
+    automation: 50, outbound: 200, broadcast: 500, priority: 5, maxPendingJobs: 50,
 };
 
 const DEFAULT_PLAN = 'starter';
@@ -58,7 +55,15 @@ export class TenantThrottleService {
 
     private async resolveLimits(tenantId: string): Promise<{ plan: string; limits: PlanLimits; overrides: QuotaOverrides }> {
         const plan = await this.getTenantPlan(tenantId);
-        const planDefaults = PLAN_LIMITS[plan] || PLAN_LIMITS[DEFAULT_PLAN];
+        const features = await this.getPlanFeatures(tenantId);
+        const rl = (features.rateLimits as Record<string, number>) || {};
+        const planDefaults: PlanLimits = {
+            automation: rl.automation ?? FALLBACK_LIMITS.automation,
+            outbound: rl.outbound ?? FALLBACK_LIMITS.outbound,
+            broadcast: rl.broadcast ?? FALLBACK_LIMITS.broadcast,
+            priority: rl.priority ?? FALLBACK_LIMITS.priority,
+            maxPendingJobs: rl.maxPendingJobs ?? FALLBACK_LIMITS.maxPendingJobs,
+        };
         const overrides = await this.getQuotaOverrides(tenantId);
         const merged: PlanLimits = {
             automation: overrides.automation ?? planDefaults.automation,

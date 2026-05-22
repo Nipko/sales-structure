@@ -34,6 +34,11 @@ export interface PlanFeatures {
   customDomainKb: boolean;
   whiteLabel: boolean;
   prioritySupport: boolean;
+  staffScheduling: boolean;
+  vehicleInventory: boolean;
+  ecommerce: boolean;
+  channelManager: boolean;
+  widget: boolean;
   dataRetentionDays: number;
   channels: string[];
   [key: string]: any;
@@ -48,7 +53,8 @@ const STARTER_DEFAULTS: PlanFeatures = {
   customPrompt: false, customTemplates: false, aiInsights: false,
   recall: false, scheduledReports: false, sso: false, auditLog: false,
   biApi: false, customDomainKb: false, whiteLabel: false,
-  prioritySupport: false, dataRetentionDays: 180,
+  prioritySupport: false, staffScheduling: false, vehicleInventory: false,
+  ecommerce: false, channelManager: false, widget: false, dataRetentionDays: 180,
   channels: ["whatsapp", "instagram", "messenger", "telegram"],
 };
 

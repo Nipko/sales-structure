@@ -36,8 +36,20 @@ const AI_KEYS = ["llmTier", "customPrompt", "customTemplates", "aiInsights", "re
 
 const OPERATIONAL_KEYS = ["scheduledReports", "dataRetentionDays", "whatsappCreditUsdCents"] as const;
 
+const MODULE_KEYS = [
+    "staffScheduling", "vehicleInventory", "ecommerce", "channelManager", "widget",
+] as const;
+
 const ENTERPRISE_KEYS = [
     "sso", "auditLog", "biApi", "customDomainKb", "whiteLabel", "prioritySupport",
+] as const;
+
+const RATE_LIMIT_DISPLAY_KEYS = [
+    { path: "automation", label: "rateLimitsAutomation" },
+    { path: "outbound", label: "rateLimitsOutbound" },
+    { path: "broadcast", label: "rateLimitsBroadcast" },
+    { path: "priority", label: "rateLimitsPriority" },
+    { path: "maxPendingJobs", label: "rateLimitsMaxPendingJobs" },
 ] as const;
 
 const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
@@ -122,6 +134,20 @@ export default function PlansPage() {
         setEditBuffer({
             ...editBuffer,
             features: { ...editBuffer.features, [key]: val },
+        });
+    };
+
+    const getRateLimit = (plan: Plan, path: string): number => {
+        return plan.features?.rateLimits?.[path] ?? 0;
+    };
+
+    const updateRateLimit = (path: string, val: number) => {
+        if (!editBuffer) return;
+        const rl = { ...(editBuffer.features.rateLimits || {}) };
+        rl[path] = val;
+        setEditBuffer({
+            ...editBuffer,
+            features: { ...editBuffer.features, rateLimits: rl },
         });
     };
 
@@ -447,12 +473,41 @@ export default function PlansPage() {
                             </tr>
                         ))}
 
+                        {/* Modules */}
+                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("modules")}</td></tr>
+                        {MODULE_KEYS.map(key => (
+                            <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
+                                <td className={`${tdCls} font-medium`}>{tf(key)}</td>
+                                {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, key, "boolean")}</td>)}
+                            </tr>
+                        ))}
+
                         {/* Enterprise */}
                         <tr><td colSpan={plans.length + 1} className={catCls}>{tc("enterprise")}</td></tr>
                         {ENTERPRISE_KEYS.map(key => (
                             <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
                                 <td className={`${tdCls} font-medium`}>{tf(key)}</td>
                                 {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, key, "boolean")}</td>)}
+                            </tr>
+                        ))}
+
+                        {/* Rate Limits */}
+                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("rateLimits")}</td></tr>
+                        {RATE_LIMIT_DISPLAY_KEYS.map(({ path, label }) => (
+                            <tr key={path} className="border-b border-neutral-100 dark:border-neutral-800">
+                                <td className={`${tdCls} font-medium`}>{tf(label)}</td>
+                                {plans.map(p => {
+                                    const isEditing = editSlug === p.slug && editBuffer;
+                                    const val = isEditing ? getRateLimit(editBuffer, path) : getRateLimit(p, path);
+                                    if (!isEditing) {
+                                        return <td key={p.slug} className={tdCls}><span className="font-mono text-xs">{fmtNum(val)}</span></td>;
+                                    }
+                                    return (
+                                        <td key={p.slug} className={tdCls}>
+                                            <input type="number" className={inputCls} value={val} onChange={e => updateRateLimit(path, parseInt(e.target.value) || 0)} />
+                                        </td>
+                                    );
+                                })}
                             </tr>
                         ))}
                     </tbody>

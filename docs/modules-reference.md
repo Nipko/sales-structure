@@ -1,12 +1,12 @@
 # Modules Reference
 
-Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, and 28 cron jobs.
+Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, and 29 cron jobs.
 
 **Last updated:** May 2026 — full audit
 
 ---
 
-## API Modules (67 total)
+## API Modules (68 total)
 
 ### Infrastructure (5 modules)
 
@@ -86,6 +86,9 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `POST /auth/2fa/verify` — Verify TOTP/email/backup code at login
   - `POST /auth/2fa/send-email` — Send email OTP fallback
   - `POST /auth/2fa/backup-codes` — Generate/regenerate backup codes
+  - `GET /auth/trusted-devices` — List user's trusted devices
+  - `DELETE /auth/trusted-devices/:id` — Revoke a trusted device
+- **Trusted devices:** When verifying 2FA with `trust_device: true`, a 30-day device token is stored (SHA-256 hash in `trusted_devices` table + Redis fast-lookup). Subsequent logins from trusted devices skip 2FA. Email notification on new trust. Password change revokes all
 
 #### 7. tenants
 - **Purpose:** Tenant management (super_admin), platform stats, queue inspection
@@ -154,9 +157,13 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `DELETE /offboarding/:tenantId/purge` — Hard delete all tenant data
   - `POST /offboarding/:tenantId/extend-trial` — Extend trial period
 - **Cron jobs:**
-  - `0 3 * * *` — graceEnforcer: past_due >7d → offboard
+  - `*/30 * * * *` — trialExpiryDetector: detect expired trials → past_due (dedup via billing_events)
+  - `0 3 * * *` — graceEnforcer: past_due >7d → expired, day 3 soft_lock (dedup via billing_events)
   - `0 4 * * *` — archiveCleaner: drop schemas inactive >90d
-  - `0 5 * * *` — purgeStaleInactiveChannels: clean stale channel credentials
+  - `0 5 * * *` — purgeStaleInactiveChannels: clean stale channel_accounts >90d inactive
+- **Event listeners:**
+  - `billing.payment.failed` — Start past_due grace timer in Redis
+  - `billing.payment.succeeded` — Clear all grace timers, restore access
 
 #### 10b. saml-sso (in auth/)
 - **Purpose:** SAML/SSO enterprise authentication with JIT user provisioning
@@ -537,7 +544,7 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `POST /billing/:tenantId/subscription/payment-method` — Update payment method
   - `POST /billing/:tenantId/subscription/cancel-pending-downgrade` — Cancel pending downgrade
   - `POST /billing/:tenantId/subscription/sync` — Force sync with provider
-  - `GET /billing/:tenantId/usage` — Plan quota usage
+  - `GET /billing/:tenantId/usage` — Plan quota usage (includes media processing stats: audio/image used/limit/percent, daily cost)
   - `GET /billing/:tenantId/payments/:paymentId/invoice` — Download invoice PDF
   - `POST /billing-admin/payments/:paymentId/refund` — Refund (super_admin)
   - `POST /billing-admin/tenants/:tenantId/comp-plan` — Grant comp plan (super_admin)
@@ -1300,6 +1307,44 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
   - `GET /carla/context/:tenantId` — Context data
   - `GET /carla/context/:tenantId/build/:conversationId` — Build context for conversation
 
+#### 66. media-processing
+- **Purpose:** Multimedia message processing — audio transcription (Whisper) and image vision (multi-provider) with 6-layer abuse prevention
+- **Services:** `media-processing.service.ts` (orchestrator), `media-download.service.ts` (channel-specific download), `audio-transcription.service.ts` (OpenAI Whisper-1), `image-vision.service.ts` (multi-provider: Gemini/xAI/OpenAI), `media-throttle.service.ts` (6-layer abuse prevention)
+- **Controller:** `media-processing.controller.ts`
+- **Endpoints:**
+  - `GET /media-processing/:tenantId/usage` — Media usage stats (super_admin or tenant_admin)
+- **Pipeline integration:** Runs BEFORE LLM call in `conversations.service.ts → generateResponse()`. Transcribed/described text persisted to messages table for conversation history continuity
+- **Download adapters:** WhatsApp (Media ID → Meta Graph API), Instagram/Messenger (direct CDN URL), Telegram (file_id → Bot API getFile). Max 25MB, 30s timeout
+- **Audio:** OpenAI Whisper-1, OGG native (no ffmpeg), cost $0.006/min. Output: `[El cliente envió un mensaje de voz: "..."]`
+- **Image:** Provider by plan tier — Emprendedor/Starter → Gemini Flash (cheapest), Pro/Enterprise → xAI then OpenAI fallback. `detail: 'low'` for cost optimization. Output: `[El cliente envió una imagen: ...]`
+- **6-layer throttle:**
+  1. Monthly quotas per media type (audio/image)
+  2. Per-contact/day limit
+  3. Per-conversation/5min burst limit
+  4. Per-tenant/hour limit
+  5. Daily budget circuit breaker (cents)
+  6. Max audio duration (seconds)
+- **Plan limits (in seed-billing-plans.js features.mediaProcessing):**
+
+  | Limit | Emprendedor | Starter | Pro | Enterprise | Custom |
+  |-------|-------------|---------|-----|------------|--------|
+  | Audio/month | 30 | 150 | 500 | 2,000 | ∞ |
+  | Images/month | 50 | 250 | 1,000 | 5,000 | ∞ |
+  | Max audio sec | 120 | 180 | 300 | 300 | 600 |
+  | Per contact/day | 10 | 20 | 30 | 50 | 100 |
+  | Per conv/5min | 3 | 3 | 5 | 5 | 10 |
+  | Per tenant/hour | 20 | 50 | 200 | 500 | 1,000 |
+  | Daily budget ¢ | 10 | 25 | 100 | 500 | 5,000 |
+
+- **Redis keys:**
+  - `media:audio:{tenantId}:{YYYY-MM}` — Monthly audio count
+  - `media:image:{tenantId}:{YYYY-MM}` — Monthly image count
+  - `media:contact:{tenantId}:{contactId}:{YYYY-MM-DD}` — Per-contact daily count
+  - `media:conv:{conversationId}:{5min-bucket}` — Per-conversation burst count
+  - `media:tenant:{tenantId}:{hour-bucket}` — Per-tenant hourly count
+  - `media:cost:{tenantId}:{YYYY-MM-DD}` — Daily cost accumulator (cents)
+- **Dashboard integration:** Billing page shows audio/image usage bars with 80%/95% threshold warnings + upgrade CTA. Super admin tenant detail includes TenantMediaStats component
+
 ---
 
 ## BullMQ Queues (6 total)
@@ -1315,7 +1360,7 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 
 ---
 
-## Cron Jobs (28 total)
+## Cron Jobs (29 total)
 
 | Schedule | Module | Method | Purpose |
 |----------|--------|--------|---------|
@@ -1337,7 +1382,8 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 | `EVERY_HOUR` | billing | reconcilePastDue | Sweep past-due subscriptions |
 | `0 2 * * *` | analytics | aggregateYesterday | Nightly metrics aggregation |
 | `30 2 * * *` | billing | applyPendingDowngrades | Apply scheduled plan downgrades |
-| `0 3 * * *` | offboarding | graceEnforcer | Past-due >7d → offboard |
+| `*/30 * * * *` | offboarding | trialExpiryDetector | Detect expired trials → past_due (dedup via billing_events) |
+| `0 3 * * *` | offboarding | graceEnforcer | Past-due >7d → offboard (dedup via billing_events) |
 | `0 3 * * *` | billing | fullReconciliation | Daily billing drift detection |
 | `EVERY_DAY_AT_3AM` | feature-requests | recomputeRanking | Re-rank feature requests |
 | `0 4 * * *` | offboarding | archiveCleaner | Drop schemas inactive >90d |
@@ -1352,7 +1398,7 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 
 ---
 
-## Dashboard Pages (78 total)
+## Dashboard Pages (80 total)
 
 ### Public Pages (13)
 
@@ -1531,6 +1577,10 @@ Complete reference for all 67 API modules, 78 dashboard pages, 6 BullMQ queues, 
 | Plan features / rate limits | `throttle/tenant-throttle.service.ts` |
 | Feature flags | `throttle/feature-flags.service.ts` |
 | Phone normalization (E.164) | `common/utils/phone.util.ts` |
+| Media processing orchestrator | `media-processing/media-processing.service.ts` |
+| Media throttle (6-layer abuse prevention) | `media-processing/media-throttle.service.ts` |
+| Audio transcription (Whisper) | `media-processing/audio-transcription.service.ts` |
+| Image vision (multi-provider) | `media-processing/image-vision.service.ts` |
 | Dashboard API client (110+ methods) | `dashboard/src/lib/api.ts` |
 | Auth context | `dashboard/src/contexts/AuthContext.tsx` |
 | Tenant context | `dashboard/src/contexts/TenantContext.tsx` |

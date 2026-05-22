@@ -70,6 +70,7 @@ export type FeatureCategory =
   | "crmSales"
   | "booking"
   | "analytics"
+  | "modules"
   | "enterprise";
 
 export interface FeatureRow {
@@ -84,6 +85,7 @@ export const FEATURE_CATEGORIES: { key: FeatureCategory; labelKey: string }[] = 
   { key: "crmSales", labelKey: "catCrmSales" },
   { key: "booking", labelKey: "catBooking" },
   { key: "analytics", labelKey: "catAnalytics" },
+  { key: "modules", labelKey: "catModules" },
   { key: "enterprise", labelKey: "catEnterprise" },
 ];
 
@@ -120,6 +122,13 @@ export const FEATURE_MATRIX: FeatureRow[] = [
   // Analytics
   { key: "scheduledReports", category: "analytics", values: ["false", "false", "true", "true"] },
   { key: "biApi", category: "analytics", values: ["false", "false", "true", "true"] },
+
+  // Modules & Integrations
+  { key: "widget", category: "modules", values: ["false", "true", "true", "true"] },
+  { key: "ecommerce", category: "modules", values: ["false", "true", "true", "true"] },
+  { key: "staffScheduling", category: "modules", values: ["false", "false", "true", "true"] },
+  { key: "vehicleInventory", category: "modules", values: ["false", "false", "true", "true"] },
+  { key: "channelManager", category: "modules", values: ["false", "false", "false", "true"] },
 
   // Enterprise
   { key: "seats", category: "enterprise", values: ["1", "3", "5", "unlimited"] },

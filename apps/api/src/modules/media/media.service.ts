@@ -291,6 +291,18 @@ export class MediaService {
     /**
      * Diagnostic: check storage health
      */
+    async getTenantStorageUsageMb(schemaName: string): Promise<number> {
+        try {
+            const rows = await this.prisma.executeInTenantSchema(schemaName,
+                `SELECT COALESCE(SUM(size_bytes), 0) AS total FROM media_files`,
+                [],
+            ) as any[];
+            return Number(rows[0]?.total ?? 0) / (1024 * 1024);
+        } catch {
+            return 0;
+        }
+    }
+
     checkStorage(): { path: string; exists: boolean; writable: boolean; files: number } {
         const exists = fs.existsSync(this.storagePath);
         let writable = false;

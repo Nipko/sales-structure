@@ -61,7 +61,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `financials/` — SaaS metrics (MRR, ARR, ARPU, churn, LTV, quick ratio). 11 endpoints under /financials/. Super_admin only
 - `financials/financial-snapshot.service.ts` — Monthly cron (1st @1AM) snapshots MRR movements, per-tenant P&L, LLM costs from tenant schemas
 - `offboarding/` — Tenant lifecycle management. 7-step offboarding pipeline (channels, sessions, queues, deactivate, cache, audit, event)
-- `offboarding/offboarding-cron.service.ts` — Grace enforcer (3AM: past_due >7d → offboard) + archive cleaner (4AM: drop schemas inactive >90d)
+- `offboarding/offboarding-cron.service.ts` — Trial expiry detector (*/30min), grace enforcer (3AM), archive cleaner (4AM), stale channel purge (5AM). All event emitters dedup via billing_events UNIQUE(provider, providerEventId)
 
 **Operations**:
 - `broadcast/` — Multi-channel campaigns (WA/Email/SMS), BullMQ (80msg/s rate limit), smart recipient resolution, per-channel stats
@@ -274,11 +274,53 @@ await this.prisma.executeInTenantSchema(schemaName,
 - `widget/widget-public.controller.ts` — Public endpoints for widget embed, CORS configured
 - `widget/widget.module.ts` — Imports for WebSocket + HTTP
 
+### Multimedia Processing Module (May 2026)
+- `media-processing/media-processing.service.ts` — Orchestrator: checkQuota → download → process (audio/image) → recordUsage → trackStats. Returns text context or null (throttled/failed). Output: `[El cliente envió un mensaje de voz: "..."]` / `[El cliente envió una imagen: ...]`
+- `media-processing/media-download.service.ts` — Channel-specific download: WhatsApp (Media ID → Meta Graph API), IG/Messenger (direct CDN URL), Telegram (file_id → Bot API getFile). MAX_DOWNLOAD_SIZE=25MB, DOWNLOAD_TIMEOUT_MS=30s
+- `media-processing/audio-transcription.service.ts` — OpenAI Whisper-1 via `openai` SDK, uses `toFile()` for buffer conversion. OGG natively supported (no ffmpeg). Cost: $0.006/min
+- `media-processing/image-vision.service.ts` — Provider selection by plan tier: Emprendedor/Starter → Gemini Flash (cheapest), Pro/Enterprise → xAI then OpenAI fallback. Uses `detail: 'low'` for cost optimization
+- `media-processing/media-throttle.service.ts` — 6-layer abuse prevention: (1) monthly quotas per media type, (2) per-contact/day, (3) per-conversation/5min burst, (4) per-tenant/hour, (5) daily budget circuit breaker in cents, (6) max audio duration in seconds. Limits read from plan features via TenantThrottleService. `-1` = Infinity at runtime
+- `media-processing/media-processing.controller.ts` — GET `:tenantId/usage` super admin/tenant stats
+- `media-processing/media-processing.module.ts` — Exports: MediaProcessingService, MediaThrottleService
+
+**Pipeline integration:** Media processing runs BEFORE the LLM call in `conversations.service.ts → generateResponse()`. Transcribed/described text persisted back to messages table for history continuity.
+
+**Plan limits (in seed-billing-plans.js features.mediaProcessing):**
+
+| Limit | Emprendedor | Starter | Pro | Enterprise | Custom |
+|-------|-------------|---------|-----|------------|--------|
+| Audio/month | 30 | 150 | 500 | 2,000 | ∞ |
+| Images/month | 50 | 250 | 1,000 | 5,000 | ∞ |
+| Max audio sec | 120 | 180 | 300 | 300 | 600 |
+| Per contact/day | 10 | 20 | 30 | 50 | 100 |
+| Per conv/5min | 3 | 3 | 5 | 5 | 10 |
+| Per tenant/hour | 20 | 50 | 200 | 500 | 1,000 |
+| Daily budget ¢ | 10 | 25 | 100 | 500 | 5,000 |
+
+**Dashboard integration:** Billing page shows media usage counters (audio/image bars with 80%/95% threshold warnings + upgrade CTA). Super admin tenant detail shows TenantMediaStats component.
+
+## Trusted Devices (in auth module, May 2026)
+- `trusted_devices` table: skip 2FA for 30 days on remembered browsers
+- Token stored as SHA-256 hash, matched via `token_hash` column
+- Endpoints: managed via `POST /auth/2fa/verify` (trust_device flag), `GET /auth/trusted-devices`, `DELETE /auth/trusted-devices/:id`
+- Redis key: `trusted_device:{userId}:{tokenHash}` (30d TTL, fast lookup before DB)
+- Email notification sent when new device is trusted
+- Device management UI in dashboard Settings → Security
+
 ## Redis Keys (API-specific)
 ```
 booking:{conversationId}        — Booking engine state (1h TTL)
 lock:conv:{conversationId}      — Conversation processing mutex via SETNX (30s TTL)
 offboard:past_due:{tenantId}    — Past-due grace period timer (30d TTL, offboard after 7d)
+billing:soft_lock_notified:{tenantId} — Dedup flag for day-3 soft lock notification (7d TTL)
 tenant_plan:{tenantId}          — Cached plan info (invalidated on subscription change)
+sub_status:{tenantId}           — Cached subscription status (invalidated on change)
 handoff:{tenantId}:{conversationId} — Handoff state (reason, startedAt, assignedTo) 24h TTL
+trusted_device:{userId}:{tokenHash} — Trusted device fast lookup (30d TTL)
+media:audio:{tenantId}:{YYYY-MM}   — Monthly audio transcription count
+media:image:{tenantId}:{YYYY-MM}   — Monthly image vision count
+media:contact:{tenantId}:{contactId}:{YYYY-MM-DD} — Per-contact daily media count
+media:conv:{conversationId}:{5min-bucket} — Per-conversation burst count
+media:tenant:{tenantId}:{hour-bucket} — Per-tenant hourly media count
+media:cost:{tenantId}:{YYYY-MM-DD}  — Daily media cost accumulator (cents)
 ```

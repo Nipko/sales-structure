@@ -6,6 +6,7 @@ import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingAdminController } from './billing-admin.controller';
 import { BillingWebhookController } from './webhook.controller';
+import { BillingPublicController } from './billing-public.controller';
 import { CouponsService } from './coupons.service';
 import { CouponsController } from './coupons.controller';
 import { BillingEmailService } from './billing-email.service';
@@ -31,7 +32,7 @@ import { MediaProcessingModule } from '../media-processing/media-processing.modu
  */
 @Module({
     imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule],
-    controllers: [BillingController, BillingAdminController, CouponsController, BillingWebhookController],
+    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController],
     providers: [
         BillingService,
         BillingEmailService,

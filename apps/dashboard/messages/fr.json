@@ -1733,7 +1733,17 @@
       "closeDate": "Date de clôture prévue",
       "contact": "Contact",
       "leadScore": "Score du lead",
-      "history": "Historique des étapes"
+      "history": "Historique des étapes",
+      "archive": "Archiver",
+      "archiveConfirm": "Voulez-vous vraiment archiver cette opportunité ? Elle sera marquée comme perdue.",
+      "assignedTo": "Attribué à",
+      "assignedPlaceholder": "Nom du responsable",
+      "wonAt": "Gagnée le",
+      "lostAt": "Perdue le",
+      "lossReason": "Motif de perte",
+      "viewConversation": "Voir la conversation",
+      "viewContact": "Voir le contact",
+      "untitled": "Sans titre"
     },
     "dealForm": {
       "contact": "Contact",
@@ -3881,8 +3891,12 @@
     "eventDesc": {
       "lead_created": "Quand un nouveau lead est cree",
       "handoff_created": "Quand une conversation est escaladee a un agent",
+      "handoff_resolved": "Quand un agent resout une conversation escaladee",
       "appointment_booked": "Quand un rendez-vous est pris",
+      "appointment_cancelled": "Quand un rendez-vous est annule",
       "message_received": "Quand un message d'un client arrive",
+      "conversation_closed": "Quand une conversation est fermee/archivee",
+      "deal_stage_changed": "Quand un deal change d'etape dans le pipeline",
       "campaign_completed": "Quand une campagne de diffusion se termine"
     },
     "create": "Creer webhook",

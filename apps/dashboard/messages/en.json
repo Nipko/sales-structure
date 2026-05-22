@@ -1733,7 +1733,17 @@
       "closeDate": "Expected close date",
       "contact": "Contact",
       "leadScore": "Lead score",
-      "history": "Stage history"
+      "history": "Stage history",
+      "archive": "Archive",
+      "archiveConfirm": "Are you sure you want to archive this opportunity? It will be marked as lost.",
+      "assignedTo": "Assigned to",
+      "assignedPlaceholder": "Assignee name",
+      "wonAt": "Won on",
+      "lostAt": "Lost on",
+      "lossReason": "Loss reason",
+      "viewConversation": "View conversation",
+      "viewContact": "View contact",
+      "untitled": "Untitled"
     },
     "dealForm": {
       "contact": "Contact",
@@ -3881,8 +3891,12 @@
     "eventDesc": {
       "lead_created": "When a new lead is created",
       "handoff_created": "When a conversation is escalated to an agent",
+      "handoff_resolved": "When an agent resolves an escalated conversation",
       "appointment_booked": "When an appointment is scheduled",
+      "appointment_cancelled": "When an appointment is cancelled",
       "message_received": "When a message arrives from a customer",
+      "conversation_closed": "When a conversation is closed/archived",
+      "deal_stage_changed": "When a deal changes pipeline stage",
       "campaign_completed": "When a broadcast campaign finishes"
     },
     "create": "Create webhook",

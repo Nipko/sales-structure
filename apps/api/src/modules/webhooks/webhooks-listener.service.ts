@@ -107,6 +107,52 @@ export class WebhooksListenerService {
         });
     }
 
+    @OnEvent('handoff.completed')
+    async onHandoffCompleted(event: { tenantId: string; conversationId: string }) {
+        await this.emit(event.tenantId, 'handoff.resolved', {
+            conversationId: event.conversationId,
+        });
+    }
+
+    @OnEvent('appointment.cancelled')
+    async onAppointmentCancelled(event: { schemaName: string; appointment: any; reason?: string }) {
+        const tenantId = await this.resolveTenantId(event.schemaName);
+        if (!tenantId) return;
+
+        await this.emit(tenantId, 'appointment.cancelled', {
+            appointmentId: event.appointment.id,
+            contactId: event.appointment.contact_id,
+            serviceName: event.appointment.service_name,
+            startAt: event.appointment.start_at,
+            reason: event.reason,
+        });
+    }
+
+    @OnEvent('conversation.archived')
+    async onConversationClosed(event: { tenantId: string; conversationId: string }) {
+        await this.emit(event.tenantId, 'conversation.closed', {
+            conversationId: event.conversationId,
+        });
+    }
+
+    @OnEvent('pipeline.stage_changed')
+    async onDealStageChanged(event: {
+        tenantId: string;
+        dealId: string;
+        leadId?: string;
+        fromStage: string;
+        toStage: string;
+        value?: number;
+    }) {
+        await this.emit(event.tenantId, 'deal.stage_changed', {
+            dealId: event.dealId,
+            leadId: event.leadId,
+            fromStage: event.fromStage,
+            toStage: event.toStage,
+            value: event.value,
+        });
+    }
+
     private async emit(tenantId: string, event: WebhookEventType, payload: Record<string, any>) {
         try {
             await this.webhooks.dispatch(tenantId, event, payload);

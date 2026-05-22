@@ -30,15 +30,17 @@ interface Delivery {
     delivered_at: string;
 }
 
-const EVENT_LABELS: Record<string, string> = {
-    "lead.created": "lead.created",
-    "handoff.created": "handoff.created",
-    "appointment.booked": "appointment.booked",
-    "message.received": "message.received",
-    "campaign.completed": "campaign.completed",
-};
-
-const EVENTS = Object.keys(EVENT_LABELS);
+const EVENTS = [
+    "lead.created",
+    "handoff.created",
+    "handoff.resolved",
+    "appointment.booked",
+    "appointment.cancelled",
+    "message.received",
+    "conversation.closed",
+    "deal.stage_changed",
+    "campaign.completed",
+];
 
 const inputCls =
     "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40";

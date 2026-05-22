@@ -7,8 +7,12 @@ import * as crypto from 'crypto';
 export const WEBHOOK_EVENTS = [
     'lead.created',
     'handoff.created',
+    'handoff.resolved',
     'appointment.booked',
+    'appointment.cancelled',
     'message.received',
+    'conversation.closed',
+    'deal.stage_changed',
     'campaign.completed',
 ] as const;
 

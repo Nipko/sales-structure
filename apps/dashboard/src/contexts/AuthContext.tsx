@@ -135,7 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     fetchVerticalConfig(parsed.tenantId);
                 }
             } catch {
-                localStorage.clear();
+                localStorage.removeItem("accessToken");
+                localStorage.removeItem("refreshToken");
+                localStorage.removeItem("user");
+                localStorage.removeItem("verticalConfig");
             }
         }
         setIsLoading(false);

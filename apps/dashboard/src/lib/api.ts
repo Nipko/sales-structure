@@ -37,8 +37,11 @@ async function authFetch(endpoint: string, options: RequestInit = {}): Promise<R
             return fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
         }
         if (typeof window !== "undefined") {
-            localStorage.clear();
-            window.location.href = "/login?kicked=1";
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
+            localStorage.removeItem("user");
+            localStorage.removeItem("verticalConfig");
+            window.location.href = "/login?expired=1";
         }
     }
 

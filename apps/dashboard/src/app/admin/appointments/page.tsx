@@ -170,6 +170,8 @@ export default function AppointmentsPage() {
   const [serviceForm, setServiceForm] = useState({
     name: "",
     duration: 30,
+    durationMax: null as number | null,
+    durationType: "fixed" as "fixed" | "flexible" | "open",
     buffer: 0,
     price: 0,
     color: "#6c5ce7",
@@ -266,10 +268,15 @@ export default function AppointmentsPage() {
           id: s.id,
           name: s.name,
           duration: s.durationMinutes || s.duration || 30,
+          durationMax: s.durationMinutesMax || s.durationMax || null,
+          durationType: s.durationType || s.duration_type || 'fixed',
           buffer: s.bufferMinutes || s.buffer || 0,
           price: parseFloat(s.price || 0),
           color: s.color || '#6c5ce7',
           active: s.isActive ?? s.active ?? true,
+          category: s.category || null,
+          maxConcurrent: s.maxConcurrent || 1,
+          requiredFields: s.requiredFields || [],
         }));
         setServices(mapped);
       }
@@ -647,7 +654,7 @@ export default function AppointmentsPage() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: "", duration: 30, buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "" });
+    setServiceForm({ name: "", duration: 30, durationMax: null, durationType: "fixed", buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "" });
     setShowServiceModal(true);
   };
 
@@ -656,6 +663,8 @@ export default function AppointmentsPage() {
     setServiceForm({
       name: svc.name,
       duration: svc.duration,
+      durationMax: svc.durationMax || null,
+      durationType: svc.durationType || "fixed",
       buffer: svc.buffer,
       price: svc.price,
       color: svc.color,
@@ -673,11 +682,15 @@ export default function AppointmentsPage() {
     if (!activeTenantId || !serviceForm.name) return;
     setSavingService(true);
     try {
+      const payload = {
+        ...serviceForm,
+        durationMinutesMax: serviceForm.durationMax,
+      };
       let response: any;
       if (editingService) {
-        response = await api.updateService(activeTenantId, editingService.id, serviceForm);
+        response = await api.updateService(activeTenantId, editingService.id, payload);
       } else {
-        response = await api.createService(activeTenantId, serviceForm);
+        response = await api.createService(activeTenantId, payload);
       }
       if (!response?.success) {
         showToast(response?.error || t("errors.saveService"));

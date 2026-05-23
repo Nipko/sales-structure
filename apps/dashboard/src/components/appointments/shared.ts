@@ -17,10 +17,14 @@ export interface Appointment {
   recurrenceRule?: Record<string, any> | null;
 }
 
+export type DurationType = "fixed" | "flexible" | "open";
+
 export interface Service {
   id: string;
   name: string;
   duration: number;
+  durationMax?: number | null;
+  durationType?: DurationType;
   buffer: number;
   price: number;
   color: string;

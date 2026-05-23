@@ -704,6 +704,8 @@ function buildSQL(s) {
     )`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "meeting_link" TEXT`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "duration_type" VARCHAR(20) DEFAULT 'fixed'`,
+    `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "duration_minutes_max" INTEGER`,
 
     // -- Custom attribute values
     `CREATE TABLE IF NOT EXISTS "${s}"."custom_attribute_values" (

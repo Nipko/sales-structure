@@ -2,12 +2,14 @@
 
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
-import { Tag, X, Save, MapPin, Video, Globe } from "lucide-react";
-import { Service, DURATION_PRESETS, SERVICE_COLORS } from "./shared";
+import { Tag, X, Save, MapPin, Video, Globe, Clock, Timer, Infinity } from "lucide-react";
+import { Service, DURATION_PRESETS, SERVICE_COLORS, type DurationType } from "./shared";
 
 interface ServiceForm {
   name: string;
   duration: number;
+  durationMax: number | null;
+  durationType: DurationType;
   buffer: number;
   price: number;
   color: string;
@@ -77,36 +79,92 @@ export default function ServiceModal({
             />
           </div>
 
-          {/* Duration presets */}
+          {/* Duration type selector */}
           <div>
             <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
-              {t('durationRequired')}
+              {t('durationType')}
             </label>
-            <div className="flex gap-2 mb-2">
-              {DURATION_PRESETS.map((d) => (
+            <div className="flex gap-2">
+              {([
+                { value: 'fixed' as DurationType, icon: Clock, label: t('durationFixed') },
+                { value: 'flexible' as DurationType, icon: Timer, label: t('durationFlexible') },
+                { value: 'open' as DurationType, icon: Infinity, label: t('durationOpen') },
+              ] as const).map(({ value, icon: Icon, label }) => (
                 <button
-                  key={d}
-                  onClick={() => onChange({ ...form, duration: d })}
+                  key={value}
+                  onClick={() => {
+                    const updates: Partial<ServiceForm> = { durationType: value };
+                    if (value === 'open') { updates.duration = 0; updates.durationMax = null; }
+                    if (value === 'fixed') { updates.durationMax = null; if (!form.duration) updates.duration = 30; }
+                    if (value === 'flexible') { if (!form.duration) updates.duration = 30; if (!form.durationMax) updates.durationMax = 60; }
+                    onChange({ ...form, ...updates });
+                  }}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
-                    form.duration === d
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
+                    form.durationType === value
                       ? "bg-primary text-primary-foreground border-primary"
                       : "bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                   )}
                 >
-                  {d} min
+                  <Icon size={14} />
+                  {label}
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              min={5}
-              value={form.duration || ""}
-              onChange={(e) => onChange({ ...form, duration: e.target.value === "" ? 0 : Number(e.target.value) })}
-              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              placeholder={t('customDuration')}
-            />
+            {form.durationType === 'open' && (
+              <p className="text-xs text-neutral-400 mt-2">{t('durationOpenHint')}</p>
+            )}
           </div>
+
+          {/* Duration presets — hidden for open */}
+          {form.durationType !== 'open' && (
+            <div>
+              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+                {form.durationType === 'flexible' ? t('durationMin') : t('durationRequired')}
+              </label>
+              <div className="flex gap-2 mb-2">
+                {DURATION_PRESETS.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => onChange({ ...form, duration: d })}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
+                      form.duration === d
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    )}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min={5}
+                value={form.duration || ""}
+                onChange={(e) => onChange({ ...form, duration: e.target.value === "" ? 0 : Number(e.target.value) })}
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder={t('customDuration')}
+              />
+            </div>
+          )}
+
+          {/* Duration max — only for flexible */}
+          {form.durationType === 'flexible' && (
+            <div>
+              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+                {t('durationMax')}
+              </label>
+              <input
+                type="number"
+                min={form.duration || 5}
+                value={form.durationMax || ""}
+                onChange={(e) => onChange({ ...form, durationMax: e.target.value === "" ? null : Number(e.target.value) })}
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder={t('durationMaxPlaceholder')}
+              />
+            </div>
+          )}
 
           {/* Buffer + Price */}
           <div className="grid grid-cols-2 gap-3">

@@ -3,11 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { randomUUID } from 'crypto';
 
+export type DurationType = 'fixed' | 'flexible' | 'open';
+
 export interface BookableService {
     id: string;
     name: string;
     description: string | null;
     durationMinutes: number;
+    durationMinutesMax: number | null;
+    durationType: DurationType;
     bufferMinutes: number;
     price: number;
     currency: string;
@@ -47,15 +51,18 @@ export class ServicesService {
 
     async create(schemaName: string, data: any, tenantId?: string): Promise<BookableService> {
         const id = randomUUID();
-        const duration = data.durationMinutes || data.duration || 30;
+        const durationType: DurationType = data.durationType || 'fixed';
+        const duration = durationType === 'open' ? 0 : (data.durationMinutes || data.duration || 30);
         const buffer = data.bufferMinutes || data.buffer || 0;
+        const durationMax = durationType === 'flexible' ? (data.durationMinutesMax || null) : null;
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, created_at, updated_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, NOW(), NOW())`,
+            `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, created_at, updated_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, NOW(), NOW())`,
             [id, data.name, data.description || null, duration,
              buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7',
              data.category || null, data.maxConcurrent || 1,
-             JSON.stringify(data.requiredFields || [])],
+             JSON.stringify(data.requiredFields || []),
+             durationType, durationMax],
         );
         // Invalidate booking services cache so next conversation gets fresh list
         if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
@@ -82,6 +89,8 @@ export class ServicesService {
         if (data.category !== undefined) { sets.push(`category = $${idx++}`); params.push(data.category || null); }
         if (data.maxConcurrent !== undefined) { sets.push(`max_concurrent = $${idx++}`); params.push(data.maxConcurrent); }
         if (data.requiredFields !== undefined) { sets.push(`required_fields = $${idx++}::jsonb`); params.push(JSON.stringify(data.requiredFields)); }
+        if (data.durationType !== undefined) { sets.push(`duration_type = $${idx++}`); params.push(data.durationType); }
+        if (data.durationMinutesMax !== undefined) { sets.push(`duration_minutes_max = $${idx++}`); params.push(data.durationMinutesMax || null); }
         sets.push(`updated_at = NOW()`);
 
         params.push(serviceId);
@@ -157,6 +166,8 @@ export class ServicesService {
             name: row.name,
             description: row.description,
             durationMinutes: row.duration_minutes,
+            durationMinutesMax: row.duration_minutes_max || null,
+            durationType: row.duration_type || 'fixed',
             bufferMinutes: row.buffer_minutes,
             price: parseFloat(row.price || '0'),
             currency: row.currency,

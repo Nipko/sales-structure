@@ -6,13 +6,16 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import {
     Plus, Pencil, Trash2, Timer, DollarSign, Clock, Search,
-    CheckCircle2, XCircle, Tag, Users, ChevronDown, X, UserPlus,
+    CheckCircle2, XCircle, Tag, Users, ChevronDown, X, UserPlus, Infinity,
 } from "lucide-react";
+import type { DurationType } from "./shared";
 
 interface Service {
     id: string;
     name: string;
     duration: number;
+    durationMax?: number | null;
+    durationType?: DurationType;
     buffer: number;
     price: number;
     color: string;
@@ -225,7 +228,13 @@ export default function ServicesTab({
                                 {/* Info badges */}
                                 <div className="flex flex-wrap gap-2 mb-4">
                                     <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
-                                        <Timer size={12} /> {svc.duration} {t("minutes")}
+                                        {svc.durationType === 'open' ? (
+                                            <><Infinity size={12} /> {t("durationOpen")}</>
+                                        ) : svc.durationType === 'flexible' ? (
+                                            <><Timer size={12} /> {svc.duration}–{svc.durationMax} {t("minutes")}</>
+                                        ) : (
+                                            <><Timer size={12} /> {svc.duration} {t("minutes")}</>
+                                        )}
                                     </span>
                                     {svc.buffer > 0 && (
                                         <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">

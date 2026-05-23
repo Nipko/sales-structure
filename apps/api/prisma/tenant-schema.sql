@@ -1262,6 +1262,8 @@ ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "required_fiel
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT true;
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "meeting_link" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_type" VARCHAR(20) DEFAULT 'fixed';
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_minutes_max" INTEGER;
 
 -- ---- Service Staff Assignment (many-to-many) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_staff" (

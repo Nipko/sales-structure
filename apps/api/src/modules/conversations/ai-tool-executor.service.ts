@@ -550,7 +550,7 @@ export class AIToolExecutorService {
 
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active
+            `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
@@ -561,6 +561,8 @@ export class AIToolExecutorService {
                 name: s.name,
                 description: s.description,
                 durationMinutes: s.duration_minutes,
+                durationMinutesMax: s.duration_minutes_max || null,
+                durationType: s.duration_type || 'fixed',
                 price: Number(s.price || 0),
                 currency: s.currency || 'COP',
             })),
@@ -598,12 +600,22 @@ export class AIToolExecutorService {
 
         // Get service duration
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT duration_minutes, buffer_minutes FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max FROM "${schema}".services WHERE id = $1::uuid`,
             resolvedServiceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
 
-        const duration = svcRows[0].duration_minutes || 30;
+        const durationType = svcRows[0].duration_type || 'fixed';
+
+        // Open services: no slot generation needed — any time within availability works
+        if (durationType === 'open') {
+            return this.checkAvailabilityOpen(schema, date, svcRows[0], staffId);
+        }
+
+        // For flexible services, use max duration for calendar blocking
+        const duration = durationType === 'flexible' && svcRows[0].duration_minutes_max
+            ? svcRows[0].duration_minutes_max
+            : (svcRows[0].duration_minutes || 30);
         const buffer = svcRows[0].buffer_minutes || 0;
         // Total block time = service duration + post-buffer
         const totalBlock = duration + buffer;
@@ -757,6 +769,51 @@ export class AIToolExecutorService {
         };
     }
 
+    private async checkAvailabilityOpen(
+        schema: string, date: string, svc: any, staffId?: string,
+    ): Promise<any> {
+        const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+        let staffFilter = '';
+        const params: any[] = [dayOfWeek];
+        if (staffId) { staffFilter = ' AND user_id = $2::uuid'; params.push(staffId); }
+
+        const slots: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT user_id, start_time::text, end_time::text FROM "${schema}".availability_slots
+             WHERE day_of_week = $1 AND is_active = true${staffFilter}`,
+            ...params,
+        );
+
+        if (!slots.length) {
+            return { available: false, message: 'No atendemos ese día de la semana. Sugerí otra fecha al cliente.', slots: [] };
+        }
+
+        // For open services, return the availability windows as "slots" (no specific times)
+        const userIds = [...new Set(slots.map(s => s.user_id).filter(Boolean))];
+        let userNames: Record<string, string> = {};
+        if (userIds.length > 0) {
+            const users = await this.prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, firstName: true, lastName: true },
+            });
+            userNames = Object.fromEntries(users.map((u: any) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
+        }
+
+        const availableWindows = slots.map(s => ({
+            time: s.start_time.substring(0, 5),
+            endTime: s.end_time.substring(0, 5),
+            staffName: userNames[s.user_id] || undefined,
+            staffId: s.user_id || undefined,
+        }));
+
+        return {
+            available: true,
+            date,
+            durationType: 'open',
+            message: 'Este servicio no tiene duración fija. El cliente puede elegir cualquier hora dentro del horario disponible.',
+            slots: availableWindows,
+        };
+    }
+
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
@@ -782,7 +839,11 @@ export class AIToolExecutorService {
 
         const svc = svcRows[0];
         const startAt = `${args.date}T${args.time}:00`;
-        const endMinutes = parseInt(args.time.split(':')[0]) * 60 + parseInt(args.time.split(':')[1]) + svc.duration_minutes;
+        const durType = svc.duration_type || 'fixed';
+        // Open services: use 30min placeholder block. Flexible: use max duration for blocking.
+        const effectiveDuration = durType === 'open' ? 30
+            : (durType === 'flexible' && svc.duration_minutes_max ? svc.duration_minutes_max : (svc.duration_minutes || 30));
+        const endMinutes = parseInt(args.time.split(':')[0]) * 60 + parseInt(args.time.split(':')[1]) + effectiveDuration;
         const endAt = `${args.date}T${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}:00`;
 
         const rows: any[] = await this.prisma.$queryRawUnsafe(

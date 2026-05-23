@@ -38,6 +38,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
         whichName: '¿Cuál es tu nombre completo?',
         whichEmail: '¿Cuál es tu correo electrónico?',
         minutes: 'minutos',
+        flexibleTime: 'horario libre',
     },
     en: {
         serviceSelected: '{service} selected. What date works for you?',
@@ -61,6 +62,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
         whichName: 'What is your full name?',
         whichEmail: 'What is your email address?',
         minutes: 'minutes',
+        flexibleTime: 'flexible time',
     },
     pt: {
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
@@ -84,6 +86,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
         whichName: 'Qual é seu nome completo?',
         whichEmail: 'Qual é seu e-mail?',
         minutes: 'minutos',
+        flexibleTime: 'horário livre',
     },
     fr: {
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
@@ -107,6 +110,7 @@ const MESSAGES: Record<string, Record<string, string>> = {
         whichName: 'Quel est votre nom complet ?',
         whichEmail: 'Quel est votre e-mail ?',
         minutes: 'minutes',
+        flexibleTime: 'horaire libre',
     },
 };
 
@@ -123,7 +127,7 @@ function msg(lang: string, key: string, vars: Record<string, string> = {}): stri
 
 export interface BookingState {
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked';
-    services?: Array<{ id: string; name: string; durationMinutes: number; price: number; currency: string }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -460,11 +464,15 @@ export class BookingEngineService {
     private showServices(state: BookingState, lang: string): EngineResult {
         state.step = 'show_services';
         const svcList = (state.services || []).map((s, i) => {
-            // Duration label: skip "(0 minutos)" when duration is 0 or unknown
-            const durLabel = s.durationMinutes > 0
-                ? ` (${s.durationMinutes} ${msg(lang, 'minutes')})`
-                : '';
-            // Price label: skip when price is 0
+            let durLabel = '';
+            const dtype = s.durationType || 'fixed';
+            if (dtype === 'open') {
+                durLabel = ` (${msg(lang, 'flexibleTime')})`;
+            } else if (dtype === 'flexible' && s.durationMinutesMax) {
+                durLabel = ` (${s.durationMinutes}-${s.durationMinutesMax} ${msg(lang, 'minutes')})`;
+            } else if (s.durationMinutes > 0) {
+                durLabel = ` (${s.durationMinutes} ${msg(lang, 'minutes')})`;
+            }
             const priceLabel = s.price > 0
                 ? ` - ${s.price.toLocaleString('es-CO')} ${s.currency}`
                 : '';

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ComplianceService } from './compliance.service';
@@ -36,8 +36,26 @@ export class ComplianceController {
 
     @Post('legal-texts/:tenantId')
     @ApiOperation({ summary: 'Create a new legal text version' })
-    async createLegalText(@Param('tenantId') tenantId: string, @Body() payload: any) {
-        return this.complianceService.createLegalText(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
+    async createLegalText(@Param('tenantId') tenantId: string, @Body() payload: any, @CurrentUser() user: any) {
+        const result = await this.complianceService.createLegalText(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
+        await this.complianceService.logComplianceAction(tenantId, 'legal_text.created', 'legal_text_versions', { id: result?.id, channel: payload.channel, version: payload.version, userId: user?.id });
+        return result;
+    }
+
+    @Put('legal-texts/:tenantId/:id')
+    @ApiOperation({ summary: 'Update a legal text version' })
+    async updateLegalText(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any, @CurrentUser() user: any) {
+        const result = await this.complianceService.updateLegalText(await this.schemaFor(tenantId), id, payload);
+        await this.complianceService.logComplianceAction(tenantId, 'legal_text.updated', 'legal_text_versions', { id, changes: Object.keys(payload), userId: user?.id });
+        return result;
+    }
+
+    @Delete('legal-texts/:tenantId/:id')
+    @ApiOperation({ summary: 'Delete a legal text version' })
+    async deleteLegalText(@Param('tenantId') tenantId: string, @Param('id') id: string, @CurrentUser() user: any) {
+        await this.complianceService.deleteLegalText(await this.schemaFor(tenantId), id);
+        await this.complianceService.logComplianceAction(tenantId, 'legal_text.deleted', 'legal_text_versions', { id, userId: user?.id });
+        return { success: true };
     }
 
     // ─── Consents ─────────────────────────────────────────────────────────────
@@ -125,6 +143,15 @@ export class ComplianceController {
     @ApiOperation({ summary: 'Process a deletion request' })
     async processDeletionRequest(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         return this.complianceService.processDeletionRequest(await this.schemaFor(tenantId), id);
+    }
+
+    // ─── Audit Log ─────────────────────────────────────────────────────────
+
+    @Get('audit-log/:tenantId')
+    @ApiOperation({ summary: 'Compliance audit log' })
+    async getAuditLog(@Param('tenantId') tenantId: string, @Query('limit') limit?: string) {
+        const data = await this.complianceService.getComplianceAuditLog(tenantId, parseInt(limit || '50'));
+        return data;
     }
 
     // ─── Super_admin compliance center (cross-tenant) ─────────────────────

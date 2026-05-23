@@ -1596,19 +1596,38 @@
       "confirmed": "Confirmada",
       "rejected": "Rechazada (falso positivo)"
     },
+    "infoBanner": "Gestiona tus textos legales, revisa consentimientos y procesa solicitudes de baja o eliminación de datos. Esta sección te ayuda a cumplir con GDPR, LGPD y regulaciones locales de protección de datos.",
+    "legalHelp": "Crea y gestiona las versiones de tus textos legales por canal. El agente IA puede mostrar estos textos cuando un contacto solicita información sobre privacidad o tratamiento de datos.",
+    "consentsHelp": "Registro automático de consentimientos otorgados por tus contactos. Cada registro incluye canal, versión del texto legal aceptado y fecha.",
+    "optOutsHelp": "El sistema detecta automáticamente solicitudes de baja en mensajes entrantes. Revisa cada caso y confirma o marca como falso positivo.",
+    "deletionsHelp": "Solicitudes de eliminación de datos personales (GDPR Art. 17). Al procesar, se anonimizan todos los datos del contacto de forma irreversible.",
+    "auditLog": "Historial",
+    "auditHelp": "Registro de todas las acciones de compliance realizadas: creación, edición y eliminación de textos legales, confirmaciones de opt-out y procesamiento de solicitudes de eliminación.",
+    "auditAction": "Acción",
+    "auditResource": "Recurso",
+    "auditDetails": "Detalles",
+    "consentDate": "Fecha de consentimiento",
     "modal": {
       "newLegalText": "Nuevo texto legal",
+      "editLegalText": "Editar texto legal",
       "registerOptOut": "Registrar solicitud de baja"
     },
     "empty": {
       "legal": "No hay textos legales configurados.",
+      "legalHint": "Crea tu primer texto legal para que el agente IA lo muestre a tus contactos cuando lo soliciten.",
       "consents": "Aún no hay consentimientos registrados.",
+      "consentsHint": "Los consentimientos se registran automáticamente cuando un contacto acepta tus textos legales.",
       "optOuts": "No hay solicitudes de baja registradas.",
       "optOutsFiltered": "No hay solicitudes de baja con estado \"{status}\".",
-      "deletions": "No hay solicitudes de eliminación."
+      "deletions": "No hay solicitudes de eliminación.",
+      "deletionsHint": "Las solicitudes de eliminación se crean cuando un contacto solicita el borrado de sus datos personales.",
+      "audit": "No hay registros de auditoría.",
+      "auditHint": "Las acciones de compliance se registran automáticamente aquí."
     },
     "toast": {
       "legalCreated": "Texto legal creado",
+      "legalUpdated": "Texto legal actualizado",
+      "legalDeleted": "Texto legal eliminado",
       "optOutRegistered": "Opt-out registrado",
       "requestProcessed": "Solicitud procesada",
       "optOutConfirmed": "Opt-out confirmado",

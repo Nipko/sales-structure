@@ -1598,19 +1598,38 @@
       "confirmed": "Confirmado",
       "rejected": "Rejeitado (falso positivo)"
     },
+    "infoBanner": "Gerencie seus textos legais, revise consentimentos e processe solicitações de opt-out ou exclusão de dados. Esta seção ajuda a cumprir GDPR, LGPD e regulamentações locais de proteção de dados.",
+    "legalHelp": "Crie e gerencie versões dos seus textos legais por canal. O agente IA pode exibir esses textos quando um contato solicitar informações sobre privacidade ou tratamento de dados.",
+    "consentsHelp": "Registro automático de consentimentos concedidos pelos seus contatos. Cada registro inclui canal, versão do texto legal aceito e data.",
+    "optOutsHelp": "O sistema detecta automaticamente solicitações de opt-out em mensagens recebidas. Revise cada caso e confirme ou marque como falso positivo.",
+    "deletionsHelp": "Solicitações de exclusão de dados pessoais (LGPD/GDPR Art. 17). Ao processar, todos os dados do contato são anonimizados irreversivelmente.",
+    "auditLog": "Histórico",
+    "auditHelp": "Registro de todas as ações de compliance: criação, edição e exclusão de textos legais, confirmações de opt-out e processamento de solicitações de exclusão.",
+    "auditAction": "Ação",
+    "auditResource": "Recurso",
+    "auditDetails": "Detalhes",
+    "consentDate": "Data do consentimento",
     "modal": {
       "newLegalText": "Novo texto legal",
+      "editLegalText": "Editar texto legal",
       "registerOptOut": "Registrar opt-out"
     },
     "empty": {
       "legal": "Não há textos legais configurados.",
+      "legalHint": "Crie seu primeiro texto legal para o agente IA exibir aos contatos quando solicitado.",
       "consents": "Ainda não há consentimentos registrados.",
+      "consentsHint": "Os consentimentos são registrados automaticamente quando um contato aceita seus textos legais.",
       "optOuts": "Não há opt-outs registrados.",
       "optOutsFiltered": "Não há opt-outs com status \"{status}\".",
-      "deletions": "Não há solicitações de exclusão."
+      "deletions": "Não há solicitações de exclusão.",
+      "deletionsHint": "As solicitações de exclusão são criadas quando um contato solicita a exclusão dos seus dados pessoais.",
+      "audit": "Não há registros de auditoria.",
+      "auditHint": "As ações de compliance são registradas automaticamente aqui."
     },
     "toast": {
       "legalCreated": "Texto legal criado",
+      "legalUpdated": "Texto legal atualizado",
+      "legalDeleted": "Texto legal excluído",
       "optOutRegistered": "Opt-out registrado",
       "requestProcessed": "Solicitação processada",
       "optOutConfirmed": "Opt-out confirmado",

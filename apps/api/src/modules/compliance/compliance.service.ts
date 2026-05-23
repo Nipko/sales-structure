@@ -26,6 +26,49 @@ export class ComplianceService {
         return rows[0];
     }
 
+    async updateLegalText(schemaName: string, id: string, data: any) {
+        const sets: string[] = [];
+        const params: any[] = [id];
+        let idx = 2;
+        if (data.channel !== undefined) { sets.push(`channel = $${idx++}`); params.push(data.channel); }
+        if (data.version !== undefined) { sets.push(`version = $${idx++}`); params.push(data.version); }
+        if (data.text !== undefined) { sets.push(`text = $${idx++}`); params.push(data.text); }
+        if (data.active !== undefined) { sets.push(`active = $${idx++}`); params.push(data.active); }
+        if (sets.length === 0) return null;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `UPDATE legal_text_versions SET ${sets.join(', ')} WHERE id = $1::uuid RETURNING *`,
+            params,
+        );
+        return rows[0] || null;
+    }
+
+    async deleteLegalText(schemaName: string, id: string) {
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `DELETE FROM legal_text_versions WHERE id = $1::uuid`,
+            [id],
+        );
+    }
+
+    async getComplianceAuditLog(tenantId: string, limit = 50) {
+        return this.prisma.auditLog.findMany({
+            where: { tenantId, action: { startsWith: 'compliance.' } },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+        });
+    }
+
+    async logComplianceAction(tenantId: string, action: string, resource: string, details: any) {
+        try {
+            await this.prisma.auditLog.create({
+                data: { tenantId, action: `compliance.${action}`, resource, details },
+            });
+        } catch (e: any) {
+            this.logger.warn(`Compliance audit log failed: ${e.message}`);
+        }
+    }
+
     // ─── Consent Records ──────────────────────────────────────────────────────
 
     async getConsents(schemaName: string, leadId?: string) {

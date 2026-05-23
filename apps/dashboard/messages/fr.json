@@ -1598,19 +1598,38 @@
       "confirmed": "Confirmée",
       "rejected": "Rejetée (faux positif)"
     },
+    "infoBanner": "Gérez vos textes juridiques, examinez les consentements et traitez les demandes de désinscription ou de suppression de données. Cette section vous aide à respecter le RGPD, la LGPD et les réglementations locales sur la protection des données.",
+    "legalHelp": "Créez et gérez les versions de vos textes juridiques par canal. L'agent IA peut afficher ces textes lorsqu'un contact demande des informations sur la confidentialité ou le traitement des données.",
+    "consentsHelp": "Journal automatique des consentements accordés par vos contacts. Chaque enregistrement inclut le canal, la version du texte juridique accepté et la date.",
+    "optOutsHelp": "Le système détecte automatiquement les demandes de désinscription dans les messages entrants. Examinez chaque cas et confirmez ou marquez comme faux positif.",
+    "deletionsHelp": "Demandes de suppression de données personnelles (RGPD Art. 17). Lors du traitement, toutes les données du contact sont anonymisées de manière irréversible.",
+    "auditLog": "Historique",
+    "auditHelp": "Registre de toutes les actions de conformité : création, modification et suppression de textes juridiques, confirmations de désinscription et traitement des demandes de suppression.",
+    "auditAction": "Action",
+    "auditResource": "Ressource",
+    "auditDetails": "Détails",
+    "consentDate": "Date du consentement",
     "modal": {
       "newLegalText": "Nouveau texte juridique",
+      "editLegalText": "Modifier le texte juridique",
       "registerOptOut": "Enregistrer désinscription"
     },
     "empty": {
       "legal": "Aucun texte juridique configuré.",
+      "legalHint": "Créez votre premier texte juridique pour que l'agent IA l'affiche aux contacts lorsqu'il est demandé.",
       "consents": "Aucun consentement enregistré.",
+      "consentsHint": "Les consentements sont enregistrés automatiquement lorsqu'un contact accepte vos textes juridiques.",
       "optOuts": "Aucune désinscription enregistrée.",
       "optOutsFiltered": "Aucune désinscription avec le statut \"{status}\".",
-      "deletions": "Aucune demande de suppression."
+      "deletions": "Aucune demande de suppression.",
+      "deletionsHint": "Les demandes de suppression sont créées lorsqu'un contact demande l'effacement de ses données personnelles.",
+      "audit": "Aucun registre d'audit.",
+      "auditHint": "Les actions de conformité sont automatiquement enregistrées ici."
     },
     "toast": {
       "legalCreated": "Texte juridique créé",
+      "legalUpdated": "Texte juridique mis à jour",
+      "legalDeleted": "Texte juridique supprimé",
       "optOutRegistered": "Désinscription enregistrée",
       "requestProcessed": "Demande traitée",
       "optOutConfirmed": "Désinscription confirmée",

@@ -607,6 +607,12 @@ export const api = {
         apiGet(`/compliance/legal-texts/${tenantId}`),
     createLegalText: (tenantId: string, data: any) =>
         apiPost(`/compliance/legal-texts/${tenantId}`, data),
+    updateLegalText: (tenantId: string, id: string, data: any) =>
+        apiPut(`/compliance/legal-texts/${tenantId}/${id}`, data),
+    deleteLegalText: (tenantId: string, id: string) =>
+        apiDelete(`/compliance/legal-texts/${tenantId}/${id}`),
+    getComplianceAuditLog: (tenantId: string) =>
+        apiGet(`/compliance/audit-log/${tenantId}`),
     getConsents: (tenantId: string, leadId?: string) =>
         apiGet(`/compliance/consents/${tenantId}${leadId ? `?leadId=${leadId}` : ''}`),
     getDeletionRequests: (tenantId: string) =>

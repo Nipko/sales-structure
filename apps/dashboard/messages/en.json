@@ -1598,19 +1598,38 @@
       "confirmed": "Confirmed",
       "rejected": "Rejected (false positive)"
     },
+    "infoBanner": "Manage your legal texts, review consents and process opt-out or data deletion requests. This section helps you comply with GDPR, LGPD and local data protection regulations.",
+    "legalHelp": "Create and manage versions of your legal texts per channel. The AI agent can display these texts when a contact requests privacy or data processing information.",
+    "consentsHelp": "Automatic log of consents granted by your contacts. Each record includes channel, accepted legal text version and date.",
+    "optOutsHelp": "The system automatically detects opt-out requests in incoming messages. Review each case and confirm or mark as false positive.",
+    "deletionsHelp": "Personal data deletion requests (GDPR Art. 17). When processed, all contact data is irreversibly anonymized.",
+    "auditLog": "Audit Log",
+    "auditHelp": "Record of all compliance actions: creation, editing and deletion of legal texts, opt-out confirmations and deletion request processing.",
+    "auditAction": "Action",
+    "auditResource": "Resource",
+    "auditDetails": "Details",
+    "consentDate": "Consent date",
     "modal": {
       "newLegalText": "New legal text",
+      "editLegalText": "Edit legal text",
       "registerOptOut": "Register opt-out"
     },
     "empty": {
       "legal": "No legal texts configured.",
+      "legalHint": "Create your first legal text for the AI agent to show contacts when requested.",
       "consents": "No consents registered yet.",
+      "consentsHint": "Consents are automatically recorded when a contact accepts your legal texts.",
       "optOuts": "No opt-outs registered.",
       "optOutsFiltered": "No opt-outs with status \"{status}\".",
-      "deletions": "No deletion requests."
+      "deletions": "No deletion requests.",
+      "deletionsHint": "Deletion requests are created when a contact requests erasure of their personal data.",
+      "audit": "No audit records.",
+      "auditHint": "Compliance actions are automatically logged here."
     },
     "toast": {
       "legalCreated": "Legal text created",
+      "legalUpdated": "Legal text updated",
+      "legalDeleted": "Legal text deleted",
       "optOutRegistered": "Opt-out registered",
       "requestProcessed": "Request processed",
       "optOutConfirmed": "Opt-out confirmed",

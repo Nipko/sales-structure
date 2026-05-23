@@ -37,9 +37,11 @@ export class MediaProcessingService {
         }
 
         if (!content.mediaUrl) {
-            this.logger.warn(`[MediaProcessing] No mediaUrl for ${content.type} message from ${msg.contactId}`);
+            this.logger.warn(`[MediaProcessing] No mediaUrl for ${content.type} message from ${msg.contactId} — check webhook normalization`);
             return null;
         }
+
+        this.logger.log(`[MediaProcessing] Processing ${content.type} from ${msg.channelType}, mime=${content.mimeType || 'unknown'}`);
 
         // 1. Check all quotas
         const throttleResult = await this.mediaThrottle.checkQuota(

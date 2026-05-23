@@ -227,12 +227,28 @@ export class WhatsappWebhookService {
          // Message continues to AI pipeline — admin reviews opt-out later
      }
 
+     const contentType = msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type;
+     const mediaObj = msg[msg.type];
+     const mediaId = mediaObj?.id;
+     const mediaMimeType = mediaObj?.mime_type;
+     const mediaCaption = mediaObj?.caption;
+
+     if (mediaId) {
+         this.logger.log(`[WhatsApp] Media message type=${msg.type} mediaId=${mediaId} mime=${mediaMimeType || 'unknown'}`);
+     }
+
      const normalizedMsg = {
          tenantId,
          contactId: fromPhone,
          channelType: 'whatsapp',
          channelAccountId: phoneNumberId,
-         content: { type: msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type, text: messageText },
+         content: {
+             type: contentType,
+             text: messageText,
+             ...(mediaId && { mediaUrl: mediaId }),
+             ...(mediaMimeType && { mimeType: mediaMimeType }),
+             ...(mediaCaption && { caption: mediaCaption }),
+         },
          metadata: {
              contactName: contact?.profile?.name,
              waMessageId,

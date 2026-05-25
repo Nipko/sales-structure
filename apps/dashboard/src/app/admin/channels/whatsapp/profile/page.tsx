@@ -33,7 +33,7 @@ interface PhoneDetails {
     verified_name?: string;
     name_status?: string;
     quality_rating?: string;
-    messaging_limit?: string;
+    messaging_limit_tier?: string;
     is_official_business_account?: boolean;
     account_mode?: string;
     code_verification_status?: string;
@@ -334,7 +334,7 @@ export default function WhatsAppProfilePage() {
                         <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("messagingLimit")}</span>
                         <p className="text-sm font-medium flex items-center gap-2">
                             <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                            {tierLabel(phoneDetails.messaging_limit)}
+                            {tierLabel(phoneDetails.messaging_limit_tier)}
                         </p>
                         <p className="text-[11px] text-muted-foreground leading-snug">{t("tierHelp")}</p>
                     </div>

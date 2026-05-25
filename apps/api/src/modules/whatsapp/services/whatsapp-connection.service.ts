@@ -207,7 +207,7 @@ export class WhatsappConnectionService {
         { headers: { Authorization: `Bearer ${accessToken}` } },
       ),
       fetch(
-        `${META_GRAPH}/${phoneNumberId}?fields=verified_name,name_status,quality_rating,messaging_limit,is_official_business_account,account_mode,code_verification_status,display_phone_number`,
+        `${META_GRAPH}/${phoneNumberId}?fields=verified_name,name_status,quality_rating,is_official_business_account,account_mode,code_verification_status,display_phone_number`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
       ),
     ]);
@@ -219,7 +219,14 @@ export class WhatsappConnectionService {
     if (phoneBody.error) this.handleMetaError(phoneBody, 'getPhoneDetails');
 
     const profile = profileBody.data?.[0] || profileBody.data || {};
-    return { profile, phoneDetails: phoneBody };
+
+    const channels = await this.prisma.executeInTenantSchema<any[]>(
+      schemaName,
+      `SELECT messaging_limit_tier FROM whatsapp_channels LIMIT 1`,
+    );
+    const messagingLimit = channels?.[0]?.messaging_limit_tier || null;
+
+    return { profile, phoneDetails: { ...phoneBody, messaging_limit_tier: messagingLimit } };
   }
 
   async updateBusinessProfile(schemaName: string, data: {

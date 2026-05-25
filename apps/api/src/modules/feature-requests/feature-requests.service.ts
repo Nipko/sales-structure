@@ -123,7 +123,11 @@ export class FeatureRequestsService {
         if (userId) params.push(userId);
 
         const sql = `
-            SELECT fr.*, t.name AS author_tenant_name,
+            SELECT fr.id, fr.title, fr.description, fr.status, fr.category,
+                   fr.author_user_id, fr.author_tenant_id,
+                   fr.vote_count, fr.weighted_score, fr.comment_count,
+                   fr.shipped_at, fr.created_at, fr.updated_at,
+                   t.name AS author_tenant_name,
                    u.first_name || ' ' || u.last_name AS author_name
                    ${userVotedSelect}
             FROM feature_requests fr

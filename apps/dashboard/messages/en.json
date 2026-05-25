@@ -782,6 +782,10 @@
       "advanced": {
         "label": "Advanced",
         "description": "Platform name, limits, and features"
+      },
+      "changelog": {
+        "label": "What's New & Updates",
+        "description": "Compose, translate, and publish system announcements"
       }
     },
     "title": "Settings",

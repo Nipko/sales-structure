@@ -782,6 +782,10 @@
       "advanced": {
         "label": "Avanzado",
         "description": "Nombre, límites y features de la plataforma"
+      },
+      "changelog": {
+        "label": "Novedades y Anuncios",
+        "description": "Redacta, traduce y publica anuncios del sistema"
       }
     },
     "account": "Mi Cuenta",

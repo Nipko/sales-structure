@@ -16,7 +16,7 @@ import {
     Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
     SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
     BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook, MessageCircle,
-    RefreshCw,
+    RefreshCw, Sparkles,
 } from "lucide-react";
 
 export type Role = {
@@ -114,6 +114,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
         visible: (r) => r.canManagePlatform,
         items: [
             { key: "channelConfig", href: "/admin/settings/channels", icon: Phone, iconColor: "text-green-500", iconBg: "bg-green-500/10" },
+            { key: "changelog", href: "/admin/settings/platform/changelog", icon: Sparkles, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
             { key: "advanced", href: "/admin/settings/platform", icon: Settings, iconColor: "text-neutral-500", iconBg: "bg-neutral-500/10" },
         ],
     },

@@ -782,6 +782,10 @@
       "advanced": {
         "label": "Avançado",
         "description": "Nome, limites e features da plataforma"
+      },
+      "changelog": {
+        "label": "Novidades e Atualizações",
+        "description": "Escreva, traduza e publique anúncios do sistema"
       }
     },
     "title": "Configuracoes",

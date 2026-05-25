@@ -782,6 +782,10 @@
       "advanced": {
         "label": "Avancé",
         "description": "Nom, limites et features de la plateforme"
+      },
+      "changelog": {
+        "label": "Nouveautés et Mises à jour",
+        "description": "Rédigez, traduisez et publiez les annonces du système"
       }
     },
     "title": "Parametres",

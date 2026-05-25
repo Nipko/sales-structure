@@ -87,7 +87,7 @@ export class KnowledgeService {
             const chunks = this.chunkText(textContent);
             await this.prisma.executeInTenantSchema(
                 schema,
-                `UPDATE knowledge_documents SET status = 'ready', chunk_count = $2, updated_at = NOW() WHERE id = $1`,
+                `UPDATE knowledge_documents SET status = 'ready', chunk_count = $2, updated_at = NOW() WHERE id = $1::uuid`,
                 [document.id, chunks.length],
             );
 
@@ -99,7 +99,7 @@ export class KnowledgeService {
             this.logger.error(`Failed to ingest document ${document.id}: ${error.message}`);
             await this.prisma.executeInTenantSchema(
                 schema,
-                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1`,
+                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1::uuid`,
                 [document.id, error.message],
             );
             throw error;
@@ -179,7 +179,7 @@ export class KnowledgeService {
     async recrawlUrl(tenantId: string, documentId: string) {
         const schema = await this.tenantSchema(tenantId);
         const docs = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, source_url, title, crawl_hash FROM knowledge_documents WHERE id = $1 AND source_type = 'url'`,
+            `SELECT id, source_url, title, crawl_hash FROM knowledge_documents WHERE id = $1::uuid AND source_type = 'url'`,
             [documentId]);
         if (!docs?.[0]) throw new BadRequestException({ error: 'not_url_doc', message: 'Este documento no fue importado desde una URL.' });
 
@@ -198,7 +198,7 @@ export class KnowledgeService {
         const newHash = crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
         if (newHash === doc.crawl_hash) {
             await this.prisma.executeInTenantSchema(schema,
-                `UPDATE knowledge_documents SET last_crawled_at = NOW() WHERE id = $1`, [documentId]);
+                `UPDATE knowledge_documents SET last_crawled_at = NOW() WHERE id = $1::uuid`, [documentId]);
             return { changed: false, documentId };
         }
 
@@ -239,17 +239,17 @@ export class KnowledgeService {
         await this.prisma.executeInTenantSchema(schema,
             `INSERT INTO knowledge_document_versions (document_id, version, title, content_text, chunk_count, changed_by, change_summary)
              SELECT id, COALESCE(version, 1), title, content_text, chunk_count, $2, $3
-             FROM knowledge_documents WHERE id = $1`,
+             FROM knowledge_documents WHERE id = $1::uuid`,
             [documentId, update.changedBy || null, update.changeSummary || null]);
 
         const newVersion = currentVersion + 1;
 
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE knowledge_documents SET status = 'processing', updated_at = NOW() WHERE id = $1`, [documentId]);
+            `UPDATE knowledge_documents SET status = 'processing', updated_at = NOW() WHERE id = $1::uuid`, [documentId]);
 
         try {
             await this.prisma.executeInTenantSchema(schema,
-                `DELETE FROM knowledge_embeddings WHERE document_id = $1`, [documentId]);
+                `DELETE FROM knowledge_embeddings WHERE document_id = $1::uuid`, [documentId]);
 
             await this.embedAndStoreChunks(schema, documentId, textContent);
             const chunks = this.chunkText(textContent);
@@ -269,7 +269,7 @@ export class KnowledgeService {
                      slug = $9, excerpt = $10,
                      version = $11, language = $12,
                      updated_at = NOW()
-                 WHERE id = $1`,
+                 WHERE id = $1::uuid`,
                 [documentId, update.name || null, textContent, chunks.length, contentHash,
                  update.category !== undefined ? update.category : null,
                  update.isPublic !== undefined ? update.isPublic : null,
@@ -281,7 +281,7 @@ export class KnowledgeService {
             return { documentId, chunkCount: chunks.length, status: 'ready', version: newVersion };
         } catch (error: any) {
             await this.prisma.executeInTenantSchema(schema,
-                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1`,
+                `UPDATE knowledge_documents SET status = 'error', error_message = $2, updated_at = NOW() WHERE id = $1::uuid`,
                 [documentId, error.message]);
             throw error;
         }
@@ -452,7 +452,7 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
 
         const versions = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, version, title, content_text, chunk_count FROM knowledge_document_versions WHERE id = $1 AND document_id = $2`,
+            `SELECT id, version, title, content_text, chunk_count FROM knowledge_document_versions WHERE id = $1::uuid AND document_id = $2::uuid`,
             [versionId, documentId]);
         if (!versions?.[0]) throw new BadRequestException({ error: 'version_not_found' });
 
@@ -724,7 +724,7 @@ export class KnowledgeService {
     async resolveUnansweredQuery(tenantId: string, queryId: string) {
         const schema = await this.tenantSchema(tenantId);
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE kb_unanswered_queries SET resolved = true WHERE id = $1`, [queryId]);
+            `UPDATE kb_unanswered_queries SET resolved = true WHERE id = $1::uuid`, [queryId]);
     }
 
     // ─── Document Management ─────────────────────────────────────────────────
@@ -769,7 +769,7 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
         await this.prisma.executeInTenantSchema(
             schema,
-            `DELETE FROM knowledge_documents WHERE id = $1`,
+            `DELETE FROM knowledge_documents WHERE id = $1::uuid`,
             [documentId],
         );
         await this.invalidateHasKnowledgeCache(tenantId);
@@ -799,7 +799,7 @@ export class KnowledgeService {
         }
 
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1`, params);
+            `UPDATE knowledge_documents SET ${sets.join(', ')} WHERE id = $1::uuid`, params);
 
         return { success: true };
     }

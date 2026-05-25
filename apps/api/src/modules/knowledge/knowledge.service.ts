@@ -62,6 +62,16 @@ export class KnowledgeService {
             `SELECT COUNT(*)::int AS c FROM knowledge_documents WHERE status != 'deleted'`);
         await this.throttle.enforcePlanLimit(tenantId, 'knowledgeArticles', cnt?.[0]?.c || 0, 'documentos de conocimiento');
 
+        const maxChars = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
+        if (textContent.length > maxChars) {
+            throw new ForbiddenException({
+                error: 'document_too_large',
+                currentChars: textContent.length,
+                maxAllowed: maxChars,
+                message: `El documento excede el límite de ${maxChars.toLocaleString()} caracteres (~${Math.round(maxChars / 2500)} páginas) para tu plan.`,
+            });
+        }
+
         this.logger.log(`Ingesting document "${file.name}" for tenant ${tenantId} (${textContent.length} chars)`);
 
         const contentHash = crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
@@ -82,7 +92,7 @@ export class KnowledgeService {
         const document = rows[0];
 
         try {
-            await this.embedAndStoreChunks(schema, document.id, textContent);
+            await this.embedAndStoreChunks(schema, document.id, textContent, tenantId);
 
             const chunks = this.chunkText(textContent);
             await this.prisma.executeInTenantSchema(
@@ -232,6 +242,16 @@ export class KnowledgeService {
             throw new BadRequestException({ error: 'empty_content', message: 'El contenido del documento está vacío.' });
         }
 
+        const maxChars = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
+        if (textContent.length > maxChars) {
+            throw new ForbiddenException({
+                error: 'document_too_large',
+                currentChars: textContent.length,
+                maxAllowed: maxChars,
+                message: `El documento excede el límite de ${maxChars.toLocaleString()} caracteres (~${Math.round(maxChars / 2500)} páginas) para tu plan.`,
+            });
+        }
+
         const contentHash = update.crawlHash || crypto.createHash('sha256').update(textContent).digest('hex').substring(0, 16);
 
         // Save current version before overwriting
@@ -251,7 +271,7 @@ export class KnowledgeService {
             await this.prisma.executeInTenantSchema(schema,
                 `DELETE FROM knowledge_embeddings WHERE document_id = $1::uuid`, [documentId]);
 
-            await this.embedAndStoreChunks(schema, documentId, textContent);
+            await this.embedAndStoreChunks(schema, documentId, textContent, tenantId);
             const chunks = this.chunkText(textContent);
 
             const slug = (update.name || existing[0].title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 200);
@@ -825,10 +845,65 @@ export class KnowledgeService {
         await this.redis.del(this.redis.tenantKey(tenantId, 'has_knowledge'));
     }
 
+    // ─── Usage Stats ──────────────────────────────────────────────────────────
+
+    async getUsageStats(tenantId: string) {
+        const schema = await this.tenantSchema(tenantId);
+        const monthKey = new Date().toISOString().slice(0, 7);
+
+        const [embedUsedStr, embedCostStr, docCountRows] = await Promise.all([
+            this.redis.get(`kb:embed:${tenantId}:${monthKey}`),
+            this.redis.get(`kb:embed_cost:${tenantId}:${monthKey}`),
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS c FROM knowledge_documents WHERE status != 'deleted'`),
+        ]);
+
+        const embedUsed = parseInt(embedUsedStr || '0', 10);
+        const embedLimit = await this.throttle.getPlanLimit(tenantId, 'knowledgeEmbeddingsPerMonth');
+        const docUsed = docCountRows?.[0]?.c || 0;
+        const docLimit = await this.throttle.getPlanLimit(tenantId, 'knowledgeArticles');
+        const maxCharsPerDoc = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
+        const costCentiCents = parseInt(embedCostStr || '0', 10);
+
+        return {
+            embeddings: {
+                used: embedUsed,
+                limit: embedLimit === Infinity ? null : embedLimit,
+                percent: embedLimit === Infinity ? 0 : Math.round((embedUsed / embedLimit) * 100),
+            },
+            documents: {
+                used: docUsed,
+                limit: docLimit === Infinity ? null : docLimit,
+                percent: docLimit === Infinity ? 0 : Math.round((docUsed / docLimit) * 100),
+            },
+            maxCharsPerDoc: maxCharsPerDoc === Infinity ? null : maxCharsPerDoc,
+            monthlyCostCentsUsd: Math.round(costCentiCents / 100 * 100) / 100,
+            monthKey,
+        };
+    }
+
     // ─── Chunking & Embedding ────────────────────────────────────────────────
 
-    private async embedAndStoreChunks(schema: string, documentId: string, text: string) {
+    private async embedAndStoreChunks(schema: string, documentId: string, text: string, tenantId?: string) {
         const chunks = this.chunkText(text);
+
+        if (tenantId) {
+            const monthKey = new Date().toISOString().slice(0, 7);
+            const redisKey = `kb:embed:${tenantId}:${monthKey}`;
+            const used = parseInt(await this.redis.get(redisKey) || '0', 10);
+            const limit = await this.throttle.getPlanLimit(tenantId, 'knowledgeEmbeddingsPerMonth');
+            if (used + chunks.length > limit) {
+                throw new ForbiddenException({
+                    error: 'plan_limit_reached',
+                    limitKey: 'knowledgeEmbeddingsPerMonth',
+                    currentCount: used,
+                    chunksNeeded: chunks.length,
+                    maxAllowed: limit,
+                    message: `Has alcanzado el límite de ${limit.toLocaleString()} embeddings mensuales. Usado: ${used}, necesarios: ${chunks.length}.`,
+                });
+            }
+        }
+
         for (let i = 0; i < chunks.length; i++) {
             const embedding = await this.generateEmbedding(chunks[i]);
             const embeddingStr = `[${embedding.join(',')}]`;
@@ -840,6 +915,19 @@ export class KnowledgeService {
                  JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) })],
             );
         }
+
+        if (tenantId) {
+            const monthKey = new Date().toISOString().slice(0, 7);
+            const embedKey = `kb:embed:${tenantId}:${monthKey}`;
+            const costKey = `kb:embed_cost:${tenantId}:${monthKey}`;
+            const ttl = 35 * 86400;
+            await this.redis.incrBy(embedKey, chunks.length);
+            await this.redis.expire(embedKey, ttl);
+            const costCentiCents = Math.ceil(chunks.length * 0.001);
+            await this.redis.incrBy(costKey, costCentiCents);
+            await this.redis.expire(costKey, ttl);
+        }
+
         return chunks.length;
     }
 
@@ -1046,6 +1134,18 @@ export class KnowledgeService {
     }
 
     async createResource(schemaName: string, tenantId: string, data: { title: string; type?: string; content?: string; source_url?: string }) {
+        if (data.content) {
+            const maxChars = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
+            if (data.content.length > maxChars) {
+                throw new ForbiddenException({
+                    error: 'document_too_large',
+                    currentChars: data.content.length,
+                    maxAllowed: maxChars,
+                    message: `El documento excede el límite de ${maxChars.toLocaleString()} caracteres (~${Math.round(maxChars / 2500)} páginas) para tu plan.`,
+                });
+            }
+        }
+
         const contentHash = data.content
             ? crypto.createHash('sha256').update(data.content).digest('hex').substring(0, 16)
             : null;

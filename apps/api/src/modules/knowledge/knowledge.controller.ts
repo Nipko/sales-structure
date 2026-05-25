@@ -88,6 +88,13 @@ export class KnowledgeController {
         return this.knowledgeService.updateDocumentMeta(tenantId, id, payload);
     }
 
+    @Get('usage/:tenantId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'Get KB usage stats (embeddings, documents, cost)' })
+    async getUsageStats(@Param('tenantId') tenantId: string) {
+        return { success: true, data: await this.knowledgeService.getUsageStats(tenantId) };
+    }
+
     @Delete('documents/:id')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @HttpCode(HttpStatus.NO_CONTENT)

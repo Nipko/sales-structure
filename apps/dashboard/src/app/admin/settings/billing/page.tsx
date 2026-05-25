@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
-    Mic, Eye, ArrowUpRight,
+    Mic, Eye, ArrowUpRight, BookOpen, FileText,
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
 
@@ -142,6 +142,13 @@ export default function BillingPage() {
             dailyBudgetCents: number | null;
         } | null;
     } | null>(null);
+    const [kbUsage, setKbUsage] = useState<{
+        embeddings: { used: number; limit: number | null; percent: number };
+        documents: { used: number; limit: number | null; percent: number };
+        maxCharsPerDoc: number | null;
+        monthlyCostCentsUsd: number;
+        monthKey: string;
+    } | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -162,9 +169,10 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
-            const [plansRes, usageRes] = await Promise.all([
+            const [plansRes, usageRes, kbRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
+                api.fetch(`/knowledge/usage/${activeTenantId}`).catch(() => null),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
             if (usageRes?.success) {
@@ -177,6 +185,7 @@ export default function BillingPage() {
                     media: d.media ?? null,
                 } : null);
             }
+            if (kbRes?.success) setKbUsage(kbRes.data);
         } catch (err: any) {
             setError(err?.message || t("loadError"));
         } finally {
@@ -780,6 +789,77 @@ export default function BillingPage() {
                             </a>
                         </div>
                     )}
+                </section>
+            )}
+
+            {/* Knowledge Base Usage */}
+            {kbUsage && (kbUsage.embeddings.limit !== null || kbUsage.documents.limit !== null) && (
+                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <BookOpen className="w-4 h-4 text-violet-500" />
+                        <h2 className="text-sm font-semibold">{t("kbUsageTitle")}</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Documents */}
+                        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-violet-400" />
+                                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("kbDocuments")}</span>
+                                </div>
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: (kbUsage.documents.percent >= 95 ? "rgba(239,68,68,0.15)" : kbUsage.documents.percent >= 80 ? "rgba(245,158,11,0.15)" : "rgba(34,197,94,0.15)"), color: (kbUsage.documents.percent >= 95 ? "#ef4444" : kbUsage.documents.percent >= 80 ? "#f59e0b" : "#22c55e") }}>
+                                    {kbUsage.documents.percent}%
+                                </span>
+                            </div>
+                            <div className="text-lg font-bold mb-1">
+                                {kbUsage.documents.used} <span className="text-xs font-normal text-neutral-500">/ {kbUsage.documents.limit ?? t("unlimited")}</span>
+                            </div>
+                            <div className="w-full h-2 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(kbUsage.documents.percent, 100)}%`, background: kbUsage.documents.percent >= 95 ? "#ef4444" : kbUsage.documents.percent >= 80 ? "#f59e0b" : "#22c55e" }} />
+                            </div>
+                        </div>
+                        {/* Embeddings */}
+                        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-amber-400" />
+                                    <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{t("kbEmbeddings")}</span>
+                                </div>
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: (kbUsage.embeddings.percent >= 95 ? "rgba(239,68,68,0.15)" : kbUsage.embeddings.percent >= 80 ? "rgba(245,158,11,0.15)" : "rgba(34,197,94,0.15)"), color: (kbUsage.embeddings.percent >= 95 ? "#ef4444" : kbUsage.embeddings.percent >= 80 ? "#f59e0b" : "#22c55e") }}>
+                                    {kbUsage.embeddings.percent}%
+                                </span>
+                            </div>
+                            <div className="text-lg font-bold mb-1">
+                                {kbUsage.embeddings.used} <span className="text-xs font-normal text-neutral-500">/ {kbUsage.embeddings.limit ?? t("unlimited")}</span>
+                            </div>
+                            <div className="w-full h-2 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(kbUsage.embeddings.percent, 100)}%`, background: kbUsage.embeddings.percent >= 95 ? "#ef4444" : kbUsage.embeddings.percent >= 80 ? "#f59e0b" : "#22c55e" }} />
+                            </div>
+                        </div>
+                    </div>
+                    {kbUsage.maxCharsPerDoc && (
+                        <div className="mt-3 text-xs text-neutral-500">
+                            {t("kbMaxCharsPerDoc")}: {kbUsage.maxCharsPerDoc.toLocaleString()} (~{Math.round(kbUsage.maxCharsPerDoc / 2500)} {t("kbPages")})
+                        </div>
+                    )}
+                    {(kbUsage.embeddings.percent >= 95 || kbUsage.documents.percent >= 95) && (
+                        <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                            <p className="text-xs text-red-600 dark:text-red-400 flex-1">{t("kbWarningCritical")}</p>
+                            <a href="#plans" className="text-xs font-medium px-2.5 py-1 rounded-md bg-red-500 hover:bg-red-600 text-white flex items-center gap-1 flex-shrink-0">
+                                {t("upgradeNow")} <ArrowUpRight size={12} />
+                            </a>
+                        </div>
+                    )}
+                    {(kbUsage.embeddings.percent >= 80 && kbUsage.embeddings.percent < 95) || (kbUsage.documents.percent >= 80 && kbUsage.documents.percent < 95) ? (
+                        <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                            <p className="text-xs text-amber-600 dark:text-amber-400 flex-1">{t("kbWarningApproaching")}</p>
+                            <a href="#plans" className="text-xs font-medium px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1 flex-shrink-0">
+                                {t("upgradeNow")} <ArrowUpRight size={12} />
+                            </a>
+                        </div>
+                    ) : null}
                 </section>
             )}
 

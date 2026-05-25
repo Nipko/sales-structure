@@ -925,7 +925,7 @@ export const api = {
         apiPost<any>(`/feature-requests`, data),
     voteFeatureRequest: (id: string) => apiPost(`/feature-requests/${id}/vote`, {}),
     unvoteFeatureRequest: (id: string) =>
-        authFetch(`/feature-requests/${id}/vote`, { method: "DELETE" }).then((r) => r.json()),
+        authFetch(`/feature-requests/${id}/vote`, { method: "DELETE" }).then((r) => r.status === 204 ? { success: true } : r.json()),
     getFeatureRequestChangelog: () => apiGet<any[]>(`/feature-requests/changelog`),
 
     // --- External CRM integrations (Apr 28) ---
@@ -937,7 +937,7 @@ export const api = {
     testCrmConnection: (tenantId: string, connectionId: string) =>
         apiPost<{ ok: boolean; details?: string }>(`/external-crm/${tenantId}/connections/${connectionId}/test`, {}),
     disconnectCrm: (tenantId: string, connectionId: string) =>
-        authFetch(`/external-crm/${tenantId}/connections/${connectionId}`, { method: "DELETE" }).then((r) => r.json()),
+        authFetch(`/external-crm/${tenantId}/connections/${connectionId}`, { method: "DELETE" }).then((r) => r.status === 204 ? { success: true } : r.json()),
     previewCrmImport: (tenantId: string, connectionId: string) =>
         apiGet<any>(`/external-crm/${tenantId}/connections/${connectionId}/import/preview`),
     startCrmImport: (tenantId: string, connectionId: string) =>
@@ -965,6 +965,7 @@ export const api = {
             } catch (e) {}
             throw new Error(errorMsg);
         }
+        if (res.status === 204) return { success: true };
         return res.json();
     },
 
@@ -1450,6 +1451,7 @@ async function apiGetBlob(endpoint: string): Promise<Blob | null> {
 async function apiDelete<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string }> {
     try {
         const res = await authFetch(endpoint, { method: "DELETE" });
+        if (res.status === 204) return { success: true };
         const json = await res.json();
         if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
         return json;

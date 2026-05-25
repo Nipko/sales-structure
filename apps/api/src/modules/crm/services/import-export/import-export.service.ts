@@ -70,12 +70,12 @@ export class ImportExportService {
 
                 const conflictClause = options?.skipDuplicates !== false
                     ? 'ON CONFLICT (phone) DO NOTHING'
-                    : 'ON CONFLICT (phone) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, email = EXCLUDED.email, stage = EXCLUDED.stage, source = EXCLUDED.source, company = EXCLUDED.company, updated_at = NOW()';
+                    : 'ON CONFLICT (phone) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, email = EXCLUDED.email, stage = EXCLUDED.stage, metadata = EXCLUDED.metadata, updated_at = NOW()';
 
                 const result = await this.prisma.executeInTenantSchema<any[]>(
                     schema,
-                    `INSERT INTO leads (first_name, last_name, phone, email, stage, source, company)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    `INSERT INTO leads (first_name, last_name, phone, email, stage, metadata)
+                     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
                      ${conflictClause}
                      RETURNING id`,
                     [
@@ -84,8 +84,7 @@ export class ImportExportService {
                         row.phone || null,
                         row.email || null,
                         row.stage || 'nuevo',
-                        row.source || 'csv_import',
-                        row.company || null,
+                        JSON.stringify({ source: row.source || 'csv_import', company: row.company || null }),
                     ],
                 );
 

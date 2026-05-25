@@ -90,6 +90,10 @@ export default function Lead360Page() {
         tags: "",
     });
 
+    // Toast state
+    const [toast, setToast] = useState<string | null>(null);
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
     // Archive state
     const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
     const [archiving, setArchiving] = useState(false);
@@ -213,25 +217,39 @@ export default function Lead360Page() {
     const handleAddNote = async () => {
         if (!newNote.trim() || !tenantId) return;
         setAddingNote(true);
-        await api.fetch(`/crm/notes/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, content: newNote }) });
-        setNewNote("");
-        setAddingNote(false);
-        load();
+        try {
+            await api.fetch(`/crm/notes/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, content: newNote }) });
+            setNewNote("");
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        } finally {
+            setAddingNote(false);
+        }
     };
 
     const handleAddTask = async () => {
         if (!newTask.title.trim() || !tenantId) return;
         setAddingTask(true);
-        await api.fetch(`/crm/tasks/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, ...newTask }) });
-        setNewTask({ title: "", dueAt: "", type: "follow_up" });
-        setAddingTask(false);
-        load();
+        try {
+            await api.fetch(`/crm/tasks/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, ...newTask }) });
+            setNewTask({ title: "", dueAt: "", type: "follow_up" });
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        } finally {
+            setAddingTask(false);
+        }
     };
 
     const handleCompleteTask = async (taskId: string) => {
         if (!tenantId) return;
-        await api.fetch(`/crm/tasks/${tenantId}/${taskId}/status`, { method: "PUT", body: JSON.stringify({ status: "done" }) });
-        load();
+        try {
+            await api.fetch(`/crm/tasks/${tenantId}/${taskId}/status`, { method: "PUT", body: JSON.stringify({ status: "done" }) });
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        }
     };
 
     if (loading) {
@@ -844,6 +862,13 @@ export default function Lead360Page() {
                     </div>
                 </div>
             </div>
+
+            {/* Toast */}
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+                    {toast}
+                </div>
+            )}
 
             {/* Archive Confirmation Dialog */}
             {showArchiveConfirm && (

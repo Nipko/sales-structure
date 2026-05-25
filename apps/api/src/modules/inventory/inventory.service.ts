@@ -85,9 +85,9 @@ export class InventoryService {
 
             const products = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
-                `SELECT p.*, c.name as category_name, c.color as category_color
+                `SELECT p.*, pc.name as category_name, pc.color as category_color
          FROM products p
-         LEFT JOIN product_categories c ON p.category_id = c.id
+         LEFT JOIN product_categories pc ON p.category = pc.name
          ORDER BY p.updated_at DESC`,
             );
 
@@ -95,7 +95,7 @@ export class InventoryService {
                 schema,
                 `SELECT c.id, c.name, c.color, COUNT(p.id) as product_count
          FROM product_categories c
-         LEFT JOIN products p ON p.category_id = c.id
+         LEFT JOIN products p ON p.category = c.name
          GROUP BY c.id, c.name, c.color
          ORDER BY c.name`,
             );
@@ -154,12 +154,13 @@ export class InventoryService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO products (id, name, sku, description, category_id, price, cost, stock, min_stock, max_stock, unit, image_url, tags, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+            `INSERT INTO products (id, name, description, category, price, currency, is_available, stock, images, metadata, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'COP', true, $5, $6::text[], $7::jsonb, NOW(), NOW())
        RETURNING id`,
-            [data.name, data.sku, data.description || '', data.categoryId || null,
-            data.price, data.cost || 0, data.stock, data.minStock || 5, data.maxStock || 1000,
-            data.unit || 'unidad', data.imageUrl || null, JSON.stringify(data.tags || [])],
+            [data.name, data.description || '', data.categoryId || null,
+            data.price, data.stock,
+            data.imageUrl ? `{${data.imageUrl}}` : '{}',
+            JSON.stringify({ sku: data.sku, cost: data.cost || 0, min_stock: data.minStock || 5, max_stock: data.maxStock || 1000, unit: data.unit || 'unidad', tags: data.tags || [] })],
         );
 
         this.logger.log(`Product created: ${data.name} (${data.sku}) for tenant ${tenantId}`);
@@ -182,11 +183,9 @@ export class InventoryService {
         let paramIndex = 1;
 
         if (data.name !== undefined) { setClauses.push(`name = $${paramIndex++}`); values.push(data.name); }
-        if (data.sku !== undefined) { setClauses.push(`sku = $${paramIndex++}`); values.push(data.sku); }
         if (data.description !== undefined) { setClauses.push(`description = $${paramIndex++}`); values.push(data.description); }
         if (data.price !== undefined) { setClauses.push(`price = $${paramIndex++}`); values.push(data.price); }
-        if (data.cost !== undefined) { setClauses.push(`cost = $${paramIndex++}`); values.push(data.cost); }
-        if (data.isActive !== undefined) { setClauses.push(`is_active = $${paramIndex++}`); values.push(data.isActive); }
+        if (data.isActive !== undefined) { setClauses.push(`is_available = $${paramIndex++}`); values.push(data.isActive); }
         setClauses.push('updated_at = NOW()');
 
         if (setClauses.length === 1) return; // Only updated_at
@@ -281,37 +280,30 @@ export class InventoryService {
                 )`);
             await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".products (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    name VARCHAR(255) NOT NULL,
-                    sku VARCHAR(100) UNIQUE NOT NULL,
-                    description TEXT DEFAULT '',
-                    category_id UUID REFERENCES "${schema}".product_categories(id) ON DELETE SET NULL,
-                    price DECIMAL(12,2) DEFAULT 0,
-                    cost DECIMAL(12,2) DEFAULT 0,
-                    currency VARCHAR(3) DEFAULT 'COP',
-                    stock INTEGER DEFAULT 0,
-                    min_stock INTEGER DEFAULT 5,
-                    max_stock INTEGER DEFAULT 1000,
-                    unit VARCHAR(50) DEFAULT 'unidad',
-                    image_url TEXT,
-                    is_active BOOLEAN DEFAULT true,
-                    tags JSONB DEFAULT '[]',
+                    name VARCHAR(500) NOT NULL,
+                    description TEXT,
+                    category VARCHAR(255),
+                    price DECIMAL(15,2) NOT NULL DEFAULT 0,
+                    currency VARCHAR(10) DEFAULT 'COP',
+                    is_available BOOLEAN DEFAULT true,
+                    stock INTEGER,
+                    images TEXT[] DEFAULT '{}',
                     metadata JSONB DEFAULT '{}',
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
                 )`);
             await this.prisma.$queryRawUnsafe(`CREATE TABLE IF NOT EXISTS "${schema}".stock_movements (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    product_id UUID REFERENCES "${schema}".products(id) ON DELETE CASCADE,
-                    type VARCHAR(20) NOT NULL,
+                    product_id UUID NOT NULL,
+                    type VARCHAR(30) NOT NULL,
                     quantity INTEGER NOT NULL,
-                    previous_stock INTEGER DEFAULT 0,
-                    new_stock INTEGER DEFAULT 0,
-                    reason TEXT DEFAULT '',
+                    previous_stock INTEGER,
+                    new_stock INTEGER,
+                    reason TEXT,
                     created_by VARCHAR(255),
                     created_at TIMESTAMP DEFAULT NOW()
                 )`);
-            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_products_sku ON "${schema}".products(sku)`);
-            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_products_category ON "${schema}".products(category_id)`);
+            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_products_category ON "${schema}".products(category)`);
             await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON "${schema}".stock_movements(product_id)`);
 
             await this.redis.set(cacheKey, 'true', 86400); // Cache for 24h
@@ -321,23 +313,24 @@ export class InventoryService {
     }
 
     private mapProduct(p: any): Product {
+        const meta = p.metadata || {};
         return {
             id: p.id,
             name: p.name,
-            sku: p.sku,
+            sku: meta.sku || '',
             description: p.description || '',
-            category: p.category_name || 'Sin categoría',
+            category: p.category_name || p.category || 'Sin categoría',
             price: parseFloat(p.price) || 0,
-            cost: parseFloat(p.cost) || 0,
+            cost: parseFloat(meta.cost) || 0,
             currency: p.currency || 'COP',
             stock: parseInt(p.stock) || 0,
-            minStock: parseInt(p.min_stock) || 5,
-            maxStock: parseInt(p.max_stock) || 1000,
-            unit: p.unit || 'unidad',
-            imageUrl: p.image_url || null,
-            isActive: p.is_active !== false,
-            tags: Array.isArray(p.tags) ? p.tags : [],
-            metadata: p.metadata || {},
+            minStock: parseInt(meta.min_stock) || 5,
+            maxStock: parseInt(meta.max_stock) || 1000,
+            unit: meta.unit || 'unidad',
+            imageUrl: Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : null,
+            isActive: p.is_available !== false,
+            tags: Array.isArray(meta.tags) ? meta.tags : [],
+            metadata: meta,
             createdAt: p.created_at?.toISOString?.() || new Date().toISOString(),
             updatedAt: p.updated_at?.toISOString?.() || new Date().toISOString(),
         };

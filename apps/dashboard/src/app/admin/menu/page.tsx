@@ -62,6 +62,8 @@ export default function MenuPage() {
     const [showItemForm, setShowItemForm] = useState<MenuItem | "new" | null>(null);
     const [showCategoryForm, setShowCategoryForm] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
+    const [toast, setToast] = useState<string | null>(null);
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
     async function load() {
         if (!activeTenantId) return;
@@ -84,32 +86,51 @@ export default function MenuPage() {
 
     async function handleCreateCategory() {
         if (!activeTenantId || !newCategoryName.trim()) return;
-        const res = await api.createMenuCategory(activeTenantId, { name: newCategoryName.trim() });
-        if (res.success) {
-            setNewCategoryName("");
-            setShowCategoryForm(false);
-            load();
+        try {
+            const res = await api.createMenuCategory(activeTenantId, { name: newCategoryName.trim() });
+            if (res.success) {
+                setNewCategoryName("");
+                setShowCategoryForm(false);
+                showToast(tc("saved"));
+                load();
+            }
+        } catch {
+            showToast(tc("errorSaving"));
         }
     }
 
     async function handleDeleteCategory(id: string) {
         if (!activeTenantId) return;
         if (!confirm(t("deleteCategoryConfirm"))) return;
-        await api.deleteMenuCategory(activeTenantId, id);
-        load();
+        try {
+            await api.deleteMenuCategory(activeTenantId, id);
+            showToast(tc("saved"));
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        }
     }
 
     async function handleToggleAvailability(item: MenuItem) {
         if (!activeTenantId) return;
-        await api.updateMenuItem(activeTenantId, item.id, { isAvailable: !item.is_available });
-        load();
+        try {
+            await api.updateMenuItem(activeTenantId, item.id, { isAvailable: !item.is_available });
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        }
     }
 
     async function handleDeleteItem(id: string) {
         if (!activeTenantId) return;
         if (!confirm(t("deleteItemConfirm"))) return;
-        await api.deleteMenuItem(activeTenantId, id);
-        load();
+        try {
+            await api.deleteMenuItem(activeTenantId, id);
+            showToast(tc("saved"));
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        }
     }
 
     const filteredItems = filterCategory
@@ -315,6 +336,13 @@ export default function MenuPage() {
                     onClose={() => setShowItemForm(null)}
                     onSaved={() => { setShowItemForm(null); load(); setFeedback({ type: "success", text: t("itemSaved") }); }}
                 />
+            )}
+
+            {/* Toast */}
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+                    {toast}
+                </div>
             )}
         </div>
     );

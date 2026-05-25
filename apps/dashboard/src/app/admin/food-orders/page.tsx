@@ -74,6 +74,8 @@ export default function FoodOrdersPage() {
     const [error, setError] = useState<string | null>(null);
     const [selectedOrder, setSelectedOrder] = useState<FoodOrder | null>(null);
     const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+    const [toast, setToast] = useState<string | null>(null);
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
     const load = useCallback(async () => {
         if (!activeTenantId) return;
@@ -106,6 +108,8 @@ export default function FoodOrdersPage() {
         try {
             await api.updateFoodOrderStatus(activeTenantId, order.id, nextStatus);
             load();
+        } catch {
+            showToast(tc("errorSaving"));
         } finally {
             setBusyOrderId(null);
         }
@@ -118,6 +122,8 @@ export default function FoodOrdersPage() {
         try {
             await api.updateFoodOrderStatus(activeTenantId, order.id, "cancelled");
             load();
+        } catch {
+            showToast(tc("errorSaving"));
         } finally {
             setBusyOrderId(null);
         }
@@ -247,6 +253,13 @@ export default function FoodOrdersPage() {
                         setSelectedOrder(null);
                     }}
                 />
+            )}
+
+            {/* Toast */}
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+                    {toast}
+                </div>
             )}
         </div>
     );

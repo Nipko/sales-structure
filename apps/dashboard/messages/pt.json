@@ -635,7 +635,14 @@
     "hidePanel": "Ocultar painel",
     "showPanel": "Mostrar painel",
     "noMacros": "Nenhuma macro configurada",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "errorSend": "Falha ao enviar mensagem. Tente novamente.",
+    "errorResolve": "Falha ao resolver conversa. Tente novamente.",
+    "errorNote": "Falha ao salvar nota. Tente novamente.",
+    "errorSnooze": "Falha ao adiar conversa. Tente novamente.",
+    "errorArchive": "Falha ao arquivar conversa. Tente novamente.",
+    "errorDelete": "Falha ao excluir conversa. Tente novamente.",
+    "errorMacro": "Falha ao executar macro. Tente novamente."
   },
   "settings": {
     "title": "Configurações",

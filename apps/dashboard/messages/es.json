@@ -635,7 +635,14 @@
     "hidePanel": "Ocultar panel",
     "showPanel": "Mostrar panel",
     "noMacros": "No hay macros configurados",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "errorSend": "No se pudo enviar el mensaje. Intenta de nuevo.",
+    "errorResolve": "No se pudo resolver la conversación. Intenta de nuevo.",
+    "errorNote": "No se pudo guardar la nota. Intenta de nuevo.",
+    "errorSnooze": "No se pudo posponer la conversación. Intenta de nuevo.",
+    "errorArchive": "No se pudo archivar la conversación. Intenta de nuevo.",
+    "errorDelete": "No se pudo eliminar la conversación. Intenta de nuevo.",
+    "errorMacro": "No se pudo ejecutar la macro. Intenta de nuevo."
   },
   "settings": {
     "title": "Configuración",

@@ -42,7 +42,7 @@ export class CarlaService {
                  disclaimers = COALESCE($6, disclaimers),
                  active = COALESCE($7, active),
                  updated_at = NOW()
-             WHERE id = $1 RETURNING *`,
+             WHERE id = $1::uuid RETURNING *`,
             [id, data.name, data.tone, data.objectives ? JSON.stringify(data.objectives) : null,
              data.rules ? JSON.stringify(data.rules) : null, data.disclaimers, data.active]
         );
@@ -62,7 +62,7 @@ export class CarlaService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO carla_prompt_templates (tenant_id, name, campaign_id, course_id, template_type, content, version, active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+             VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8) RETURNING *`,
             [
                 data.tenant_id, data.name, data.campaign_id || null,
                 data.course_id || null, data.template_type || 'system',
@@ -80,7 +80,7 @@ export class CarlaService {
                  content = COALESCE($3, content),
                  active = COALESCE($4, active),
                  updated_at = NOW()
-             WHERE id = $1 RETURNING *`,
+             WHERE id = $1::uuid RETURNING *`,
             [id, data.name, data.content, data.active]
         );
         return rows[0];
@@ -92,7 +92,7 @@ export class CarlaService {
         if (conversationId) {
             return this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT * FROM carla_conversation_context WHERE conversation_id = $1 ORDER BY created_at DESC`,
+                `SELECT * FROM carla_conversation_context WHERE conversation_id = $1::uuid ORDER BY created_at DESC`,
                 [conversationId]
             );
         }
@@ -105,10 +105,10 @@ export class CarlaService {
     async saveConversationContext(schemaName: string, data: any) {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO carla_conversation_context 
+            `INSERT INTO carla_conversation_context
                 (conversation_id, lead_id, intent_primary, intent_secondary, confidence, score_delta,
                  should_handoff, handoff_reason, summary_for_agent, tags_to_apply, suggested_stage, context_json)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
             [
                 data.conversation_id, data.lead_id || null,
                 data.intent_primary || null, data.intent_secondary || null,
@@ -142,7 +142,7 @@ export class CarlaService {
         // Fetch last context snapshot
         const contexts = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM carla_conversation_context WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            `SELECT * FROM carla_conversation_context WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
             [conversationId]
         );
         const lastContext = contexts[0] || null;

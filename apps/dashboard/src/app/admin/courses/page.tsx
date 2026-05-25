@@ -88,6 +88,8 @@ export default function CoursesPage() {
     const [loading, setLoading] = useState(true);
     const [showCourseForm, setShowCourseForm] = useState<Course | "new" | null>(null);
     const [showCohortForm, setShowCohortForm] = useState<Course | null>(null);
+    const [toast, setToast] = useState<string | null>(null);
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
     async function load() {
         if (!activeTenantId) return;
@@ -108,14 +110,24 @@ export default function CoursesPage() {
 
     async function handleDeleteCourse(id: string) {
         if (!activeTenantId || !confirm(t("deleteCourseConfirm"))) return;
-        await api.deleteCourse(activeTenantId, id);
-        load();
+        try {
+            await api.deleteCourse(activeTenantId, id);
+            showToast(tc("saved"));
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        }
     }
 
     async function handleCancelCohort(id: string) {
         if (!activeTenantId || !confirm(t("cancelCohortConfirm"))) return;
-        await api.cancelCohort(activeTenantId, id);
-        load();
+        try {
+            await api.cancelCohort(activeTenantId, id);
+            showToast(tc("saved"));
+            load();
+        } catch {
+            showToast(tc("errorSaving"));
+        }
     }
 
     return (
@@ -323,17 +335,24 @@ export default function CoursesPage() {
             )}
 
             {showCourseForm && (
-                <CourseFormModal course={showCourseForm === "new" ? null : showCourseForm} onClose={() => setShowCourseForm(null)} onSaved={() => { setShowCourseForm(null); load(); }} />
+                <CourseFormModal course={showCourseForm === "new" ? null : showCourseForm} onClose={() => setShowCourseForm(null)} onSaved={() => { setShowCourseForm(null); showToast(tc("saved")); load(); }} onError={() => showToast(tc("errorSaving"))} />
             )}
 
             {showCohortForm && (
-                <CohortFormModal course={showCohortForm} onClose={() => setShowCohortForm(null)} onSaved={() => { setShowCohortForm(null); load(); }} />
+                <CohortFormModal course={showCohortForm} onClose={() => setShowCohortForm(null)} onSaved={() => { setShowCohortForm(null); showToast(tc("saved")); load(); }} onError={() => showToast(tc("errorSaving"))} />
+            )}
+
+            {/* Toast */}
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+                    {toast}
+                </div>
             )}
         </div>
     );
 }
 
-function CourseFormModal({ course, onClose, onSaved }: { course: Course | null; onClose: () => void; onSaved: () => void }) {
+function CourseFormModal({ course, onClose, onSaved, onError }: { course: Course | null; onClose: () => void; onSaved: () => void; onError?: () => void }) {
     const t = useTranslations("courses");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -370,6 +389,8 @@ function CourseFormModal({ course, onClose, onSaved }: { course: Course | null; 
             if (course) await api.updateCourse(activeTenantId, course.id, payload);
             else await api.createCourse(activeTenantId, payload);
             onSaved();
+        } catch {
+            onError?.();
         } finally { setBusy(false); }
     }
 
@@ -412,7 +433,7 @@ function CourseFormModal({ course, onClose, onSaved }: { course: Course | null; 
     );
 }
 
-function CohortFormModal({ course, onClose, onSaved }: { course: Course; onClose: () => void; onSaved: () => void }) {
+function CohortFormModal({ course, onClose, onSaved, onError }: { course: Course; onClose: () => void; onSaved: () => void; onError?: () => void }) {
     const t = useTranslations("courses");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -444,6 +465,8 @@ function CohortFormModal({ course, onClose, onSaved }: { course: Course; onClose
                 room: form.room || undefined,
             });
             onSaved();
+        } catch {
+            onError?.();
         } finally { setBusy(false); }
     }
 

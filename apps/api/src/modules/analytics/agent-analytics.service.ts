@@ -280,7 +280,7 @@ export class AgentAnalyticsService {
         await this.prisma.executeInTenantSchema(
             schema,
             `INSERT INTO csat_surveys (conversation_id, contact_id, agent_id, rating, feedback, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, NOW())
        ON CONFLICT (conversation_id) DO UPDATE SET rating = $4, feedback = $5`,
             [data.conversationId, data.contactId, data.agentId, data.rating, data.feedback || null],
         );

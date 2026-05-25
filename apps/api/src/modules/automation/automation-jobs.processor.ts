@@ -181,9 +181,9 @@ export class AutomationJobsProcessor extends WorkerHost {
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO tasks (lead_id, description, due_at, status, created_at)
-             VALUES ($1, $2, $3, 'pending', NOW()) RETURNING id`,
-            [event.leadId, description, dueAt],
+            `INSERT INTO tasks (lead_id, title, description, due_at, status, created_at)
+             VALUES ($1::uuid, $2, $3, $4, 'pending', NOW()) RETURNING id`,
+            [event.leadId, description, description, dueAt],
         );
 
         this.logger.log(`[AutomationJobs] Tarea creada: ${rows?.[0]?.id} para lead ${event.leadId}`);

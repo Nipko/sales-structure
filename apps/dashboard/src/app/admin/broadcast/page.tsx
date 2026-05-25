@@ -151,12 +151,23 @@ export default function BroadcastPage() {
         }
     };
 
+    const [sendingId, setSendingId] = useState<string | null>(null);
+
     const handleSendNow = async (id: string) => {
-        if (!activeTenantId) return;
+        if (!activeTenantId || sendingId) return;
+        const previousCampaigns = [...campaigns];
         setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "active" } : c));
-        await api.sendCampaign(activeTenantId, id);
-        setToast(t("toast.campaignSent")); setTimeout(() => setToast(null), 2500);
-        setTimeout(loadCampaigns, 2000);
+        setSendingId(id);
+        try {
+            await api.sendCampaign(activeTenantId, id);
+            setToast(t("toast.campaignSent")); setTimeout(() => setToast(null), 2500);
+            setTimeout(loadCampaigns, 2000);
+        } catch {
+            setCampaigns(previousCampaigns);
+            setToast(tc("errorSaving")); setTimeout(() => setToast(null), 2500);
+        } finally {
+            setSendingId(null);
+        }
     };
 
     return (
@@ -273,9 +284,10 @@ export default function BroadcastPage() {
                                         {campaign.status === "draft" && (
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleSendNow(campaign.id); }}
-                                                className="mt-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 text-white border-none cursor-pointer hover:bg-emerald-600 transition-colors"
+                                                disabled={sendingId === campaign.id}
+                                                className="mt-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 text-white border-none cursor-pointer hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                <Send size={12} className="inline mr-1" /> {t('sendNow')}
+                                                <Send size={12} className="inline mr-1" /> {sendingId === campaign.id ? "..." : t('sendNow')}
                                             </button>
                                         )}
                                     </div>

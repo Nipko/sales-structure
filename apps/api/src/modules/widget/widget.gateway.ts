@@ -92,8 +92,8 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             const convRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `INSERT INTO conversations (contact_id, channel_type, status, metadata, created_at, updated_at)
-                 VALUES ($1::uuid, 'web_widget', 'active', $2::jsonb, NOW(), NOW())
+                `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, metadata, created_at, updated_at)
+                 VALUES ($1::uuid, 'web_widget', 'widget', 'active', $2::jsonb, NOW(), NOW())
                  RETURNING id`,
                 [contactId, JSON.stringify({ widgetSessionId: session.id, page: session.page_url })],
             );

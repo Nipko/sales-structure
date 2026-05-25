@@ -155,10 +155,10 @@ export class HandoffService {
             assignedAgentName = agentRows?.[0]?.name;
             assignedAgentEmail = agentRows?.[0]?.email;
 
-            // Create conversation assignment with SLA deadline (5 min default)
+            // Create conversation assignment
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at, sla_deadline)
-                 VALUES ($1::uuid, $2::uuid, NOW(), NOW() + interval '5 minutes')
+                `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
+                 VALUES ($1::uuid, $2::uuid, NOW())
                  ON CONFLICT (conversation_id, agent_id) WHERE resolved_at IS NULL DO NOTHING`,
                 [conversationId, assignedTo],
             ).catch(() => {}); // Table might not have unique constraint yet

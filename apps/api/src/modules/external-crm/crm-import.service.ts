@@ -223,7 +223,7 @@ export class CrmImportService {
         const existing = (await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT id FROM contacts
-             WHERE ($1::text IS NOT NULL AND phone_e164 = $1)
+             WHERE ($1::text IS NOT NULL AND phone = $1)
                 OR ($2::text IS NOT NULL AND email = $2)
              ORDER BY created_at ASC LIMIT 1`,
             [phoneE164, email],
@@ -234,15 +234,14 @@ export class CrmImportService {
             return 'matched';
         }
 
-        // No match — insert a new contact. The contacts table schema varies
-        // slightly across deploys, so use a permissive INSERT and let unknown
-        // columns surface as errors at the catch site (counts will reflect).
+        // No match — insert a new contact using the actual contacts table schema.
+        const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ') || null;
         const inserted = (await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO contacts (first_name, last_name, email, phone_e164, source, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            `INSERT INTO contacts (external_id, channel_type, name, phone, email, metadata, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
              RETURNING id`,
-            [c.firstName ?? null, c.lastName ?? null, email, phoneE164, provider],
+            [c.id, provider, fullName, phoneE164, email, JSON.stringify({ source: provider, first_name: c.firstName, last_name: c.lastName })],
         )) as any[];
 
         await this.linkExternal(schema, provider, inserted[0].id, c.id);
@@ -278,7 +277,7 @@ export class CrmImportService {
             const existing = (await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT id FROM contacts
-                 WHERE ($1::text IS NOT NULL AND phone_e164 = $1)
+                 WHERE ($1::text IS NOT NULL AND phone = $1)
                     OR ($2::text IS NOT NULL AND email = $2)
                  LIMIT 1`,
                 [phoneE164, email],

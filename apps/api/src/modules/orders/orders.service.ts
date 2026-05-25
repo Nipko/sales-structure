@@ -159,9 +159,9 @@ export class OrdersService {
         // Let's do this sequentially to allow the database to persist correctly
         const orderRes = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `INSERT INTO orders (id, contact_id, status, total_amount, currency, payment_method, notes, created_at, updated_at)
-             VALUES (gen_random_uuid(), $1::uuid, $2, $3, 'COP', $4, $5, NOW(), NOW()) RETURNING id`,
-            [data.contactId || null, data.status || 'pending', totalAmount, data.paymentMethod || 'cash', data.notes || '']
+            `INSERT INTO orders (id, contact_id, status, total_amount, currency, notes, metadata, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1::uuid, $2, $3, 'COP', $4, $5::jsonb, NOW(), NOW()) RETURNING id`,
+            [data.contactId || null, data.status || 'pending', totalAmount, data.notes || '', JSON.stringify({ payment_method: data.paymentMethod || 'cash' })]
         );
 
         const orderId = orderRes?.[0]?.id;
@@ -234,7 +234,7 @@ export class OrdersService {
             status: o.status,
             totalAmount: parseFloat(o.total_amount) || 0,
             currency: o.currency || 'COP',
-            paymentMethod: o.payment_method || 'cash',
+            paymentMethod: o.metadata?.payment_method || 'cash',
             notes: o.notes || '',
             createdAt: o.created_at?.toISOString?.() || new Date().toISOString(),
             updatedAt: o.updated_at?.toISOString?.() || new Date().toISOString(),
@@ -265,8 +265,10 @@ export class OrdersService {
                     status VARCHAR(50) DEFAULT 'pending',
                     total_amount DECIMAL(12,2) DEFAULT 0,
                     currency VARCHAR(3) DEFAULT 'COP',
-                    payment_method VARCHAR(50) DEFAULT 'cash',
+                    payment_status VARCHAR(50) DEFAULT 'pending',
+                    payment_reference VARCHAR(255),
                     notes TEXT DEFAULT '',
+                    metadata JSONB DEFAULT '{}',
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
                 )
@@ -409,7 +411,7 @@ export class OrdersService {
             <div class="info-box" style="text-align: right;">
                 <h3>Estado</h3>
                 <p style="color: ${color};">${isPaid ? 'Pagado' : (orderRow.status === 'confirmed' ? 'Confirmada (Crédito)' : 'Pendiente')}</p>
-                <p style="font-size: 13px; color: #636e72;">Medio: ${orderRow.payment_method}</p>
+                <p style="font-size: 13px; color: #636e72;">Medio: ${orderRow.metadata?.payment_method || 'N/A'}</p>
             </div>
         </div>
 

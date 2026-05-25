@@ -107,6 +107,8 @@ export default function PropertiesPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -137,13 +139,21 @@ export default function PropertiesPage() {
   async function handleCreate() {
     if (!activeTenantId || !form.name) return;
     setSaving(true);
-    const res = await api.createProperty(activeTenantId, form);
-    if (res.success) {
-      setShowModal(false);
-      setForm({ name: "", description: "", address: "", city: "", max_guests: 4, bedrooms: 1, bathrooms: 1, night_price: 0, cleaning_fee: 0, currency: "USD", min_nights: 1, amenities: [] });
-      load();
+    try {
+      const res = await api.createProperty(activeTenantId, form);
+      if (res.success) {
+        setShowModal(false);
+        setForm({ name: "", description: "", address: "", city: "", max_guests: 4, bedrooms: 1, bathrooms: 1, night_price: 0, cleaning_fee: 0, currency: "USD", min_nights: 1, amenities: [] });
+        showToast(tc("saved"));
+        load();
+      } else {
+        showToast(tc("errorSaving"));
+      }
+    } catch {
+      showToast(tc("errorSaving"));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   function toggleAmenity(a: string) {
@@ -265,6 +275,13 @@ export default function PropertiesPage() {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+          {toast}
         </div>
       )}
 

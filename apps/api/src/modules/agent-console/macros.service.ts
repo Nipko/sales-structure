@@ -167,7 +167,7 @@ export class MacrosService {
 
                     case 'add_note':
                         await this.prisma.executeInTenantSchema(schema, `
-                            INSERT INTO internal_notes (conversation_id, content, created_by)
+                            INSERT INTO internal_notes (conversation_id, content, agent_id)
                             VALUES ($1::uuid, $2, $3::uuid)
                         `, [conversationId, action.value, agentId]);
                         break;
@@ -180,9 +180,9 @@ export class MacrosService {
                         if (canned.length) {
                             // Store the message — actual sending is handled by the outbound queue
                             await this.prisma.executeInTenantSchema(schema, `
-                                INSERT INTO messages (conversation_id, content_text, direction, sender_type, sender_id)
-                                VALUES ($1::uuid, $2, 'outbound', 'agent', $3::uuid)
-                            `, [conversationId, canned[0].content, agentId]);
+                                INSERT INTO messages (conversation_id, content_text, direction, metadata)
+                                VALUES ($1::uuid, $2, 'outbound', $3::jsonb)
+                            `, [conversationId, canned[0].content, JSON.stringify({ sender_type: 'agent', sender_id: agentId })]);
                         }
                         break;
                     }

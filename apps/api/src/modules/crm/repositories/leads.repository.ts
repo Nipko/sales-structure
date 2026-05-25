@@ -87,7 +87,7 @@ export class LeadsRepository {
     }
     if (stage) { q += ` AND l.stage = $${n++}`; p.push(stage); }
     if (assignedTo) { q += ` AND l.assigned_to = $${n++}`; p.push(assignedTo); }
-    if (courseId) { q += ` AND l.course_id = $${n++}`; p.push(courseId); }
+    if (courseId) { q += ` AND l.course_id = $${n++}::uuid`; p.push(courseId); }
     if (isVip !== undefined) { q += ` AND l.is_vip = $${n++}`; p.push(isVip); }
     if (scoreMin !== undefined) { q += ` AND l.score >= $${n++}`; p.push(scoreMin); }
     if (scoreMax !== undefined) { q += ` AND l.score <= $${n++}`; p.push(scoreMax); }
@@ -201,7 +201,7 @@ export class LeadsRepository {
     if (campaignId) {
       const results = await this.prisma.executeInTenantSchema<Lead[]>(
         schema,
-        `SELECT * FROM leads WHERE phone = $1 AND campaign_id = $2`,
+        `SELECT * FROM leads WHERE phone = $1 AND campaign_id = $2::uuid`,
         [phone, campaignId]
       );
       const resultsArray = results as any[];

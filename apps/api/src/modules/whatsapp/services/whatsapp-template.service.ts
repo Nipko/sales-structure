@@ -63,7 +63,7 @@ export class WhatsappTemplateService {
                 `INSERT INTO whatsapp_templates (
                     channel_id, name, language, category, approval_status,
                     components_json, meta_template_id, is_seed, submitted_at, last_sync_at
-                ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
+                ) VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
                 ON CONFLICT (channel_id, name, language)
                 DO UPDATE SET
                     category = EXCLUDED.category,
@@ -299,7 +299,7 @@ export class WhatsappTemplateService {
           schemaName,
           `INSERT INTO whatsapp_templates (
             channel_id, name, language, category, approval_status, components_json, last_sync_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          ) VALUES ($1::uuid, $2, $3, $4, $5, $6, NOW())
           ON CONFLICT (channel_id, name, language)
           DO UPDATE SET
             category = EXCLUDED.category,
@@ -316,7 +316,7 @@ export class WhatsappTemplateService {
             schemaName,
             `UPDATE whatsapp_templates
              SET approval_status = $2, components_json = $3, category = $4, last_sync_at = NOW()
-             WHERE channel_id = $1 AND name = $5 AND language = $6`,
+             WHERE channel_id = $1::uuid AND name = $5 AND language = $6`,
             [channelId, t.status, JSON.stringify(t.components), t.category, t.name, t.language]
           );
           synced++;

@@ -260,6 +260,18 @@ export default function InboxPage() {
     const [contactMetaSaving, setContactMetaSaving] = useState(false);
     const [customAttrDefs, setCustomAttrDefs] = useState<any[]>([]);
 
+    // --- Sending guard ---
+    const [sending, setSending] = useState(false);
+
+    // --- Inline error/success feedback ---
+    const [inboxError, setInboxError] = useState<string | null>(null);
+    const inboxErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const showInboxError = useCallback((msg: string) => {
+        setInboxError(msg);
+        if (inboxErrorTimer.current) clearTimeout(inboxErrorTimer.current);
+        inboxErrorTimer.current = setTimeout(() => setInboxError(null), 5000);
+    }, []);
+
     // --- Snooze State ---
     const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
     const snoozeRef = useRef<HTMLDivElement>(null);
@@ -373,6 +385,7 @@ export default function InboxPage() {
             setMessages([]);
         } catch (err) {
             console.error("Snooze failed:", err);
+            showInboxError(t("errorSnooze"));
         }
         setShowSnoozeMenu(false);
     };
@@ -384,6 +397,7 @@ export default function InboxPage() {
             setShowMacrosMenu(false);
         } catch (err) {
             console.error("Macro execution failed:", err);
+            showInboxError(t("errorMacro"));
         }
     };
 
@@ -411,6 +425,7 @@ export default function InboxPage() {
             setShowArchiveConfirm(false);
         } catch (err) {
             console.error("Archive failed:", err);
+            showInboxError(t("errorArchive"));
         } finally {
             setArchiving(false);
         }
@@ -427,6 +442,7 @@ export default function InboxPage() {
             setShowDeleteConfirm(false);
         } catch (err) {
             console.error("Delete failed:", err);
+            showInboxError(t("errorDelete"));
         } finally {
             setDeleting(false);
         }
@@ -847,14 +863,17 @@ export default function InboxPage() {
 
     // ---- Interactive functions ----
     const handleSend = async () => {
-        if (!messageInput.trim()) return;
+        if (!messageInput.trim() || sending) return;
         const content = messageInput.trim();
+        const optimisticId = `msg_${Date.now()}`;
+        const previousLastMessage = selectedConv?.lastMessage;
+        setSending(true);
         setMessageInput("");
         setShowCannedMenu(false);
         // Optimistic add to local messages
         const now = new Date();
         setMessages(prev => [...prev, {
-            id: `msg_${Date.now()}`,
+            id: optimisticId,
             direction: 'outbound',
             content,
             senderLabel: t('agent'),
@@ -865,8 +884,19 @@ export default function InboxPage() {
         }]);
         setSelectedConv((prev: any) => ({ ...prev, lastMessage: content }));
         // API call
-        if (activeTenantId && selectedConv?.id) {
-            await api.sendMessage(activeTenantId, selectedConv.id, content, user?.id);
+        try {
+            if (activeTenantId && selectedConv?.id) {
+                await api.sendMessage(activeTenantId, selectedConv.id, content, user?.id);
+            }
+        } catch (err) {
+            console.error("Send message failed:", err);
+            // Rollback optimistic message
+            setMessages(prev => prev.filter(m => m.id !== optimisticId));
+            setSelectedConv((prev: any) => prev ? { ...prev, lastMessage: previousLastMessage } : prev);
+            setMessageInput(content);
+            showInboxError(t("errorSend"));
+        } finally {
+            setSending(false);
         }
     };
 
@@ -875,20 +905,44 @@ export default function InboxPage() {
         const content = noteInput.trim();
         setNoteInput("");
         // API call
-        if (activeTenantId && selectedConv.id) {
-            await api.addNote(activeTenantId, selectedConv.id, content, user?.id);
+        try {
+            if (activeTenantId && selectedConv.id) {
+                await api.addNote(activeTenantId, selectedConv.id, content, user?.id);
+                // Optimistic add to notes list
+                setNotes(prev => [...prev, {
+                    id: `note_${Date.now()}`,
+                    content,
+                    agentName: user?.firstName || t('agent'),
+                    createdAt: new Date().toLocaleDateString(undefined),
+                }]);
+            }
+        } catch (err) {
+            console.error("Add note failed:", err);
+            setNoteInput(content);
+            showInboxError(t("errorNote"));
         }
     };
 
     const handleResolve = async () => {
+        const previousStatus = selectedConv?.status;
         // Optimistic update -- backend resolveConversation() returns status 'active' (back to AI handling)
         setConversations((prev: any[]) => prev.map(c =>
             c.id === selectedConv.id ? { ...c, status: "active" as any } : c
         ));
         setSelectedConv((prev: any) => ({ ...prev, status: "active" as any }));
         // API call
-        if (activeTenantId && selectedConv.id) {
-            await api.resolveConversation(activeTenantId, selectedConv.id, user?.id);
+        try {
+            if (activeTenantId && selectedConv.id) {
+                await api.resolveConversation(activeTenantId, selectedConv.id, user?.id);
+            }
+        } catch (err) {
+            console.error("Resolve failed:", err);
+            // Rollback optimistic status change
+            setConversations((prev: any[]) => prev.map(c =>
+                c.id === selectedConv.id ? { ...c, status: previousStatus } : c
+            ));
+            setSelectedConv((prev: any) => prev ? { ...prev, status: previousStatus } : prev);
+            showInboxError(t("errorResolve"));
         }
     };
 
@@ -1121,6 +1175,20 @@ export default function InboxPage() {
             )}>
                 {selectedConv ? (
                     <>
+                        {/* Inline Error Banner */}
+                        {inboxError && (
+                            <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1">
+                                <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
+                                <span className="text-sm text-red-500 flex-1">{inboxError}</span>
+                                <button
+                                    onClick={() => setInboxError(null)}
+                                    className="text-red-400 hover:text-red-300 bg-transparent border-none cursor-pointer text-xs font-medium px-1.5"
+                                >
+                                    &times;
+                                </button>
+                            </div>
+                        )}
+
                         {/* Chat Header */}
                         <div className="px-4 md:px-5 py-3 border-b border-border flex justify-between items-center bg-card gap-3">
                             <div className="flex items-center gap-3 min-w-0">
@@ -1607,9 +1675,15 @@ export default function InboxPage() {
                             </button>
                             <button
                                 onClick={handleSend}
-                                className="p-2.5 rounded-xl border-none bg-indigo-600 text-white cursor-pointer flex items-center justify-center hover:bg-indigo-700 transition-all duration-150 active:scale-95"
+                                disabled={sending}
+                                className={cn(
+                                    "p-2.5 rounded-xl border-none text-white flex items-center justify-center transition-all duration-150",
+                                    sending
+                                        ? "bg-indigo-600/60 cursor-not-allowed"
+                                        : "bg-indigo-600 cursor-pointer hover:bg-indigo-700 active:scale-95"
+                                )}
                             >
-                                <Send size={18} />
+                                {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                             </button>
                         </div>
                         )}

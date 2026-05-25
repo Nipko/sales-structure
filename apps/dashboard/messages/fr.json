@@ -635,7 +635,14 @@
     "hidePanel": "Masquer le panneau",
     "showPanel": "Afficher le panneau",
     "noMacros": "Aucune macro configurée",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "errorSend": "Echec de l'envoi du message. Veuillez reessayer.",
+    "errorResolve": "Echec de la resolution de la conversation. Veuillez reessayer.",
+    "errorNote": "Echec de l'enregistrement de la note. Veuillez reessayer.",
+    "errorSnooze": "Echec du report de la conversation. Veuillez reessayer.",
+    "errorArchive": "Echec de l'archivage de la conversation. Veuillez reessayer.",
+    "errorDelete": "Echec de la suppression de la conversation. Veuillez reessayer.",
+    "errorMacro": "Echec de l'execution de la macro. Veuillez reessayer."
   },
   "settings": {
     "title": "Paramètres",

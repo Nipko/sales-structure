@@ -72,6 +72,8 @@ export default function ContactsPage() {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createForm, setCreateForm] = useState({ first_name: "", last_name: "", phone: "", email: "", stage: "nuevo" });
     const [creating, setCreating] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
     // Bulk selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -429,6 +431,7 @@ export default function ContactsPage() {
                                     setSelectedIds(new Set());
                                     setBulkAction("");
                                     setBulkPayload("");
+                                    showToast(tc("saved"));
                                     // Reload
                                     const data = await api.fetch(`/crm/leads/${activeTenantId}`);
                                     if (data.success && Array.isArray(data.data)) {
@@ -787,6 +790,7 @@ export default function ContactsPage() {
                                         await api.fetch(`/crm/leads/${activeTenantId}`, { method: "POST", body: JSON.stringify(createForm) });
                                         setShowCreateModal(false);
                                         setCreateForm({ first_name: "", last_name: "", phone: "", email: "", stage: "nuevo" });
+                                        showToast(tc("saved"));
                                         // Reload
                                         const data = await api.fetch(`/crm/leads/${activeTenantId}`);
                                         if (data.success && Array.isArray(data.data)) {
@@ -825,6 +829,13 @@ export default function ContactsPage() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Toast */}
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+                    {toast}
                 </div>
             )}
 

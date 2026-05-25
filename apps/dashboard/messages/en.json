@@ -635,7 +635,14 @@
     "hidePanel": "Hide panel",
     "showPanel": "Show panel",
     "noMacros": "No macros configured",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "errorSend": "Failed to send message. Please try again.",
+    "errorResolve": "Failed to resolve conversation. Please try again.",
+    "errorNote": "Failed to save note. Please try again.",
+    "errorSnooze": "Failed to snooze conversation. Please try again.",
+    "errorArchive": "Failed to archive conversation. Please try again.",
+    "errorDelete": "Failed to delete conversation. Please try again.",
+    "errorMacro": "Failed to execute macro. Please try again."
   },
   "settings": {
     "title": "Settings",

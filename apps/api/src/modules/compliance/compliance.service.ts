@@ -117,7 +117,7 @@ export class ComplianceService {
     async isOptedOut(schemaName: string, leadId: string, channel: string): Promise<boolean> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id FROM opt_out_records WHERE lead_id = $1 AND channel = $2 LIMIT 1`,
+            `SELECT id FROM opt_out_records WHERE lead_id = $1::uuid AND channel = $2 LIMIT 1`,
             [leadId, channel]
         );
         return rows.length > 0;
@@ -136,7 +136,7 @@ export class ComplianceService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO deletion_requests (tenant_id, lead_id, requested_by, status)
-             VALUES ($1, $2, $3, $4) RETURNING *`,
+             VALUES ($1::uuid, $2::uuid, $3, $4) RETURNING *`,
             [data.tenant_id, data.lead_id, data.requested_by, 'pending']
         );
         return rows[0];
@@ -145,7 +145,7 @@ export class ComplianceService {
     async processDeletionRequest(schemaName: string, id: string) {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `UPDATE deletion_requests SET status = 'processed', processed_at = NOW() WHERE id = $1 RETURNING *`,
+            `UPDATE deletion_requests SET status = 'processed', processed_at = NOW() WHERE id = $1::uuid RETURNING *`,
             [id]
         );
         return rows[0];

@@ -579,6 +579,13 @@ export class BroadcastService {
         return (contacts || []).map((c) => ({ id: c.id, phone: c.phone || '', email: c.email || '' }));
     }
 
+    private static readonly BROADCAST_ALLOWED_FIELDS = new Set([
+        'first_name', 'last_name', 'phone', 'email', 'stage', 'source',
+        'score', 'assigned_to', 'is_vip', 'created_at', 'updated_at',
+        'converted_at', 'archived_at', 'tags',
+    ]);
+    private static readonly META_KEY_PATTERN = /^[a-zA-Z0-9_]+$/;
+
     private buildFilterSQL(rules: any[]): { whereClause: string; params: any[] } {
         if (!rules || rules.length === 0) return { whereClause: '', params: [] };
 
@@ -587,10 +594,15 @@ export class BroadcastService {
         let n = 1;
 
         for (const rule of rules) {
-            const column = rule.field?.startsWith('metadata.')
-                ? `metadata->>'${rule.field.replace('metadata.', '')}'`
-                : rule.field;
-            if (!column) continue;
+            let column: string;
+            if (rule.field?.startsWith('metadata.')) {
+                const key = rule.field.replace('metadata.', '');
+                if (!BroadcastService.META_KEY_PATTERN.test(key)) continue;
+                column = `metadata->>'${key}'`;
+            } else {
+                if (!rule.field || !BroadcastService.BROADCAST_ALLOWED_FIELDS.has(rule.field)) continue;
+                column = rule.field;
+            }
 
             switch (rule.operator) {
                 case 'eq':    conditions.push(`${column} = $${n++}`); params.push(rule.value); break;

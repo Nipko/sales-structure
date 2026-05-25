@@ -96,9 +96,9 @@ export class BillingWebhookController {
             // UNIQUE will catch genuine duplicates anyway.
             await this.redis.del(idemKey);
             this.logger.error(`[Webhook] ${providerName} handleBillingEvent failed: ${err?.message}`, err?.stack);
-            // Return 200 anyway to stop provider retries — the reconciliation
+            // Return 200 to stop provider retries — the reconciliation
             // cron will detect drift and replay the needed state.
-            throw new BadRequestException({ error: 'processing_failed', message: err?.message });
+            return { received: true, status: 'error', reason: err?.message };
         }
     }
 }

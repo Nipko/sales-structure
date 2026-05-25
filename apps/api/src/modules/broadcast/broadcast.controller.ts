@@ -40,11 +40,11 @@ export class BroadcastController {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-        const [{ cnt }] = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+        const countRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT COUNT(*)::int AS cnt FROM campaigns WHERE created_at >= $1::timestamptz`,
             [monthStart],
         );
-        await this.throttle.enforcePlanLimit(tenantId, 'broadcastCampaigns', Number(cnt || 0), 'campañas de broadcast este mes');
+        await this.throttle.enforcePlanLimit(tenantId, 'broadcastCampaigns', Number(countRows?.[0]?.cnt || 0), 'campañas de broadcast este mes');
 
         const result = await this.broadcastService.createCampaign(tenantId, body);
         return { success: true, data: result };

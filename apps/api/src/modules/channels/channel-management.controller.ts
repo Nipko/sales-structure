@@ -1090,10 +1090,10 @@ export class ChannelManagementController {
         @Req() req: any,
     ) {
         const tenantId = req.user?.tenantId;
-        if (!tenantId) throw new Error('Tenant ID required');
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
 
         const { accountId, displayName, accessToken, metadata } = body;
-        if (!accountId || !accessToken) throw new Error('accountId and accessToken are required');
+        if (!accountId || !accessToken) throw new BadRequestException('accountId and accessToken are required');
 
         // Encrypt the access token
         const encryptedToken = this.cryptoService.encryptToken(accessToken);

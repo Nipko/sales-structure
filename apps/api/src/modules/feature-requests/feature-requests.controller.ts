@@ -21,7 +21,8 @@ export class FeatureRequestsController {
 
     @Get('changelog')
     async changelog() {
-        return this.service.changelog();
+        const data = await this.service.changelog();
+        return { success: true, data };
     }
 
     @Get()
@@ -32,17 +33,20 @@ export class FeatureRequestsController {
         @Query('search') search?: string,
         @Query('sort') sort?: string,
     ) {
-        return this.service.list({ status, category, search, sort, userId: req.user.id });
+        const data = await this.service.list({ status, category, search, sort, userId: req.user.id });
+        return { success: true, data };
     }
 
     @Get('similar')
     async similar(@Query('text') text: string) {
-        return this.service.findSimilar(text ?? '');
+        const data = await this.service.findSimilar(text ?? '');
+        return { success: true, data };
     }
 
     @Get(':id')
     async getById(@Param('id') id: string, @Req() req: any) {
-        return this.service.getById(id, req.user.id);
+        const data = await this.service.getById(id, req.user.id);
+        return { success: true, data };
     }
 
     @Post()
@@ -50,34 +54,39 @@ export class FeatureRequestsController {
         @Body() body: { title: string; description: string; category?: string },
         @Req() req: any,
     ) {
-        return this.service.create({
+        const data = await this.service.create({
             title: body.title,
             description: body.description,
             category: body.category,
             userId: req.user.id,
             tenantId: req.user.tenantId,
         });
+        return { success: true, data };
     }
 
     @Post(':id/vote')
     async vote(@Param('id') id: string, @Req() req: any) {
-        return this.service.vote(id, req.user.id, req.user.tenantId);
+        await this.service.vote(id, req.user.id, req.user.tenantId);
+        return { success: true };
     }
 
     @Delete(':id/vote')
     async unvote(@Param('id') id: string, @Req() req: any) {
-        return this.service.unvote(id, req.user.id);
+        await this.service.unvote(id, req.user.id);
+        return { success: true };
     }
 
     @Get(':id/comments')
     async listComments(@Param('id') id: string) {
-        return this.service.listComments(id);
+        const data = await this.service.listComments(id);
+        return { success: true, data };
     }
 
     @Post(':id/comments')
     async comment(@Param('id') id: string, @Body() body: { body: string }, @Req() req: any) {
         const isAdminReply = req.user.role === 'super_admin';
-        return this.service.comment(id, req.user.id, body.body, isAdminReply, req.user.tenantId);
+        await this.service.comment(id, req.user.id, body.body, isAdminReply, req.user.tenantId);
+        return { success: true };
     }
 
     @Patch(':id/status')
@@ -89,7 +98,8 @@ export class FeatureRequestsController {
         if (req.user.role !== 'super_admin') {
             throw new ForbiddenException('Only super_admin can change status');
         }
-        return this.service.updateStatus(id, body.status, body.declinedReason);
+        await this.service.updateStatus(id, body.status, body.declinedReason);
+        return { success: true };
     }
 
     @Post(':id/merge')
@@ -97,6 +107,7 @@ export class FeatureRequestsController {
         if (req.user.role !== 'super_admin') {
             throw new ForbiddenException('Only super_admin can merge requests');
         }
-        return this.service.merge(sourceId, body.targetId);
+        await this.service.merge(sourceId, body.targetId);
+        return { success: true };
     }
 }

@@ -53,10 +53,14 @@ export default function CampaignsPage() {
                 setCampaigns(prev => [created, ...prev]);
                 setShowModal(false);
                 setForm({ name: "", course_id: "", channel: "whatsapp", wa_template_name: "", source_type: "landing", fallback_email: false });
-                setToast("Campaign created successfully");
+                setToast(tc("saved"));
                 setTimeout(() => setToast(null), 2500);
             }
-        } catch (err) { console.error(err); } finally { setSaving(false); }
+        } catch (err) {
+            console.error(err);
+            setToast(tc("errorSaving"));
+            setTimeout(() => setToast(null), 2500);
+        } finally { setSaving(false); }
     };
 
     const activeCount = campaigns.filter(c => c.status === "active").length;

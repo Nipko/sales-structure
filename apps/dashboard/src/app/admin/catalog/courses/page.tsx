@@ -46,10 +46,14 @@ export default function CoursesPage() {
                 setCourses(prev => [created, ...prev]);
                 setShowModal(false);
                 setForm({ name: "", slug: "", description: "", price: "", currency: "COP", modality: "presencial", duration_hours: "", brochure_url: "" });
-                setToast("Course created successfully");
+                setToast(tc("saved"));
                 setTimeout(() => setToast(null), 2500);
             }
-        } catch (err) { console.error(err); } finally { setSaving(false); }
+        } catch (err) {
+            console.error(err);
+            setToast(tc("errorSaving"));
+            setTimeout(() => setToast(null), 2500);
+        } finally { setSaving(false); }
     };
 
     const modalityLabel: Record<string, string> = { presencial: "In-person", virtual: "Virtual", hibrido: "Hybrid" };

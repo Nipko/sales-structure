@@ -95,22 +95,30 @@ export default function OffersPage() {
             validTo: form.validTo || undefined,
             active: form.active,
         };
-        const result = editing
-            ? await api.updateOffer(activeTenantId, editing.id, payload)
-            : await api.createOffer(activeTenantId, payload);
-        if (result.success) {
-            setEditorOpen(false);
-            load();
-        } else {
-            setError(result.error || t("errors.saveFailed"));
+        try {
+            const result = editing
+                ? await api.updateOffer(activeTenantId, editing.id, payload)
+                : await api.createOffer(activeTenantId, payload);
+            if (result.success) {
+                setEditorOpen(false);
+                load();
+            } else {
+                setError(result.error || t("errors.saveFailed"));
+            }
+        } catch {
+            setError(t("errors.saveFailed"));
         }
     };
 
     const remove = async (id: string) => {
         if (!activeTenantId) return;
         if (!confirm(t("confirmDelete"))) return;
-        const result = await api.deleteOffer(activeTenantId, id);
-        if (result.success) load();
+        try {
+            const result = await api.deleteOffer(activeTenantId, id);
+            if (result.success) load();
+        } catch {
+            setError(t("errors.saveFailed"));
+        }
     };
 
     const isLive = (o: Offer) => {

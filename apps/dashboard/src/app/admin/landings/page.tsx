@@ -19,6 +19,8 @@ export default function LandingsPage() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
     const [newTitle, setNewTitle] = useState("");
     const [newSlug, setNewSlug] = useState("");
@@ -55,10 +57,11 @@ export default function LandingsPage() {
                 setLandings([created, ...landings]);
                 setShowCreateModal(false);
                 setNewTitle(""); setNewSlug(""); setNewCourseId(""); setNewCampaignId("");
+                showToast(tc("saved"));
             }
         } catch (error) {
             console.error("Error creating landing:", error);
-            alert(tc("errorSaving"));
+            showToast(tc("errorSaving"));
         }
     };
 
@@ -165,6 +168,12 @@ export default function LandingsPage() {
                     </div>
                 )}
             </div>
+
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[200] px-5 py-3 rounded-xl text-sm font-medium shadow-lg bg-card border border-border text-foreground">
+                    {toast}
+                </div>
+            )}
 
             {/* Create Modal */}
             {showCreateModal && (

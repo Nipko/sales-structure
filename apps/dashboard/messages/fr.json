@@ -1888,7 +1888,9 @@
       "ruleUpdated": "Règle mise à jour",
       "ruleDeleted": "Règle supprimée",
       "ruleEnabled": "Règle activée",
-      "ruleDisabled": "Règle désactivée"
+      "ruleDisabled": "Règle désactivée",
+      "errorToggle": "Erreur lors du changement d'état de la règle",
+      "errorDelete": "Erreur lors de la suppression de la règle"
     },
     "subtitle": "Regles automatiques pour optimiser les operations",
     "visualBuilder": "Constructeur visuel",

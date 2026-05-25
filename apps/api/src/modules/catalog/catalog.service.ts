@@ -19,7 +19,7 @@ export class CatalogService {
     async getCourseById(schemaName: string, id: string) {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM courses WHERE id = $1`,
+            `SELECT * FROM courses WHERE id = $1::uuid`,
             [id]
         );
         return rows[0] || null;
@@ -57,7 +57,7 @@ export class CatalogService {
                  brochure_url = COALESCE($6, brochure_url),
                  is_active = COALESCE($7, is_active),
                  updated_at = NOW()
-             WHERE id = $1 RETURNING *`,
+             WHERE id = $1::uuid RETURNING *`,
             [id, data.name, data.description, data.price, data.modality, data.brochure_url, data.is_active]
         );
         return rows[0];
@@ -81,7 +81,7 @@ export class CatalogService {
             `SELECT c.*, co.name AS course_name
              FROM campaigns c
              LEFT JOIN courses co ON co.id = c.course_id
-             WHERE c.id = $1`,
+             WHERE c.id = $1::uuid`,
             [id]
         );
         return rows[0] || null;
@@ -117,7 +117,7 @@ export class CatalogService {
                  wa_template_name = COALESCE($4, wa_template_name),
                  fallback_email = COALESCE($5, fallback_email),
                  updated_at = NOW()
-             WHERE id = $1 RETURNING *`,
+             WHERE id = $1::uuid RETURNING *`,
             [id, data.name, data.status, data.wa_template_name, data.fallback_email]
         );
         return rows[0];
@@ -139,7 +139,7 @@ export class CatalogService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO commercial_offers (tenant_id, course_id, campaign_id, offer_type, title, conditions_json, valid_from, valid_to, active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+             VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9) RETURNING *`,
             [
                 data.tenant_id,
                 data.course_id || null,

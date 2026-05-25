@@ -102,7 +102,7 @@ export class IntakeService {
             `SELECT fd.*, lp.campaign_id, lp.course_id, lp.id as landing_page_id
              FROM form_definitions fd
              LEFT JOIN landing_pages lp ON fd.landing_page_id = lp.id
-             WHERE fd.id = $1`,
+             WHERE fd.id = $1::uuid`,
             [formDefinitionId]
         );
 
@@ -260,7 +260,7 @@ export class IntakeService {
     private async findExistingLead(schemaName: string, phone: string, campaignId?: string): Promise<{ id: string } | null> {
         const rows = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
             schemaName,
-            `SELECT id FROM leads WHERE phone = $1 ${campaignId ? 'AND campaign_id = $2' : ''} LIMIT 1`,
+            `SELECT id FROM leads WHERE phone = $1 ${campaignId ? 'AND campaign_id = $2::uuid' : ''} LIMIT 1`,
             campaignId ? [phone, campaignId] : [phone]
         );
         return rows[0] ?? null;
@@ -279,7 +279,7 @@ export class IntakeService {
                 stage, score
             ) VALUES (
                 $1, $2, $3, $4,
-                $5, $6, $7,
+                $5::uuid, $6::uuid, $7,
                 $8, $9, $10, $11,
                 $12, $13, $14,
                 'nuevo', 0
@@ -302,7 +302,7 @@ export class IntakeService {
                 last_name  = COALESCE($3, last_name),
                 email      = COALESCE($4, email),
                 updated_at = NOW()
-             WHERE id = $1`,
+             WHERE id = $1::uuid`,
             [leadId, dto.firstName ?? null, dto.lastName ?? null, dto.email ?? null]
         );
     }
@@ -313,7 +313,7 @@ export class IntakeService {
         const rows = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
             schemaName,
             `INSERT INTO opportunities (lead_id, course_id, campaign_id, stage, score)
-             VALUES ($1, $2, $3, 'nuevo', 0)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'nuevo', 0)
              RETURNING id`,
             [leadId, dto.courseId ?? null, dto.campaignId ?? null]
         );
@@ -337,7 +337,7 @@ export class IntakeService {
             schemaName,
             `INSERT INTO consent_records
                 (lead_id, channel, legal_version, legal_text_hash, ip_address, user_agent, origin_url)
-             VALUES ($1, 'web_form', $2, $3, $4, $5, $6)`,
+             VALUES ($1::uuid, 'web_form', $2, $3, $4, $5, $6)`,
             [leadId, legalVersion, legalTextHash, meta.ip, meta.userAgent, meta.originUrl]
         );
     }
@@ -365,7 +365,7 @@ export class IntakeService {
         await this.prisma.executeInTenantSchema(
             schemaName,
             `INSERT INTO opt_out_records (lead_id, phone, channel, trigger_msg)
-             VALUES ($1, $2, 'whatsapp', $3)`,
+             VALUES ($1::uuid, $2, 'whatsapp', $3)`,
             [leadId, phone, message]
         );
 
@@ -373,7 +373,7 @@ export class IntakeService {
         if (leadId) {
             await this.prisma.executeInTenantSchema(
                 schemaName,
-                `UPDATE leads SET opted_out = true, opted_out_at = NOW(), updated_at = NOW() WHERE id = $1`,
+                `UPDATE leads SET opted_out = true, opted_out_at = NOW(), updated_at = NOW() WHERE id = $1::uuid`,
                 [leadId]
             );
         }

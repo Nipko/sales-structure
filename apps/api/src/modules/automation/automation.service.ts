@@ -61,7 +61,7 @@ export class AutomationService {
                         // Mark as success
                         await this.prisma.executeInTenantSchema(
                             schemaName,
-                            `UPDATE automation_executions SET status = 'success', finished_at = CURRENT_TIMESTAMP WHERE id = $1`,
+                            `UPDATE automation_executions SET status = 'success', finished_at = CURRENT_TIMESTAMP WHERE id = $1::uuid`,
                             [execution[0].id]
                         );
                     } catch (err) {
@@ -71,7 +71,7 @@ export class AutomationService {
                             schemaName,
                             `UPDATE automation_executions 
                              SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2
-                             WHERE id = $1`,
+                             WHERE id = $1::uuid`,
                             [execution[0].id, { error: err.message }]
                         );
                     }

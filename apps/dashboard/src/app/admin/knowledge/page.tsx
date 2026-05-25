@@ -272,6 +272,7 @@ export default function KnowledgePage() {
 
     // Delete document
     const handleDeleteDoc = async (docId: string) => {
+        if (!confirm(tc("confirmDelete"))) return;
         try {
             await api.fetch(`/knowledge/documents/${docId}`, { method: "DELETE" });
             setDocuments(prev => prev.filter(d => d.id !== docId));
@@ -283,6 +284,7 @@ export default function KnowledgePage() {
 
     // Delete resource
     const handleDeleteResource = async (resourceId: string) => {
+        if (!confirm(tc("confirmDelete"))) return;
         try {
             await api.fetch(`/knowledge/resources/${activeTenantId}/${resourceId}`, { method: "DELETE" });
             setResources(prev => prev.filter(r => r.id !== resourceId));

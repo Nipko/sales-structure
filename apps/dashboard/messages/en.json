@@ -1888,7 +1888,9 @@
       "ruleUpdated": "Rule updated",
       "ruleDeleted": "Rule deleted",
       "ruleEnabled": "Rule enabled",
-      "ruleDisabled": "Rule disabled"
+      "ruleDisabled": "Rule disabled",
+      "errorToggle": "Error toggling rule state",
+      "errorDelete": "Error deleting rule"
     },
     "subtitle": "Automated rules to optimize operations",
     "visualBuilder": "Visual builder",

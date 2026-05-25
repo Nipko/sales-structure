@@ -152,19 +152,30 @@ export default function AutomationPage() {
         const next = !currentActive;
         setRules(prev => prev.map(r => r.id === id ? { ...r, active: next } : r));
         if (activeTenantId) {
-            try { await api.toggleRule(activeTenantId, id, next); } catch {}
+            try {
+                await api.toggleRule(activeTenantId, id, next);
+                showToast(next ? t("toast.ruleEnabled") : t("toast.ruleDisabled"));
+            } catch {
+                setRules(prev => prev.map(r => r.id === id ? { ...r, active: currentActive } : r));
+                showToast(t("toast.errorToggle"));
+            }
         }
-        showToast(next ? t("toast.ruleEnabled") : t("toast.ruleDisabled"));
     }
 
     // -- Delete rule --
     async function handleDelete(id: string) {
         if (!confirm(t("confirmDelete"))) return;
+        const backup = rules;
         setRules(prev => prev.filter(r => r.id !== id));
         if (activeTenantId) {
-            try { await api.deleteRule(activeTenantId, id); } catch {}
+            try {
+                await api.deleteRule(activeTenantId, id);
+                showToast(t("toast.ruleDeleted"));
+            } catch {
+                setRules(backup);
+                showToast(t("toast.errorDelete"));
+            }
         }
-        showToast(t("toast.ruleDeleted"));
     }
 
     // -- Load executions --

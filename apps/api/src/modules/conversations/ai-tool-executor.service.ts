@@ -2157,7 +2157,7 @@ export class AIToolExecutorService {
             const blockedRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `SELECT COUNT(*)::int as cnt FROM appointments
-                 WHERE DATE(starts_at) = $1::date AND status IN ('confirmed', 'pending')`,
+                 WHERE DATE(start_at) = $1::date AND status IN ('confirmed', 'pending')`,
                 [date],
             ).catch(() => [{ cnt: 0 }]);
             const taken = Number(blockedRows[0]?.cnt || 0);

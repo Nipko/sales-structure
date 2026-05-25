@@ -403,7 +403,7 @@ Reglas:
                 schemaName,
                 `SELECT id, content_text, content_type, direction, created_at, metadata
                  FROM messages
-                 WHERE conversation_id = $1
+                 WHERE conversation_id = $1::uuid
                  ORDER BY created_at DESC
                  LIMIT 10`,
                 [conversationId],

@@ -79,6 +79,8 @@ import { WhiteLabelModule } from './modules/white-label/white-label.module';
 import { EcommerceModule } from './modules/ecommerce/ecommerce.module';
 import { ChannelManagerModule } from './modules/channel-manager/channel-manager.module';
 import { MediaProcessingModule } from './modules/media-processing/media-processing.module';
+import { SystemUpdatesModule } from './modules/system-updates/system-updates.module';
+
 
 // Configuration
 import appConfig from './config/app.config';
@@ -194,7 +196,9 @@ import llmConfig from './config/llm.config';
         OffboardingModule,
         FinancialsModule,
         FeatureRequestsModule,
+        SystemUpdatesModule,
         ExternalCrmModule,
+
         MetaComplianceModule,
         VerticalsModule,
         VacationRentalModule,

@@ -63,8 +63,11 @@ import {
   ShoppingCart,
   Shield,
   Lightbulb,
+  Sparkles,
+  X,
   type LucideIcon,
 } from "lucide-react";
+
 
 interface NavItemDef {
   labelKey: string;
@@ -203,10 +206,28 @@ const platformSections: NavSectionDef[] = [
   },
 ];
 
+const categoryLabels: Record<string, Record<string, string>> = {
+  new: { es: "NUEVO", en: "NEW", pt: "NOVO", fr: "NOUVEAU" },
+  improved: { es: "MEJORA", en: "IMPROVED", pt: "MELHORIA", fr: "AMÉLIORATION" },
+  fixed: { es: "CORREGIDO", en: "FIXED", pt: "CORRIGIDO", fr: "CORRIGÉ" }
+};
+const getCategoryLabel = (type: string, lang: string) => {
+  return categoryLabels[type]?.[lang] || categoryLabels[type]?.['es'] || type.toUpperCase();
+};
+
+const ctaLabels: Record<string, string> = {
+  es: "Entendido",
+  en: "Got it",
+  pt: "Entendido",
+  fr: "Compris"
+};
+const getCtaLabel = (lang: string) => ctaLabels[lang] || ctaLabels['es'];
+
 interface AppSidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }
+
 
 export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -231,6 +252,50 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   // super_admin while impersonating) gets the tenant tree.
   const useTenantTree = !roleCtx.isSuperAdmin || roleCtx.impersonating;
   const sectionDefs = useTenantTree ? tenantSections : platformSections;
+
+  // --- Novedades (Dynamic System Updates) ---
+  const [changelogItems, setChangelogItems] = useState<any[]>([]);
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const [hasUnreadChangelog, setHasUnreadChangelog] = useState(false);
+
+  useEffect(() => {
+    if (!useTenantTree) return; // Only tenant users see system release announcements in popup/sidebar
+
+    async function loadChangelog() {
+      try {
+        const result = await api.getSystemUpdates();
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+          const activeUpdates = result.data;
+          setChangelogItems(activeUpdates);
+          
+          const latestUpdate = activeUpdates[0];
+          const lastReadId = localStorage.getItem("lastReadChangelogId");
+
+          if (!lastReadId) {
+            // First time login or empty cache: automatically open the popup to welcome them
+            setChangelogOpen(true);
+            setHasUnreadChangelog(true);
+          } else if (lastReadId !== latestUpdate.id) {
+            // New release available
+            setHasUnreadChangelog(true);
+          }
+        }
+      } catch (err) {
+        // Silent catch on network failure
+      }
+    }
+    loadChangelog();
+  }, [useTenantTree]);
+
+  const openChangelogModal = () => {
+    setChangelogOpen(true);
+    if (changelogItems.length > 0) {
+      const latestUpdate = changelogItems[0];
+      localStorage.setItem("lastReadChangelogId", latestUpdate.id);
+      setHasUnreadChangelog(false);
+    }
+  };
+
 
   const roleLabel = (() => {
     switch (user?.role) {
@@ -442,7 +507,70 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           {sections.map((section) => (
             <Fragment key={section.titleKey}>
               {section.titleKey === "config" ? (
-                <div className="mt-3 mb-2 mx-1">
+                <>
+                  {/* Novedades (Changelog) Button */}
+                  {useTenantTree && (
+                    <div className="mt-auto mb-2 mx-1">
+                      {showExpanded ? (
+                        <div
+                          onClick={() => openChangelogModal()}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-150 cursor-pointer select-none",
+                            changelogOpen
+                              ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300"
+                              : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={cn(
+                              "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
+                              changelogOpen
+                                ? "bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
+                                : "bg-neutral-200/60 dark:bg-neutral-700/40 text-neutral-500 dark:text-neutral-400"
+                            )}>
+                              <Sparkles size={14} className="animate-pulse" />
+                            </div>
+                            <span className="text-[13px] font-semibold truncate">Novedades</span>
+                          </div>
+                          {hasUnreadChangelog && (
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              onClick={() => openChangelogModal()}
+                              className={cn(
+                                "relative flex items-center justify-center py-2 rounded-lg border transition-all duration-150 cursor-pointer select-none",
+                                changelogOpen
+                                  ? "bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-800/60"
+                                  : "bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                              )}
+                            >
+                              <Sparkles size={16} className={cn(changelogOpen ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-500 dark:text-neutral-400")} />
+                              {hasUnreadChangelog && (
+                                <span className="absolute top-1 right-1 flex h-1.5 w-1.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
+                                </span>
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <span className="font-semibold">Novedades</span>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Settings Box */}
+                  <div className="mt-3 mb-2 mx-1">
+
                   {showExpanded ? (
                     <Link href="/admin/settings" onClick={handleNavClick}>
                       <div className={cn(
@@ -482,7 +610,9 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                     </Tooltip>
                   )}
                 </div>
-              ) : (
+              </>
+            ) : (
+
                 <>
                 {showExpanded && section.items.length > 0 && (
                   <p className="px-2 mb-1.5 mt-4 first:mt-0 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 select-none">
@@ -666,6 +796,110 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           {sidebarContent}
         </SheetContent>
       </Sheet>
+
+      {/* Dynamic Novedades Changelog Modal Overlay */}
+      <AnimatePresence>
+        {changelogOpen && changelogItems.length > 0 && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 select-none">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setChangelogOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+
+            {/* Modal Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="relative w-full max-w-2xl max-h-[80vh] bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10"
+            >
+              {/* Header Gradient */}
+              <div className="relative bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-500 p-6 text-white shrink-0">
+                <button
+                  onClick={() => setChangelogOpen(false)}
+                  className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-all duration-150"
+                >
+                  <X size={16} />
+                </button>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wider uppercase">
+                    {changelogItems[0].version}
+                  </div>
+                  <span className="text-white/60 text-xs font-semibold">
+                    • {new Date(changelogItems[0].date).toLocaleDateString(locale === "es" ? "es-ES" : locale, { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+                <h2 className="text-xl md:text-2xl font-extrabold tracking-tight flex items-center gap-2">
+                  <Sparkles size={20} className="text-amber-300 animate-pulse animate-duration-1000 shrink-0" />
+                  <span className="truncate">{changelogItems[0].title[locale] || changelogItems[0].title['es'] || ''}</span>
+                </h2>
+                <p className="text-sm text-white/90 mt-2 font-medium leading-relaxed">
+                  {changelogItems[0].description[locale] || changelogItems[0].description['es'] || ''}
+                </p>
+              </div>
+
+              {/* Scrollable Features List */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-neutral-50/50 dark:bg-neutral-900/30">
+                {changelogItems[0].features && Array.isArray(changelogItems[0].features) && (
+                  changelogItems[0].features.map((feature: any, idx: number) => {
+                    const featTitle = feature.title?.[locale] || feature.title?.[locale.split('-')[0]] || feature.title?.['es'] || '';
+                    const featDesc = feature.desc?.[locale] || feature.desc?.[locale.split('-')[0]] || feature.desc?.['es'] || '';
+                    const badgeText = getCategoryLabel(feature.type, locale.split('-')[0]);
+                    
+                    return (
+                      <div key={idx} className="flex gap-4 items-start border-b border-neutral-100 dark:border-neutral-800/40 pb-5 last:border-0 last:pb-0">
+                        <div className="shrink-0 mt-0.5">
+                          <span className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                            feature.type === 'new' && "bg-indigo-50 text-indigo-700 border border-indigo-200/50 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-800/30",
+                            feature.type === 'improved' && "bg-emerald-50 text-emerald-700 border border-emerald-200/50 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-800/30",
+                            feature.type === 'fixed' && "bg-amber-50 text-amber-700 border border-amber-200/50 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-800/30"
+                          )}>
+                            {badgeText}
+                          </span>
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <h4 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                            {featTitle}
+                          </h4>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                            {featDesc}
+                          </p>
+                          {feature.image && (
+                            <div className="relative mt-3 rounded-lg overflow-hidden border border-neutral-200/40 dark:border-neutral-800/50 shadow-sm max-w-md group select-none">
+                              <img
+                                src={feature.image.startsWith('/') ? `${process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '') || 'https://api.parallly-chat.cloud'}${feature.image}` : feature.image}
+                                alt={featTitle}
+                                className="w-full h-auto object-cover max-h-56 transform group-hover:scale-[1.02] transition-transform duration-300"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Bottom Close Button */}
+              <div className="p-4 border-t border-neutral-100 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 flex justify-end shrink-0">
+                <button
+                  onClick={() => setChangelogOpen(false)}
+                  className="bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-semibold text-sm px-6 py-2 rounded-lg transition-all duration-150 shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20"
+                >
+                  {getCtaLabel(locale.split('-')[0])}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
+

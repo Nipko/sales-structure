@@ -1402,7 +1402,26 @@ export const api = {
         apiPost(`/webhooks/${tenantId}/${endpointId}/test`, {}),
     getWebhookEvents: () =>
         apiGet(`/webhooks/events`),
+
+    // ─── System Updates (Changelog / Novedades) ───
+    getSystemUpdates: () => apiGet("/system-updates"),
+    getAdminSystemUpdates: () => apiGet("/system-updates/admin"),
+    createSystemUpdate: (data: any) => apiPost("/system-updates", data),
+    updateSystemUpdate: (id: string, data: any) => apiPut(`/system-updates/${id}`, data),
+    deleteSystemUpdate: (id: string) => apiDelete(`/system-updates/${id}`),
+    uploadSystemUpdateImage: async (file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${BASE_URL}/system-updates/upload-image`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
+        return res.json();
+    },
 };
+
 
 // ============================================
 // HTTP method helpers

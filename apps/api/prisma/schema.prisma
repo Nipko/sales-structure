@@ -627,3 +627,22 @@ model CrmConnection {
   @@map("crm_connections")
   @@schema("public")
 }
+
+// ============================================
+// SYSTEM UPDATES — Platform-wide changelogs & announcements
+// ============================================
+model SystemUpdate {
+  id          String   @id @default(uuid())
+  version     String
+  date        DateTime @default(now())
+  title       Json     // e.g. { "es": "...", "en": "..." }
+  description Json     // e.g. { "es": "...", "en": "..." }
+  features    Json     // array of: { type: 'new'|'improved'|'fixed', title: { es, en, pt, fr }, desc: { es, en, pt, fr }, image?: string }
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_updates")
+  @@schema("public")
+}
+

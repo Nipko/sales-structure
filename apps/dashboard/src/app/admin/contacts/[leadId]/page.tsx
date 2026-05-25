@@ -643,7 +643,8 @@ export default function Lead360Page() {
                                     setInsightLoading(true);
                                     api.fetch(`/crm/leads/${tenantId}/${leadId}/insight`)
                                         .then((res: any) => {
-                                            setInsight(res?.data?.insight || t("leadDetail.insightUnavailable"));
+                                            const d = res?.data;
+                                            setInsight(d?.action ? `${d.action}${d.reasoning ? ` — ${d.reasoning}` : ''}` : t("leadDetail.insightUnavailable"));
                                         })
                                         .catch(() => {
                                             setInsight(t("leadDetail.insightError"));

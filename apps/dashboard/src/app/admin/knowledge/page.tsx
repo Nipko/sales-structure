@@ -279,6 +279,16 @@ export default function KnowledgePage() {
         }
     };
 
+    // Delete resource
+    const handleDeleteResource = async (resourceId: string) => {
+        try {
+            await api.fetch(`/knowledge/resources/${activeTenantId}/${resourceId}`, { method: "DELETE" });
+            setResources(prev => prev.filter(r => r.id !== resourceId));
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
+        }
+    };
+
     // Toggle public
     const handleTogglePublic = async (doc: KBDocument) => {
         try {
@@ -698,6 +708,9 @@ export default function KnowledgePage() {
                                 <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ color: statusColors[r.status] || undefined, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
                                     {t(`status.${r.status}`)}
                                 </span>
+                                <button onClick={() => handleDeleteResource(r.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
+                                    <Trash2 size={13} />
+                                </button>
                             </div>
                         </div>
                     ))}

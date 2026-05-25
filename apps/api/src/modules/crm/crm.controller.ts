@@ -109,7 +109,7 @@ export class CrmController {
     ) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*)::int AS c FROM leads WHERE is_archived = false`);
+            `SELECT COUNT(*)::int AS c FROM leads WHERE stage NOT IN ('perdido', 'no_interesado')`);
         await this.throttle.enforcePlanLimit(tenantId, 'maxContacts', cnt?.[0]?.c || 0, 'contactos');
         const lead = await this.leadsRepo.createLead(tenantId, body);
         if (lead?.id) {

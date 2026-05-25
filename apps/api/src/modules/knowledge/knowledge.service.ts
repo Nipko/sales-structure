@@ -219,7 +219,7 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
 
         const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, title, file_type FROM knowledge_documents WHERE id = $1`, [documentId]);
+            `SELECT id, title, file_type FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
         if (!existing?.[0]) throw new BadRequestException({ error: 'document_not_found' });
 
         let textContent = update.content || '';
@@ -443,7 +443,7 @@ export class KnowledgeService {
         return this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, version, title, chunk_count, changed_by, change_summary, created_at
              FROM knowledge_document_versions
-             WHERE document_id = $1
+             WHERE document_id = $1::uuid
              ORDER BY version DESC`,
             [documentId]);
     }

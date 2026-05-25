@@ -157,9 +157,12 @@ export class AppointmentsService {
         notes?: string;
         metadata?: Record<string, any>;
     }): Promise<Appointment> {
-        // Validate no overlap for assigned agent
-        if (data.assignedTo) {
-            const conflict = await this.checkConflict(schemaName, data.assignedTo, data.startAt, data.endAt);
+        // Validate assignedTo is a valid UUID (callers may pass a name instead of ID)
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const assignedToUuid = data.assignedTo && uuidRe.test(data.assignedTo) ? data.assignedTo : null;
+
+        if (assignedToUuid) {
+            const conflict = await this.checkConflict(schemaName, assignedToUuid, data.startAt, data.endAt);
             if (conflict) {
                 throw new BadRequestException('El agente ya tiene una cita en ese horario');
             }
@@ -169,7 +172,7 @@ export class AppointmentsService {
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO appointments (id, contact_id, conversation_id, assigned_to, service_name, start_at, end_at, location, notes, metadata, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp, $8, $9, $10::jsonb, NOW(), NOW())`,
-            [id, data.contactId || null, data.conversationId || null, data.assignedTo || null,
+            [id, data.contactId || null, data.conversationId || null, assignedToUuid,
              data.serviceName, data.startAt, data.endAt, data.location || null, data.notes || null,
              JSON.stringify(data.metadata || {})],
         );

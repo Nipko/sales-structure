@@ -1030,6 +1030,8 @@ export class KnowledgeService {
     // ─── Legacy Resource Methods (backward compat) ───────────────────────────
 
     async getResources(schemaName: string, status?: string) {
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE knowledge_resources SET status = 'approved' WHERE status = 'draft'`);
         if (status) {
             return this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
@@ -1049,8 +1051,8 @@ export class KnowledgeService {
             : null;
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO knowledge_resources (tenant_id, title, type, content, source_url, content_hash)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            `INSERT INTO knowledge_resources (tenant_id, title, type, content, source_url, content_hash, status)
+             VALUES ($1, $2, $3, $4, $5, $6, 'approved') RETURNING *`,
             [tenantId, data.title, data.type || 'manual', data.content || '', data.source_url || null, contentHash]);
 
         await this.invalidateHasKnowledgeCache(tenantId);

@@ -15,6 +15,7 @@ import { BillingService } from '../billing/billing.service';
 import { VerticalsService } from '../verticals/verticals.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
+import { validateEmailDomain } from '../../common/utils/email.util';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
     welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail,
@@ -232,6 +233,7 @@ export class AuthService {
         role?: UserRole;
         tenantId?: string;
     }) {
+        validateEmailDomain(data.email);
         // Check if user exists
         const existing = await this.prisma.user.findUnique({
             where: { email: data.email },
@@ -288,6 +290,7 @@ export class AuthService {
         firstName: string;
         lastName: string;
     }) {
+        validateEmailDomain(data.email);
         // Check if email is already taken
         const existingUser = await this.prisma.user.findUnique({
             where: { email: data.email },

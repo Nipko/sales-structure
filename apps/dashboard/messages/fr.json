@@ -2720,11 +2720,25 @@
       "copyLink": "Copier le lien",
       "linkCopied": "Lien copié",
       "skillTagsLabel": "Compétences (optionnel)",
-      "skillTagsHint": "Ne s'appliquent qu'aux agents et superviseurs. Appuyez sur Entrée pour ajouter."
+      "skillTagsHint": "Ne s'appliquent qu'aux agents et superviseurs. Appuyez sur Entrée pour ajouter.",
+      "editTitle": "Modifier l'utilisateur",
+      "editSubtitle": "Modifiez les détails, le rôle ou le statut du membre de l'équipe.",
+      "firstName": "Prénom",
+      "firstNamePlaceholder": "Jean",
+      "lastName": "Nom",
+      "lastNamePlaceholder": "Dupont",
+      "phone": "Téléphone",
+      "jobTitle": "Poste / Titre",
+      "status": "Statut du compte"
     },
     "toast": {
-      "skillsSaved": "Compétences mises à jour"
+      "skillsSaved": "Compétences mises à jour",
+      "userUpdated": "Utilisateur mis à jour avec succès",
+      "userDeactivated": "Utilisateur désactivé avec succès"
     },
+    "edit": "Modifier",
+    "delete": "Désactiver",
+    "confirmDeactivateUser": "Êtes-vous sûr de vouloir désactiver cet utilisateur ? Toutes ses sessions actives seront fermées.",
     "skills": "Compétences",
     "addSkill": "Ajouter une compétence",
     "skillPlaceholder": "Tapez une compétence...",

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -285,7 +285,12 @@ export class AuthController {
     @ApiOperation({ summary: 'List users for the current tenant (or all for super_admin)' })
     async listUsers(@Request() req: any) {
         const user = req.user;
-        const where: any = { isActive: true };
+        const where: any = {};
+
+        // Only hide inactive users from non-admin roles
+        if (user.role !== 'super_admin' && user.role !== 'tenant_admin') {
+            where.isActive = true;
+        }
 
         if (user.role === 'super_admin') {
             // Super admin sees all users
@@ -302,6 +307,7 @@ export class AuthController {
                 id: true, email: true, firstName: true, lastName: true,
                 role: true, isActive: true, availabilityStatus: true,
                 createdAt: true, tenantId: true, picture: true, skillTags: true,
+                phone: true, jobTitle: true,
                 tenant: { select: { name: true } },
             },
             orderBy: { createdAt: 'asc' },
@@ -348,6 +354,136 @@ export class AuthController {
         });
 
         return { success: true, data: updated };
+    }
+
+    @Patch('users/:userId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Update any user details, role or status (admin only)' })
+    async updateUser(
+        @Param('userId') userId: string,
+        @Request() req: any,
+        @Body() body: {
+            firstName?: string;
+            lastName?: string;
+            role?: string;
+            isActive?: boolean;
+            phone?: string;
+            jobTitle?: string;
+            maxCapacity?: number;
+            skillTags?: string[];
+        },
+    ) {
+        const currentUser = req.user;
+
+        // Fetch target user first to verify tenant isolation
+        const targetUser = await this.authService['prisma'].user.findUnique({
+            where: { id: userId },
+            select: { tenantId: true, role: true },
+        });
+
+        if (!targetUser) {
+            throw new BadRequestException('User not found');
+        }
+
+        // Tenant admins can only update users in their own tenant
+        if (currentUser.role === 'tenant_admin') {
+            if (targetUser.tenantId !== currentUser.tenantId) {
+                throw new ForbiddenException('You can only manage users within your own tenant');
+            }
+            // Tenant admins cannot modify other tenant admins
+            if (targetUser.role === 'tenant_admin' && currentUser.id !== userId) {
+                throw new ForbiddenException('Cannot modify another tenant administrator');
+            }
+            if (body.role && !['tenant_supervisor', 'tenant_agent', 'tenant_admin'].includes(body.role)) {
+                throw new BadRequestException('Invalid role assignment');
+            }
+        }
+
+        const updateData: any = {};
+        if (body.firstName !== undefined) updateData.firstName = body.firstName;
+        if (body.lastName !== undefined) updateData.lastName = body.lastName;
+        if (body.role !== undefined) updateData.role = body.role;
+        if (body.isActive !== undefined) updateData.isActive = body.isActive;
+        if (body.phone !== undefined) updateData.phone = body.phone;
+        if (body.jobTitle !== undefined) updateData.jobTitle = body.jobTitle;
+        if (body.maxCapacity !== undefined) updateData.maxCapacity = body.maxCapacity;
+        if (body.skillTags !== undefined) updateData.skillTags = body.skillTags;
+
+        const updated = await this.authService['prisma'].user.update({
+            where: { id: userId },
+            data: updateData,
+            select: {
+                id: true, email: true, firstName: true, lastName: true,
+                role: true, isActive: true, phone: true, jobTitle: true,
+                maxCapacity: true, skillTags: true,
+            },
+        });
+
+        // Audit Log entry
+        await this.authService['prisma'].auditLog.create({
+            data: {
+                tenantId: targetUser.tenantId,
+                userId: currentUser.id,
+                action: 'user_updated',
+                resource: `users/${userId}`,
+                details: { modifiedFields: Object.keys(updateData) },
+            },
+        });
+
+        return { success: true, data: updated };
+    }
+
+    @Delete('users/:userId')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin', 'tenant_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Remove/Deactivate a user from the tenant (admin only)' })
+    async deleteUser(@Param('userId') userId: string, @Request() req: any) {
+        const currentUser = req.user;
+
+        const targetUser = await this.authService['prisma'].user.findUnique({
+            where: { id: userId },
+            select: { tenantId: true, role: true },
+        });
+
+        if (!targetUser) {
+            throw new BadRequestException('User not found');
+        }
+
+        if (currentUser.role === 'tenant_admin') {
+            if (targetUser.tenantId !== currentUser.tenantId) {
+                throw new ForbiddenException('You can only manage users within your own tenant');
+            }
+            if (targetUser.role === 'tenant_admin') {
+                throw new ForbiddenException('Cannot delete a tenant administrator. Contact support.');
+            }
+        }
+
+        // Soft delete (setting isActive to false)
+        await this.authService['prisma'].user.update({
+            where: { id: userId },
+            data: { isActive: false, availabilityStatus: 'offline' },
+        });
+
+        // Revoke all sessions
+        await this.authService.revokeAllUserSessions(userId);
+
+        // Audit Log entry
+        await this.authService['prisma'].auditLog.create({
+            data: {
+                tenantId: targetUser.tenantId,
+                userId: currentUser.id,
+                action: 'user_deactivated',
+                resource: `users/${userId}`,
+                details: { status: 'deactivated' },
+            },
+        });
+
+        return { success: true, message: 'User deactivated successfully' };
     }
 
     @Post('setup-password')

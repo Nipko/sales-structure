@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
+import { validateEmailDomain } from '../../common/utils/email.util';
 
 const TOKEN_BYTES = 32;
 const DEFAULT_TTL_DAYS = 14;
@@ -41,6 +42,7 @@ export class InvitationsService {
         invitedByUserId?: string;
     }) {
         const email = input.email.trim().toLowerCase();
+        validateEmailDomain(email);
         if (!ALLOWED_ROLES.has(input.role)) {
             throw new BadRequestException({ error: 'invalid_role', message: `Role must be one of: ${[...ALLOWED_ROLES].join(', ')}` });
         }

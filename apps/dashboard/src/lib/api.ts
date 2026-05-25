@@ -431,6 +431,12 @@ export const api = {
     registerUser: (data: { email: string; password: string; firstName: string; lastName: string; role?: string; tenantId?: string }) =>
         apiPost("/auth/register", data),
 
+    updateUser: (userId: string, data: any) =>
+        apiPatch(`/auth/users/${userId}`, data),
+
+    deleteUser: (userId: string) =>
+        apiDelete(`/auth/users/${userId}`),
+
     updateUserSkills: (userId: string, skillTags: string[]) =>
         apiPut(`/auth/users/${userId}/skills`, { skillTags }),
 

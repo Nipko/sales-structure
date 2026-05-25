@@ -2718,11 +2718,25 @@
       "copyLink": "Copiar enlace",
       "linkCopied": "Enlace copiado",
       "skillTagsLabel": "Habilidades (opcional)",
-      "skillTagsHint": "Solo aplican a agentes y supervisores. Separa con Enter."
+      "skillTagsHint": "Solo aplican a agentes y supervisores. Separa con Enter.",
+      "editTitle": "Editar usuario",
+      "editSubtitle": "Modifica los detalles, rol o estado del miembro del equipo.",
+      "firstName": "Nombre",
+      "firstNamePlaceholder": "Juan",
+      "lastName": "Apellido",
+      "lastNamePlaceholder": "Pérez",
+      "phone": "Teléfono",
+      "jobTitle": "Cargo / Puesto",
+      "status": "Estado de cuenta"
     },
     "toast": {
-      "skillsSaved": "Habilidades actualizadas"
+      "skillsSaved": "Habilidades actualizadas",
+      "userUpdated": "Usuario actualizado correctamente",
+      "userDeactivated": "Usuario desactivado correctamente"
     },
+    "edit": "Editar",
+    "delete": "Desactivar",
+    "confirmDeactivateUser": "¿Estás seguro de que deseas desactivar a este usuario? Se cerrarán todas sus sesiones activas.",
     "skills": "Habilidades",
     "addSkill": "Agregar habilidad",
     "skillPlaceholder": "Escribe una habilidad...",

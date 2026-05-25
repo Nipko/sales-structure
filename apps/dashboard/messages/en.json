@@ -2720,11 +2720,25 @@
       "copyLink": "Copy link",
       "linkCopied": "Link copied",
       "skillTagsLabel": "Skills (optional)",
-      "skillTagsHint": "Only apply to agents and supervisors. Press Enter to add."
+      "skillTagsHint": "Only apply to agents and supervisors. Press Enter to add.",
+      "editTitle": "Edit user",
+      "editSubtitle": "Modify details, role or status of the team member.",
+      "firstName": "First name",
+      "firstNamePlaceholder": "John",
+      "lastName": "Last name",
+      "lastNamePlaceholder": "Doe",
+      "phone": "Phone",
+      "jobTitle": "Job Title",
+      "status": "Account status"
     },
     "toast": {
-      "skillsSaved": "Skills updated"
+      "skillsSaved": "Skills updated",
+      "userUpdated": "User updated successfully",
+      "userDeactivated": "User deactivated successfully"
     },
+    "edit": "Edit",
+    "delete": "Deactivate",
+    "confirmDeactivateUser": "Are you sure you want to deactivate this user? All their active sessions will be terminated.",
     "skills": "Skills",
     "addSkill": "Add skill",
     "skillPlaceholder": "Type a skill...",

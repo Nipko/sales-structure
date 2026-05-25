@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
     Users, UserPlus, Shield, Search, MoreVertical, Plus, X, Tag,
     Mail, Send, RefreshCw, XCircle, Copy, Clock, CheckCircle2, AlertCircle,
+    Edit2, Trash2,
 } from "lucide-react";
 
 const roleStyle: Record<string, { color: string; icon: string }> = {
@@ -205,10 +206,89 @@ export default function UsersPage() {
         ? (inviteForm.tenantId || activeTenantId || undefined)
         : (activeTenantId || undefined);
 
+    const [showEdit, setShowEdit] = useState(false);
+    const [editForm, setEditForm] = useState<{
+        id: string;
+        firstName: string;
+        lastName: string;
+        role: string;
+        isActive: boolean;
+        phone: string;
+        jobTitle: string;
+        skillTags: string[];
+    }>({
+        id: "",
+        firstName: "",
+        lastName: "",
+        role: "tenant_agent",
+        isActive: true,
+        phone: "",
+        jobTitle: "",
+        skillTags: [],
+    });
+
+    function startEdit(u: any) {
+        setEditForm({
+            id: u.id,
+            firstName: u.firstName || "",
+            lastName: u.lastName || "",
+            role: u.role || "tenant_agent",
+            isActive: u.isActive ?? true,
+            phone: u.phone || "",
+            jobTitle: u.jobTitle || "",
+            skillTags: u.skillTags || [],
+        });
+        setShowEdit(true);
+    }
+
+    async function handleSaveEdit() {
+        if (!editForm.id) return;
+        setSaving(true);
+        try {
+            const result = await api.updateUser(editForm.id, {
+                firstName: editForm.firstName.trim(),
+                lastName: editForm.lastName.trim(),
+                role: editForm.role,
+                isActive: editForm.isActive,
+                phone: editForm.phone.trim(),
+                jobTitle: editForm.jobTitle.trim(),
+                skillTags: editForm.skillTags,
+            });
+            if (result.success) {
+                showToast(t("toast.userUpdated"));
+                setShowEdit(false);
+                await loadUsers();
+            } else {
+                const errMsg = result.error || tc("errorSaving");
+                showToast(errMsg);
+            }
+        } catch (err: any) {
+            showToast(err?.message || tc("errorSaving"));
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleDeleteUser(userId: string, userName: string) {
+        if (!confirm(t("confirmDeactivateUser"))) return;
+        try {
+            const result = await api.deleteUser(userId);
+            if (result.success) {
+                showToast(t("toast.userDeactivated"));
+                await loadUsers();
+            } else {
+                const errMsg = result.error || tc("errorSaving");
+                showToast(errMsg);
+            }
+        } catch (err: any) {
+            showToast(err?.message || tc("errorSaving"));
+        }
+    }
+
     async function loadUsers() {
         try {
             const result = await api.getUsers();
-            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+            if (result.success && Array.isArray(result.data)) {
                 setUsers(result.data.map((u: any) => ({
                     id: u.id,
                     email: u.email || '',
@@ -219,6 +299,8 @@ export default function UsersPage() {
                     isActive: u.isActive ?? u.is_active ?? true,
                     createdAt: u.createdAt?.split('T')[0] || u.created_at?.split('T')[0] || '—',
                     skillTags: u.skillTags || u.skill_tags || [],
+                    phone: u.phone || '',
+                    jobTitle: u.jobTitle || u.job_title || '',
                 })));
                 setIsLive(true);
             }
@@ -437,9 +519,12 @@ export default function UsersPage() {
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="bg-card">
-                                        {(["user", "email", "role", "skills", "tenant", "status", "registered"] as const).map(k => (
+                                        {([
+                                            ...(["user", "email", "role", "skills", "tenant", "status", "registered"] as const),
+                                            ...(isAdmin ? ["actions" as const] : [])
+                                        ]).map(k => (
                                             <th key={k} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
-                                                {k === "skills" ? t("skills") : t(`headers.${k}`)}
+                                                {k === "skills" ? t("skills") : k === "actions" ? t("invitations.headers.actions") : t(`headers.${k}`)}
                                             </th>
                                         ))}
                                     </tr>
@@ -448,16 +533,22 @@ export default function UsersPage() {
                                     {filtered.map(u => {
                                         const rc = roleStyle[u.role] || roleStyle.tenant_agent;
                                         return (
-                                            <tr key={u.id} className="border-b border-border">
+                                            <tr key={u.id} className="border-b border-border hover:bg-neutral-500/5 transition-colors">
                                                 <td className="px-4 py-3">
                                                     <div className="flex items-center gap-2.5">
                                                         <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm" style={{ background: `linear-gradient(135deg, ${rc.color}, ${rc.color}88)` }}>
                                                             {u.firstName.charAt(0)}{u.lastName.charAt(0)}
                                                         </div>
-                                                        <span className="font-semibold">{u.firstName} {u.lastName}</span>
+                                                        <div>
+                                                            <div className="font-semibold leading-tight">{u.firstName} {u.lastName}</div>
+                                                            {u.jobTitle && <span className="text-[10px] text-muted-foreground">{u.jobTitle}</span>}
+                                                        </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.email}</td>
+                                                <td className="px-4 py-3 text-[13px] text-muted-foreground">
+                                                    <div>{u.email}</div>
+                                                    {u.phone && <span className="text-[10px] text-muted-foreground">{u.phone}</span>}
+                                                </td>
                                                 <td className="px-4 py-3">
                                                     <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${rc.color}15`, color: rc.color }}>{rc.icon} {roleLabel(u.role)}</span>
                                                 </td>
@@ -485,6 +576,30 @@ export default function UsersPage() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-[13px] text-muted-foreground">{u.createdAt}</td>
+                                                {isAdmin && (
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => startEdit(u)}
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-transparent text-[11px] font-semibold text-foreground cursor-pointer hover:bg-muted transition-colors"
+                                                                title={t("edit")}
+                                                            >
+                                                                <Edit2 size={11} />
+                                                                {t("edit")}
+                                                            </button>
+                                                            {u.id !== user?.id && u.role !== 'tenant_admin' && u.role !== 'super_admin' && (
+                                                                <button
+                                                                    onClick={() => handleDeleteUser(u.id, `${u.firstName} ${u.lastName}`)}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-500/30 bg-transparent text-[11px] font-semibold text-red-500 cursor-pointer hover:bg-red-500/10 transition-colors"
+                                                                    title={t("delete")}
+                                                                >
+                                                                    <Trash2 size={11} />
+                                                                    {t("delete")}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                )}
                                             </tr>
                                         );
                                     })}
@@ -682,6 +797,112 @@ export default function UsersPage() {
                                 ) : (
                                     <><Send size={14} /> {t("modal.inviteButton")}</>
                                 )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit modal */}
+            {showEdit && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowEdit(false)}>
+                    <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                        <div className="flex justify-between items-start mb-5">
+                            <div>
+                                <h2 className="text-xl font-semibold m-0">{t("modal.editTitle")}</h2>
+                                <p className="text-[13px] text-muted-foreground mt-1.5 leading-snug max-w-[380px]">
+                                    {t("modal.editSubtitle")}
+                                </p>
+                            </div>
+                            <button onClick={() => setShowEdit(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer mt-1"><X size={20} /></button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-3.5">
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.firstName")}</label>
+                                <input
+                                    value={editForm.firstName}
+                                    onChange={e => setEditForm(p => ({ ...p, firstName: e.target.value }))}
+                                    placeholder={t("modal.firstNamePlaceholder")}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.lastName")}</label>
+                                <input
+                                    value={editForm.lastName}
+                                    onChange={e => setEditForm(p => ({ ...p, lastName: e.target.value }))}
+                                    placeholder={t("modal.lastNamePlaceholder")}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.phone")}</label>
+                            <input
+                                value={editForm.phone}
+                                onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))}
+                                placeholder="+57 300 123 4567"
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                        </div>
+
+                        <div className="mb-3.5">
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.jobTitle")}</label>
+                            <input
+                                value={editForm.jobTitle}
+                                onChange={e => setEditForm(p => ({ ...p, jobTitle: e.target.value }))}
+                                placeholder="Asesor de Ventas"
+                                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                            />
+                        </div>
+
+                        {/* Role selection - only allow tenant_admin to edit other roles (cannot edit another tenant_admin or promote to super_admin) */}
+                        {editForm.role !== "super_admin" && (
+                            <div className="mb-3.5">
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("modal.role")}</label>
+                                <select
+                                    value={editForm.role}
+                                    disabled={editForm.id === user?.id} // Cannot change own role to prevent self-lockout
+                                    onChange={e => setEditForm(p => ({ ...p, role: e.target.value }))}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border disabled:opacity-50"
+                                >
+                                    <option value="tenant_agent">🎧 {tRoles("agent")}</option>
+                                    <option value="tenant_supervisor">⭐ {tRoles("supervisor")}</option>
+                                    <option value="tenant_admin">👑 {tRoles("admin")}</option>
+                                </select>
+                                {editForm.id === user?.id && (
+                                    <p className="mt-1 text-[10px] text-muted-foreground">No puedes cambiar tu propio rol administrador.</p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="mb-5 flex items-center justify-between p-3 rounded-lg border border-border bg-background/50">
+                            <div>
+                                <span className="block text-xs font-semibold text-foreground">{t("modal.status")}</span>
+                                <span className="text-[11px] text-muted-foreground">Determina si el usuario puede iniciar sesión.</span>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={editForm.isActive}
+                                disabled={editForm.id === user?.id} // Cannot deactivate self
+                                onChange={e => setEditForm(p => ({ ...p, isActive: e.target.checked }))}
+                                className="w-5 h-5 cursor-pointer accent-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                        </div>
+
+                        <div className="flex gap-2.5 mt-5">
+                            <button onClick={() => setShowEdit(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
+                            <button
+                                onClick={handleSaveEdit}
+                                disabled={saving}
+                                className={cn(
+                                    "flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold inline-flex items-center justify-center gap-2",
+                                    saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer",
+                                )}
+                            >
+                                {saving ? tc("saving") : tc("save")}
                             </button>
                         </div>
                     </div>

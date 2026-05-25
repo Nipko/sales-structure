@@ -34,11 +34,14 @@ interface OverrideData {
         broadcast?: number;
         maxAgents?: number;
         maxCalendars?: number;
+        knowledgeArticles?: number;
+        knowledgeMaxCharsPerDoc?: number;
+        knowledgeEmbeddingsPerMonth?: number;
         reason?: string;
         setBy?: string;
         setAt?: string;
     };
-    features: { maxAgents: number; maxCalendars: number; templates: boolean; customPrompt: boolean };
+    features: { maxAgents: number; maxCalendars: number; knowledgeArticles: number; knowledgeMaxCharsPerDoc: number; knowledgeEmbeddingsPerMonth: number; templates: boolean; customPrompt: boolean };
     usage: { automation: UsageRow; outbound: UsageRow; broadcast: UsageRow };
 }
 
@@ -51,6 +54,9 @@ const HOURLY_QUOTAS = [
 const FEATURE_QUOTAS = [
     { key: "maxAgents" as const, labelKey: "maxAgentsLabel" },
     { key: "maxCalendars" as const, labelKey: "maxCalendarsLabel" },
+    { key: "knowledgeArticles" as const, labelKey: "knowledgeArticlesLabel" },
+    { key: "knowledgeMaxCharsPerDoc" as const, labelKey: "knowledgeMaxCharsLabel" },
+    { key: "knowledgeEmbeddingsPerMonth" as const, labelKey: "knowledgeEmbeddingsLabel" },
 ];
 
 export default function TenantQuotaOverrides({ tenantId }: { tenantId: string }) {
@@ -69,6 +75,9 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
         broadcast: "",
         maxAgents: "",
         maxCalendars: "",
+        knowledgeArticles: "",
+        knowledgeMaxCharsPerDoc: "",
+        knowledgeEmbeddingsPerMonth: "",
         reason: "",
     });
 
@@ -85,6 +94,9 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
                     broadcast: o.broadcast !== undefined ? String(o.broadcast) : "",
                     maxAgents: o.maxAgents !== undefined ? String(o.maxAgents) : "",
                     maxCalendars: o.maxCalendars !== undefined ? String(o.maxCalendars) : "",
+                    knowledgeArticles: o.knowledgeArticles !== undefined ? String(o.knowledgeArticles) : "",
+                    knowledgeMaxCharsPerDoc: o.knowledgeMaxCharsPerDoc !== undefined ? String(o.knowledgeMaxCharsPerDoc) : "",
+                    knowledgeEmbeddingsPerMonth: o.knowledgeEmbeddingsPerMonth !== undefined ? String(o.knowledgeEmbeddingsPerMonth) : "",
                     reason: o.reason || "",
                 });
             }
@@ -101,7 +113,7 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
         setSaving(true);
         setFeedback(null);
         const payload: any = { reason: form.reason || undefined };
-        for (const k of ["automation", "outbound", "broadcast", "maxAgents", "maxCalendars"]) {
+        for (const k of ["automation", "outbound", "broadcast", "maxAgents", "maxCalendars", "knowledgeArticles", "knowledgeMaxCharsPerDoc", "knowledgeEmbeddingsPerMonth"]) {
             const v = form[k]?.trim();
             if (v === "" || v === undefined) continue;  // empty = use plan default
             const n = parseInt(v, 10);

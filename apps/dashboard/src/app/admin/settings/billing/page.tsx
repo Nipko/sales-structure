@@ -930,7 +930,29 @@ export default function BillingPage() {
                                     )}
                                     <ul className="mt-4 space-y-1.5 text-sm text-neutral-600 dark:text-neutral-400 flex-1">
                                         <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("agentsUpTo", { n: plan.maxAgents })}</li>
-                                        <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("aiMessages", { n: plan.maxAiMessages.toLocaleString() })}</li>
+                                        <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("aiMessages", { n: plan.maxAiMessages === -1 ? t("unlimitedWord") : plan.maxAiMessages.toLocaleString() })}</li>
+                                        <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planChannels", { n: (plan.features?.channels as string[])?.length ?? 1 })}</li>
+                                        <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planContacts", { n: plan.features?.maxContacts === -1 ? t("unlimitedWord") : (plan.features?.maxContacts ?? 100).toLocaleString() })}</li>
+                                        <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planSeats", { n: plan.features?.seats === -1 ? t("unlimitedWord") : (plan.features?.seats ?? 1) })}</li>
+                                        <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planCalendars", { n: plan.features?.maxCalendars === -1 ? t("unlimitedWord") : (plan.features?.maxCalendars ?? 1) })}</li>
+                                        {plan.features?.knowledgeMaxCharsPerDoc != null && (
+                                            <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("kbMaxPages", { n: plan.features.knowledgeMaxCharsPerDoc === -1 ? t("unlimitedWord") : Math.round((plan.features.knowledgeMaxCharsPerDoc as number) / 2500) })}</li>
+                                        )}
+                                        {plan.features?.knowledgeEmbeddingsPerMonth != null && (
+                                            <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("kbEmbeddings", { n: plan.features.knowledgeEmbeddingsPerMonth === -1 ? t("unlimitedWord") : (plan.features.knowledgeEmbeddingsPerMonth as number).toLocaleString() })}</li>
+                                        )}
+                                        {plan.features?.customPrompt && (
+                                            <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planCustomPrompt")}</li>
+                                        )}
+                                        {plan.features?.automationRules !== 0 && (
+                                            <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planAutomation", { n: plan.features?.automationRules === -1 ? t("unlimitedWord") : (plan.features?.automationRules ?? 0) })}</li>
+                                        )}
+                                        {plan.features?.sso && (
+                                            <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planSso")}</li>
+                                        )}
+                                        {plan.features?.prioritySupport && (
+                                            <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("planPrioritySupport")}</li>
+                                        )}
                                         <li className="flex gap-2"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5 shrink-0" />{t("trialDays", { n: plan.trialDays })}</li>
                                         {plan.requiresCardForTrial && (
                                             <li className="flex gap-2"><CreditCard size={14} className="text-neutral-400 mt-0.5 shrink-0" />{t("requiresCard")}</li>

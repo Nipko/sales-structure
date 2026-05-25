@@ -30,6 +30,9 @@ export interface QuotaOverrides {
     maxPendingJobs?: number;
     maxAgents?: number;
     maxCalendars?: number;
+    knowledgeArticles?: number;
+    knowledgeMaxCharsPerDoc?: number;
+    knowledgeEmbeddingsPerMonth?: number;
     reason?: string;
     setBy?: string;
     setAt?: string;
@@ -159,6 +162,9 @@ export class TenantThrottleService {
             ...base,
             maxAgents: overrides.maxAgents ?? base.maxAgents,
             maxCalendars: overrides.maxCalendars ?? base.maxCalendars,
+            knowledgeArticles: overrides.knowledgeArticles ?? base.knowledgeArticles,
+            knowledgeMaxCharsPerDoc: overrides.knowledgeMaxCharsPerDoc ?? base.knowledgeMaxCharsPerDoc,
+            knowledgeEmbeddingsPerMonth: overrides.knowledgeEmbeddingsPerMonth ?? base.knowledgeEmbeddingsPerMonth,
         };
     }
 
@@ -197,7 +203,7 @@ export class TenantThrottleService {
             setBy: setBy || 'super_admin',
             setAt: new Date().toISOString(),
         };
-        for (const k of ['automation', 'outbound', 'broadcast', 'priority', 'maxPendingJobs', 'maxAgents', 'maxCalendars'] as const) {
+        for (const k of ['automation', 'outbound', 'broadcast', 'priority', 'maxPendingJobs', 'maxAgents', 'maxCalendars', 'knowledgeArticles', 'knowledgeMaxCharsPerDoc', 'knowledgeEmbeddingsPerMonth'] as const) {
             if (stamped[k] === null || stamped[k] === undefined || (typeof stamped[k] === 'number' && Number.isNaN(stamped[k] as any))) {
                 delete stamped[k];
             }

@@ -58,7 +58,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         // Use a transaction + SET LOCAL so search_path is guaranteed to be scoped
         // to this query lifecycle and cannot leak across pooled connections.
         return this.$transaction(async (tx: any) => {
-            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}"`);
+            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
             return tx.$queryRawUnsafe(query, ...params) as Promise<T>;
         }, { timeout: options?.timeout ?? 15000 });
     }

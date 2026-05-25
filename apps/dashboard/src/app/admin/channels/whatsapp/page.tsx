@@ -442,6 +442,29 @@ export default function WhatsAppSetupPage() {
                 </div>
             )}
 
+            {/* ═══════════ BUSINESS PROFILE (connected only) ═══════════ */}
+            {isConnected && (
+                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
+                    <div className="px-6 py-5 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-emerald-500/10">
+                                <Shield size={18} className="text-emerald-500" />
+                            </div>
+                            <div>
+                                <h2 className="text-base font-semibold m-0">{tw("profileCard")}</h2>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">{tw("profileCardDesc")}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => router.push("/admin/channels/whatsapp/profile")}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-[var(--bg-tertiary)] text-foreground text-[13px] font-medium cursor-pointer"
+                        >
+                            {tw("manageProfile")} <ArrowRight size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* ═══════════ TEMPLATES (connected only) ═══════════ */}
             {isConnected && (() => {
                 const approvedCount = templates.filter((x: any) => x.approval_status === "APPROVED").length;

@@ -420,6 +420,23 @@ export const api = {
     
     // --- Channels ---
     getWhatsappConfig: () => apiGet("/channels/whatsapp/config"),
+    getWhatsappBusinessProfile: () => apiGet("/channels/whatsapp/business-profile"),
+    updateWhatsappBusinessProfile: (data: {
+        about?: string; address?: string; description?: string;
+        email?: string; websites?: string[]; vertical?: string;
+    }) => apiPost("/channels/whatsapp/business-profile", data),
+    uploadWhatsappProfilePhoto: async (file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${BASE_URL}/channels/whatsapp/business-profile/photo`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
+        return res.json();
+    },
+    deleteWhatsappProfilePhoto: () => apiPost("/channels/whatsapp/business-profile/photo/delete", {}),
     messengerOAuthConnect: (userAccessToken: string) =>
         apiPost("/channels/messenger/oauth-connect", { userAccessToken }),
     instagramOAuthConnect: (code: string) =>

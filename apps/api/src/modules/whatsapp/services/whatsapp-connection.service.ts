@@ -1,6 +1,15 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappCryptoService } from './whatsapp-crypto.service';
+
+const META_GRAPH = 'https://graph.facebook.com/v21.0';
+
+const VALID_VERTICALS = [
+  'UNDEFINED', 'OTHER', 'AUTO', 'BEAUTY', 'APPAREL', 'EDU', 'ENTERTAIN',
+  'EVENT_PLAN', 'FINANCE', 'GROCERY', 'GOVT', 'HOTEL', 'HEALTH',
+  'NONPROFIT', 'PROF_SERVICES', 'RETAIL', 'TRAVEL', 'RESTAURANT', 'NOT_A_BIZ',
+];
 
 @Injectable()
 export class WhatsappConnectionService {
@@ -8,7 +17,8 @@ export class WhatsappConnectionService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cryptoService: WhatsappCryptoService
+    private readonly cryptoService: WhatsappCryptoService,
+    private readonly configService: ConfigService,
   ) {}
 
   async getChannelStatus(schemaName: string) {
@@ -184,5 +194,164 @@ export class WhatsappConnectionService {
       wabaId: channel.meta_waba_id,
       channelId: channel.id
     };
+  }
+
+  // ======================== BUSINESS PROFILE ========================
+
+  async getBusinessProfile(schemaName: string) {
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+
+    const [profileRes, phoneRes] = await Promise.all([
+      fetch(
+        `${META_GRAPH}/${phoneNumberId}/whatsapp_business_profile?fields=about,address,description,email,profile_picture_url,websites,vertical`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      ),
+      fetch(
+        `${META_GRAPH}/${phoneNumberId}?fields=verified_name,name_status,quality_rating,messaging_limit,is_official_business_account,account_mode,code_verification_status,display_phone_number`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      ),
+    ]);
+
+    const profileBody = await profileRes.json();
+    const phoneBody = await phoneRes.json();
+
+    if (profileBody.error) this.handleMetaError(profileBody, 'getBusinessProfile');
+    if (phoneBody.error) this.handleMetaError(phoneBody, 'getPhoneDetails');
+
+    const profile = profileBody.data?.[0] || profileBody.data || {};
+    return { profile, phoneDetails: phoneBody };
+  }
+
+  async updateBusinessProfile(schemaName: string, data: {
+    about?: string;
+    address?: string;
+    description?: string;
+    email?: string;
+    websites?: string[];
+    vertical?: string;
+  }) {
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+
+    const payload: Record<string, any> = { messaging_product: 'whatsapp' };
+
+    if (data.about !== undefined) {
+      if (data.about.length > 139) throw new BadRequestException('About exceeds 139 characters');
+      payload.about = data.about;
+    }
+    if (data.description !== undefined) {
+      if (data.description.length > 512) throw new BadRequestException('Description exceeds 512 characters');
+      payload.description = data.description;
+    }
+    if (data.address !== undefined) {
+      if (data.address.length > 256) throw new BadRequestException('Address exceeds 256 characters');
+      payload.address = data.address;
+    }
+    if (data.email !== undefined) {
+      if (data.email.length > 128) throw new BadRequestException('Email exceeds 128 characters');
+      payload.email = data.email;
+    }
+    if (data.websites !== undefined) {
+      if (data.websites.length > 2) throw new BadRequestException('Maximum 2 websites allowed');
+      payload.websites = data.websites;
+    }
+    if (data.vertical !== undefined) {
+      if (!VALID_VERTICALS.includes(data.vertical)) throw new BadRequestException(`Invalid vertical: ${data.vertical}`);
+      payload.vertical = data.vertical;
+    }
+
+    const res = await fetch(`${META_GRAPH}/${phoneNumberId}/whatsapp_business_profile`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const body = await res.json();
+    if (body.error) this.handleMetaError(body, 'updateBusinessProfile');
+
+    return { success: true };
+  }
+
+  async uploadProfilePhoto(schemaName: string, file: Express.Multer.File) {
+    if (!file.mimetype.match(/^image\/(jpeg|png)$/)) {
+      throw new BadRequestException('Only JPEG and PNG images are accepted');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Image exceeds 5MB limit');
+    }
+
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+    const appId = this.configService.get<string>('META_APP_ID');
+    if (!appId) throw new BadRequestException('META_APP_ID not configured');
+
+    // Step 1: Create upload session
+    const sessionRes = await fetch(
+      `${META_GRAPH}/${appId}/uploads?file_length=${file.size}&file_type=${file.mimetype}&access_token=${accessToken}`,
+      { method: 'POST' },
+    );
+    const sessionBody = await sessionRes.json();
+    if (sessionBody.error) this.handleMetaError(sessionBody, 'uploadProfilePhoto.createSession');
+
+    const uploadSessionId = sessionBody.id;
+    if (!uploadSessionId) throw new BadRequestException('Failed to create upload session');
+
+    // Step 2: Upload file bytes
+    const uploadRes = await fetch(`${META_GRAPH}/${uploadSessionId}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `OAuth ${accessToken}`,
+        file_offset: '0',
+        'Content-Type': file.mimetype,
+      },
+      body: new Uint8Array(file.buffer),
+    });
+    const uploadBody = await uploadRes.json();
+    if (uploadBody.error) this.handleMetaError(uploadBody, 'uploadProfilePhoto.uploadBytes');
+
+    const handle = uploadBody.h;
+    if (!handle) throw new BadRequestException('Failed to get file handle from Meta');
+
+    // Step 3: Set profile picture
+    const profileRes = await fetch(`${META_GRAPH}/${phoneNumberId}/whatsapp_business_profile`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', profile_picture_handle: handle }),
+    });
+    const profileBody = await profileRes.json();
+    if (profileBody.error) this.handleMetaError(profileBody, 'uploadProfilePhoto.setProfile');
+
+    return { success: true };
+  }
+
+  async deleteProfilePhoto(schemaName: string) {
+    const { accessToken, phoneNumberId } = await this.getValidAccessToken(schemaName);
+
+    const res = await fetch(`${META_GRAPH}/${phoneNumberId}/whatsapp_business_profile`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', profile_picture_url: '' }),
+    });
+    const body = await res.json();
+    if (body.error) this.handleMetaError(body, 'deleteProfilePhoto');
+
+    return { success: true };
+  }
+
+  private handleMetaError(response: any, context: string): never {
+    const err = response.error;
+    const message = err?.message || 'Unknown Meta API error';
+    const code = err?.code;
+
+    this.logger.error(`Meta API error in ${context}: code=${code}, message=${message}`);
+
+    if (code === 4 || code === 80007) {
+      throw new BadRequestException('Meta API rate limit reached. Please wait a few minutes and try again.');
+    }
+    if (code === 190) {
+      throw new UnauthorizedException('WhatsApp access token has expired. Please reconnect your WhatsApp account.');
+    }
+    if (code === 10 || code === 200) {
+      throw new BadRequestException('Insufficient permissions. Ensure your token has whatsapp_business_management permission.');
+    }
+    throw new BadRequestException(`Meta API error: ${message}`);
   }
 }

@@ -6,6 +6,8 @@ import {
   Body,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   Request,
   BadRequestException,
   Headers,
@@ -14,6 +16,8 @@ import {
   RawBodyRequest,
   Logger,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { WhatsappConnectionService } from './services/whatsapp-connection.service';
 import { WhatsappWebhookService } from './services/whatsapp-webhook.service';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
@@ -23,7 +27,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Request as ExpressRequest } from 'express';
 
 @ApiTags('whatsapp')
@@ -235,6 +239,63 @@ export class WhatsappController {
       metaUnsubscribed,
       metaError,
     };
+  }
+
+  // ======================== BUSINESS PROFILE ========================
+
+  @Get('business-profile')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get WhatsApp Business profile and phone number details from Meta' })
+  async getBusinessProfile(@Request() req: any) {
+    const schemaName = await this.resolveSchema(req);
+    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
+    const result = await this.connectionService.getBusinessProfile(schemaName);
+    return { success: true, data: result };
+  }
+
+  @Post('business-profile')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update WhatsApp Business profile fields on Meta' })
+  async updateBusinessProfile(@Request() req: any, @Body() body: {
+    about?: string;
+    address?: string;
+    description?: string;
+    email?: string;
+    websites?: string[];
+    vertical?: string;
+  }) {
+    const schemaName = await this.resolveSchema(req);
+    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
+    return this.connectionService.updateBusinessProfile(schemaName, body);
+  }
+
+  @Post('business-profile/photo')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Upload WhatsApp Business profile photo to Meta' })
+  async uploadProfilePhoto(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file received');
+    const schemaName = await this.resolveSchema(req);
+    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
+    return this.connectionService.uploadProfilePhoto(schemaName, file);
+  }
+
+  @Post('business-profile/photo/delete')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('super_admin', 'tenant_admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete WhatsApp Business profile photo' })
+  async deleteProfilePhoto(@Request() req: any) {
+    const schemaName = await this.resolveSchema(req);
+    if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
+    return this.connectionService.deleteProfilePhoto(schemaName);
   }
 
   // ======================== TEMPLATES ========================

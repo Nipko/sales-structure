@@ -59,6 +59,7 @@ export class SegmentsService {
         const contactCount = countResult[0]?.count || 0;
 
         const insertParams = [
+            tenantId,
             data.name,
             data.description || null,
             JSON.stringify(data.filterRules),
@@ -66,8 +67,8 @@ export class SegmentsService {
         ];
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
-            INSERT INTO contact_segments (name, description, filter_rules, contact_count)
-            VALUES ($1, $2, $3::jsonb, $4)
+            INSERT INTO contact_segments (tenant_id, name, description, filter_rules, contact_count)
+            VALUES ($1::uuid, $2, $3, $4::jsonb, $5)
             RETURNING *
         `, insertParams);
 

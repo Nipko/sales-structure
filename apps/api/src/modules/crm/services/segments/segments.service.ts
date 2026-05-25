@@ -67,7 +67,7 @@ export class SegmentsService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
             INSERT INTO contact_segments (name, description, filter_rules, contact_count)
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3::jsonb, $4)
             RETURNING *
         `, insertParams);
 
@@ -96,7 +96,7 @@ export class SegmentsService {
             params.push(data.description);
         }
         if (data.filterRules !== undefined) {
-            setClauses.push(`filter_rules = $${n++}`);
+            setClauses.push(`filter_rules = $${n}::jsonb`); n++;
             params.push(JSON.stringify(data.filterRules));
 
             // Recompute contact count

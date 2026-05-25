@@ -196,7 +196,20 @@ export default function AgentAnalyticsPage() {
                             <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">No agent data</td></tr>
                         ) : sortedAgents.map((agent: any) => (
                             <tr key={agent.agentId} className="border-b border-border">
-                                <td className="px-4 py-2.5 font-semibold">{agent.agentName}</td>
+                                <td className="px-4 py-2.5 font-semibold">
+                                    <div className="flex items-center gap-2">
+                                        <span>{agent.agentName}</span>
+                                        {agent.isAi ? (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                                IA
+                                            </span>
+                                        ) : (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                                Humano
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
                                 <td className="px-4 py-2.5">{agent.totalConversations}</td>
                                 <td className="px-4 py-2.5">{agent.resolvedConversations}</td>
                                 <td className="px-4 py-2.5">{formatDuration(agent.avgFirstResponseSecs)}</td>

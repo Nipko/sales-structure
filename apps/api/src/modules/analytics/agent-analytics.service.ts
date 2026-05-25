@@ -17,6 +17,7 @@ export interface AgentMetrics {
     csatAvg: number;
     csatCount: number;
     messagesHandled: number;
+    isAi?: boolean;
 }
 
 export interface OverviewStats {
@@ -65,10 +66,23 @@ export class AgentAnalyticsService {
             `SELECT
         (SELECT COUNT(*) FROM conversations) as total_conversations,
         (SELECT COUNT(*) FROM conversations WHERE status = 'resolved' AND updated_at >= CURRENT_DATE) as resolved_today,
-        (SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(ca.first_response_at, NOW()) - ca.assigned_at)))
-         FROM conversation_assignments ca WHERE ca.first_response_at IS NOT NULL) as avg_first_response,
-        (SELECT AVG(EXTRACT(EPOCH FROM (ca.resolved_at - ca.assigned_at)))
-         FROM conversation_assignments ca WHERE ca.resolved_at IS NOT NULL) as avg_resolution,
+        COALESCE(
+            (SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(ca.first_response_at, NOW()) - ca.assigned_at)))
+             FROM conversation_assignments ca WHERE ca.first_response_at IS NOT NULL),
+            (SELECT AVG(EXTRACT(EPOCH FROM (m.first_outbound - c.created_at)))
+             FROM conversations c
+             JOIN (
+                SELECT conversation_id, MIN(created_at) as first_outbound
+                FROM messages WHERE direction = 'outbound'
+                GROUP BY conversation_id
+             ) m ON m.conversation_id = c.id)
+        ) as avg_first_response,
+        COALESCE(
+            (SELECT AVG(EXTRACT(EPOCH FROM (ca.resolved_at - ca.assigned_at)))
+             FROM conversation_assignments ca WHERE ca.resolved_at IS NOT NULL),
+            (SELECT AVG(EXTRACT(EPOCH FROM (c.resolved_at - c.created_at)))
+             FROM conversations c WHERE c.status = 'resolved' AND c.resolved_at IS NOT NULL)
+        ) as avg_resolution,
         (SELECT AVG(cs.rating) FROM csat_surveys cs) as csat_avg,
         (SELECT AVG(cs.rating) FROM csat_surveys cs WHERE cs.created_at >= CURRENT_DATE - INTERVAL '7 days') as csat_week,
         (SELECT AVG(cs.rating) FROM csat_surveys cs WHERE cs.created_at >= CURRENT_DATE - INTERVAL '14 days'
@@ -142,7 +156,7 @@ export class AgentAnalyticsService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return [];
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
+        const humanRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT
         ca.agent_id,
@@ -166,7 +180,39 @@ export class AgentAnalyticsService {
        ORDER BY resolved DESC`,
         );
 
-        return (rows || []).map((r: any) => ({
+        let aiRows: any[] = [];
+        try {
+            aiRows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT
+                    ap.id::text as agent_id,
+                    ap.name as agent_name,
+                    COUNT(DISTINCT c.id)::int as total_conversations,
+                    COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'resolved')::int as resolved,
+                    COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'active')::int as active,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (m.first_outbound - c.created_at))), 0)::float as avg_first_response,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (c.resolved_at - c.created_at))) FILTER (WHERE c.status = 'resolved'), 0)::float as avg_resolution,
+                    COALESCE(AVG(cs.rating), 0)::float as csat_avg,
+                    COUNT(DISTINCT cs.id)::int as csat_count,
+                    COUNT(DISTINCT m_out.id)::int as messages_handled
+                 FROM "${schema}".agent_personas ap
+                 LEFT JOIN "${schema}".conversations c ON c.channel_type = ANY(ap.channels)
+                 LEFT JOIN (
+                    SELECT conversation_id, MIN(created_at) as first_outbound
+                    FROM "${schema}".messages
+                    WHERE direction = 'outbound'
+                    GROUP BY conversation_id
+                 ) m ON m.conversation_id = c.id
+                 LEFT JOIN "${schema}".csat_surveys cs ON cs.conversation_id = c.id
+                 LEFT JOIN "${schema}".messages m_out ON m_out.conversation_id = c.id AND m_out.direction = 'outbound'
+                 WHERE ap.is_active = true
+                 GROUP BY ap.id, ap.name`,
+            );
+        } catch (e: any) {
+            this.logger.warn(`Failed to fetch AI agent leaderboard: ${e.message}`);
+        }
+
+        const formattedHuman = (humanRows || []).map((r: any) => ({
             agentId: r.agent_id,
             agentName: r.agent_name || 'Agent',
             totalConversations: parseInt(r.total_conversations) || 0,
@@ -177,7 +223,24 @@ export class AgentAnalyticsService {
             csatAvg: parseFloat(r.csat_avg) || 0,
             csatCount: parseInt(r.csat_count) || 0,
             messagesHandled: parseInt(r.messages_handled) || 0,
+            isAi: false,
         }));
+
+        const formattedAi = (aiRows || []).map((r: any) => ({
+            agentId: r.agent_id,
+            agentName: r.agent_name || 'AI Agent',
+            totalConversations: parseInt(r.total_conversations) || 0,
+            resolvedConversations: parseInt(r.resolved) || 0,
+            activeConversations: parseInt(r.active) || 0,
+            avgFirstResponseSecs: parseFloat(r.avg_first_response) || 0,
+            avgResolutionSecs: parseFloat(r.avg_resolution) || 0,
+            csatAvg: parseFloat(r.csat_avg) || 0,
+            csatCount: parseInt(r.csat_count) || 0,
+            messagesHandled: parseInt(r.messages_handled) || 0,
+            isAi: true,
+        }));
+
+        return [...formattedHuman, ...formattedAi].sort((a, b) => b.resolvedConversations - a.resolvedConversations);
     }
 
     /** Get CSAT survey responses */
@@ -414,10 +477,20 @@ export class AgentAnalyticsService {
                 (SELECT COUNT(*) FROM conversations WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day'))::int as conversations,
                 (SELECT COUNT(*) FROM messages WHERE created_at >= $1::date AND created_at <= ($2::date + INTERVAL '1 day'))::int as messages,
                 (SELECT COUNT(*) FROM conversations WHERE status = 'resolved' AND updated_at >= $1::date AND updated_at <= ($2::date + INTERVAL '1 day'))::int as resolved,
-                (SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(ca.first_response_at, NOW()) - ca.assigned_at)))
-                 FROM conversation_assignments ca
-                 WHERE ca.first_response_at IS NOT NULL
-                   AND ca.assigned_at >= $1::date AND ca.assigned_at <= ($2::date + INTERVAL '1 day')) as avg_first_response,
+                COALESCE(
+                    (SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(ca.first_response_at, NOW()) - ca.assigned_at)))
+                     FROM conversation_assignments ca
+                     WHERE ca.first_response_at IS NOT NULL
+                       AND ca.assigned_at >= $1::date AND ca.assigned_at <= ($2::date + INTERVAL '1 day')),
+                    (SELECT AVG(EXTRACT(EPOCH FROM (m.first_outbound - c.created_at)))
+                     FROM conversations c
+                     JOIN (
+                        SELECT conversation_id, MIN(created_at) as first_outbound
+                        FROM messages WHERE direction = 'outbound'
+                        GROUP BY conversation_id
+                     ) m ON m.conversation_id = c.id
+                     WHERE c.created_at >= $1::date AND c.created_at <= ($2::date + INTERVAL '1 day'))
+                ) as avg_first_response,
                 (SELECT AVG(cs.rating) FROM csat_surveys cs
                  WHERE cs.created_at >= $1::date AND cs.created_at <= ($2::date + INTERVAL '1 day')) as csat_avg`,
             [startDate, endDate],
@@ -445,7 +518,7 @@ export class AgentAnalyticsService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return [];
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
+        const humanRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT
                 ca.agent_id,
@@ -476,7 +549,40 @@ export class AgentAnalyticsService {
             [startDate, endDate],
         );
 
-        return (rows || []).map((r: any) => ({
+        let aiRows: any[] = [];
+        try {
+            aiRows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT
+                    ap.id::text as agent_id,
+                    ap.name as agent_name,
+                    COUNT(DISTINCT c.id)::int as total_conversations,
+                    COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'resolved')::int as resolved,
+                    COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'active')::int as active,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (m.first_outbound - c.created_at))), 0)::float as avg_first_response,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (c.resolved_at - c.created_at))) FILTER (WHERE c.status = 'resolved'), 0)::float as avg_resolution,
+                    COALESCE(AVG(cs.rating), 0)::float as csat_avg,
+                    COUNT(DISTINCT cs.id)::int as csat_count,
+                    COUNT(DISTINCT m_out.id)::int as messages_handled
+                 FROM "${schema}".agent_personas ap
+                 LEFT JOIN "${schema}".conversations c ON c.channel_type = ANY(ap.channels) AND c.created_at >= $1::date AND c.created_at <= ($2::date + INTERVAL '1 day')
+                 LEFT JOIN (
+                    SELECT conversation_id, MIN(created_at) as first_outbound
+                    FROM "${schema}".messages
+                    WHERE direction = 'outbound'
+                    GROUP BY conversation_id
+                 ) m ON m.conversation_id = c.id
+                 LEFT JOIN "${schema}".csat_surveys cs ON cs.conversation_id = c.id AND cs.created_at >= $1::date AND cs.created_at <= ($2::date + INTERVAL '1 day')
+                 LEFT JOIN "${schema}".messages m_out ON m_out.conversation_id = c.id AND m_out.direction = 'outbound' AND m_out.created_at >= $1::date AND m_out.created_at <= ($2::date + INTERVAL '1 day')
+                 WHERE ap.is_active = true
+                 GROUP BY ap.id, ap.name`,
+                [startDate, endDate],
+            );
+        } catch (e: any) {
+            this.logger.warn(`Failed to fetch AI agent performance metrics: ${e.message}`);
+        }
+
+        const formattedHuman = (humanRows || []).map((r: any) => ({
             agentId: r.agent_id,
             agentName: r.agent_name || 'Agent',
             totalConversations: parseInt(r.total_conversations) || 0,
@@ -487,7 +593,24 @@ export class AgentAnalyticsService {
             csatAvg: parseFloat(r.csat_avg) || 0,
             csatCount: parseInt(r.csat_count) || 0,
             messagesHandled: parseInt(r.messages_handled) || 0,
+            isAi: false,
         }));
+
+        const formattedAi = (aiRows || []).map((r: any) => ({
+            agentId: r.agent_id,
+            agentName: r.agent_name || 'AI Agent',
+            totalConversations: parseInt(r.total_conversations) || 0,
+            resolvedConversations: parseInt(r.resolved) || 0,
+            activeConversations: parseInt(r.active) || 0,
+            avgFirstResponseSecs: parseFloat(r.avg_first_response) || 0,
+            avgResolutionSecs: parseFloat(r.avg_resolution) || 0,
+            csatAvg: parseFloat(r.csat_avg) || 0,
+            csatCount: parseInt(r.csat_count) || 0,
+            messagesHandled: parseInt(r.messages_handled) || 0,
+            isAi: true,
+        }));
+
+        return [...formattedHuman, ...formattedAi].sort((a, b) => b.resolvedConversations - a.resolvedConversations);
     }
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {

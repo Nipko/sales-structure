@@ -154,6 +154,7 @@ export default function AutomationPage() {
         if (activeTenantId) {
             try { await api.toggleRule(activeTenantId, id, next); } catch {}
         }
+        showToast(next ? t("toast.ruleEnabled") : t("toast.ruleDisabled"));
     }
 
     // -- Delete rule --

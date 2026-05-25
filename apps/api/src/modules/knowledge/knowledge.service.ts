@@ -665,7 +665,7 @@ export class KnowledgeService {
             for (const r of results.slice(0, 10)) {
                 await this.prisma.executeInTenantSchema(schema,
                     `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::uuid)`,
                     [r.document_id, r.id, query.substring(0, 500), r.score,
                      r.score >= threshold, conversationId || null]);
             }
@@ -910,7 +910,7 @@ export class KnowledgeService {
             await this.prisma.executeInTenantSchema(
                 schema,
                 `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata)
-                 VALUES ($1, $2, $3, $4::vector, $5::jsonb)`,
+                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb)`,
                 [documentId, i, chunks[i], embeddingStr,
                  JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) })],
             );
@@ -1152,7 +1152,7 @@ export class KnowledgeService {
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO knowledge_resources (tenant_id, title, type, content, source_url, content_hash, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'approved') RETURNING *`,
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, 'approved') RETURNING *`,
             [tenantId, data.title, data.type || 'manual', data.content || '', data.source_url || null, contentHash]);
 
         await this.invalidateHasKnowledgeCache(tenantId);

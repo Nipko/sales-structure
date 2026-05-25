@@ -1024,7 +1024,9 @@
         "revoke": "Revoke",
         "revokeAll": "Revoke all devices",
         "revokeAllConfirm": "Are you sure? All devices will need to verify 2FA on next sign-in.",
-        "revokeAllConfirmButton": "Yes, revoke all"
+        "revokeAllConfirmButton": "Yes, revoke all",
+        "deviceRevoked": "Device removed",
+        "allDevicesRevoked": "All devices removed"
       },
       "sso": {
         "title": "Single Sign-On (SSO)",
@@ -1271,6 +1273,11 @@
         "companyNameRequired": "Company name is required",
         "saveFailed": "Failed to save",
         "connection": "Connection error"
+      },
+      "toast": {
+        "saved": "Information saved",
+        "logoUploaded": "Logo updated",
+        "logoError": "Error uploading logo"
       }
     }
   },
@@ -1879,7 +1886,9 @@
     "toast": {
       "ruleCreated": "Rule created successfully",
       "ruleUpdated": "Rule updated",
-      "ruleDeleted": "Rule deleted"
+      "ruleDeleted": "Rule deleted",
+      "ruleEnabled": "Rule enabled",
+      "ruleDisabled": "Rule disabled"
     },
     "subtitle": "Automated rules to optimize operations",
     "visualBuilder": "Visual builder",
@@ -1921,7 +1930,8 @@
     "draft": "Draft",
     "sendNow": "Send now",
     "toast": {
-      "created": "Campaign created successfully"
+      "created": "Campaign created successfully",
+      "campaignSent": "Campaign sent"
     },
     "status": {
       "draft": "Draft",
@@ -2645,6 +2655,9 @@
       "dateFrom": "From",
       "dateTo": "To"
     },
+    "created": "Resource created successfully",
+    "deleted": "Deleted successfully",
+    "categorySaved": "Category saved",
     "limitReachedTitle": "Document limit reached",
     "limitReachedDesc": "You have reached the knowledge document limit on your current plan. Upgrade to add more."
   },

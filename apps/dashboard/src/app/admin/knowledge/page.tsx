@@ -259,11 +259,12 @@ export default function KnowledgePage() {
             });
             if (created?.id) {
                 setResources(prev => [created, ...prev]);
+                showToast(t("created"));
                 setShowCreateModal(false);
                 setCreateForm({ title: "", content: "", category: "" });
             }
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            showToast(e.message || "Error", "error");
         } finally {
             setCreateSaving(false);
         }
@@ -274,6 +275,7 @@ export default function KnowledgePage() {
         try {
             await api.fetch(`/knowledge/documents/${docId}`, { method: "DELETE" });
             setDocuments(prev => prev.filter(d => d.id !== docId));
+            showToast(t("deleted"));
         } catch (e: any) {
             showToast(e.message || "Error", "error");
         }
@@ -284,6 +286,7 @@ export default function KnowledgePage() {
         try {
             await api.fetch(`/knowledge/resources/${activeTenantId}/${resourceId}`, { method: "DELETE" });
             setResources(prev => prev.filter(r => r.id !== resourceId));
+            showToast(t("deleted"));
         } catch (e: any) {
             showToast(e.message || "Error", "error");
         }
@@ -314,6 +317,7 @@ export default function KnowledgePage() {
             if (category && !categories.includes(category)) {
                 setCategories(prev => [...prev, category].sort());
             }
+            showToast(t("categorySaved"));
         } catch (e: any) {
             showToast(e.message || "Error", "error");
         }

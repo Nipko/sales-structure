@@ -441,6 +441,7 @@ function TrustedDevicesSettings() {
     const [revoking, setRevoking] = useState<string | null>(null);
     const [revokingAll, setRevokingAll] = useState(false);
     const [showConfirmAll, setShowConfirmAll] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
 
     useEffect(() => {
         loadDevices();
@@ -463,6 +464,8 @@ function TrustedDevicesSettings() {
             const res = await api.revokeTrustedDevice(deviceId);
             if (res.success) {
                 setDevices(prev => prev.filter(d => d.id !== deviceId));
+                setToast(t("deviceRevoked"));
+                setTimeout(() => setToast(null), 3000);
             }
         } catch { /* noop */ }
         setRevoking(null);
@@ -475,6 +478,8 @@ function TrustedDevicesSettings() {
             if (res.success) {
                 setDevices([]);
                 try { localStorage.removeItem("deviceTrustToken"); } catch { /* noop */ }
+                setToast(t("allDevicesRevoked"));
+                setTimeout(() => setToast(null), 3000);
             }
         } catch { /* noop */ }
         setRevokingAll(false);
@@ -578,6 +583,12 @@ function TrustedDevicesSettings() {
                         </button>
                     )}
                 </>
+            )}
+
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold text-white shadow-lg animate-in bg-emerald-500">
+                    {toast}
+                </div>
             )}
         </div>
     );

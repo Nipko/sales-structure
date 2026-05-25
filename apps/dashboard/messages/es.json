@@ -1022,7 +1022,9 @@
         "revoke": "Revocar",
         "revokeAll": "Revocar todos los dispositivos",
         "revokeAllConfirm": "¿Estás seguro? Todos los dispositivos deberán verificar 2FA en el próximo inicio de sesión.",
-        "revokeAllConfirmButton": "Sí, revocar todos"
+        "revokeAllConfirmButton": "Sí, revocar todos",
+        "deviceRevoked": "Dispositivo eliminado",
+        "allDevicesRevoked": "Todos los dispositivos eliminados"
       },
       "sso": {
         "title": "Inicio de sesión único (SSO)",
@@ -1269,6 +1271,11 @@
         "companyNameRequired": "El nombre de la empresa es obligatorio",
         "saveFailed": "Error al guardar",
         "connection": "Error de conexión"
+      },
+      "toast": {
+        "saved": "Información guardada",
+        "logoUploaded": "Logo actualizado",
+        "logoError": "Error al subir el logo"
       }
     }
   },
@@ -1877,7 +1884,9 @@
     "toast": {
       "ruleCreated": "Regla creada correctamente",
       "ruleUpdated": "Regla actualizada",
-      "ruleDeleted": "Regla eliminada"
+      "ruleDeleted": "Regla eliminada",
+      "ruleEnabled": "Regla activada",
+      "ruleDisabled": "Regla desactivada"
     },
     "subtitle": "Reglas automaticas para optimizar operaciones",
     "visualBuilder": "Constructor visual",
@@ -1919,7 +1928,8 @@
     "draft": "Borrador",
     "sendNow": "Enviar ahora",
     "toast": {
-      "created": "Campaña creada correctamente"
+      "created": "Campaña creada correctamente",
+      "campaignSent": "Campaña enviada"
     },
     "status": {
       "draft": "Borrador",
@@ -2643,6 +2653,9 @@
       "dateFrom": "Desde",
       "dateTo": "Hasta"
     },
+    "created": "Recurso creado exitosamente",
+    "deleted": "Eliminado exitosamente",
+    "categorySaved": "Categoría guardada",
     "limitReachedTitle": "Límite de documentos alcanzado",
     "limitReachedDesc": "Has llegado al límite de documentos de conocimiento en tu plan actual. Mejora tu plan para añadir más."
   },

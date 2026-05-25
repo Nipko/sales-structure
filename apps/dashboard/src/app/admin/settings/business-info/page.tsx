@@ -61,6 +61,7 @@ export default function BusinessInfoPage() {
     const [error, setError] = useState("");
     const [logoMode, setLogoMode] = useState<"upload" | "url">("upload");
     const [uploading, setUploading] = useState(false);
+    const [toast, setToast] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -103,6 +104,8 @@ export default function BusinessInfoPage() {
             if (result.success) {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 3000);
+                setToast(t("toast.saved"));
+                setTimeout(() => setToast(null), 2500);
                 window.dispatchEvent(new CustomEvent("logo-changed", { detail: { logoUrl: form.logoUrl } }));
             } else {
                 setError(result.error || t("errors.saveFailed"));
@@ -123,8 +126,13 @@ export default function BusinessInfoPage() {
             if (res.success && res.data?.logoUrl) {
                 setForm(prev => ({ ...prev, logoUrl: res.data.logoUrl }));
                 window.dispatchEvent(new CustomEvent("logo-changed", { detail: { logoUrl: res.data.logoUrl } }));
+                setToast(t("toast.logoUploaded"));
+                setTimeout(() => setToast(null), 2500);
             }
-        } catch { /* ignore */ }
+        } catch {
+            setToast(t("toast.logoError"));
+            setTimeout(() => setToast(null), 2500);
+        }
         setUploading(false);
     };
 
@@ -338,6 +346,12 @@ export default function BusinessInfoPage() {
                     {saving ? t("saving") : t("save")}
                 </button>
             </div>
+
+            {toast && (
+                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold text-white shadow-lg animate-in bg-emerald-500">
+                    {toast}
+                </div>
+            )}
         </div>
     );
 }

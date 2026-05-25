@@ -1024,7 +1024,9 @@
         "revoke": "Révoquer",
         "revokeAll": "Révoquer tous les appareils",
         "revokeAllConfirm": "Êtes-vous sûr ? Tous les appareils devront vérifier le 2FA lors de la prochaine connexion.",
-        "revokeAllConfirmButton": "Oui, tout révoquer"
+        "revokeAllConfirmButton": "Oui, tout révoquer",
+        "deviceRevoked": "Appareil supprimé",
+        "allDevicesRevoked": "Tous les appareils supprimés"
       },
       "sso": {
         "title": "Authentification unique (SSO)",
@@ -1271,6 +1273,11 @@
         "companyNameRequired": "Le nom de l'entreprise est requis",
         "saveFailed": "Échec de l'enregistrement",
         "connection": "Erreur de connexion"
+      },
+      "toast": {
+        "saved": "Informations enregistrées",
+        "logoUploaded": "Logo mis à jour",
+        "logoError": "Erreur lors du téléchargement du logo"
       }
     }
   },
@@ -1879,7 +1886,9 @@
     "toast": {
       "ruleCreated": "Règle créée avec succès",
       "ruleUpdated": "Règle mise à jour",
-      "ruleDeleted": "Règle supprimée"
+      "ruleDeleted": "Règle supprimée",
+      "ruleEnabled": "Règle activée",
+      "ruleDisabled": "Règle désactivée"
     },
     "subtitle": "Regles automatiques pour optimiser les operations",
     "visualBuilder": "Constructeur visuel",
@@ -1921,7 +1930,8 @@
     "draft": "Brouillon",
     "sendNow": "Envoyer maintenant",
     "toast": {
-      "created": "Campagne créée avec succès"
+      "created": "Campagne créée avec succès",
+      "campaignSent": "Campagne envoyée"
     },
     "status": {
       "draft": "Brouillon",
@@ -2645,6 +2655,9 @@
       "dateFrom": "Du",
       "dateTo": "Au"
     },
+    "created": "Ressource créée avec succès",
+    "deleted": "Supprimé avec succès",
+    "categorySaved": "Catégorie enregistrée",
     "limitReachedTitle": "Limite de documents atteinte",
     "limitReachedDesc": "Vous avez atteint la limite de documents de connaissances de votre plan actuel. Mettez à niveau pour en ajouter davantage."
   },

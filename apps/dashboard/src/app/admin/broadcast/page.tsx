@@ -155,6 +155,7 @@ export default function BroadcastPage() {
         if (!activeTenantId) return;
         setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "active" } : c));
         await api.sendCampaign(activeTenantId, id);
+        setToast(t("toast.campaignSent")); setTimeout(() => setToast(null), 2500);
         setTimeout(loadCampaigns, 2000);
     };
 

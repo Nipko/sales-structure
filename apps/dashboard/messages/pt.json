@@ -1024,7 +1024,9 @@
         "revoke": "Revogar",
         "revokeAll": "Revogar todos os dispositivos",
         "revokeAllConfirm": "Tem certeza? Todos os dispositivos precisarão verificar 2FA no próximo login.",
-        "revokeAllConfirmButton": "Sim, revogar todos"
+        "revokeAllConfirmButton": "Sim, revogar todos",
+        "deviceRevoked": "Dispositivo removido",
+        "allDevicesRevoked": "Todos os dispositivos removidos"
       },
       "sso": {
         "title": "Login único (SSO)",
@@ -1271,6 +1273,11 @@
         "companyNameRequired": "Nome da empresa é obrigatório",
         "saveFailed": "Falha ao salvar",
         "connection": "Erro de conexão"
+      },
+      "toast": {
+        "saved": "Informação salva",
+        "logoUploaded": "Logo atualizado",
+        "logoError": "Erro ao enviar o logo"
       }
     }
   },
@@ -1879,7 +1886,9 @@
     "toast": {
       "ruleCreated": "Regra criada com sucesso",
       "ruleUpdated": "Regra atualizada",
-      "ruleDeleted": "Regra excluída"
+      "ruleDeleted": "Regra excluída",
+      "ruleEnabled": "Regra ativada",
+      "ruleDisabled": "Regra desativada"
     },
     "subtitle": "Regras automaticas para otimizar operacoes",
     "visualBuilder": "Construtor visual",
@@ -1921,7 +1930,8 @@
     "draft": "Rascunho",
     "sendNow": "Enviar agora",
     "toast": {
-      "created": "Campanha criada com sucesso"
+      "created": "Campanha criada com sucesso",
+      "campaignSent": "Campanha enviada"
     },
     "status": {
       "draft": "Rascunho",
@@ -2645,6 +2655,9 @@
       "dateFrom": "De",
       "dateTo": "Até"
     },
+    "created": "Recurso criado com sucesso",
+    "deleted": "Excluído com sucesso",
+    "categorySaved": "Categoria salva",
     "limitReachedTitle": "Limite de documentos atingido",
     "limitReachedDesc": "Você atingiu o limite de documentos de conhecimento no seu plano atual. Faça upgrade para adicionar mais."
   },

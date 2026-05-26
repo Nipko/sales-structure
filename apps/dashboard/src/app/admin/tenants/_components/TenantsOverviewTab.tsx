@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
   Building2, Search, Eye, Edit, Ban, UserCheck, MoreHorizontal,
-  DollarSign, Users, Activity, Clock, AlertTriangle,
+  DollarSign, Users, Activity, Clock, AlertTriangle, Globe,
 } from "lucide-react";
 import Link from "next/link";
 import type { Tenant, PlatformStats } from "./types";
@@ -45,6 +45,30 @@ const planColor: Record<string, string> = {
   pro: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
   enterprise: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   custom: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+};
+
+const flagMap: Record<string, string> = {
+  CO: "🇨🇴",
+  MX: "🇲🇽",
+  AR: "🇦🇷",
+  CL: "🇨🇱",
+  PE: "🇵🇪",
+  EC: "🇪🇨",
+  VE: "🇻🇪",
+  BO: "🇧🇴",
+  UY: "🇺🇾",
+  PY: "🇵🇾",
+  CR: "🇨🇷",
+  PA: "🇵🇦",
+  GT: "🇬🇹",
+  HN: "🇭🇳",
+  SV: "🇸🇻",
+  NI: "🇳🇮",
+  DO: "🇩🇴",
+  ES: "🇪🇸",
+  US: "🇺🇸",
+  BR: "🇧🇷",
+  OTROS: "🌐",
 };
 
 function resolveStatus(tenant: Tenant): string {
@@ -110,138 +134,190 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
         })}
       </div>
 
-      {/* Status filter chips */}
-      <div className="flex flex-wrap items-center gap-2">
-        {STATUS_FILTERS.map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors border",
-              statusFilter === s
-                ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 border-transparent"
-                : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
-            )}
-          >
-            {t(`status.${s}`)}
-          </button>
-        ))}
+      {/* Main Layout Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Table & Filters (2/3 width) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Status filter chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors border",
+                  statusFilter === s
+                    ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 border-transparent"
+                    : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                )}
+              >
+                {t(`status.${s}`)}
+              </button>
+            ))}
 
-        <div className="ml-auto relative max-w-[300px] w-full">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-          <input
-            placeholder={`${tc("search")}...`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
-          />
-        </div>
-      </div>
+            <div className="ml-auto relative max-w-[240px] w-full">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                placeholder={`${tc("search")}...`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"
+              />
+            </div>
+          </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 dark:border-neutral-800">
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.company")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("engagement.vertical")}</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("engagement.healthScore")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.planCol")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.statusCol")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.periodEnd")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.users")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.channels")}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {filtered.map((tenant) => {
-                const status = resolveStatus(tenant);
-                return (
-                  <tr key={tenant.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-500/10">
-                          <Building2 size={16} className="text-indigo-500" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-neutral-900 dark:text-neutral-100">{tenant.name}</div>
-                          <div className="text-xs text-neutral-500 dark:text-neutral-400">{tenant.slug}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {tenant.industry && tenant.industry !== "N/A" ? (
-                        <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", industryColor[tenant.industry] || industryColor.otro)}>
-                          {t(`industries.${tenant.industry}`, { defaultValue: tenant.industry })}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-neutral-400">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {(() => {
-                        const hasChannels = tenant.channels > 0;
-                        const hasUsers = tenant.users > 1;
-                        const color = hasChannels && hasUsers
-                          ? "bg-emerald-500"
-                          : hasChannels || hasUsers
-                            ? "bg-amber-500"
-                            : "bg-red-500";
-                        return <span className={cn("inline-block w-2.5 h-2.5 rounded-full", color)} />;
-                      })()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", planColor[tenant.plan] || planColor.starter)}>
-                        {tenant.plan}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", statusColor[status] || statusColor.active)}>
-                        {t(`status.${status}`)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-neutral-500 dark:text-neutral-400 text-xs">
-                      {tenant.currentPeriodEnd ? new Date(tenant.currentPeriodEnd).toLocaleDateString() : "--"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
-                        <Users size={14} />
-                        <span>{tenant.users}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{tenant.channels}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={(e) => {
-                          if (openMenu?.id === tenant.id) {
-                            setOpenMenu(null);
-                            return;
-                          }
-                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                          setOpenMenu({
-                            id: tenant.id,
-                            top: rect.bottom + 4,
-                            right: window.innerWidth - rect.right,
-                          });
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-neutral-500"
-                        aria-label={t("actions.view")}
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-                    </td>
+          {/* Table */}
+          <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 dark:border-neutral-800">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.company")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("engagement.vertical")}</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("engagement.healthScore")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.planCol")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.statusCol")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.periodEnd")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.users")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.channels")}</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.actions")}</th>
                   </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {filtered.map((tenant) => {
+                    const status = resolveStatus(tenant);
+                    return (
+                      <tr key={tenant.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-500/10">
+                              <Building2 size={16} className="text-indigo-500" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-neutral-900 dark:text-neutral-100">{tenant.name}</div>
+                              <div className="text-xs text-neutral-500 dark:text-neutral-400">{tenant.slug}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {tenant.industry && tenant.industry !== "N/A" ? (
+                            <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", industryColor[tenant.industry] || industryColor.otro)}>
+                              {t(`industries.${tenant.industry}`, { defaultValue: tenant.industry })}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-neutral-400">--</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {(() => {
+                            const hasChannels = tenant.channels > 0;
+                            const hasUsers = tenant.users > 1;
+                            const color = hasChannels && hasUsers
+                              ? "bg-emerald-500"
+                              : hasChannels || hasUsers
+                                ? "bg-amber-500"
+                                : "bg-red-500";
+                            return <span className={cn("inline-block w-2.5 h-2.5 rounded-full", color)} />;
+                          })()}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", planColor[tenant.plan] || planColor.starter)}>
+                            {tenant.plan}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", statusColor[status] || statusColor.active)}>
+                            {t(`status.${status}`)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-neutral-500 dark:text-neutral-400 text-xs">
+                          {tenant.currentPeriodEnd ? new Date(tenant.currentPeriodEnd).toLocaleDateString() : "--"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 text-neutral-600 dark:text-neutral-400">
+                            <Users size={14} />
+                            <span>{tenant.users}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{tenant.channels}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={(e) => {
+                              if (openMenu?.id === tenant.id) {
+                                setOpenMenu(null);
+                                return;
+                              }
+                              const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                              setOpenMenu({
+                                id: tenant.id,
+                                top: rect.bottom + 4,
+                                right: window.innerWidth - rect.right,
+                              });
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer bg-transparent border-none text-neutral-500"
+                            aria-label={t("actions.view")}
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filtered.length === 0 && (
+                <div className="py-12 text-center text-neutral-500 dark:text-neutral-400 text-sm">
+                  {tc("noResults")}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Geographical Distribution (1/3 width) */}
+        <div className="space-y-6">
+          <div className="p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-5">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-500/10 text-indigo-500">
+                <Globe size={16} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 text-sm">Distribución por País</h3>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Concentración geográfica de tenants</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {stats?.countryDistribution?.map((item) => {
+                const flag = flagMap[item.countryCode.toUpperCase()] || "🏳️";
+                return (
+                  <div key={item.countryCode} className="space-y-1.5 group cursor-pointer">
+                    <div className="flex items-center justify-between text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base select-none">{flag}</span>
+                        <span className="text-neutral-700 dark:text-neutral-300 group-hover:text-indigo-500 transition-colors duration-200">{item.countryName}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 tabular-nums">
+                        <span className="text-neutral-900 dark:text-neutral-100 font-semibold">{item.count}</span>
+                        <span className="text-neutral-400 text-[10px]">({item.percentage}%)</span>
+                      </div>
+                    </div>
+                    <div className="h-2 w-full bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 dark:bg-indigo-400 rounded-full group-hover:scale-x-105 origin-left transition-transform duration-300 ease-out"
+                        style={{ width: `${item.percentage}%` }}
+                      />
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-          {filtered.length === 0 && (
-            <div className="py-12 text-center text-neutral-500 dark:text-neutral-400 text-sm">
-              {tc("noResults")}
+              {(!stats?.countryDistribution || stats.countryDistribution.length === 0) && (
+                <div className="py-8 text-center text-xs text-neutral-400">
+                  No hay datos geográficos disponibles
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 

@@ -39,6 +39,12 @@ export interface PlatformStats {
   totalRevenue: number;
   signups7d: number;
   signups30d: number;
+  countryDistribution?: {
+    countryCode: string;
+    countryName: string;
+    count: number;
+    percentage: number;
+  }[];
 }
 
 export interface PlatformHealth {

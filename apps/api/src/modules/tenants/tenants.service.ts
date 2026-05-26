@@ -340,6 +340,63 @@ export class TenantsService {
             this.logger.warn(`Cross-tenant metrics failed: ${e.message}`);
         }
 
+        // Country distribution
+        const geoTenants = await this.prisma.tenant.findMany({
+            select: {
+                billingCountry: true,
+                language: true,
+            },
+        });
+
+        const countryMap: Record<string, string> = {
+            'CO': 'Colombia',
+            'MX': 'México',
+            'AR': 'Argentina',
+            'CL': 'Chile',
+            'PE': 'Perú',
+            'EC': 'Ecuador',
+            'VE': 'Venezuela',
+            'BO': 'Bolivia',
+            'UY': 'Uruguay',
+            'PY': 'Paraguay',
+            'CR': 'Costa Rica',
+            'PA': 'Panamá',
+            'GT': 'Guatemala',
+            'HN': 'Honduras',
+            'SV': 'El Salvador',
+            'NI': 'Nicaragua',
+            'DO': 'República Dominicana',
+            'ES': 'España',
+            'US': 'Estados Unidos',
+            'BR': 'Brasil',
+        };
+
+        const countryCounts: Record<string, number> = {};
+        for (const t of geoTenants) {
+            let code = t.billingCountry?.trim().toUpperCase();
+            if (!code && t.language) {
+                const parts = t.language.split('-');
+                if (parts.length > 1) {
+                    code = parts[1].trim().toUpperCase();
+                }
+            }
+            if (!code) {
+                code = 'OTROS';
+            }
+            countryCounts[code] = (countryCounts[code] || 0) + 1;
+        }
+
+        const totalGeo = geoTenants.length || 1;
+        const countryDistribution = Object.entries(countryCounts).map(([code, count]) => {
+            const countryName = countryMap[code] || (code === 'OTROS' ? 'Otros' : code);
+            return {
+                countryCode: code,
+                countryName,
+                count,
+                percentage: Math.round((count / totalGeo) * 100),
+            };
+        }).sort((a, b) => b.count - a.count);
+
         return {
             totalTenants,
             activeTenants,
@@ -353,6 +410,7 @@ export class TenantsService {
             recentSignups30d,
             messagesToday,
             pendingHandoffs,
+            countryDistribution,
         };
     }
 

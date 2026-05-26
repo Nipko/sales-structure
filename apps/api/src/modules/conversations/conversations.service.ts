@@ -941,7 +941,7 @@ export class ConversationsService {
             const serviceNames = bookingState.services?.map(s => s.name) || [];
             const upcoming = turnContext.upcomingDays || [];
             const intent = await this.intentInterpreter.interpret(
-                userText, bookingState.step, serviceNames, todayISO, upcoming,
+                userText, bookingState.step, serviceNames, todayISO, upcoming, tenantId,
             );
             this.logger.log(`[Pipeline] INTERPRET: intent=${intent.intent} svc=${intent.serviceMentioned || '-'} date=${intent.dateMentioned || '-'} confirm=${intent.isConfirmation}`);
 

@@ -244,9 +244,179 @@ export class LLMRouterService {
     }
 
     /**
+     * Unified AI usage stats: LLM + media (audio/image) + embeddings.
+     * Supports monthly breakdown for billing/planning.
+     */
+    async getUnifiedAiUsage(opts: {
+        months?: number;
+        tenantId?: string;
+    }): Promise<{
+        totals: { llmCostUsd: number; mediaCostUsd: number; embeddingsCostUsd: number; totalCostUsd: number; llmCalls: number; mediaCalls: number; embeddingsCalls: number };
+        byMonth: Array<{ month: string; llmCostUsd: number; mediaCostUsd: number; embeddingsCostUsd: number; totalCostUsd: number; llmCalls: number; mediaCalls: number; embeddingsCalls: number }>;
+        byCategory: Array<{ category: string; calls: number; costUsd: number; tokensIn: number; tokensOut: number }>;
+        byProvider: Array<{ provider: string; calls: number; costUsd: number; tokensIn: number; tokensOut: number }>;
+        byTenant: Array<{ tenantId: string; totalCostUsd: number; llmCalls: number; mediaCalls: number; embeddingsCalls: number }>;
+    }> {
+        const monthsBack = opts.months || 3;
+        const months: string[] = [];
+        const now = new Date();
+        for (let i = 0; i < monthsBack; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            months.push(d.toISOString().slice(0, 7));
+        }
+
+        const allDays: string[] = [];
+        for (const month of months) {
+            const [y, m] = month.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dayStr = `${month}-${String(d).padStart(2, '0')}`;
+                if (dayStr <= now.toISOString().slice(0, 10)) {
+                    allDays.push(dayStr);
+                }
+            }
+        }
+
+        const totals = { llmCostUsd: 0, mediaCostUsd: 0, embeddingsCostUsd: 0, totalCostUsd: 0, llmCalls: 0, mediaCalls: 0, embeddingsCalls: 0 };
+        const byMonthMap = new Map<string, { month: string; llmCostUsd: number; mediaCostUsd: number; embeddingsCostUsd: number; totalCostUsd: number; llmCalls: number; mediaCalls: number; embeddingsCalls: number }>();
+        const byCategoryMap = new Map<string, { category: string; calls: number; costUsd: number; tokensIn: number; tokensOut: number }>();
+        const byProviderMap = new Map<string, { provider: string; calls: number; costUsd: number; tokensIn: number; tokensOut: number }>();
+        const byTenantMap = new Map<string, { tenantId: string; totalCostUsd: number; llmCalls: number; mediaCalls: number; embeddingsCalls: number }>();
+
+        for (const month of months) {
+            byMonthMap.set(month, { month, llmCostUsd: 0, mediaCostUsd: 0, embeddingsCostUsd: 0, totalCostUsd: 0, llmCalls: 0, mediaCalls: 0, embeddingsCalls: 0 });
+        }
+
+        for (const date of allDays) {
+            const month = date.slice(0, 7);
+            const monthEntry = byMonthMap.get(month)!;
+
+            // --- LLM stats ---
+            const tenantSet = opts.tenantId ? [opts.tenantId] : (await this.redis.smembers(`llm:stats:tenants:${date}`) || []);
+            const providerSet = await this.redis.smembers(`llm:stats:providers:${date}`) || [];
+
+            for (const t of tenantSet) {
+                for (const provider of providerSet) {
+                    const baseKey = `llm:stats:${t}:${date}:${provider}`;
+                    const [calls, tIn, tOut, costCenti] = await Promise.all([
+                        this.redis.get(`${baseKey}:calls`),
+                        this.redis.get(`${baseKey}:tokens_in`),
+                        this.redis.get(`${baseKey}:tokens_out`),
+                        this.redis.get(`${baseKey}:cost_centi_usd`),
+                    ]);
+                    const c = Number(calls || 0);
+                    if (c === 0) continue;
+                    const ti = Number(tIn || 0);
+                    const to = Number(tOut || 0);
+                    const cost = Number(costCenti || 0) / 10000;
+
+                    totals.llmCalls += c;
+                    totals.llmCostUsd += cost;
+                    monthEntry.llmCalls += c;
+                    monthEntry.llmCostUsd += cost;
+
+                    const prov = byProviderMap.get(provider) || { provider, calls: 0, costUsd: 0, tokensIn: 0, tokensOut: 0 };
+                    prov.calls += c; prov.costUsd += cost; prov.tokensIn += ti; prov.tokensOut += to;
+                    byProviderMap.set(provider, prov);
+
+                    const te = byTenantMap.get(t) || { tenantId: t, totalCostUsd: 0, llmCalls: 0, mediaCalls: 0, embeddingsCalls: 0 };
+                    te.llmCalls += c; te.totalCostUsd += cost;
+                    byTenantMap.set(t, te);
+                }
+            }
+
+            // --- Media stats ---
+            const mediaTenantsToScan = opts.tenantId ? [opts.tenantId] : tenantSet;
+            for (const t of mediaTenantsToScan) {
+                const mediaBase = `media:stats:${t}:${date}`;
+                const [audioCount, audioCost, imageCount, imageCost] = await Promise.all([
+                    this.redis.get(`${mediaBase}:audio:count`),
+                    this.redis.get(`${mediaBase}:audio:cost_cents`),
+                    this.redis.get(`${mediaBase}:image:count`),
+                    this.redis.get(`${mediaBase}:image:cost_cents`),
+                ]);
+                const ac = Number(audioCount || 0);
+                const acost = Number(audioCost || 0) / 100;
+                const ic = Number(imageCount || 0);
+                const icost = Number(imageCost || 0) / 100;
+                const totalMedia = ac + ic;
+                const totalMediaCost = acost + icost;
+
+                if (totalMedia > 0) {
+                    totals.mediaCalls += totalMedia;
+                    totals.mediaCostUsd += totalMediaCost;
+                    monthEntry.mediaCalls += totalMedia;
+                    monthEntry.mediaCostUsd += totalMediaCost;
+
+                    if (ac > 0) {
+                        const cat = byCategoryMap.get('audio') || { category: 'audio', calls: 0, costUsd: 0, tokensIn: 0, tokensOut: 0 };
+                        cat.calls += ac; cat.costUsd += acost;
+                        byCategoryMap.set('audio', cat);
+                    }
+                    if (ic > 0) {
+                        const cat = byCategoryMap.get('image') || { category: 'image', calls: 0, costUsd: 0, tokensIn: 0, tokensOut: 0 };
+                        cat.calls += ic; cat.costUsd += icost;
+                        byCategoryMap.set('image', cat);
+                    }
+
+                    const te = byTenantMap.get(t) || { tenantId: t, totalCostUsd: 0, llmCalls: 0, mediaCalls: 0, embeddingsCalls: 0 };
+                    te.mediaCalls += totalMedia; te.totalCostUsd += totalMediaCost;
+                    byTenantMap.set(t, te);
+                }
+            }
+
+            // --- Embeddings stats ---
+            const embedTenantsRaw = opts.tenantId ? [opts.tenantId] : (await this.redis.smembers(`ai:stats:tenants:${date}`) || []);
+            for (const t of embedTenantsRaw) {
+                const embedBase = `ai:stats:${t}:${date}:embeddings`;
+                const [eCalls, eCost] = await Promise.all([
+                    this.redis.get(`${embedBase}:calls`),
+                    this.redis.get(`${embedBase}:cost_centi_usd`),
+                ]);
+                const ec = Number(eCalls || 0);
+                const ecost = Number(eCost || 0) / 10000;
+                if (ec > 0) {
+                    totals.embeddingsCalls += ec;
+                    totals.embeddingsCostUsd += ecost;
+                    monthEntry.embeddingsCalls += ec;
+                    monthEntry.embeddingsCostUsd += ecost;
+
+                    const cat = byCategoryMap.get('embeddings') || { category: 'embeddings', calls: 0, costUsd: 0, tokensIn: 0, tokensOut: 0 };
+                    cat.calls += ec; cat.costUsd += ecost;
+                    byCategoryMap.set('embeddings', cat);
+
+                    const te = byTenantMap.get(t) || { tenantId: t, totalCostUsd: 0, llmCalls: 0, mediaCalls: 0, embeddingsCalls: 0 };
+                    te.embeddingsCalls += ec; te.totalCostUsd += ecost;
+                    byTenantMap.set(t, te);
+                }
+            }
+        }
+
+        // Add LLM as category
+        if (totals.llmCalls > 0) {
+            const llmCat = { category: 'llm', calls: totals.llmCalls, costUsd: totals.llmCostUsd, tokensIn: 0, tokensOut: 0 };
+            for (const p of byProviderMap.values()) { llmCat.tokensIn += p.tokensIn; llmCat.tokensOut += p.tokensOut; }
+            byCategoryMap.set('llm', llmCat);
+        }
+
+        totals.totalCostUsd = totals.llmCostUsd + totals.mediaCostUsd + totals.embeddingsCostUsd;
+        for (const m of byMonthMap.values()) {
+            m.totalCostUsd = m.llmCostUsd + m.mediaCostUsd + m.embeddingsCostUsd;
+        }
+
+        return {
+            totals,
+            byMonth: Array.from(byMonthMap.values()).sort((a, b) => a.month.localeCompare(b.month)),
+            byCategory: Array.from(byCategoryMap.values()).sort((a, b) => b.costUsd - a.costUsd),
+            byProvider: Array.from(byProviderMap.values()).sort((a, b) => b.costUsd - a.costUsd),
+            byTenant: Array.from(byTenantMap.values()).sort((a, b) => b.totalCostUsd - a.totalCostUsd).slice(0, 25),
+        };
+    }
+
+    /**
      * Execute streamed completion
      */
-    async *executeStream(options: LLMRequestOptions & { routingFactors?: RoutingFactors, allowedTiers?: ModelTier[] }): AsyncGenerator<string, void, unknown> {
+    async *executeStream(options: LLMRequestOptions & { routingFactors?: RoutingFactors, allowedTiers?: ModelTier[], tenantId?: string }): AsyncGenerator<string, void, unknown> {
         let modelConfig: ModelConfig | undefined;
 
         if (options.routingFactors) {
@@ -262,8 +432,29 @@ export class LLMRouterService {
 
         options.model = modelConfig.id;
         const provider = this.getProvider(modelConfig.provider);
-        
-        yield* provider.generateStream(options);
+        const startMs = Date.now();
+        let charCount = 0;
+        let errored = false;
+
+        try {
+            for await (const chunk of provider.generateStream(options)) {
+                charCount += chunk.length;
+                yield chunk;
+            }
+        } catch (e) {
+            errored = true;
+            throw e;
+        } finally {
+            const durationMs = Date.now() - startMs;
+            const estimatedTokensOut = Math.ceil(charCount / 4);
+            this.trackStats(options.tenantId, modelConfig, durationMs, {
+                promptTokens: 0,
+                completionTokens: estimatedTokensOut,
+                totalTokens: estimatedTokensOut,
+            }, errored).catch(err => {
+                this.logger.warn(`Failed to track stream stats: ${err.message}`);
+            });
+        }
     }
 
     /**

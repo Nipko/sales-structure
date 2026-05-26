@@ -532,6 +532,13 @@ export const api = {
         const q = qs.toString();
         return apiGet(`/tenants/llm-stats${q ? `?${q}` : ""}`);
     },
+    getAiUsage: (params?: { months?: number; tenantId?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.months) qs.set("months", String(params.months));
+        if (params?.tenantId) qs.set("tenantId", params.tenantId);
+        const q = qs.toString();
+        return apiGet(`/tenants/ai-usage${q ? `?${q}` : ""}`);
+    },
     // Platform-wide maintenance banner (public read, super_admin write)
     getPlatformMaintenance: () => apiGet("/platform-status"),
     setPlatformMaintenance: (data: {

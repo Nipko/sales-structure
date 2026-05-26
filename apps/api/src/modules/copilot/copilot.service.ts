@@ -104,6 +104,7 @@ Responde ÚNICAMENTE con un JSON array con este formato:
 No incluyas explicaciones, solo el JSON.`,
                 temperature: 0.7,
                 maxTokens: 500,
+                tenantId,
             });
 
             const suggestions = this.parseJsonSafe<SuggestedReply[]>(response.content, [
@@ -162,6 +163,7 @@ Responde ÚNICAMENTE con un JSON con este formato:
 Usa español latinoamericano. No incluyas explicaciones, solo el JSON.`,
                 temperature: 0.3,
                 maxTokens: 500,
+                tenantId,
             });
 
             const summary = this.parseJsonSafe<ConversationSummary>(response.content, {
@@ -230,6 +232,7 @@ Responde ÚNICAMENTE con un JSON con este formato:
 El campo confidence debe ser un número entre 0 y 1. No incluyas explicaciones, solo el JSON.`,
                 temperature: 0.2,
                 maxTokens: 300,
+                tenantId,
             });
 
             const intent = this.parseJsonSafe<IntentAnalysis>(response.content, {
@@ -287,6 +290,7 @@ El campo confidence debe ser un número entre 0 y 1. No incluyas explicaciones, 
             const response = await this.llmRouter.execute({
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: agentQuery }],
+                tenantId,
                 systemPrompt: `Eres un copiloto inteligente que ayuda a agentes de ventas y soporte en Latinoamérica.
 El agente te hace una pregunta mientras atiende a un cliente. Responde de forma útil y concisa.
 

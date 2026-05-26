@@ -50,6 +50,7 @@ export class IntentInterpreterService {
         availableServices: string[],
         todayDate: string,
         upcomingDays: Array<{ date: string; weekday: string; label?: string }>,
+        tenantId?: string,
     ): Promise<InterpretedIntent> {
         // First try deterministic extraction (fast, no LLM cost)
         const deterministicResult = this.deterministicExtract(userText, currentBookingStep, availableServices, todayDate, upcomingDays);
@@ -60,7 +61,7 @@ export class IntentInterpreterService {
 
         // If deterministic can't handle it, use LLM for complex interpretation
         try {
-            return await this.llmInterpret(userText, currentBookingStep, availableServices, todayDate, upcomingDays);
+            return await this.llmInterpret(userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId);
         } catch (e: any) {
             this.logger.warn(`[Interpret] LLM interpretation failed: ${e.message}`);
             return this.fallbackIntent(userText);
@@ -308,6 +309,7 @@ export class IntentInterpreterService {
         services: string[],
         todayDate: string,
         upcoming: Array<{ date: string; weekday: string; label?: string }>,
+        tenantId?: string,
     ): Promise<InterpretedIntent> {
         const prompt = `Extract the intent from this customer message. Today is ${todayDate}.
 Available services: ${services.join(', ') || 'none loaded'}.
@@ -332,6 +334,7 @@ Respond ONLY with valid JSON matching this schema:
             messages: [{ role: 'user', content: `${prompt}\n\nMessage: "${userText}"` }],
             systemPrompt: 'You extract structured data from messages. Return ONLY JSON, nothing else.',
             temperature: 0,
+            tenantId,
         });
 
         try {

@@ -343,6 +343,7 @@ export class NurturingService {
                 messages: [{ role: 'user', content: followUpPrompt }],
                 systemPrompt: this.personaService.buildSystemPrompt(personaConfig),
                 temperature: 0.8,
+                tenantId,
                 routingFactors: {
                     ticketValue: 30,
                     complexity: 1,

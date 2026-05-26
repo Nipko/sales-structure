@@ -69,6 +69,7 @@ Keep it under 40 words total. Respond in Spanish.`;
                 messages: [{ role: 'user', content: prompt }],
                 maxTokens: 150,
                 temperature: 0.3,
+                tenantId,
             });
 
             const text = response?.content || '';

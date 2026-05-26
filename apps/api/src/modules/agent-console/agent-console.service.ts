@@ -448,6 +448,7 @@ export class AgentConsoleService {
 Basándote en el historial de conversación, sugiere UNA respuesta corta y profesional que el agente debería enviar.
 Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
                 temperature: 0.5,
+                tenantId,
             });
             return response.content || 'No se pudo generar una sugerencia.';
         } catch (e: any) {

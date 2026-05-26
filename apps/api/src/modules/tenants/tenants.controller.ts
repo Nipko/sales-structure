@@ -121,6 +121,31 @@ export class TenantsController {
         };
     }
 
+    @Get('ai-usage')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Unified AI usage — LLM + media + embeddings, monthly breakdown' })
+    async getAiUsage(
+        @Query('months') months = 3,
+        @Query('tenantId') tenantId?: string,
+    ) {
+        const data = await this.llmRouter.getUnifiedAiUsage({ months: Number(months), tenantId });
+        const tenantIds = data.byTenant.map(t => t.tenantId);
+        const tenants = tenantIds.length
+            ? await this.prisma.tenant.findMany({
+                where: { id: { in: tenantIds } },
+                select: { id: true, name: true },
+            }).catch(() => [])
+            : [];
+        const nameMap = new Map(tenants.map((t: any) => [t.id, t.name]));
+        return {
+            success: true,
+            data: {
+                ...data,
+                byTenant: data.byTenant.map(t => ({ ...t, tenantName: nameMap.get(t.tenantId) || '—' })),
+            },
+        };
+    }
+
     @Get('queue-jobs/:queueName/:state')
     @Roles('super_admin')
     @ApiOperation({ summary: 'Inspect actual jobs in a BullMQ queue (super_admin debug)' })

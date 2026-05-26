@@ -525,7 +525,7 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
         const topK = filters.topK || 10;
 
-        const queryEmbedding = await this.generateEmbedding(query);
+        const queryEmbedding = await this.generateEmbedding(query, tenantId);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
         const conditions: string[] = [`kd.status = 'ready'`];
@@ -599,7 +599,7 @@ export class KnowledgeService {
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
         const similarityThreshold = options?.similarityThreshold ?? 0;
 
-        const queryEmbedding = await this.generateEmbedding(query);
+        const queryEmbedding = await this.generateEmbedding(query, tenantId);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
         const keywordPattern = `%${query}%`;
 
@@ -905,7 +905,7 @@ export class KnowledgeService {
         }
 
         for (let i = 0; i < chunks.length; i++) {
-            const embedding = await this.generateEmbedding(chunks[i]);
+            const embedding = await this.generateEmbedding(chunks[i], tenantId);
             const embeddingStr = `[${embedding.join(',')}]`;
             await this.prisma.executeInTenantSchema(
                 schema,
@@ -1053,11 +1053,32 @@ export class KnowledgeService {
 
     // ─── Embedding ───────────────────────────────────────────────────────────
 
-    private async generateEmbedding(text: string): Promise<number[]> {
+    private async generateEmbedding(text: string, tenantId?: string): Promise<number[]> {
         const response = await this.openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: text,
         });
+        if (tenantId) {
+            const date = new Date().toISOString().slice(0, 10);
+            const baseKey = `ai:stats:${tenantId}:${date}:embeddings`;
+            const tokens = response.usage?.total_tokens || Math.ceil(text.length / 4);
+            const costCentiUsd = Math.round((tokens / 1000) * 0.00002 * 10000);
+            const ttl = 90 * 86400;
+            Promise.allSettled([
+                this.redis.incrBy(`${baseKey}:calls`, 1),
+                this.redis.incrBy(`${baseKey}:tokens`, tokens),
+                this.redis.incrBy(`${baseKey}:cost_centi_usd`, costCentiUsd),
+                this.redis.sadd(`ai:stats:dates`, date),
+                this.redis.sadd(`ai:stats:tenants:${date}`, tenantId),
+            ]).then(results => {
+                for (const r of results) if (r.status === 'rejected') this.logger.warn(`Embedding stat write failed`);
+                return Promise.allSettled([
+                    this.redis.expire(`${baseKey}:calls`, ttl),
+                    this.redis.expire(`${baseKey}:tokens`, ttl),
+                    this.redis.expire(`${baseKey}:cost_centi_usd`, ttl),
+                ]);
+            }).catch(() => {});
+        }
         return response.data[0].embedding;
     }
 

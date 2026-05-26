@@ -65,6 +65,7 @@ export default function ContactsPage() {
     const [isLive, setIsLive] = useState(false);
     const [loading, setLoading] = useState(true);
     const [showImportModal, setShowImportModal] = useState(false);
+    const [showFormatGuide, setShowFormatGuide] = useState(false);
     const [csvContent, setCsvContent] = useState("");
     const [importResult, setImportResult] = useState<any>(null);
     const [importing, setImporting] = useState(false);
@@ -847,30 +848,82 @@ export default function ContactsPage() {
                 >
                     <div
                         onClick={e => e.stopPropagation()}
-                        className="max-h-[80vh] w-[520px] overflow-auto rounded-xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900"
+                        className="max-h-[85vh] w-[550px] overflow-auto rounded-xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900 shadow-2xl"
                     >
                         <div className="mb-5 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t('importModal.title')}</h2>
                             <button
-                                onClick={() => setShowImportModal(false)}
+                                onClick={() => {
+                                    setShowImportModal(false);
+                                    setShowFormatGuide(false);
+                                }}
                                 className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
                             >
                                 <X size={18} />
                             </button>
                         </div>
 
-                        <button
-                            onClick={handleDownloadTemplate}
-                            className="mb-3 block border-none bg-transparent p-0 text-xs text-indigo-600 underline hover:text-indigo-700 dark:text-indigo-400"
-                        >
-                            {t('importModal.downloadTemplate')}
-                        </button>
+                        <div className="mb-4 flex items-center justify-between">
+                            <button
+                                onClick={handleDownloadTemplate}
+                                className="border-none bg-transparent p-0 text-xs font-semibold text-indigo-600 underline hover:text-indigo-700 dark:text-indigo-400"
+                            >
+                                {t('importModal.downloadTemplate')}
+                            </button>
+                        </div>
+
+                        {/* Visual Help Legend / Formatting Guide */}
+                        <div className="mb-4 rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-950/20">
+                            <button
+                                onClick={() => setShowFormatGuide(!showFormatGuide)}
+                                className="flex w-full items-center justify-between px-4 py-3 text-xs font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100/50 dark:hover:bg-neutral-800/40 rounded-lg transition-colors outline-none"
+                            >
+                                <span className="flex items-center gap-1.5">
+                                    💡 {t('importModal.formatGuideTitle')}
+                                </span>
+                                <ChevronDown size={14} className={cn("text-neutral-400 transition-transform duration-200", showFormatGuide && "rotate-180")} />
+                            </button>
+
+                            {showFormatGuide && (
+                                <div className="px-4 pb-4 pt-1 text-[11px] space-y-3 border-t border-neutral-100/70 dark:border-neutral-800/60 animate-in fade-in slide-in-from-top-1 duration-150">
+                                    <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed font-normal">
+                                        {t('importModal.formatGuideDesc')}
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                                        <div className="space-y-1">
+                                            <span className="font-semibold text-neutral-800 dark:text-neutral-200 block">
+                                                📞 {t('importModal.phoneCol')}
+                                            </span>
+                                            <span className="text-neutral-500 dark:text-neutral-400 block leading-relaxed font-normal">
+                                                {t('importModal.phoneColDesc')}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <span className="font-semibold text-neutral-800 dark:text-neutral-200 block">
+                                                ⚡ {t('importModal.stageCol')}
+                                            </span>
+                                            <span className="text-neutral-500 dark:text-neutral-400 block leading-relaxed font-normal">
+                                                {t('importModal.stageColDesc')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="border-t border-neutral-100 dark:border-neutral-800/80 pt-3">
+                                        <span className="font-semibold text-neutral-800 dark:text-neutral-200 block mb-1.5">
+                                            📋 {t('importModal.exampleHeader')}
+                                        </span>
+                                        <pre className="rounded bg-neutral-100 dark:bg-neutral-900 p-2.5 font-mono text-[10px] text-neutral-700 dark:text-neutral-300 overflow-x-auto leading-relaxed border border-neutral-200/40 dark:border-neutral-800/40 select-all">
+                                            {t('importModal.exampleBody')}
+                                        </pre>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         <textarea
                             value={csvContent}
                             onChange={e => setCsvContent(e.target.value)}
                             placeholder={t('importModal.placeholder')}
-                            rows={8}
+                            rows={7}
                             className="w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 p-3 font-mono text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
                         />
 
@@ -885,7 +938,17 @@ export default function ContactsPage() {
                                     <div>
                                         {t('importModal.imported')}: {importResult.imported ?? 0} |
                                         {' '}{t('importModal.skipped')}: {importResult.skipped ?? 0} |
-                                        {' '}{t('importModal.errors')}: {importResult.errors ?? 0}
+                                        {' '}{t('importResult.errors.length') || (importResult.errors && importResult.errors.length) || 0}
+                                        {importResult.errors && importResult.errors.length > 0 && (
+                                            <ul className="mt-1.5 list-disc pl-4 text-[10px] text-red-500 space-y-0.5">
+                                                {importResult.errors.slice(0, 5).map((err: string, idx: number) => (
+                                                    <li key={idx}>{err}</li>
+                                                ))}
+                                                {importResult.errors.length > 5 && (
+                                                    <li>... y {importResult.errors.length - 5} errores más.</li>
+                                                )}
+                                            </ul>
+                                        )}
                                     </div>
                                 ) : (
                                     <div>{importResult.error || tc("errorSaving")}</div>

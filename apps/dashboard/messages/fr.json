@@ -423,12 +423,20 @@
     "importModal": {
       "title": "Importer des contacts",
       "downloadTemplate": "Télécharger le modèle CSV",
-      "placeholder": "Collez le CSV ici...\nnom,telephone,email\nJean,+33612345678,jean@email.com",
+      "placeholder": "Collez le CSV ici...\nnom,telephone,email\nJean Dupont,+33612345678,jean@dupont.com",
       "imported": "Importés",
       "skipped": "Ignorés",
       "errors": "Erreurs",
       "import": "Importer",
-      "importing": "Importation..."
+      "importing": "Importation...",
+      "formatGuideTitle": "Guide des formats officiels (Voir plus)",
+      "formatGuideDesc": "Le tableur de données prend en charge automatiquement les délimiteurs virgule (,) et point-virgule (;). Les colonnes sont très flexibles et acceptent les synonymes en anglais ou en espagnol.",
+      "phoneCol": "Téléphone (Requis)",
+      "phoneColDesc": "Le téléphone est l'identifiant unique et obligatoire du contact. Les espaces sont supprimés et le numéro est normalisé au format international E.164. Exemple: +33612345678 ou 0612345678.",
+      "stageCol": "Étape (Optionnel)",
+      "stageColDesc": "Étapes valides: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+      "exampleHeader": "Exemple de collage direct (délimiteur point-virgule):",
+      "exampleBody": "nom;telephone;email;etape;entreprise;es_vip\nJean Dupont;0612345678;jean@dupont.com;caliente;Acme S.A.;sí\nMaria Gomez;+33611223344;maria@gomez.com;nuevo;;no"
     },
     "advancedFilters": "Filtres avancés",
     "scoreRange": "Plage de score",

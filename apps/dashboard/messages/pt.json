@@ -423,12 +423,20 @@
     "importModal": {
       "title": "Importar contatos",
       "downloadTemplate": "Baixar modelo CSV",
-      "placeholder": "Cole o CSV aqui...\nnome,telefone,email\nJoão,+5511999999999,joao@email.com",
+      "placeholder": "Cole o CSV aqui...\nnome,telefone,email\nJoão Silva,+5511999999999,joao@silva.com",
       "imported": "Importados",
       "skipped": "Ignorados",
       "errors": "Erros",
       "import": "Importar",
-      "importing": "Importando..."
+      "importing": "Importando...",
+      "formatGuideTitle": "Guia de formatos oficiais (Ver mais)",
+      "formatGuideDesc": "A planilha de dados suporta vírgula (,) e ponto e vírgula (;) automaticamente. As colunas são extremamente flexíveis e aceitam sinônimos em inglês ou espanhol.",
+      "phoneCol": "Telefone (Obrigatório)",
+      "phoneColDesc": "O telefone é a chave exclusiva e obrigatória do contato. Espaços são removidos e o número é normalizado para o formato internacional E.164. Exemplo: +5511999999999 ou 11999999999.",
+      "stageCol": "Etapa (Opcional)",
+      "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+      "exampleHeader": "Exemplo de colagem direta (delimitador por ponto e vírgula):",
+      "exampleBody": "nome;telefone;email;etapa;empresa;es_vip\nJoão Silva;11999999999;joao@silva.com;caliente;Acme S.A.;sí\nMaria Gomez;+5511988887777;maria@gomez.com;nuevo;;no"
     },
     "advancedFilters": "Filtros avançados",
     "scoreRange": "Faixa de pontuação",

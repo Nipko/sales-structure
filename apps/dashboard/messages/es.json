@@ -423,12 +423,20 @@
     "importModal": {
       "title": "Importar contactos",
       "downloadTemplate": "Descargar plantilla CSV",
-      "placeholder": "Pega el CSV aquí...\nnombre,telefono,email\nJuan,+573001234567,juan@email.com",
+      "placeholder": "Pega el CSV aquí...\nnombre,telefono,email\nJuan Perez,+573001234567,juan@perez.com",
       "imported": "Importados",
       "skipped": "Omitidos",
       "errors": "Errores",
       "import": "Importar",
-      "importing": "Importando..."
+      "importing": "Importando...",
+      "formatGuideTitle": "Guía de formatos oficiales (Ver más)",
+      "formatGuideDesc": "La sábana de datos soporta comas (,) y punto y coma (;) automáticamente. Las columnas son extremadamente flexibles y admiten sinónimos en inglés o español.",
+      "phoneCol": "Teléfono (Requerido)",
+      "phoneColDesc": "El teléfono es la clave única y obligatoria del contacto. Se limpia de espacios y se normaliza a formato internacional E.164. Ejemplo: +573001234567 o 3001234567.",
+      "stageCol": "Etapa (Opcional)",
+      "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+      "exampleHeader": "Ejemplo de pegado directo (delimitador por punto y coma):",
+      "exampleBody": "nombre;telefono;email;etapa;empresa;es_vip\nJuan Perez;3001234567;juan@perez.com;caliente;Acme S.A.;sí\nMaria Gomez;+573119876543;maria@gomez.com;nuevo;;no"
     },
     "advancedFilters": "Filtros avanzados",
     "scoreRange": "Rango de score",

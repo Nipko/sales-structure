@@ -423,12 +423,20 @@
     "importModal": {
       "title": "Import contacts",
       "downloadTemplate": "Download CSV template",
-      "placeholder": "Paste CSV here...\nname,phone,email\nJohn,+15551234567,john@email.com",
+      "placeholder": "Paste CSV here...\nname,phone,email\nJohn Smith,+15551234567,john@smith.com",
       "imported": "Imported",
       "skipped": "Skipped",
       "errors": "Errors",
       "import": "Import",
-      "importing": "Importing..."
+      "importing": "Importing...",
+      "formatGuideTitle": "Official formats guide (Show more)",
+      "formatGuideDesc": "The data spreadsheet automatically detects comma (,) and semicolon (;) delimiters. Columns are extremely flexible and support English or Spanish synonyms.",
+      "phoneCol": "Phone (Required)",
+      "phoneColDesc": "Phone is the primary unique identifier for the contact. Spacings are auto-removed and it is normalized to E.164 international format. E.g. +15551234567 or 15551234567.",
+      "stageCol": "Stage (Optional)",
+      "stageColDesc": "Valid stage values: nuevo (new), contactado (contacted), respondio (replied), calificado (qualified), tibio (warm), caliente (hot), listo_cierre (ready_to_close), ganado (won), perdido (lost), no_interesado (not_interested).",
+      "exampleHeader": "Direct paste example (semicolon delimited):",
+      "exampleBody": "name;phone;email;stage;company;is_vip\nJohn Smith;15551234567;john@smith.com;hot;Acme S.A.;si\nMaria Gomez;+15557654321;maria@gomez.com;new;;no"
     },
     "advancedFilters": "Advanced filters",
     "scoreRange": "Score range",

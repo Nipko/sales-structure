@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import { normalizePhoneE164 } from '../../../../common/utils/phone.util';
 
 @Injectable()
 export class ImportExportService {
@@ -35,17 +36,112 @@ export class ImportExportService {
 
         const lines = csvContent.trim().split('\n');
         if (lines.length < 2) {
-            return { imported: 0, skipped: 0, errors: ['CSV must have at least a header and one data row'] };
+            return { imported: 0, skipped: 0, errors: ['El archivo CSV debe contener al menos la cabecera y una fila de datos.'] };
         }
 
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-        const expectedColumns = ['first_name', 'last_name', 'phone', 'email', 'stage', 'source', 'company'];
+        // Auto-detect separator: comma (,) vs semicolon (;) based on count in header line
+        const headerLine = lines[0];
+        const commaCount = (headerLine.match(/,/g) || []).length;
+        const semicolonCount = (headerLine.match(/;/g) || []).length;
+        const separator = semicolonCount > commaCount ? ';' : ',';
 
-        // Validate headers
-        const missingHeaders = expectedColumns.filter(c => !headers.includes(c));
-        if (missingHeaders.length > 0) {
-            return { imported: 0, skipped: 0, errors: [`Missing columns: ${missingHeaders.join(', ')}`] };
+        const rawHeaders = this.parseCSVLine(headerLine, separator).map(h => h.trim().toLowerCase());
+
+        // Dictionary to map synonyms in Spanish/English to official DB columns
+        const HEADER_MAPPING: Record<string, string> = {
+            'first_name': 'first_name',
+            'firstname': 'first_name',
+            'nombre': 'first_name',
+            'nombres': 'first_name',
+            'first name': 'first_name',
+
+            'last_name': 'last_name',
+            'lastname': 'last_name',
+            'apellido': 'last_name',
+            'apellidos': 'last_name',
+            'last name': 'last_name',
+
+            'phone': 'phone',
+            'telefono': 'phone',
+            'teléfono': 'phone',
+            'celular': 'phone',
+            'movil': 'phone',
+            'móvil': 'phone',
+            'whatsapp': 'phone',
+
+            'email': 'email',
+            'correo': 'email',
+            'correo_electronico': 'email',
+            'correo electrónico': 'email',
+            'mail': 'email',
+
+            'stage': 'stage',
+            'etapa': 'stage',
+            'estado': 'stage',
+            'fase': 'stage',
+
+            'source': 'source',
+            'origen': 'source',
+            'fuente': 'source',
+
+            'company': 'company',
+            'empresa': 'company',
+            'compañía': 'company',
+            'compania': 'company',
+
+            'is_vip': 'is_vip',
+            'vip': 'is_vip',
+            'es_vip': 'is_vip',
+            'es vip': 'is_vip',
+
+            'preferred_contact': 'preferred_contact',
+            'preferred_channel': 'preferred_contact',
+            'contacto_preferido': 'preferred_contact',
+            'canal_preferido': 'preferred_contact',
+
+            'utm_source': 'utm_source',
+            'utm_medium': 'utm_medium',
+            'utm_campaign': 'utm_campaign',
+            'utm_content': 'utm_content',
+        };
+
+        const mappedHeaders = rawHeaders.map(h => HEADER_MAPPING[h] || h);
+        const phoneIdx = mappedHeaders.indexOf('phone');
+
+        // Phone column is strictly required
+        if (phoneIdx === -1) {
+            return {
+                imported: 0,
+                skipped: 0,
+                errors: ['No se encontró la columna obligatoria de Teléfono (sinónimos permitidos: telefono, teléfono, celular, movil, phone).'],
+            };
         }
+
+        const STAGE_MAPPING: Record<string, string> = {
+            'nuevo': 'nuevo',
+            'new': 'nuevo',
+            'contactado': 'contactado',
+            'contacted': 'contactado',
+            'respondio': 'respondio',
+            'respondió': 'respondio',
+            'replied': 'respondio',
+            'calificado': 'calificado',
+            'qualified': 'calificado',
+            'tibio': 'tibio',
+            'warm': 'tibio',
+            'caliente': 'caliente',
+            'hot': 'caliente',
+            'listo_cierre': 'listo_cierre',
+            'listo para cierre': 'listo_cierre',
+            'ready_to_close': 'listo_cierre',
+            'ganado': 'ganado',
+            'won': 'ganado',
+            'perdido': 'perdido',
+            'lost': 'perdido',
+            'no_interesado': 'no_interesado',
+            'no interesado': 'no_interesado',
+            'uninterested': 'no_interesado',
+        };
 
         let imported = 0;
         let skipped = 0;
@@ -56,45 +152,161 @@ export class ImportExportService {
             if (!line) continue;
 
             try {
-                const values = this.parseCSVLine(line);
+                const values = this.parseCSVLine(line, separator);
                 const row: Record<string, string> = {};
-                headers.forEach((h, idx) => {
-                    row[h] = (values[idx] || '').trim();
+                mappedHeaders.forEach((field, idx) => {
+                    if (field) {
+                        row[field] = (values[idx] || '').trim();
+                    }
                 });
 
-                if (!row.phone && !row.email) {
-                    errors.push(`Row ${i + 1}: phone or email required`);
+                const rawPhone = row.phone;
+                if (!rawPhone) {
+                    errors.push(`Fila ${i + 1}: Teléfono requerido`);
                     skipped++;
                     continue;
                 }
 
-                const conflictClause = options?.skipDuplicates !== false
-                    ? 'ON CONFLICT (phone) DO NOTHING'
-                    : 'ON CONFLICT (phone) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, email = EXCLUDED.email, stage = EXCLUDED.stage, metadata = EXCLUDED.metadata, updated_at = NOW()';
+                // Phone Normalization using normalizePhoneE164
+                const normalizedPhone = normalizePhoneE164(rawPhone);
+                if (!normalizedPhone) {
+                    errors.push(`Fila ${i + 1}: Teléfono inválido o formato no reconocido (${rawPhone})`);
+                    skipped++;
+                    continue;
+                }
 
-                const result = await this.prisma.executeInTenantSchema<any[]>(
+                // Company search or creation
+                let companyId: string | null = null;
+                const companyName = row.company ? row.company.trim() : '';
+                if (companyName) {
+                    const existingCompanies = await this.prisma.executeInTenantSchema<any[]>(
+                        schema,
+                        `SELECT id FROM companies WHERE name ILIKE $1 LIMIT 1`,
+                        [companyName],
+                    );
+                    if (existingCompanies && existingCompanies.length > 0) {
+                        companyId = existingCompanies[0].id;
+                    } else {
+                        const newCompany = await this.prisma.executeInTenantSchema<any[]>(
+                            schema,
+                            `INSERT INTO companies (name, created_at, updated_at) VALUES ($1, NOW(), NOW()) RETURNING id`,
+                            [companyName],
+                        );
+                        if (newCompany && newCompany.length > 0) {
+                            companyId = newCompany[0].id;
+                        }
+                    }
+                }
+
+                // Stage validation & mapping
+                const rawStage = (row.stage || '').toLowerCase().trim();
+                const stage = STAGE_MAPPING[rawStage] || 'nuevo';
+
+                // VIP parsing (flexible terms)
+                const rawVip = (row.is_vip || '').toLowerCase().trim();
+                const isVip = ['true', '1', 'yes', 'si', 'sí', 'verdadero', 'active', 'y'].includes(rawVip);
+
+                // Preferred contact parsing
+                const rawPreferred = (row.preferred_contact || '').toLowerCase().trim();
+                let preferredContact = 'whatsapp';
+                if (['email', 'correo', 'mail'].includes(rawPreferred)) {
+                    preferredContact = 'email';
+                } else if (['phone', 'telefono', 'teléfono', 'celular', 'llamada'].includes(rawPreferred)) {
+                    preferredContact = 'phone';
+                }
+
+                // SELECT-then-INSERT/UPDATE pattern for deduplication based on phone_normalized
+                const existingLeads = await this.prisma.executeInTenantSchema<any[]>(
                     schema,
-                    `INSERT INTO leads (first_name, last_name, phone, email, stage, metadata)
-                     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-                     ${conflictClause}
-                     RETURNING id`,
-                    [
-                        row.first_name || null,
-                        row.last_name || null,
-                        row.phone || null,
-                        row.email || null,
-                        row.stage || 'nuevo',
-                        JSON.stringify({ source: row.source || 'csv_import', company: row.company || null }),
-                    ],
+                    `SELECT id, metadata FROM leads WHERE phone_normalized = $1 OR phone = $2 LIMIT 1`,
+                    [normalizedPhone, normalizedPhone],
                 );
 
-                if (result && result.length > 0) {
+                if (existingLeads && existingLeads.length > 0) {
+                    if (options?.skipDuplicates) {
+                        skipped++;
+                        continue;
+                    }
+
+                    const leadId = existingLeads[0].id;
+                    const currentMetadata = typeof existingLeads[0].metadata === 'string'
+                        ? JSON.parse(existingLeads[0].metadata)
+                        : existingLeads[0].metadata || {};
+
+                    const updatedMetadata = {
+                        ...currentMetadata,
+                        source: row.source || currentMetadata.source || 'csv_import',
+                        company: companyName || currentMetadata.company || null,
+                    };
+
+                    await this.prisma.executeInTenantSchema(
+                        schema,
+                        `UPDATE leads
+                         SET first_name = COALESCE($1, first_name),
+                             last_name = COALESCE($2, last_name),
+                             email = COALESCE($3, email),
+                             stage = $4,
+                             company_id = COALESCE($5, company_id),
+                             is_vip = $6,
+                             preferred_contact = $7,
+                             utm_source = COALESCE($8, utm_source),
+                             utm_medium = COALESCE($9, utm_medium),
+                             utm_campaign = COALESCE($10, utm_campaign),
+                             utm_content = COALESCE($11, utm_content),
+                             metadata = $12::jsonb,
+                             updated_at = NOW()
+                         WHERE id = $13::uuid`,
+                        [
+                            row.first_name || null,
+                            row.last_name || null,
+                            row.email || null,
+                            stage,
+                            companyId,
+                            isVip,
+                            preferredContact,
+                            row.utm_source || null,
+                            row.utm_medium || null,
+                            row.utm_campaign || null,
+                            row.utm_content || null,
+                            JSON.stringify(updatedMetadata),
+                            leadId,
+                        ],
+                    );
                     imported++;
                 } else {
-                    skipped++;
+                    const metadata = {
+                        source: row.source || 'csv_import',
+                        company: companyName || null,
+                    };
+
+                    await this.prisma.executeInTenantSchema(
+                        schema,
+                        `INSERT INTO leads (
+                            first_name, last_name, phone, phone_normalized, email, stage,
+                            company_id, is_vip, preferred_contact, utm_source, utm_medium, utm_campaign, utm_content,
+                            metadata, created_at, updated_at
+                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, NOW(), NOW())`,
+                        [
+                            row.first_name || null,
+                            row.last_name || null,
+                            normalizedPhone,
+                            normalizedPhone,
+                            row.email || null,
+                            stage,
+                            companyId,
+                            isVip,
+                            preferredContact,
+                            row.utm_source || null,
+                            row.utm_medium || null,
+                            row.utm_campaign || null,
+                            row.utm_content || null,
+                            JSON.stringify(metadata),
+                        ],
+                    );
+                    imported++;
                 }
             } catch (err: any) {
-                errors.push(`Row ${i + 1}: ${err.message}`);
+                errors.push(`Fila ${i + 1}: ${err.message}`);
                 skipped++;
             }
         }
@@ -108,9 +320,10 @@ export class ImportExportService {
         if (!schema) throw new Error('Tenant not found');
 
         let rows: any[];
+        let whereClause = '';
+        let params: any[] = [];
 
         if (segmentId) {
-            // Fetch segment filter rules and apply them
             const segments = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT filter_rules FROM contact_segments WHERE id = $1::uuid`,
@@ -122,30 +335,35 @@ export class ImportExportService {
                     ? JSON.parse(segments[0].filter_rules)
                     : segments[0].filter_rules;
 
-                const { whereClause, params } = this.buildFilterSQL(rules);
-                rows = await this.prisma.executeInTenantSchema<any[]>(
-                    schema,
-                    `SELECT first_name, last_name, phone, email, stage, score, created_at
-                     FROM leads${whereClause ? ` WHERE ${whereClause}` : ''}
-                     ORDER BY created_at DESC`,
-                    params,
-                );
-            } else {
-                rows = await this.prisma.executeInTenantSchema<any[]>(
-                    schema,
-                    `SELECT first_name, last_name, phone, email, stage, score, created_at
-                     FROM leads ORDER BY created_at DESC`,
-                );
+                const filter = this.buildFilterSQL(rules);
+                whereClause = filter.whereClause;
+                params = filter.params;
             }
-        } else {
-            rows = await this.prisma.executeInTenantSchema<any[]>(
-                schema,
-                `SELECT first_name, last_name, phone, email, stage, score, created_at
-                 FROM leads ORDER BY created_at DESC`,
-            );
         }
 
-        const headers = 'first_name,last_name,phone,email,stage,score,created_at';
+        // We use a CTE "filtered_leads" to apply filter_rules on leads first to avoid column ambiguity with companies
+        const query = `
+            WITH filtered_leads AS (
+                SELECT * FROM leads
+                ${whereClause ? ` WHERE ${whereClause}` : ''}
+            )
+            SELECT fl.first_name, fl.last_name, fl.phone, fl.phone_normalized, fl.email, fl.stage, fl.score, fl.is_vip, fl.preferred_contact,
+                   fl.utm_source, fl.utm_medium, fl.utm_campaign, fl.created_at,
+                   c.name AS company_name,
+                   (
+                       SELECT string_agg(t.name, ',')
+                       FROM lead_tags lt
+                       JOIN tags t ON lt.tag_id = t.id
+                       WHERE lt.lead_id = fl.id
+                   ) AS tags_list
+            FROM filtered_leads fl
+            LEFT JOIN companies c ON fl.company_id = c.id
+            ORDER BY fl.created_at DESC
+        `;
+
+        rows = await this.prisma.executeInTenantSchema<any[]>(schema, query, params);
+
+        const headers = 'first_name,last_name,phone,phone_normalized,email,stage,score,is_vip,preferred_contact,company,tags,utm_source,utm_medium,utm_campaign,created_at';
         const csvLines = [headers];
 
         for (const row of (rows || [])) {
@@ -153,9 +371,17 @@ export class ImportExportService {
                 this.escapeCSV(row.first_name || ''),
                 this.escapeCSV(row.last_name || ''),
                 this.escapeCSV(row.phone || ''),
+                this.escapeCSV(row.phone_normalized || ''),
                 this.escapeCSV(row.email || ''),
                 this.escapeCSV(row.stage || ''),
                 row.score !== null && row.score !== undefined ? Number(row.score) : '',
+                row.is_vip ? 'verdadero' : 'falso',
+                this.escapeCSV(row.preferred_contact || 'whatsapp'),
+                this.escapeCSV(row.company_name || ''),
+                this.escapeCSV(row.tags_list || ''),
+                this.escapeCSV(row.utm_source || ''),
+                this.escapeCSV(row.utm_medium || ''),
+                this.escapeCSV(row.utm_campaign || ''),
                 row.created_at ? new Date(row.created_at).toISOString() : '',
             ].join(','));
         }
@@ -164,10 +390,10 @@ export class ImportExportService {
     }
 
     getImportTemplate(): string {
-        return 'first_name,last_name,phone,email,stage,source,company';
+        return 'first_name,last_name,phone,email,stage,source,company,is_vip,preferred_contact,utm_source,utm_medium,utm_campaign';
     }
 
-    private parseCSVLine(line: string): string[] {
+    private parseCSVLine(line: string, separator: string = ','): string[] {
         const result: string[] = [];
         let current = '';
         let inQuotes = false;
@@ -181,7 +407,7 @@ export class ImportExportService {
                 } else {
                     inQuotes = !inQuotes;
                 }
-            } else if (char === ',' && !inQuotes) {
+            } else if (char === separator && !inQuotes) {
                 result.push(current);
                 current = '';
             } else {
@@ -193,7 +419,8 @@ export class ImportExportService {
     }
 
     private escapeCSV(value: string): string {
-        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        if (typeof value !== 'string') return '';
+        if (value.includes(',') || value.includes(';') || value.includes('"') || value.includes('\n')) {
             return `"${value.replace(/"/g, '""')}"`;
         }
         return value;

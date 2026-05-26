@@ -2495,6 +2495,8 @@
       "similarityHint": "Filtre les résultats en dessous de ce score",
       "kbTool": "Outil de recherche agent",
       "kbToolDesc": "Permet à l'agent d'interroger la KB comme outil, en plus du contexte automatique",
+      "specializedToolsTitle": "Outils spécialisés",
+      "recommended": "Recommandé",
       "industryToolsTitle": "Outils de votre industrie",
       "universalToolsTitle": "Outils universels",
       "otherToolsTitle": "Plus d'outils disponibles",

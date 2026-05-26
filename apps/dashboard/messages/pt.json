@@ -2495,6 +2495,8 @@
       "similarityHint": "Filtra resultados abaixo desta pontuação",
       "kbTool": "Ferramenta de busca do agente",
       "kbToolDesc": "Permite ao agente consultar a KB como ferramenta, além do contexto automático",
+      "specializedToolsTitle": "Ferramentas especializadas",
+      "recommended": "Recomendada",
       "industryToolsTitle": "Ferramentas da sua indústria",
       "universalToolsTitle": "Ferramentas universais",
       "otherToolsTitle": "Mais ferramentas disponíveis",

@@ -7,6 +7,7 @@ export interface PersonaConfig {
     fallbackMessage: string;
   };
   behavior: {
+    mainInstructions: string;
     rules: string[];
     forbiddenTopics: string[];
     handoffTriggers: string[];
@@ -78,6 +79,7 @@ export const defaultConfig: PersonaConfig = {
     fallbackMessage: "",
   },
   behavior: {
+    mainInstructions: "",
     rules: [],
     forbiddenTopics: [],
     handoffTriggers: [],

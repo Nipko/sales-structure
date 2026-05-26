@@ -8,23 +8,19 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
-  Bot, User, Smile, Shield, Cpu, Wrench, Brain, Sparkles,
-  Save, CheckCircle, AlertTriangle, ArrowLeft, MoreVertical,
-  BookmarkPlus, Star, Radio, Clock, TestTube2,
-  MessageSquare, Instagram, Facebook, Send, Phone, X,
+  Bot, User, Shield, Wrench, Save, CheckCircle, AlertTriangle,
+  ArrowLeft, MoreVertical, BookmarkPlus, Star, Clock, TestTube2,
+  MessageSquare, Instagram, Facebook, Send, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
 
 import type { PersonaConfig } from "../_types";
-import { defaultConfig, labelCls } from "../_types";
-import { AgentProfileCard } from "../_components/AgentProfileCard";
-import { ConfigCard } from "../_components/ConfigCard";
-import { IdentitySection } from "../_components/IdentitySection";
-import { PersonalitySection } from "../_components/PersonalitySection";
+import { defaultConfig } from "../_types";
+import { PersonaTab } from "../_components/PersonaTab";
 import { BehaviorSection } from "../_components/BehaviorSection";
 import { ScheduleCard } from "../_components/ScheduleCard";
-import { AIModelSection } from "../_components/AIModelSection";
 import { CapabilitiesSection } from "../_components/CapabilitiesSection";
 import { CustomPromptMode } from "../_components/CustomPromptMode";
 
@@ -35,7 +31,6 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
-  // sms: hidden until integration is ready
 };
 
 const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram"];
@@ -67,29 +62,24 @@ interface AgentData {
   config_json: PersonaConfig;
 }
 
-interface ChannelAssignment {
-  channel: string;
-  current_agent_id?: string;
-  current_agent_name?: string;
-}
-
 // ── Component ────────────────────────────────────────────────
 
 export default function AgentEditorPage() {
   const t = useTranslations("agent");
   const tc = useTranslations("common");
+  const tt = useTranslations("agent.tabs");
   const { activeTenantId } = useTenant();
   const params = useParams();
   const router = useRouter();
   const agentId = params.agentId as string;
 
+  const [activeTab, setActiveTab] = useState("persona");
   const [mode, setMode] = useState<"guided" | "prompt">("guided");
   const [config, setConfig] = useState<PersonaConfig>(structuredClone(defaultConfig));
   const [customPrompt, setCustomPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [expandedSection, setExpandedSection] = useState<string | null>("identity");
   const [isDefault, setIsDefault] = useState(false);
   const [assignedChannels, setAssignedChannels] = useState<string[]>([]);
   const [allAgents, setAllAgents] = useState<AgentData[]>([]);
@@ -97,9 +87,7 @@ export default function AgentEditorPage() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [apptReadiness, setApptReadiness] = useState<{ services: number; slots: number; loaded: boolean }>({
-    services: 0,
-    slots: 0,
-    loaded: false,
+    services: 0, slots: 0, loaded: false,
   });
 
   // ── Load agent data ────────────────────────────────────────
@@ -142,24 +130,20 @@ export default function AgentEditorPage() {
       api.getAvailability(activeTenantId).catch(() => null),
     ]).then(([svcRes, availRes]: any[]) => {
       if (cancelled) return;
-      // Services: count all returned (API already filters by is_active in query)
       let services = 0;
       if (Array.isArray(svcRes?.data)) services = svcRes.data.length;
       else if (svcRes?.data?.services && Array.isArray(svcRes.data.services)) services = svcRes.data.services.length;
 
-      // Availability: count all returned slots
       let slots = 0;
       if (Array.isArray(availRes?.data)) slots = availRes.data.length;
       else if (Array.isArray(availRes?.data?.slots)) slots = availRes.data.slots.length;
-      else if (typeof availRes?.data === 'object' && availRes?.data) {
-        // Could be { [userId]: slots[] } format
+      else if (typeof availRes?.data === "object" && availRes?.data) {
         const vals = Object.values(availRes.data);
         if (vals.length > 0 && Array.isArray(vals[0])) {
           slots = vals.reduce((sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
         }
       }
 
-      console.log('[Agent] Readiness:', { svcResponse: svcRes, availResponse: availRes, services, slots });
       setApptReadiness({ services, slots, loaded: true });
     });
     return () => { cancelled = true; };
@@ -179,10 +163,6 @@ export default function AgentEditorPage() {
     setConfig(prev => deepMerge(prev, updates));
   }, []);
 
-  const toggleSection = useCallback((section: string) => {
-    setExpandedSection(prev => (prev === section ? null : section));
-  }, []);
-
   // ── Channel assignment ─────────────────────────────────────
 
   function getChannelOwner(channel: string): AgentData | undefined {
@@ -191,9 +171,7 @@ export default function AgentEditorPage() {
 
   function toggleChannel(channel: string) {
     setAssignedChannels(prev =>
-      prev.includes(channel)
-        ? prev.filter(c => c !== channel)
-        : [...prev, channel]
+      prev.includes(channel) ? prev.filter(c => c !== channel) : [...prev, channel]
     );
   }
 
@@ -236,23 +214,17 @@ export default function AgentEditorPage() {
     if (!activeTenantId) return;
     try {
       const res = await api.saveAgentAsTemplate(
-        activeTenantId,
-        agentId,
+        activeTenantId, agentId,
         t("templateName", { name: config.persona.name || "Agent" }),
         t("templateDescription", { name: config.persona.name || "agent" })
       );
-      if (res?.success) {
-        setToast(t("templateSaved"));
-      } else {
-        setToast((res as any)?.error || t("errorSavingTemplate"));
-      }
-    } catch {
-      setToast(t("errorSavingTemplate"));
-    }
+      if (res?.success) setToast(t("templateSaved"));
+      else setToast((res as any)?.error || t("errorSavingTemplate"));
+    } catch { setToast(t("errorSavingTemplate")); }
     setMenuOpen(false);
   }
 
-  // ── Change template ────────────────────────────────────────
+  // ── Template picker ────────────────────────────────────────
 
   async function openTemplatePicker() {
     if (templates.length === 0 && activeTenantId) {
@@ -267,7 +239,6 @@ export default function AgentEditorPage() {
 
   function applyTemplate(template: any) {
     const tplConfig = template.config_json || {};
-    // Overwrite persona, behavior, tools — but keep the agent's name and language
     const agentName = config.persona.name;
     const agentLang = config.language;
     setConfig(prev => deepMerge(structuredClone(defaultConfig), {
@@ -276,7 +247,7 @@ export default function AgentEditorPage() {
       language: agentLang || tplConfig.language,
     }));
     setShowTemplatePicker(false);
-    setToast(t("templateApplied") || "Template applied — review and save");
+    setToast(t("templateApplied") || "Template applied");
   }
 
   // ── Set as default ─────────────────────────────────────────
@@ -285,13 +256,8 @@ export default function AgentEditorPage() {
     if (!activeTenantId) return;
     try {
       const res = await api.updateAgent(activeTenantId, agentId, { isDefault: true });
-      if (res?.success) {
-        setIsDefault(true);
-        setToast(t("defaultUpdated"));
-      }
-    } catch {
-      setToast(t("errorUpdatingAgent"));
-    }
+      if (res?.success) { setIsDefault(true); setToast(t("defaultUpdated")); }
+    } catch { setToast(t("errorUpdatingAgent")); }
     setMenuOpen(false);
   }
 
@@ -301,29 +267,16 @@ export default function AgentEditorPage() {
     + config.behavior.forbiddenTopics.filter(Boolean).length
     + config.behavior.handoffTriggers.filter(Boolean).length;
 
-  const toolCount = config.tools?.appointments?.enabled ? 1 : 0;
+  const enabledToolCount = Object.values(config.tools || {}).filter(
+    (v: any) => v?.enabled === true
+  ).length;
 
-  const te = useTranslations("agent.editor");
-
-  const identitySummary = config.persona.name
-    ? `${config.persona.name} - ${config.persona.role || te("noRoleSummary")}`
-    : te("identitySummary");
-
-  const personalitySummary = `${config.persona.personality.tone} tone, ${config.persona.personality.formality}`;
-
-  const behaviorSummary = ruleCount > 0
-    ? `${te("rulesSummary", { count: config.behavior.rules.filter(Boolean).length })}, ${te("forbiddenSummary", { count: config.behavior.forbiddenTopics.filter(Boolean).length })}, ${te("triggersSummary", { count: config.behavior.handoffTriggers.filter(Boolean).length })}`
-    : te("behaviorSummary");
-
-  const aiModelSummary = te("temperatureSummary", { value: config.llm.temperature, tokens: config.llm.maxTokens });
-
-  const capabilitiesSummary = toolCount > 0
-    ? te("toolsActiveSummary", { count: toolCount })
-    : te("noToolsEnabled");
-
-  const scheduleSummary = config.hours.aiOutsideHours !== false
-    ? te("always247")
-    : te("aiOffSummary");
+  const TABS = [
+    { id: "persona", label: tt("persona"), icon: User },
+    { id: "instructions", label: tt("instructions"), icon: Shield, badge: ruleCount || undefined },
+    { id: "tools", label: tt("tools"), icon: Wrench, badge: enabledToolCount || undefined },
+    { id: "schedule", label: tt("schedule"), icon: Clock },
+  ];
 
   // ── Loading state ──────────────────────────────────────────
 
@@ -389,26 +342,14 @@ export default function AgentEditorPage() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                   <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg py-1">
-                    <button
-                      type="button"
-                      onClick={openTemplatePicker}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left"
-                    >
+                    <button type="button" onClick={openTemplatePicker} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left">
                       <Wrench size={14} /> {t("changeTemplate") || "Change template"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveAsTemplate}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left"
-                    >
+                    <button type="button" onClick={handleSaveAsTemplate} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left">
                       <BookmarkPlus size={14} /> {t("saveAsTemplate")}
                     </button>
                     {!isDefault && (
-                      <button
-                        type="button"
-                        onClick={handleSetDefault}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left"
-                      >
+                      <button type="button" onClick={handleSetDefault} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer text-left">
                         <Star size={14} /> {t("setAsDefault")}
                       </button>
                     )}
@@ -420,18 +361,101 @@ export default function AgentEditorPage() {
         }
       />
 
-      {/* Default badge */}
-      {isDefault && (
-        <div className="mb-4">
-          <Badge
-            variant="secondary"
-            className="text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400"
-          >
-            <Star size={12} className="mr-1" /> {t("defaultAgent")}
-          </Badge>
+      {/* ── Agent profile hero + channels ── */}
+      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shrink-0">
+            <Bot size={28} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className={cn(
+                "text-lg font-semibold",
+                config.persona.name
+                  ? "text-neutral-900 dark:text-neutral-100"
+                  : "text-neutral-400 dark:text-neutral-500 italic"
+              )}>
+                {config.persona.name || t("profile.notConfigured")}
+              </h2>
+              {isDefault && (
+                <Badge variant="secondary" className="text-[11px] bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400">
+                  <Star size={10} className="mr-1" /> {t("defaultAgent")}
+                </Badge>
+              )}
+              <Badge
+                variant={config.isActive ? "default" : "secondary"}
+                className={cn("text-[11px]",
+                  config.isActive
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
+                    : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
+                )}
+              >
+                {config.isActive ? t("profile.active") : t("profile.inactive")}
+              </Badge>
+            </div>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+              {config.persona.role || t("profile.noRoleDefined")}
+            </p>
+          </div>
         </div>
-      )}
 
+        {/* Channel assignment — inline */}
+        <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+              {t("channelAssignment")}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ALL_CHANNELS.map(ch => {
+              const meta = CHANNEL_META[ch];
+              if (!meta) return null;
+              const Icon = meta.icon;
+              const isAssigned = assignedChannels.includes(ch);
+              const owner = getChannelOwner(ch);
+
+              return (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => toggleChannel(ch)}
+                  className={cn(
+                    "inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-all",
+                    isAssigned
+                      ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500"
+                      : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+                  )}
+                >
+                  <Icon size={16} className={meta.color} />
+                  <span className={cn(
+                    "font-medium",
+                    isAssigned ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-600 dark:text-neutral-400"
+                  )}>
+                    {meta.label}
+                  </span>
+                  {isAssigned && <CheckCircle size={14} className="text-indigo-500" />}
+                  {owner && isAssigned && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
+                      <AlertTriangle size={10} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {assignedChannels.some(ch => getChannelOwner(ch)) && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+              <AlertTriangle size={12} />
+              {t("willReassignFrom")} {assignedChannels
+                .filter(ch => getChannelOwner(ch))
+                .map(ch => getChannelOwner(ch)?.name || t("unnamedAgent"))
+                .join(", ")}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Prompt mode ── */}
       {mode === "prompt" && (
         <CustomPromptMode
           customPrompt={customPrompt}
@@ -443,149 +467,48 @@ export default function AgentEditorPage() {
         />
       )}
 
-      {(
-        <>
-          <AgentProfileCard
-            config={config}
-            toolCount={toolCount}
-            ruleCount={ruleCount}
-          />
+      {/* ── Tab navigation ── */}
+      <TabNav
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        className="mb-0"
+      />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ConfigCard
-              icon={User}
-              iconColor="text-indigo-500 bg-indigo-500/10"
-              title={te("identityTitle")}
-              summary={identitySummary}
-              expanded={expandedSection === "identity"}
-              onToggle={() => toggleSection("identity")}
-            >
-              <IdentitySection config={config} onChange={updateConfig} />
-            </ConfigCard>
+      <div className="rounded-b-xl border border-t-0 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-6 min-h-[400px]">
+        {activeTab === "persona" && (
+          <PersonaTab config={config} onChange={updateConfig} />
+        )}
 
-            <ConfigCard
-              icon={Smile}
-              iconColor="text-violet-500 bg-violet-500/10"
-              title={te("personalityTitle")}
-              summary={personalitySummary}
-              expanded={expandedSection === "personality"}
-              onToggle={() => toggleSection("personality")}
-            >
-              <PersonalitySection config={config} onChange={updateConfig} />
-            </ConfigCard>
+        {activeTab === "instructions" && (
+          <BehaviorSection config={config} onChange={updateConfig} />
+        )}
 
-            <ConfigCard
-              icon={Shield}
-              iconColor="text-rose-500 bg-rose-500/10"
-              title={te("behaviorTitle")}
-              summary={behaviorSummary}
-              expanded={expandedSection === "behavior"}
-              onToggle={() => toggleSection("behavior")}
-            >
-              <BehaviorSection config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ConfigCard
-              icon={Clock}
-              iconColor="text-amber-500 bg-amber-500/10"
-              title={te("scheduleTitle")}
-              summary={scheduleSummary}
-              expanded={expandedSection === "schedule"}
-              onToggle={() => toggleSection("schedule")}
-            >
-              <ScheduleCard config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ConfigCard
-              icon={Cpu}
-              iconColor="text-cyan-500 bg-cyan-500/10"
-              title={te("aiModelTitle")}
-              summary={aiModelSummary}
-              expanded={expandedSection === "ai-model"}
-              onToggle={() => toggleSection("ai-model")}
-            >
-              <AIModelSection config={config} onChange={updateConfig} />
-            </ConfigCard>
-
-            <ConfigCard
-              icon={Wrench}
-              iconColor="text-amber-500 bg-amber-500/10"
-              title={te("capabilitiesTitle")}
-              summary={capabilitiesSummary}
-              expanded={expandedSection === "capabilities"}
-              onToggle={() => toggleSection("capabilities")}
-            >
-              <CapabilitiesSection
-                config={config}
-                onChange={updateConfig}
-                apptReadiness={apptReadiness}
-              />
-            </ConfigCard>
-
-            {/* Channel Assignment */}
-            <ConfigCard
-              icon={Radio}
-              iconColor="text-emerald-500 bg-emerald-500/10"
-              title={t("channelAssignment")}
-              summary={
-                assignedChannels.length > 0
-                  ? assignedChannels.map(ch => CHANNEL_META[ch]?.label || ch).join(", ")
-                  : t("noChannelsAssigned")
-              }
-              expanded={expandedSection === "channels"}
-              onToggle={() => toggleSection("channels")}
-            >
-              <div className="mt-3 space-y-3">
-                {ALL_CHANNELS.map(ch => {
-                  const meta = CHANNEL_META[ch];
-                  if (!meta) return null;
-                  const Icon = meta.icon;
-                  const owner = getChannelOwner(ch);
-                  const isAssigned = assignedChannels.includes(ch);
-
-                  return (
-                    <div key={ch} className="flex items-start gap-3">
-                      <label className="flex items-center gap-3 flex-1 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={isAssigned}
-                          onChange={() => toggleChannel(ch)}
-                          className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 focus:ring-indigo-500 cursor-pointer"
-                        />
-                        <Icon size={16} className={meta.color} />
-                        <span className="text-sm text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">
-                          {meta.label}
-                        </span>
-                      </label>
-                      {owner && !isAssigned && (
-                        <span className="text-xs text-neutral-400 dark:text-neutral-500 shrink-0">
-                          {t("assignedTo")} {owner.name || t("unnamedAgent")}
-                        </span>
-                      )}
-                      {owner && isAssigned && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0 flex items-center gap-1">
-                          <AlertTriangle size={12} />
-                          {t("willReassignFrom")} {owner.name || t("unnamedAgent")}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </ConfigCard>
+        {activeTab === "tools" && (
+          <div className="py-6">
+            <CapabilitiesSection
+              config={config}
+              onChange={updateConfig}
+              apptReadiness={apptReadiness}
+            />
           </div>
-        </>
-      )}
+        )}
 
-      {/* Toast */}
-      {/* Template Picker Modal */}
+        {activeTab === "schedule" && (
+          <div className="py-6">
+            <ScheduleCard config={config} onChange={updateConfig} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Template Picker Modal ── */}
       {showTemplatePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowTemplatePicker(false)}>
           <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 max-w-lg w-full mx-4 shadow-xl max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
               <div>
                 <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("changeTemplate") || "Change Template"}</h3>
-                <p className="text-xs text-neutral-500 mt-0.5">{t("changeTemplateDesc") || "Apply a template. Your agent name and channels will be kept."}</p>
+                <p className="text-xs text-neutral-500 mt-0.5">{t("changeTemplateDesc") || "Apply a template."}</p>
               </div>
               <button type="button" onClick={() => setShowTemplatePicker(false)} className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer">
                 <X size={18} />
@@ -616,7 +539,7 @@ export default function AgentEditorPage() {
         </div>
       )}
 
-      {/* Sticky Save Bar — always visible at bottom */}
+      {/* ── Sticky Save Bar ── */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
         <span className="text-xs text-neutral-400 mr-auto">{t("title")}</span>
         <Link
@@ -638,13 +561,12 @@ export default function AgentEditorPage() {
         </button>
       </div>
 
+      {/* ── Toast ── */}
       {toast && (
-        <div
-          className={cn(
-            "fixed bottom-6 right-6 px-5 py-3 rounded-lg text-white text-sm font-semibold shadow-lg z-[9999] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2",
-            toast.includes("Error") || toast.includes("error") ? "bg-red-500" : "bg-emerald-500"
-          )}
-        >
+        <div className={cn(
+          "fixed bottom-6 right-6 px-5 py-3 rounded-lg text-white text-sm font-semibold shadow-lg z-[9999] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2",
+          toast.includes("Error") || toast.includes("error") ? "bg-red-500" : "bg-emerald-500"
+        )}>
           {toast.includes("Error") || toast.includes("error") ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
           {toast}
         </div>

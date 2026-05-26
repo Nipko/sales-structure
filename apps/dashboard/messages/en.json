@@ -2295,6 +2295,36 @@
     "setupBannerTitle": "Personalize your AI agent",
     "setupBannerDesc": "Your agent was created from a template. Customize the name, personality, and rules to match your brand.",
     "configureNow": "Personalize now",
+    "tabs": {
+      "persona": "Persona",
+      "instructions": "Instructions",
+      "tools": "Tools",
+      "schedule": "Schedule"
+    },
+    "persona": {
+      "identityTitle": "Agent identity",
+      "tonePresets": "Communication style",
+      "tonePresetsDesc": "Choose how your agent communicates with customers",
+      "preset_friendly": "Friendly",
+      "preset_friendly_desc": "Warm and approachable",
+      "preset_professional": "Professional",
+      "preset_professional_desc": "Balanced and trustworthy",
+      "preset_formal": "Formal",
+      "preset_formal_desc": "Corporate and serious",
+      "preset_casual": "Casual",
+      "preset_casual_desc": "Relaxed and natural",
+      "preset_empathetic": "Empathetic",
+      "preset_empathetic_desc": "Understanding and warm",
+      "answerLength": "Answer length",
+      "answerLengthDesc": "Define how detailed your agent's responses are",
+      "length_concise": "Concise",
+      "length_concise_desc": "Short and direct answers",
+      "length_standard": "Standard",
+      "length_standard_desc": "Balance between detail and brevity",
+      "length_detailed": "Detailed",
+      "length_detailed_desc": "Complete and thorough answers",
+      "advancedPersonality": "Advanced customization"
+    },
     "editor": {
       "identityTitle": "Identity",
       "personalityTitle": "Personality",
@@ -2388,6 +2418,11 @@
       "emojiHeavy": "Heavy"
     },
     "behaviorSection": {
+      "mainInstructions": "Main instructions",
+      "mainInstructionsDesc": "Describe in natural language how you want your agent to behave. This is the main guide it will follow in every conversation.",
+      "mainInstructionsPlaceholder": "E.g.: You are a sales advisor for our company. Your goal is to help customers find the ideal product. Always confirm availability before quoting. If the customer asks about competitor prices, redirect the conversation towards our advantages. After 3 messages without progress, offer to connect with a human.",
+      "mainInstructionsTip": "Be specific about the agent's goal, how to handle common situations and when to escalate to a human. The more context you provide, the better the responses.",
+      "structuredRulesTitle": "Rules and restrictions",
       "safetyGuardrails": "Safety guardrails (always active)",
       "safetyGuardrailsDesc": "These restrictions are always active on all agents and cannot be disabled. They comply with Meta, OpenAI, and international regulations.",
       "additionalTopics": "additional",

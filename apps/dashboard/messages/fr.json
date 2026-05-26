@@ -2295,6 +2295,36 @@
     "setupBannerTitle": "Personnalisez votre agent IA",
     "setupBannerDesc": "Votre agent a été créé à partir d'un modèle. Personnalisez le nom, la personnalité et les règles pour correspondre à votre marque.",
     "configureNow": "Personnaliser maintenant",
+    "tabs": {
+      "persona": "Persona",
+      "instructions": "Instructions",
+      "tools": "Outils",
+      "schedule": "Horaires"
+    },
+    "persona": {
+      "identityTitle": "Identité de l'agent",
+      "tonePresets": "Style de communication",
+      "tonePresetsDesc": "Choisissez comment votre agent communique avec les clients",
+      "preset_friendly": "Amical",
+      "preset_friendly_desc": "Chaleureux et accessible",
+      "preset_professional": "Professionnel",
+      "preset_professional_desc": "Équilibré et fiable",
+      "preset_formal": "Formel",
+      "preset_formal_desc": "Corporatif et sérieux",
+      "preset_casual": "Décontracté",
+      "preset_casual_desc": "Détendu et naturel",
+      "preset_empathetic": "Empathique",
+      "preset_empathetic_desc": "Compréhensif et chaleureux",
+      "answerLength": "Longueur des réponses",
+      "answerLengthDesc": "Définissez le niveau de détail des réponses de votre agent",
+      "length_concise": "Concis",
+      "length_concise_desc": "Réponses courtes et directes",
+      "length_standard": "Standard",
+      "length_standard_desc": "Équilibre entre détail et brièveté",
+      "length_detailed": "Détaillé",
+      "length_detailed_desc": "Réponses complètes et approfondies",
+      "advancedPersonality": "Personnalisation avancée"
+    },
     "editor": {
       "identityTitle": "Identité",
       "personalityTitle": "Personnalité",
@@ -2388,6 +2418,11 @@
       "emojiHeavy": "Fréquent"
     },
     "behaviorSection": {
+      "mainInstructions": "Instructions principales",
+      "mainInstructionsDesc": "Décrivez en langage naturel comment vous voulez que votre agent se comporte. C'est le guide principal qu'il suivra dans chaque conversation.",
+      "mainInstructionsPlaceholder": "Ex : Vous êtes un conseiller commercial de notre entreprise. Votre objectif est d'aider les clients à trouver le produit idéal. Confirmez toujours la disponibilité avant de donner un prix. Si le client demande les prix de la concurrence, redirigez la conversation vers nos avantages. Après 3 messages sans avancement, proposez de connecter avec un humain.",
+      "mainInstructionsTip": "Soyez précis sur l'objectif de l'agent, comment gérer les situations courantes et quand escalader vers un humain. Plus vous fournissez de contexte, meilleures seront les réponses.",
+      "structuredRulesTitle": "Règles et restrictions",
       "safetyGuardrails": "Protections de sécurité (toujours actives)",
       "safetyGuardrailsDesc": "Ces restrictions sont toujours actives sur tous les agents et ne peuvent pas être désactivées. Elles sont conformes aux politiques de Meta, OpenAI et aux réglementations internationales.",
       "additionalTopics": "supplémentaires",

@@ -59,7 +59,7 @@ export function ScheduleCard({ config, onChange }: ScheduleCardProps) {
   }
 
   return (
-    <div className="mt-3 space-y-5">
+    <div className="space-y-5">
       {/* AI Outside Hours toggle */}
       <div className="flex items-center justify-between">
         <div>

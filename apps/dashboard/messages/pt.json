@@ -2295,6 +2295,36 @@
     "setupBannerTitle": "Personalize seu agente de IA",
     "setupBannerDesc": "Seu agente foi criado a partir de um modelo. Personalize o nome, a personalidade e as regras para combinar com sua marca.",
     "configureNow": "Personalizar agora",
+    "tabs": {
+      "persona": "Persona",
+      "instructions": "Instruções",
+      "tools": "Ferramentas",
+      "schedule": "Horário"
+    },
+    "persona": {
+      "identityTitle": "Identidade do agente",
+      "tonePresets": "Estilo de comunicação",
+      "tonePresetsDesc": "Escolha como seu agente se comunica com os clientes",
+      "preset_friendly": "Amigável",
+      "preset_friendly_desc": "Próximo e acessível",
+      "preset_professional": "Profissional",
+      "preset_professional_desc": "Equilibrado e confiável",
+      "preset_formal": "Formal",
+      "preset_formal_desc": "Corporativo e sério",
+      "preset_casual": "Casual",
+      "preset_casual_desc": "Relaxado e natural",
+      "preset_empathetic": "Empático",
+      "preset_empathetic_desc": "Compreensivo e acolhedor",
+      "answerLength": "Extensão das respostas",
+      "answerLengthDesc": "Defina o nível de detalhe nas respostas do seu agente",
+      "length_concise": "Conciso",
+      "length_concise_desc": "Respostas curtas e diretas",
+      "length_standard": "Padrão",
+      "length_standard_desc": "Equilíbrio entre detalhe e brevidade",
+      "length_detailed": "Detalhado",
+      "length_detailed_desc": "Respostas completas e abrangentes",
+      "advancedPersonality": "Personalização avançada"
+    },
     "editor": {
       "identityTitle": "Identidade",
       "personalityTitle": "Personalidade",
@@ -2388,6 +2418,11 @@
       "emojiHeavy": "Frequente"
     },
     "behaviorSection": {
+      "mainInstructions": "Instruções principais",
+      "mainInstructionsDesc": "Descreva em linguagem natural como você quer que seu agente se comporte. Este é o guia principal que ele seguirá em cada conversa.",
+      "mainInstructionsPlaceholder": "Ex: Você é um consultor de vendas da nossa empresa. Seu objetivo é ajudar os clientes a encontrar o produto ideal. Sempre confirme a disponibilidade antes de cotar. Se o cliente perguntar sobre preços da concorrência, redirecione a conversa para nossas vantagens. Após 3 mensagens sem avanço, ofereça conectar com um humano.",
+      "mainInstructionsTip": "Seja específico sobre o objetivo do agente, como lidar com situações comuns e quando escalar para um humano. Quanto mais contexto você fornecer, melhores serão as respostas.",
+      "structuredRulesTitle": "Regras e restrições",
       "safetyGuardrails": "Proteções de segurança (sempre ativas)",
       "safetyGuardrailsDesc": "Estas restrições estão sempre ativas em todos os agentes e não podem ser desativadas. Cumprem as políticas da Meta, OpenAI e regulamentações internacionais.",
       "additionalTopics": "adicionais",

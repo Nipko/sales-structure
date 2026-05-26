@@ -2,7 +2,10 @@
 
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { Shield, AlertTriangle, MessageSquare, Plus, X, ClipboardList, Folder, Lock } from "lucide-react";
+import {
+  Shield, AlertTriangle, MessageSquare, Plus, X,
+  ClipboardList, Folder, Lock, FileText, Lightbulb,
+} from "lucide-react";
 import { inputCls } from "../_types";
 import type { PersonaConfig } from "../_types";
 import { UNIVERSAL_FORBIDDEN_TOPICS } from "@parallext/shared";
@@ -43,9 +46,41 @@ export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4 mt-3">
-      {/* Universal Safety Guardrails — always active, cannot be removed */}
-      <div>
+    <div className="flex flex-col gap-6 py-6">
+      {/* ── Main Instructions ── */}
+      <section>
+        <div className="flex items-center gap-2 mb-1">
+          <FileText size={16} className="text-indigo-500" />
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            {t("mainInstructions")}
+          </h3>
+        </div>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+          {t("mainInstructionsDesc")}
+        </p>
+        <textarea
+          className={cn(
+            inputCls,
+            "min-h-[180px] resize-y leading-relaxed"
+          )}
+          placeholder={t("mainInstructionsPlaceholder")}
+          value={config.behavior.mainInstructions || ""}
+          onChange={e =>
+            onChange({
+              behavior: { ...config.behavior, mainInstructions: e.target.value },
+            })
+          }
+        />
+        <div className="flex items-start gap-2 mt-2 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10">
+          <Lightbulb size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            {t("mainInstructionsTip")}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Safety Guardrails ── */}
+      <section>
         <h4 className="text-[13px] font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-1.5">
           <Lock size={14} /> {t("safetyGuardrails")}
         </h4>
@@ -60,43 +95,56 @@ export function BehaviorSection({ config, onChange }: BehaviorSectionProps) {
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {sectionDefs.map(section => (
-        <div key={section.key}>
-          <h4 className="text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2 flex items-center gap-1.5">
-            <section.icon size={14} className="text-indigo-500" /> {t(section.titleKey)}
-            {section.key === 'forbiddenTopics' && <span className="text-[10px] text-muted-foreground font-normal ml-1">({t("additionalTopics")})</span>}
-          </h4>
-          <div className="flex flex-col gap-2">
-            {config.behavior[section.key].map((item, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <input
-                  className={cn(inputCls, "flex-1")}
-                  placeholder={t(section.placeholderKey)}
-                  value={item}
-                  onChange={e => updateList(section.key, idx, e.target.value)}
-                />
+      {/* ── Structured Rules ── */}
+      <section>
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+          {t("structuredRulesTitle")}
+        </h3>
+        <div className="space-y-5">
+          {sectionDefs.map(section => (
+            <div key={section.key}>
+              <h4 className="text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2 flex items-center gap-1.5">
+                <section.icon size={14} className="text-indigo-500" /> {t(section.titleKey)}
+                {section.key === "forbiddenTopics" && (
+                  <span className="text-[10px] text-muted-foreground font-normal ml-1">
+                    ({t("additionalTopics")})
+                  </span>
+                )}
+              </h4>
+              <div className="flex flex-col gap-2">
+                {config.behavior[section.key].map((item, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <input
+                      className={cn(inputCls, "flex-1")}
+                      placeholder={t(section.placeholderKey)}
+                      value={item}
+                      onChange={e => updateList(section.key, idx, e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeItem(section.key, idx)}
+                      className="w-8 h-8 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-red-500 cursor-pointer flex items-center justify-center shrink-0 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
                 <button
                   type="button"
-                  onClick={() => removeItem(section.key, idx)}
-                  className="w-8 h-8 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-red-500 cursor-pointer flex items-center justify-center shrink-0 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                  onClick={() => addItem(section.key)}
+                  className="px-3.5 py-2 rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-transparent text-indigo-500 cursor-pointer text-[13px] font-semibold flex items-center gap-1.5 self-start hover:border-indigo-400 transition-colors"
                 >
-                  <X size={14} />
+                  <Plus size={14} /> {t("add")}
                 </button>
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => addItem(section.key)}
-              className="px-3.5 py-2 rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-transparent text-indigo-500 cursor-pointer text-[13px] font-semibold flex items-center gap-1.5 self-start hover:border-indigo-400 transition-colors"
-            >
-              <Plus size={14} /> {t("add")}
-            </button>
-          </div>
+            </div>
+          ))}
         </div>
-      ))}
+      </section>
 
+      {/* ── Required Fields ── */}
       <RequiredFieldsSection config={config} onChange={onChange} />
     </div>
   );
@@ -151,7 +199,7 @@ function RequiredFieldsSection({ config, onChange }: BehaviorSectionProps) {
   };
 
   return (
-    <div className="pt-4 border-t border-neutral-200 dark:border-neutral-700">
+    <section className="pt-4 border-t border-neutral-200 dark:border-neutral-700">
       <h4 className="text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
         <ClipboardList size={14} className="text-indigo-500" /> {t("title")}
       </h4>
@@ -218,6 +266,6 @@ function RequiredFieldsSection({ config, onChange }: BehaviorSectionProps) {
           <Plus size={14} /> {t("addContext")}
         </button>
       </div>
-    </div>
+    </section>
   );
 }

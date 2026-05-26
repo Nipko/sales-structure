@@ -44,10 +44,10 @@ export class PropertiesService {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::time, $13::time, $14::jsonb, $15, $16, $17::jsonb, $18::jsonb)
              RETURNING *`,
             [
-                data.name, data.description || null, data.address || null, data.city || null,
-                data.maxGuests || 4, data.bedrooms || 1, data.bathrooms || 1,
-                data.nightPrice || 0, data.cleaningFee || 0, data.currency || 'COP',
-                data.minNights || 1, data.checkInTime || '15:00', data.checkOutTime || '11:00',
+                data.name, data.description ?? null, data.address ?? null, data.city ?? null,
+                data.maxGuests ?? 4, data.bedrooms ?? 1, data.bathrooms ?? 1,
+                data.nightPrice ?? 0, data.cleaningFee ?? 0, data.currency ?? 'COP',
+                data.minNights ?? 1, data.checkInTime ?? '15:00', data.checkOutTime ?? '11:00',
                 JSON.stringify(data.amenities || []), data.houseRules || null,
                 data.checkInInstructions || null, JSON.stringify(data.images || []),
                 JSON.stringify(data.metadata || {}),

@@ -172,7 +172,20 @@ export default function PropertiesPage() {
     if (!activeTenantId || !form.name) return;
     setSaving(true);
     try {
-      const res = await api.createProperty(activeTenantId, form);
+      const res = await api.createProperty(activeTenantId, {
+        name: form.name,
+        description: form.description,
+        address: form.address,
+        city: form.city,
+        maxGuests: form.max_guests,
+        bedrooms: form.bedrooms,
+        bathrooms: form.bathrooms,
+        nightPrice: form.night_price,
+        cleaningFee: form.cleaning_fee,
+        currency: form.currency,
+        minNights: form.min_nights,
+        amenities: form.amenities,
+      });
       if (res.success) {
         setShowModal(false);
         setForm({ name: "", description: "", address: "", city: "", max_guests: 4, bedrooms: 1, bathrooms: 1, night_price: 0, cleaning_fee: 0, currency: defaultCurrency, min_nights: 1, amenities: [] });

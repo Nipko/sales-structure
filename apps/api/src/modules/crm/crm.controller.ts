@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ForbiddenException, Header } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
@@ -446,6 +446,8 @@ export class CrmController {
     }
 
     @Get('export/:tenantId')
+    @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+    @Header('Pragma', 'no-cache')
     async exportCSV(
         @Param('tenantId') tenantId: string,
         @Query('segmentId') segmentId?: string,
@@ -455,6 +457,8 @@ export class CrmController {
     }
 
     @Get('import-template')
+    @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+    @Header('Pragma', 'no-cache')
     async getImportTemplate() {
         const template = this.importExportService.getImportTemplate();
         return { success: true, data: template };

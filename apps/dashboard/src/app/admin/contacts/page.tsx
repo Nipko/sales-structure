@@ -228,7 +228,8 @@ export default function ContactsPage() {
         if (!activeTenantId) return;
         setExporting(true);
         try {
-            const csvData = await api.fetch(`/crm/export/${activeTenantId}`);
+            const response = await api.fetch(`/crm/export/${activeTenantId}`);
+            const csvData = typeof response === "string" ? response : response?.data;
             if (typeof csvData !== "string") throw new Error("Invalid data returned");
 
             // Parse CSV text to SheetJS workbook
@@ -266,21 +267,38 @@ export default function ContactsPage() {
 
     const handleDownloadTemplate = async () => {
         try {
-            const templateCsv = await api.fetch("/crm/import-template");
-            if (typeof templateCsv !== "string") throw new Error("Invalid template data");
+            // Build first sheet: Contactos template
+            const contactsData = [
+                ['telefono', 'nombre', 'apellido', 'correo', 'etapa', 'empresa', 'origen', 'es_vip', 'canal_preferido', 'utm_source', 'utm_medium', 'utm_campaign'],
+                ['+573001234567', 'Juan', 'Pérez', 'juan@perez.com', 'caliente', 'Acme S.A.', 'facebook', 'sí', 'whatsapp', 'google', 'cpc', 'cybermonday'],
+                ['573119876543', 'María', 'Gómez', 'maria@gomez.com', 'nuevo', '', 'whatsapp', 'no', 'whatsapp', '', '', '']
+            ];
+            const wsContacts = XLSX.utils.aoa_to_sheet(contactsData);
 
-            // Parse and convert template CSV to SheetJS workbook
-            const workbook = XLSX.read(templateCsv, { type: "string" });
-            
-            // Rename sheet to 'Plantilla de Importación'
-            const originalSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[originalSheetName];
-            if (worksheet) {
-                workbook.SheetNames[0] = "Plantilla CRM";
-                workbook.Sheets["Plantilla CRM"] = worksheet;
-                delete workbook.Sheets[originalSheetName];
-            }
+            // Build second sheet: Instrucciones y Ayuda
+            const instructionsData = [
+                ['Columna', '¿Requerido?', 'Descripción / Valores permitidos', 'Ejemplo'],
+                ['telefono', 'SÍ (Obligatorio)', 'Identificador único del contacto. Se limpia de espacios y normaliza automáticamente al estándar E.164.', '+573001234567'],
+                ['nombre', 'NO (Opcional)', 'Primer nombre del contacto.', 'Juan'],
+                ['apellido', 'NO (Opcional)', 'Apellidos del contacto.', 'Pérez'],
+                ['correo', 'NO (Opcional)', 'Correo electrónico de contacto.', 'juan@perez.com'],
+                ['etapa', 'NO (Opcional)', 'Etapa del CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.', 'caliente'],
+                ['empresa', 'NO (Opcional)', 'Nombre de la empresa. Se creará automáticamente si no existe en el sistema.', 'Acme S.A.'],
+                ['origen', 'NO (Opcional)', 'Canal o fuente de adquisición del lead (ej. whatsapp, facebook, instagram).', 'facebook'],
+                ['es_vip', 'NO (Opcional)', 'Indicar si es VIP. Valores válidos: sí, no, verdadero, falso, true, false.', 'sí'],
+                ['canal_preferido', 'NO (Opcional)', 'Canal preferido para comunicarse: whatsapp, instagram, messenger, telegram, sms.', 'whatsapp'],
+                ['utm_source', 'NO (Opcional)', 'Fuente de la campaña de marketing (ej. google, facebook).', 'google'],
+                ['utm_medium', 'NO (Opcional)', 'Medio de la campaña de marketing (ej. cpc, email).', 'cpc'],
+                ['utm_campaign', 'NO (Opcional)', 'Nombre de la campaña de marketing (ej. cybermonday).', 'cybermonday']
+            ];
+            const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
 
+            // Create workbook and append sheets
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, wsContacts, "Contactos");
+            XLSX.utils.book_append_sheet(workbook, wsInstructions, "Instrucciones y Ayuda");
+
+            // Write to buffer and trigger download
             const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
             const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
             
@@ -290,8 +308,10 @@ export default function ContactsPage() {
             a.download = "plantilla_contactos.xlsx";
             a.click();
             URL.revokeObjectURL(url);
+            showToast("Plantilla Excel generada correctamente");
         } catch (err) {
             console.error("Template download failed:", err);
+            showToast("Error al descargar la plantilla");
         }
     };
 
@@ -990,28 +1010,137 @@ export default function ContactsPage() {
                             </button>
 
                             {showFormatGuide && (
-                                <div className="px-4 pb-4 pt-1 text-[11px] space-y-3 border-t border-neutral-100/70 dark:border-neutral-800/60 animate-in fade-in slide-in-from-top-1 duration-150">
+                                <div className="px-4 pb-4 pt-1 text-[11px] space-y-3.5 border-t border-neutral-100/70 dark:border-neutral-800/60 animate-in fade-in slide-in-from-top-1 duration-150">
                                     <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed font-normal">
                                         {t('importModal.formatGuideDesc')}
                                     </p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
-                                        <div className="space-y-1">
-                                            <span className="font-semibold text-neutral-800 dark:text-neutral-200 block">
-                                                📞 {t('importModal.phoneCol')}
-                                            </span>
-                                            <span className="text-neutral-500 dark:text-neutral-400 block leading-relaxed font-normal">
-                                                {t('importModal.phoneColDesc')}
-                                            </span>
+                                    
+                                    <div className="max-h-[320px] overflow-y-auto pr-1 mt-3 space-y-2.5 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
+                                        <div className="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500 tracking-wider mb-2">
+                                            Columnas Soportadas y Sinónimos
                                         </div>
-                                        <div className="space-y-1">
-                                            <span className="font-semibold text-neutral-800 dark:text-neutral-200 block">
-                                                ⚡ {t('importModal.stageCol')}
-                                            </span>
-                                            <span className="text-neutral-500 dark:text-neutral-400 block leading-relaxed font-normal">
-                                                {t('importModal.stageColDesc')}
-                                            </span>
+                                        
+                                        {/* Phone Column - Required */}
+                                        <div className="p-3 rounded-xl border border-indigo-100 dark:border-indigo-950/40 bg-indigo-50/20 dark:bg-indigo-950/5 border-l-4 border-l-indigo-500">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📞 Teléfono / Celular</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold rounded">REQUERIDO</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Identificador único de contacto. Se limpia de espacios y normaliza automáticamente al estándar E.164.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> phone, telefono, celular, móvil, whatsapp, teléfono, movil.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-indigo-100/50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded inline-block text-indigo-600 dark:text-indigo-400 font-bold">+573001234567</div>
+                                        </div>
+
+                                        {/* Name Columns */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">👤 Nombres y Apellidos</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Primer nombre y apellidos para el perfil del contacto.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> first_name, nombre, nombres, last_name, apellido, apellidos.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">Juan Pérez</div>
+                                        </div>
+
+                                        {/* Stage Column */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">⚡ Etapa / Estado CRM</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Etapas válidas: <span className="font-semibold text-indigo-500 dark:text-indigo-400">nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado</span>.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> stage, etapa, estado, fase.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">caliente</div>
+                                        </div>
+
+                                        {/* Company Column */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">🏢 Empresa / Compañía</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Nombre de la organización vinculada al contacto. Se creará automáticamente en el sistema si no existe.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> company, empresa, compañía, compania.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">Acme S.A.</div>
+                                        </div>
+
+                                        {/* Email Column */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📧 Correo Electrónico</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Dirección de correo electrónico única y válida del lead.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> email, correo, correo_electronico, correo electrónico, mail.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">juan@perez.com</div>
+                                        </div>
+
+                                        {/* VIP Column */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">👑 Marcar como VIP</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Etiquetar como cliente preferente. Valores admitidos: <span className="font-mono">sí, no, verdadero, falso, true, false, 1, 0</span>.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> is_vip, vip, es_vip.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">sí</div>
+                                        </div>
+
+                                        {/* Preferred Channel Column */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">💬 Canal de Contacto</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Canal de comunicación de preferencia: <span className="font-mono">whatsapp, instagram, messenger, telegram, sms</span>.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> preferred_contact, preferred_channel, contacto_preferido, canal_preferido.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">whatsapp</div>
+                                        </div>
+
+                                        {/* Marketing UTMs */}
+                                        <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📈 Atributos de Campañas (UTM)</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                            </div>
+                                            <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
+                                                Atributos estándar para tracking de campañas de publicidad.
+                                            </p>
+                                            <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                                                <span className="font-semibold text-neutral-500">Campos:</span> utm_source, utm_medium, utm_campaign.
+                                            </div>
+                                            <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">facebook / cpc / cybermonday</div>
                                         </div>
                                     </div>
+
                                     <div className="border-t border-neutral-100 dark:border-neutral-800/80 pt-3">
                                         <span className="font-semibold text-neutral-800 dark:text-neutral-200 block mb-1.5">
                                             📋 {t('importModal.exampleHeader')}

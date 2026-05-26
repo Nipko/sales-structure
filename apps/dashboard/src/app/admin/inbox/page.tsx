@@ -200,6 +200,47 @@ const statusDotColor: Record<string, string> = {
 };
 
 // ============================================
+// WAIT TIMER COMPONENT (SLA CLOCK)
+// ============================================
+
+function WaitTimer({ triggeredAt }: { triggeredAt: string }) {
+    const [elapsed, setElapsed] = useState("");
+
+    useEffect(() => {
+        if (!triggeredAt) return;
+        const update = () => {
+            const diff = Date.now() - new Date(triggeredAt).getTime();
+            if (diff < 0) {
+                setElapsed("Esperando...");
+                return;
+            }
+            const mins = Math.floor(diff / (1000 * 60));
+            if (mins < 1) {
+                setElapsed("Hace < 1 min");
+            } else if (mins < 60) {
+                setElapsed(`Hace ${mins} min`);
+            } else {
+                const hours = Math.floor(mins / 60);
+                const remainingMins = mins % 60;
+                setElapsed(`Hace ${hours}h ${remainingMins}m`);
+            }
+        };
+        update();
+        const interval = setInterval(update, 15000); // update every 15 seconds
+        return () => clearInterval(interval);
+    }, [triggeredAt]);
+
+    if (!triggeredAt) return null;
+
+    return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+            ⏱️ {elapsed}
+        </span>
+    );
+}
+
+// ============================================
 // COMPONENT
 // ============================================
 
@@ -500,6 +541,7 @@ export default function InboxPage() {
                     estimatedValue: c.estimated_ticket_value || 0,
                     handoffReason: c.handoff_reason || c.handoffReason || null,
                     handoffSummary: c.handoff_summary || c.handoffSummary || null,
+                    handoffTriggeredAt: c.handoff_triggered_at || c.handoffTriggeredAt || null,
                 }));
                 convs.sort((a: any, b: any) =>
                     new Date(b.lastMessageAtRaw || 0).getTime() - new Date(a.lastMessageAtRaw || 0).getTime()
@@ -720,6 +762,74 @@ export default function InboxPage() {
             }
         });
 
+        socket.on('inbox:refresh', () => {
+            console.log('Received inbox:refresh, reloading...');
+            loadInbox({ silent: true });
+        });
+
+        socket.on('inbox:handoff', (payload: any) => {
+            console.log('Received inbox:handoff', payload);
+            const { conversationId, reason, summary, triggeredAt } = payload;
+            setConversations((prev: any[]) => prev.map(c => {
+                if (c.id === conversationId) {
+                    return {
+                        ...c,
+                        status: 'waiting_human',
+                        handoffReason: reason,
+                        handoffSummary: summary,
+                        handoffTriggeredAt: triggeredAt,
+                    };
+                }
+                return c;
+            }));
+            setSelectedConv((prev: any) => {
+                if (prev?.id === conversationId) {
+                    return {
+                        ...prev,
+                        status: 'waiting_human',
+                        handoffReason: reason,
+                        handoffSummary: summary,
+                        handoffTriggeredAt: triggeredAt,
+                    };
+                }
+                return prev;
+            });
+        });
+
+        socket.on('inbox:handoff_completed', (payload: any) => {
+            console.log('Received inbox:handoff_completed', payload);
+            const { conversationId } = payload;
+            setConversations((prev: any[]) => prev.map(c => {
+                if (c.id === conversationId) {
+                    return {
+                        ...c,
+                        status: 'active',
+                        handoffReason: null,
+                        handoffSummary: null,
+                        handoffTriggeredAt: null,
+                    };
+                }
+                return c;
+            }));
+            setSelectedConv((prev: any) => {
+                if (prev?.id === conversationId) {
+                    return {
+                        ...prev,
+                        status: 'active',
+                        handoffReason: null,
+                        handoffSummary: null,
+                        handoffTriggeredAt: null,
+                    };
+                }
+                return prev;
+            });
+        });
+
+        socket.on('inbox:escalation', (payload: any) => {
+            console.log('Received inbox:escalation', payload);
+            loadInbox({ silent: true });
+        });
+
         return () => {
             socket.disconnect();
         };
@@ -856,9 +966,12 @@ export default function InboxPage() {
             const q = searchQuery.toLowerCase();
             return c.contactName.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q);
         }
-        if (filter === "handoff") return c.status === "handoff";
-        if (filter === "unassigned") return c.isAiHandled && (c.status as string) !== "resolved";
-        return true;
+        if (filter === "handoff") return c.status === "handoff" || c.status === "waiting_human" || c.status === "with_human";
+        if (filter === "mine") return c.assignedAgentId === user?.id;
+        if (filter === "unassigned") return !c.assignedAgentId && c.status !== "resolved";
+        if (filter === "resolved") return c.status === "resolved";
+        // Default ('all'): show all active (non-resolved) conversations
+        return c.status !== "resolved";
     });
 
     // ---- Interactive functions ----
@@ -969,8 +1082,16 @@ export default function InboxPage() {
             {/* Keyframes for animations */}
             <style>{`
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+                @keyframes pulseHandoff {
+                    0% { background-color: rgba(249, 115, 22, 0.03); }
+                    50% { background-color: rgba(249, 115, 22, 0.09); }
+                    100% { background-color: rgba(249, 115, 22, 0.03); }
+                }
                 .inbox-msg-bubble { animation: fadeIn 0.2s ease-out; }
                 .inbox-conv-item:hover { background: hsl(var(--muted)) !important; }
+                .inbox-conv-handoff-pulsing {
+                    animation: pulseHandoff 2s infinite ease-in-out;
+                }
                 .inbox-scrollbar::-webkit-scrollbar { width: 6px; }
                 .inbox-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .inbox-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
@@ -1067,12 +1188,14 @@ export default function InboxPage() {
                         const hasUnread = (conv.unreadCount || 0) > 0;
                         const isSelected = selectedConv?.id === conv.id;
                         const dotColor = statusDotColor[conv.status] || "#9ca3af";
+                        const isWaitingHuman = conv.status === 'waiting_human';
                         return (
                             <div
                                 key={conv.id}
                                 className={cn(
                                     "inbox-conv-item relative cursor-pointer transition-colors duration-150",
-                                    isSelected && "bg-indigo-600/[0.06] dark:bg-indigo-500/[0.08]"
+                                    isSelected && "bg-indigo-600/[0.06] dark:bg-indigo-500/[0.08]",
+                                    isWaitingHuman && "inbox-conv-handoff-pulsing"
                                 )}
                                 onClick={() => {
                                     setSelectedConv(conv);
@@ -1083,8 +1206,11 @@ export default function InboxPage() {
                                 }}
                             >
                                 {/* Selected indicator: left border */}
-                                {isSelected && (
+                                {isSelected && !isWaitingHuman && (
                                     <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-indigo-600" />
+                                )}
+                                {isWaitingHuman && (
+                                    <div className="absolute left-0 top-0 bottom-0 w-[3.5px] bg-orange-500" />
                                 )}
                                 <div className="px-4 py-3 border-b border-border/60">
                                     <div className="flex gap-3 items-start">
@@ -1093,9 +1219,18 @@ export default function InboxPage() {
                                             <ChannelIcon channel={conv.channel} size={36} />
                                             {/* Status dot */}
                                             <div
-                                                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-card"
+                                                className={cn(
+                                                    "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-card",
+                                                    isWaitingHuman && "animate-ping"
+                                                )}
                                                 style={{ background: dotColor }}
                                             />
+                                            {isWaitingHuman && (
+                                                <div
+                                                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-card"
+                                                    style={{ background: dotColor }}
+                                                />
+                                            )}
                                         </div>
 
                                         {/* Content */}
@@ -1153,6 +1288,11 @@ export default function InboxPage() {
                                                     )}
                                                 </div>
                                             )}
+                                            {isWaitingHuman && conv.handoffTriggeredAt && (
+                                                <div className="mt-2 flex items-center">
+                                                    <WaitTimer triggeredAt={conv.handoffTriggeredAt} />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1175,6 +1315,28 @@ export default function InboxPage() {
             )}>
                 {selectedConv ? (
                     <>
+                        {/* Sticky Warning Banner for Handoff / waiting_human conversations */}
+                        {selectedConv.status === 'waiting_human' && (
+                            <div className="px-4 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border-b border-orange-600 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                                        <AlertCircle size={18} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-[13px] font-bold m-0 leading-tight">Atención Humana Requerida</h4>
+                                        <p className="text-[11px] text-white/80 m-0 mt-0.5">El asistente de IA ha sido pausado. El cliente está esperando respuesta de un humano.</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleAssign}
+                                    disabled={assignLoading}
+                                    className="py-1.5 px-4 rounded-lg border-none bg-white text-orange-600 hover:bg-orange-50 transition-colors text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-75"
+                                >
+                                    {assignLoading ? <Loader2 size={13} className="animate-spin" /> : <UserCheck size={13} />}
+                                    Atender Conversación
+                                </button>
+                            </div>
+                        )}
                         {/* Inline Error Banner */}
                         {inboxError && (
                             <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1">

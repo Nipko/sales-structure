@@ -52,6 +52,7 @@ export interface ConversationDetail {
     aiSummary?: string;
     handoffReason?: string | null;
     handoffSummary?: string | null;
+    handoffTriggeredAt?: string | null;
 }
 
 export interface ConversationMessage {
@@ -253,6 +254,7 @@ export class AgentConsoleService {
             startedAt: conv.started_at,
             handoffReason: conv.metadata?.handoff?.reason || null,
             handoffSummary: conv.metadata?.handoff?.summary || null,
+            handoffTriggeredAt: conv.metadata?.handoff?.startedAt || null,
         };
     }
 

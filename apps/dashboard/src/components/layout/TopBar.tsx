@@ -198,6 +198,16 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         const contactName = payload.contactName || t("notifications.unknownClient");
         addNotif("handoff", `🔴 ${contactName}`, `${payload.reason || t("notifications.transfer")}${payload.lastMessage ? `: "${payload.lastMessage.slice(0, 60)}"` : ""}`);
         try { new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkYyGfnJ3fomVnJmSkol/dnN3gY2VmZaRi4R+eHd7hI6Ul5WQioN+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpWQioN+eXl8g42UlpWQioN+eXp8g42Tl5WQioN9eXp8hI2UlpWQioN+eXl8hI6UlpWQioJ+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXl8g42Tl5WQioJ+eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42Tl5WQioN9eXl8hI2UlpWQioJ+eXl8hI6UlpWQioN+eXl8hI6UlpaQioN+eXp8g42UlpWQioN+eXp8g42UlpWQioJ9eXl8hI2UlpWQioN+eXl8hI6UlpWQioN+").play().catch(() => {}); } catch {}
+        
+        // Browser push for unassigned handoff (critical — works even with tab minimized/in background)
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+          new Notification(`🔴 LEAD ESPERANDO: ${contactName}`, {
+            body: `Se requiere atención humana. Motivo: ${payload.reason || 'Traspaso'}`,
+            icon: '/favicon.ico',
+            tag: `handoff-${payload.conversationId}`,
+            requireInteraction: true,
+          });
+        }
       }
     });
     // Supervisor escalation — conversation waiting too long

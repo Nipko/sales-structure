@@ -581,11 +581,10 @@ export class PersonaService {
             data.createdBy || 'system',
         ) as any[];
 
-        // Invalidate cache for affected channels
-        if (data.channels) {
-            for (const ch of data.channels) {
-                await this.redis.del(`persona:${tenantId}:channel:${ch}`);
-            }
+        // Invalidate cache for all channels to prevent routing conflicts
+        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
+        for (const ch of allChannels) {
+            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
         }
         await this.redis.del(`persona:${tenantId}:active`);
 
@@ -645,13 +644,13 @@ export class PersonaService {
             ...params,
         ) as any[];
 
-        // Invalidate caches
-        await this.redis.del(`persona:${tenantId}:active`);
         const agent = rows[0];
-        if (agent?.channels) {
-            for (const ch of agent.channels) {
-                await this.redis.del(`persona:${tenantId}:channel:${ch}`);
-            }
+
+        // Invalidate caches for active config and all channels to prevent conflicts
+        await this.redis.del(`persona:${tenantId}:active`);
+        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
+        for (const ch of allChannels) {
+            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
         }
 
         return agent;
@@ -674,7 +673,12 @@ export class PersonaService {
             agentId,
         );
 
+        // Invalidate caches for active config and all channels to prevent conflicts
         await this.redis.del(`persona:${tenantId}:active`);
+        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
+        for (const ch of allChannels) {
+            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
+        }
     }
 
     /**

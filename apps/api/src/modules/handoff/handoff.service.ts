@@ -233,6 +233,72 @@ export class HandoffService {
                     `,
                 }).catch(fe => this.logger.warn(`Handoff fallback email failed: ${fe.message}`));
             }
+        } else {
+            // Unassigned case: fetch tenant's billingEmail or fallback to active tenant_admin email
+            let fallbackEmail: string | undefined;
+            try {
+                const tenant = await this.prisma.tenant.findUnique({
+                    where: { id: tenantId },
+                    select: { billingEmail: true },
+                });
+                fallbackEmail = tenant?.billingEmail || undefined;
+            } catch (e: any) {
+                this.logger.warn(`Failed to fetch tenant billing email: ${e.message}`);
+            }
+
+            if (!fallbackEmail) {
+                try {
+                    const adminUser = await this.prisma.user.findFirst({
+                        where: { tenantId, role: 'tenant_admin', isActive: true },
+                        select: { email: true },
+                    });
+                    fallbackEmail = adminUser?.email || undefined;
+                } catch (e: any) {
+                    this.logger.warn(`Failed to fetch fallback tenant admin email: ${e.message}`);
+                }
+            }
+
+            if (fallbackEmail) {
+                const contactName = contact.contact_name || 'Cliente';
+                const contactPhone = contact.contact_phone || 'N/A';
+                const lastMessage = (contact.last_message || '').substring(0, 200);
+
+                try {
+                    const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification_unassigned', fallbackEmail, {
+                        contact_name: contactName,
+                        contact_phone: contactPhone,
+                        reason,
+                        last_message: lastMessage,
+                        inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
+                    });
+                    if (!sent) throw new Error('Template not found or inactive');
+                } catch (e: any) {
+                    // Fallback to direct email
+                    this.emailService.send({
+                        to: fallbackEmail,
+                        subject: `🔴 URGENTE: Lead esperando atención humana en cola de Parallly`,
+                        html: `
+                            <div style="font-family: sans-serif; max-width: 500px; padding: 20px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                                <h2 style="color: #e67e22; margin-top: 0;">🔴 Lead Esperando Atención Humana</h2>
+                                <p style="font-size: 14px; color: #555;">Hay un nuevo lead esperando en la cola sin asignar y requiere atención humana urgente.</p>
+                                <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;" />
+                                <p style="font-size: 14px; margin: 5px 0;"><strong>Cliente:</strong> ${contactName}</p>
+                                <p style="font-size: 14px; margin: 5px 0;"><strong>Teléfono:</strong> ${contactPhone}</p>
+                                <p style="font-size: 14px; margin: 5px 0;"><strong>Razón:</strong> ${reason}</p>
+                                <p style="font-size: 14px; margin: 15px 0 5px 0;"><strong>Último mensaje del cliente:</strong></p>
+                                <blockquote style="border-left: 3px solid #e67e22; padding: 5px 12px; margin: 5px 0; color: #666; background: #fafafa; font-style: italic;">
+                                    ${lastMessage}
+                                </blockquote>
+                                <div style="margin-top: 25px; text-align: center;">
+                                    <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; box-shadow: 0 2px 4px rgba(99,102,241,0.2);">
+                                        Abrir Agent Console (Inbox)
+                                    </a>
+                                </div>
+                            </div>
+                        `,
+                    }).catch(fe => this.logger.warn(`Handoff fallback unassigned email failed: ${fe.message}`));
+                }
+            }
         }
 
         this.logger.log(

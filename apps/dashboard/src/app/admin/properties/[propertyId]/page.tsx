@@ -90,6 +90,21 @@ interface Feed {
 
 const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
 
+const CURRENCY_OPTIONS = [
+  { code: "COP", symbol: "$", label: "COP — Peso colombiano" },
+  { code: "USD", symbol: "$", label: "USD — Dólar estadounidense" },
+  { code: "MXN", symbol: "$", label: "MXN — Peso mexicano" },
+  { code: "ARS", symbol: "$", label: "ARS — Peso argentino" },
+  { code: "BRL", symbol: "R$", label: "BRL — Real brasileño" },
+  { code: "CLP", symbol: "$", label: "CLP — Peso chileno" },
+  { code: "PEN", symbol: "S/", label: "PEN — Sol peruano" },
+  { code: "EUR", symbol: "€", label: "EUR — Euro" },
+];
+
+function getCurrencySymbol(code: string): string {
+  return CURRENCY_OPTIONS.find(c => c.code === code)?.symbol || "$";
+}
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
 /**
@@ -223,21 +238,30 @@ function InfoTab({
   t: any;
   tc: any;
 }) {
-  const [form, setForm] = useState({
-    ...property,
-    description: property.description || "",
-  });
+  function coerceProperty(p: Property) {
+    return {
+      ...p,
+      description: p.description || "",
+      max_guests: Number(p.max_guests) || 1,
+      bedrooms: Number(p.bedrooms) || 0,
+      bathrooms: Number(p.bathrooms) || 0,
+      night_price: Number(p.night_price) || 0,
+      cleaning_fee: Number(p.cleaning_fee) || 0,
+      min_nights: Number(p.min_nights) || 1,
+      currency: p.currency || "COP",
+      amenities: Array.isArray(p.amenities) ? p.amenities : [],
+    };
+  }
+
+  const [form, setForm] = useState(coerceProperty(property));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  // Resync form when property reloads from parent (after save) — otherwise the
-  // editor would show stale values until the user navigates away and back.
   useEffect(() => {
-    setForm({
-      ...property,
-      description: property.description || "",
-    });
-  }, [property.id, property.name, property.address, property.city, property.max_guests, property.bedrooms, property.bathrooms, property.night_price, property.cleaning_fee, property.min_nights, property.is_active]);
+    setForm(coerceProperty(property));
+  }, [property.id, property.name, property.address, property.city, property.max_guests, property.bedrooms, property.bathrooms, property.night_price, property.cleaning_fee, property.min_nights, property.is_active, property.currency]);
 
   function toggleAmenity(a: string) {
     setForm(prev => ({
@@ -273,7 +297,18 @@ function InfoTab({
     setSaving(false);
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    const res = await api.deleteProperty(tenantId, property.id);
+    if (res.success) {
+      window.location.href = "/admin/properties";
+    }
+    setDeleting(false);
+    setShowDeleteConfirm(false);
+  }
+
   const inputCls = "w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500";
+  const currencySymbol = getCurrencySymbol(form.currency);
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -314,10 +349,24 @@ function InfoTab({
         <NumberField label={t("bathrooms")} min={0} value={form.bathrooms} onChange={(v) => setForm({ ...form, bathrooms: v })} className={inputCls} />
       </div>
 
-      {/* Pricing */}
+      {/* Currency selector */}
+      <div>
+        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("currency")}</label>
+        <select
+          value={form.currency}
+          onChange={(e) => setForm({ ...form, currency: e.target.value })}
+          className={inputCls}
+        >
+          {CURRENCY_OPTIONS.map(c => (
+            <option key={c.code} value={c.code}>{c.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Pricing with currency symbol */}
       <div className="grid grid-cols-3 gap-4">
-        <NumberField label={t("nightPrice")} min={0} value={form.night_price} onChange={(v) => setForm({ ...form, night_price: v })} className={inputCls} />
-        <NumberField label={t("cleaningFee")} min={0} value={form.cleaning_fee} onChange={(v) => setForm({ ...form, cleaning_fee: v })} className={inputCls} />
+        <NumberField label={t("nightPrice")} min={0} value={form.night_price} onChange={(v) => setForm({ ...form, night_price: v })} className={inputCls} prefix={currencySymbol} />
+        <NumberField label={t("cleaningFee")} min={0} value={form.cleaning_fee} onChange={(v) => setForm({ ...form, cleaning_fee: v })} className={inputCls} prefix={currencySymbol} />
         <NumberField label={t("minNights")} min={1} value={form.min_nights} onChange={(v) => setForm({ ...form, min_nights: v })} className={inputCls} />
       </div>
 
@@ -364,14 +413,60 @@ function InfoTab({
         </label>
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="flex items-center gap-2 px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-      >
-        {saved ? <Check size={16} /> : <Save size={16} />}
-        {saved ? t("saved") : tc("save")}
-      </button>
+      {/* Action buttons */}
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+        >
+          {saved ? <Check size={16} /> : <Save size={16} />}
+          {saved ? t("saved") : tc("save")}
+        </button>
+
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+        >
+          <Trash2 size={16} />
+          {t("deleteProperty")}
+        </button>
+      </div>
+
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteConfirm(false); }}
+        >
+          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6 w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/40 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("deleteProperty")}</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("deletePropertyConfirm")}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                {tc("cancel")}
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? t("deleting") : t("deleteProperty")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1549,41 +1644,34 @@ function CheckInTab({
 /* ------------------------------------------------------------------ */
 
 function NumberField({
-  label, min, value, onChange, className,
+  label, min, value, onChange, className, prefix,
 }: {
   label: string;
   min: number;
   value: number;
   onChange: (n: number) => void;
   className: string;
+  prefix?: string;
 }) {
-  const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
-
   return (
     <div>
       <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{label}</label>
-      <input
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={draft}
-        onChange={(e) => {
-          const v = e.target.value.replace(/[^0-9]/g, "");
-          setDraft(v);
-          if (v !== "") onChange(Math.max(min, parseInt(v, 10)));
-        }}
-        onBlur={() => {
-          if (draft === "") {
-            setDraft(String(min));
-            onChange(min);
-          }
-        }}
-        className={className}
-      />
+      <div className="relative">
+        {prefix && (
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400 pointer-events-none">{prefix}</span>
+        )}
+        <input
+          type="number"
+          min={min}
+          step={1}
+          value={value}
+          onChange={(e) => {
+            const n = e.target.value === "" ? min : Math.max(min, Number(e.target.value));
+            onChange(n);
+          }}
+          className={`${className}${prefix ? " pl-10" : ""}`}
+        />
+      </div>
     </div>
   );
 }

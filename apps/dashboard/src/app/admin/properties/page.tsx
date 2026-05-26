@@ -44,6 +44,28 @@ interface Property {
   is_active: boolean;
 }
 
+const CURRENCY_OPTIONS = [
+  { code: "COP", symbol: "$", label: "COP — Peso colombiano" },
+  { code: "USD", symbol: "$", label: "USD — Dólar estadounidense" },
+  { code: "MXN", symbol: "$", label: "MXN — Peso mexicano" },
+  { code: "ARS", symbol: "$", label: "ARS — Peso argentino" },
+  { code: "BRL", symbol: "R$", label: "BRL — Real brasileño" },
+  { code: "CLP", symbol: "$", label: "CLP — Peso chileno" },
+  { code: "PEN", symbol: "S/", label: "PEN — Sol peruano" },
+  { code: "EUR", symbol: "€", label: "EUR — Euro" },
+];
+
+const COUNTRY_CURRENCY: Record<string, string> = {
+  CO: "COP", Colombia: "COP",
+  US: "USD", "United States": "USD",
+  MX: "MXN", México: "MXN", Mexico: "MXN",
+  AR: "ARS", Argentina: "ARS",
+  BR: "BRL", Brasil: "BRL", Brazil: "BRL",
+  CL: "CLP", Chile: "CLP",
+  PE: "PEN", Perú: "PEN", Peru: "PEN",
+  EC: "USD", Ecuador: "USD",
+};
+
 export const AMENITY_CATEGORIES = [
   { key: "essentials", label: "Esenciales", items: [
     { key: "wifi", label: "WiFi" },
@@ -91,12 +113,12 @@ export const AMENITY_CATEGORIES = [
   ]},
 ];
 
-const formatCurrency = (n: number, currency = "USD") =>
+const formatCurrency = (n: number | string, currency = "COP") =>
   new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency,
+    currency: currency || "COP",
     minimumFractionDigits: 0,
-  }).format(n);
+  }).format(Number(n) || 0);
 
 export default function PropertiesPage() {
   const t = useTranslations("properties");
@@ -109,6 +131,7 @@ export default function PropertiesPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+  const [defaultCurrency, setDefaultCurrency] = useState("COP");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -119,13 +142,22 @@ export default function PropertiesPage() {
     bathrooms: 1,
     night_price: 0,
     cleaning_fee: 0,
-    currency: "USD",
+    currency: "COP",
     min_nights: 1,
     amenities: [] as string[],
   });
 
   useEffect(() => {
     load();
+    if (activeTenantId) {
+      api.getBusinessInfo(activeTenantId).then((res: any) => {
+        if (res.success && res.data?.country) {
+          const c = COUNTRY_CURRENCY[res.data.country] || "COP";
+          setDefaultCurrency(c);
+          setForm(prev => prev.currency === "COP" || prev.currency === "USD" ? { ...prev, currency: c } : prev);
+        }
+      });
+    }
   }, [activeTenantId]);
 
   async function load() {
@@ -143,7 +175,7 @@ export default function PropertiesPage() {
       const res = await api.createProperty(activeTenantId, form);
       if (res.success) {
         setShowModal(false);
-        setForm({ name: "", description: "", address: "", city: "", max_guests: 4, bedrooms: 1, bathrooms: 1, night_price: 0, cleaning_fee: 0, currency: "USD", min_nights: 1, amenities: [] });
+        setForm({ name: "", description: "", address: "", city: "", max_guests: 4, bedrooms: 1, bathrooms: 1, night_price: 0, cleaning_fee: 0, currency: defaultCurrency, min_nights: 1, amenities: [] });
         showToast(tc("saved"));
         load();
       } else {
@@ -250,7 +282,7 @@ export default function PropertiesPage() {
                   <span className="font-semibold text-base text-neutral-900 dark:text-neutral-100">
                     {formatCurrency(p.night_price, p.currency)}
                   </span>
-                  <span className="text-xs text-neutral-400">/noche</span>
+                  <span className="text-xs text-neutral-400">/{t("perNight")}</span>
                 </div>
 
                 <div className="flex items-center gap-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
@@ -373,6 +405,20 @@ export default function PropertiesPage() {
                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
+              </div>
+
+              {/* Currency */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("currency")}</label>
+                <select
+                  value={form.currency}
+                  onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {CURRENCY_OPTIONS.map(c => (
+                    <option key={c.code} value={c.code}>{c.label}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Pricing row */}

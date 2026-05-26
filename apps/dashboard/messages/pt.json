@@ -4281,7 +4281,12 @@
     "addPhoto": "Adicionar foto",
     "syncAvailability": "Sincronize sua disponibilidade",
     "syncAvailabilityDesc": "Conecte Airbnb ou Booking.com para evitar reservas duplicadas",
-    "connect": "Conectar"
+    "connect": "Conectar",
+    "currency": "Moeda",
+    "deleteProperty": "Excluir propriedade",
+    "deletePropertyConfirm": "Esta propriedade será desativada e ocultada. As reservas existentes serão mantidas.",
+    "deleting": "Excluindo...",
+    "perNight": "noite"
   },
   "verticalEmptyStates": {
     "salud": {

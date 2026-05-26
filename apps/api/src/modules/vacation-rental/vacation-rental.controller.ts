@@ -179,7 +179,7 @@ export class VacationRentalController {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM ical_feeds WHERE property_id = $1::uuid ORDER BY created_at DESC`,
+            `SELECT * FROM ical_feeds WHERE property_id = $1::uuid AND is_active = true ORDER BY created_at DESC`,
             [propertyId],
         );
         return { success: true, data };

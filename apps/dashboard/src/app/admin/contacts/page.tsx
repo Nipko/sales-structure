@@ -40,7 +40,10 @@ import {
     Instagram,
     Send as SendIcon,
     SlidersHorizontal,
+    FileSpreadsheet,
+    UploadCloud,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 const segmentStyles: Record<string, string> = {
     new: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
@@ -66,6 +69,7 @@ export default function ContactsPage() {
     const [loading, setLoading] = useState(true);
     const [showImportModal, setShowImportModal] = useState(false);
     const [showFormatGuide, setShowFormatGuide] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const [csvContent, setCsvContent] = useState("");
     const [importResult, setImportResult] = useState<any>(null);
     const [importing, setImporting] = useState(false);
@@ -200,20 +204,61 @@ export default function ContactsPage() {
         }
     };
 
+    const handleExcelUpload = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e: any) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: "array" });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                // Convert the sheet to CSV string
+                const csv = XLSX.utils.sheet_to_csv(worksheet);
+                setCsvContent(csv);
+                showToast("Archivo cargado con éxito");
+            } catch (err) {
+                console.error("Failed to parse Excel file:", err);
+                showToast("Error al procesar el archivo Excel");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     const handleExport = async () => {
         if (!activeTenantId) return;
         setExporting(true);
         try {
-            const result = await api.fetch(`/crm/export/${activeTenantId}`);
-            const blob = new Blob([typeof result === "string" ? result : JSON.stringify(result)], { type: "text/csv" });
+            const csvData = await api.fetch(`/crm/export/${activeTenantId}`);
+            if (typeof csvData !== "string") throw new Error("Invalid data returned");
+
+            // Parse CSV text to SheetJS workbook
+            const workbook = XLSX.read(csvData, { type: "string", raw: true });
+            
+            // Format sheet styles or rename sheet to 'Contactos'
+            const originalSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[originalSheetName];
+            
+            // If the worksheet exists, set title beautifully
+            if (worksheet) {
+                workbook.SheetNames[0] = "Contactos";
+                workbook.Sheets["Contactos"] = worksheet;
+                delete workbook.Sheets[originalSheetName];
+            }
+
+            // Generate clean .xlsx binary buffer
+            const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+            const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+            
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `contactos_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.download = `contactos_${new Date().toISOString().slice(0, 10)}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
+            showToast("Exportado correctamente en Excel");
         } catch (err) {
             console.error("Export failed:", err);
+            showToast(tc("errorSaving"));
         } finally {
             setExporting(false);
         }
@@ -221,12 +266,28 @@ export default function ContactsPage() {
 
     const handleDownloadTemplate = async () => {
         try {
-            const result = await api.fetch("/crm/import-template");
-            const blob = new Blob([typeof result === "string" ? result : JSON.stringify(result)], { type: "text/csv" });
+            const templateCsv = await api.fetch("/crm/import-template");
+            if (typeof templateCsv !== "string") throw new Error("Invalid template data");
+
+            // Parse and convert template CSV to SheetJS workbook
+            const workbook = XLSX.read(templateCsv, { type: "string" });
+            
+            // Rename sheet to 'Plantilla de Importación'
+            const originalSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[originalSheetName];
+            if (worksheet) {
+                workbook.SheetNames[0] = "Plantilla CRM";
+                workbook.Sheets["Plantilla CRM"] = worksheet;
+                delete workbook.Sheets[originalSheetName];
+            }
+
+            const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+            const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+            
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "plantilla_contactos.csv";
+            a.download = "plantilla_contactos.xlsx";
             a.click();
             URL.revokeObjectURL(url);
         } catch (err) {
@@ -843,27 +904,71 @@ export default function ContactsPage() {
             {/* Import CSV Modal */}
             {showImportModal && (
                 <div
-                    onClick={() => setShowImportModal(false)}
+                    onClick={() => {
+                        setShowImportModal(false);
+                        setShowFormatGuide(false);
+                    }}
                     className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
                 >
                     <div
                         onClick={e => e.stopPropagation()}
-                        className="max-h-[85vh] w-[550px] overflow-auto rounded-xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900 shadow-2xl"
+                        className="max-h-[90vh] w-[550px] overflow-auto rounded-2xl border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-neutral-900 shadow-2xl transition-all duration-300"
                     >
                         <div className="mb-5 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t('importModal.title')}</h2>
+                            <h2 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+                                <FileSpreadsheet className="text-indigo-600 dark:text-indigo-400" size={20} />
+                                {t('importModal.title')}
+                            </h2>
                             <button
                                 onClick={() => {
                                     setShowImportModal(false);
                                     setShowFormatGuide(false);
                                 }}
-                                className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                                className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
                             >
                                 <X size={18} />
                             </button>
                         </div>
 
-                        <div className="mb-4 flex items-center justify-between">
+                        {/* File Dropzone */}
+                        <div
+                            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                            onDragLeave={() => setIsDragging(false)}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                setIsDragging(false);
+                                const file = e.dataTransfer.files?.[0];
+                                if (file) handleExcelUpload(file);
+                            }}
+                            className={cn(
+                                "flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-7 text-center cursor-pointer transition-all duration-200 select-none",
+                                isDragging
+                                    ? "border-indigo-500 bg-indigo-50/40 dark:border-indigo-400 dark:bg-indigo-950/10 shadow-inner"
+                                    : "border-neutral-200 bg-neutral-50/30 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/30"
+                            )}
+                            onClick={() => {
+                                const input = document.createElement("input");
+                                input.type = "file";
+                                input.accept = ".xlsx,.xls,.csv";
+                                input.onchange = (e: any) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleExcelUpload(file);
+                                };
+                                input.click();
+                            }}
+                        >
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-3 shadow-sm">
+                                <UploadCloud size={22} />
+                            </div>
+                            <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                                Arrastra tu archivo de Excel (.xlsx, .xls) o CSV aquí
+                            </span>
+                            <span className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-2 font-normal">
+                                O haz clic para buscar en tus archivos
+                            </span>
+                        </div>
+
+                        <div className="mt-3.5 mb-4 flex items-center justify-between">
                             <button
                                 onClick={handleDownloadTemplate}
                                 className="border-none bg-transparent p-0 text-xs font-semibold text-indigo-600 underline hover:text-indigo-700 dark:text-indigo-400"
@@ -873,10 +978,10 @@ export default function ContactsPage() {
                         </div>
 
                         {/* Visual Help Legend / Formatting Guide */}
-                        <div className="mb-4 rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-950/20">
+                        <div className="mb-5 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-950/10">
                             <button
                                 onClick={() => setShowFormatGuide(!showFormatGuide)}
-                                className="flex w-full items-center justify-between px-4 py-3 text-xs font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100/50 dark:hover:bg-neutral-800/40 rounded-lg transition-colors outline-none"
+                                className="flex w-full items-center justify-between px-4 py-3 text-xs font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100/50 dark:hover:bg-neutral-800/40 rounded-xl transition-colors outline-none"
                             >
                                 <span className="flex items-center gap-1.5">
                                     💡 {t('importModal.formatGuideTitle')}
@@ -919,33 +1024,45 @@ export default function ContactsPage() {
                             )}
                         </div>
 
+                        {/* Divider */}
+                        <div className="flex items-center my-4">
+                            <div className="flex-grow border-t border-neutral-100 dark:border-neutral-800" />
+                            <span className="flex-shrink mx-3.5 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider select-none">
+                                O copia y pega tus celdas directamente
+                            </span>
+                            <div className="flex-grow border-t border-neutral-100 dark:border-neutral-800" />
+                        </div>
+
                         <textarea
                             value={csvContent}
                             onChange={e => setCsvContent(e.target.value)}
                             placeholder={t('importModal.placeholder')}
-                            rows={7}
-                            className="w-full resize-y rounded-lg border border-neutral-200 bg-neutral-50 p-3 font-mono text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+                            rows={5}
+                            className="w-full resize-y rounded-xl border border-neutral-200 bg-neutral-50 p-3.5 font-mono text-xs text-neutral-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
                         />
 
                         {importResult && (
                             <div className={cn(
-                                "mt-3 rounded-lg border p-3 text-xs",
+                                "mt-3.5 rounded-xl border p-3.5 text-xs",
                                 importResult.success
                                     ? "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-400"
                                     : "border-red-200 bg-red-50 text-red-600 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-400"
                             )}>
                                 {importResult.success ? (
                                     <div>
-                                        {t('importModal.imported')}: {importResult.imported ?? 0} |
-                                        {' '}{t('importModal.skipped')}: {importResult.skipped ?? 0} |
-                                        {' '}{t('importResult.errors.length') || (importResult.errors && importResult.errors.length) || 0}
+                                        <strong>¡Importación completada con éxito!</strong>
+                                        <div className="mt-1.5 text-neutral-600 dark:text-neutral-300 space-y-0.5">
+                                            <div>✅ {t('importModal.imported')}: {importResult.imported ?? 0}</div>
+                                            <div>⏭️ {t('importModal.skipped')}: {importResult.skipped ?? 0}</div>
+                                            <div>⚠️ {t('importResult.errors.length') || (importResult.errors && importResult.errors.length) || 0} errores encontrados.</div>
+                                        </div>
                                         {importResult.errors && importResult.errors.length > 0 && (
-                                            <ul className="mt-1.5 list-disc pl-4 text-[10px] text-red-500 space-y-0.5">
+                                            <ul className="mt-2.5 list-disc pl-4 text-[10px] text-red-500 space-y-1">
                                                 {importResult.errors.slice(0, 5).map((err: string, idx: number) => (
                                                     <li key={idx}>{err}</li>
                                                 ))}
                                                 {importResult.errors.length > 5 && (
-                                                    <li>... y {importResult.errors.length - 5} errores más.</li>
+                                                    <li className="list-none font-semibold text-neutral-400 mt-1">... y {importResult.errors.length - 5} errores más.</li>
                                                 )}
                                             </ul>
                                         )}
@@ -959,7 +1076,7 @@ export default function ContactsPage() {
                         <Button
                             onClick={handleImport}
                             disabled={importing || !csvContent.trim()}
-                            className="mt-4 w-full rounded-lg bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                            className="mt-5 w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 press-effect h-10 border-none"
                         >
                             {importing ? t('importModal.importing') : t('importModal.import')}
                         </Button>

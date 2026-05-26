@@ -42,24 +42,24 @@ export interface PersonaConfig {
       enabled: boolean;
       canCheckStock?: boolean;
     };
-    faqs?: {
-      enabled: boolean;
-    };
-    policies?: {
-      enabled: boolean;
-    };
-    knowledge?: {
-      enabled: boolean;
-    };
-    orders?: {
-      enabled: boolean;
-    };
-    offers?: {
-      enabled: boolean;
-    };
-    crm?: {
-      enabled: boolean;
-    };
+    faqs?: { enabled: boolean };
+    policies?: { enabled: boolean };
+    knowledge?: { enabled: boolean };
+    orders?: { enabled: boolean };
+    offers?: { enabled: boolean };
+    crm?: { enabled: boolean };
+    properties?: { enabled: boolean };
+    tours?: { enabled: boolean };
+    treatments?: { enabled: boolean };
+    realEstate?: { enabled: boolean };
+    pets?: { enabled: boolean };
+    restaurants?: { enabled: boolean };
+    gyms?: { enabled: boolean };
+    education?: { enabled: boolean };
+    insurance?: { enabled: boolean };
+    homeServices?: { enabled: boolean };
+    petServices?: { enabled: boolean };
+    photography?: { enabled: boolean };
   };
   industry: string;
   language: string;

@@ -3,8 +3,15 @@
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Calendar, Wrench, AlertTriangle, CheckCircle, ShoppingBag, HelpCircle, Scale, BookOpen, Sliders, Tag, Package, UserCircle } from "lucide-react";
+import {
+  Calendar, AlertTriangle, CheckCircle, ShoppingBag, HelpCircle,
+  Scale, BookOpen, Sliders, Tag, Package, UserCircle,
+  Home, Compass, HeartPulse, Building2, Stethoscope,
+  UtensilsCrossed, Dumbbell, GraduationCap, ShieldCheck,
+  Wrench, Scissors, Camera, ChevronDown,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
 import type { PersonaConfig } from "../_types";
 
 interface CapabilitiesSectionProps {
@@ -13,10 +20,28 @@ interface CapabilitiesSectionProps {
   apptReadiness: { services: number; slots: number; loaded: boolean };
 }
 
+type ToolKey = keyof NonNullable<PersonaConfig["tools"]>;
+
+const INDUSTRY_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
+  { key: "properties",   industries: ["turismo"],                          icon: Home },
+  { key: "tours",        industries: ["turismo", "agencia_viajes"],        icon: Compass },
+  { key: "treatments",   industries: ["salud"],                            icon: HeartPulse },
+  { key: "realEstate",   industries: ["inmobiliaria"],                     icon: Building2 },
+  { key: "pets",         industries: ["veterinaria"],                      icon: Stethoscope },
+  { key: "restaurants",  industries: ["restaurantes"],                     icon: UtensilsCrossed },
+  { key: "gyms",         industries: ["gimnasios"],                        icon: Dumbbell },
+  { key: "education",    industries: ["education", "educacion"],           icon: GraduationCap },
+  { key: "insurance",    industries: ["seguros"],                          icon: ShieldCheck },
+  { key: "homeServices", industries: ["servicios_hogar"],                  icon: Wrench },
+  { key: "petServices",  industries: ["pet_services", "servicios_mascotas"], icon: Scissors },
+  { key: "photography",  industries: ["fotografia"],                       icon: Camera },
+];
+
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
   const t = useTranslations("agent.capabilities");
   const tools = config.tools || { appointments: { enabled: false, canBook: true, canCancel: true } };
   const apt = tools.appointments || { enabled: false, canBook: true, canCancel: true };
+  const industry = config.industry || "general";
 
   const canEnableAppointments = apptReadiness.loaded && apptReadiness.services > 0 && apptReadiness.slots > 0;
   const missingItems: string[] = [];
@@ -30,7 +55,15 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
     });
   }
 
-  // Status badge
+  function toggleTool(key: ToolKey, value: boolean) {
+    onChange({
+      tools: { ...tools, [key]: { ...(tools[key] as any ?? { enabled: false }), enabled: value } },
+    });
+  }
+
+  const industryTools = INDUSTRY_TOOLS.filter(t => t.industries.includes(industry));
+  const otherTools = INDUSTRY_TOOLS.filter(t => !t.industries.includes(industry));
+
   let statusBadge: React.ReactNode;
   if (apt.enabled && canEnableAppointments) {
     statusBadge = (
@@ -91,7 +124,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </button>
         </div>
 
-        {/* Prerequisites checklist */}
         {apptReadiness.loaded && (
           <div className="flex gap-3 mt-3 text-xs">
             <span className={cn(
@@ -111,7 +143,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
         )}
 
-        {/* Warning when missing prerequisites */}
         {apptReadiness.loaded && !canEnableAppointments && (
           <div className={cn(
             "flex items-start gap-2 p-3 rounded-lg border mt-3",
@@ -133,7 +164,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           </div>
         )}
 
-        {/* Sub-options when enabled */}
         {apt.enabled && (
           <div className="space-y-2.5 border-t border-neutral-100 dark:border-neutral-800 pt-3 mt-3">
             <label className="flex items-center gap-3 cursor-pointer">
@@ -164,7 +194,34 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         )}
       </div>
 
-      {/* Catalog tools */}
+      {/* ── Industry-specific tools ── */}
+      {industryTools.length > 0 && (
+        <>
+          <div className="pt-2">
+            <p className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-2">
+              {t("industryToolsTitle")}
+            </p>
+          </div>
+          {industryTools.map(({ key, icon }) => (
+            <ToolToggleCard
+              key={key}
+              icon={icon}
+              title={t(`vt_${key}_title`)}
+              description={t(`vt_${key}_desc`)}
+              enabled={(tools[key] as any)?.enabled === true}
+              onToggle={(v) => toggleTool(key, v)}
+            />
+          ))}
+        </>
+      )}
+
+      {/* ── Universal tools ── */}
+      <div className="pt-2">
+        <p className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-2">
+          {t("universalToolsTitle")}
+        </p>
+      </div>
+
       <ToolToggleCard
         icon={ShoppingBag}
         title={t("catalogTitle")}
@@ -173,7 +230,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         onToggle={(v) => onChange({ tools: { ...tools, catalog: { ...(tools.catalog ?? { enabled: false }), enabled: v } } })}
       />
 
-      {/* FAQs */}
       <ToolToggleCard
         icon={HelpCircle}
         title={t("faqsTitle")}
@@ -182,7 +238,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         onToggle={(v) => onChange({ tools: { ...tools, faqs: { enabled: v } } })}
       />
 
-      {/* Policies */}
       <ToolToggleCard
         icon={Scale}
         title={t("policiesTitle")}
@@ -191,7 +246,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })}
       />
 
-      {/* Active offers / promotions */}
       <ToolToggleCard
         icon={Tag}
         title={t("offersTitle")}
@@ -200,7 +254,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })}
       />
 
-      {/* Customer order history */}
       <ToolToggleCard
         icon={Package}
         title={t("ordersTitle")}
@@ -209,7 +262,6 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         onToggle={(v) => onChange({ tools: { ...tools, orders: { enabled: v } } })}
       />
 
-      {/* CRM context (lead score, tags, stage) */}
       <ToolToggleCard
         icon={UserCircle}
         title={t("crmTitle")}
@@ -218,8 +270,57 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })}
       />
 
-      {/* Knowledge Base (RAG) */}
       <KnowledgeSection config={config} onChange={onChange} t={t} />
+
+      {/* ── Other vertical tools (collapsed) ── */}
+      {otherTools.length > 0 && (
+        <OtherVerticalTools tools={tools} otherTools={otherTools} toggleTool={toggleTool} t={t} />
+      )}
+    </div>
+  );
+}
+
+function OtherVerticalTools({
+  tools, otherTools, toggleTool, t,
+}: {
+  tools: NonNullable<PersonaConfig["tools"]>;
+  otherTools: typeof INDUSTRY_TOOLS;
+  toggleTool: (key: ToolKey, value: boolean) => void;
+  t: any;
+}) {
+  const [open, setOpen] = useState(false);
+  const anyEnabled = otherTools.some(({ key }) => (tools[key] as any)?.enabled === true);
+
+  return (
+    <div className="pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wide hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors w-full"
+      >
+        <ChevronDown size={14} className={cn("transition-transform", open && "rotate-180")} />
+        {t("otherToolsTitle")}
+        {anyEnabled && (
+          <span className="ml-1 text-[10px] normal-case font-medium text-indigo-500">
+            ({otherTools.filter(({ key }) => (tools[key] as any)?.enabled === true).length} {t("activeCount")})
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="space-y-3 mt-3">
+          {otherTools.map(({ key, icon }) => (
+            <ToolToggleCard
+              key={key}
+              icon={icon}
+              title={t(`vt_${key}_title`)}
+              description={t(`vt_${key}_desc`)}
+              enabled={(tools[key] as any)?.enabled === true}
+              onToggle={(v) => toggleTool(key, v)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -160,6 +160,8 @@ export class AppointmentsService {
         // Validate assignedTo is a valid UUID (callers may pass a name instead of ID)
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const assignedToUuid = data.assignedTo && uuidRe.test(data.assignedTo) ? data.assignedTo : null;
+        const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
+        const conversationIdUuid = data.conversationId && uuidRe.test(data.conversationId) ? data.conversationId : null;
 
         if (assignedToUuid) {
             const conflict = await this.checkConflict(schemaName, assignedToUuid, data.startAt, data.endAt);
@@ -172,7 +174,7 @@ export class AppointmentsService {
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO appointments (id, contact_id, conversation_id, assigned_to, service_name, start_at, end_at, location, notes, metadata, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp, $8, $9, $10::jsonb, NOW(), NOW())`,
-            [id, data.contactId || null, data.conversationId || null, assignedToUuid,
+            [id, contactIdUuid, conversationIdUuid, assignedToUuid,
              data.serviceName, data.startAt, data.endAt, data.location || null, data.notes || null,
              JSON.stringify(data.metadata || {})],
         );
@@ -299,6 +301,10 @@ export class AppointmentsService {
             const startIso = instanceStart.toISOString();
             const endIso = instanceEnd.toISOString();
 
+            const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
+            const assignedToUuid = data.assignedTo && uuidRe.test(data.assignedTo) ? data.assignedTo : null;
+
             try {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `INSERT INTO appointments (id, contact_id, assigned_to, service_name, start_at, end_at,
@@ -306,7 +312,7 @@ export class AppointmentsService {
                      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::timestamp, $6::timestamp,
                         $7, $8, $9::jsonb, $10::uuid, $11::jsonb, NOW(), NOW())`,
                     [
-                        id, data.contactId || null, data.assignedTo || null,
+                        id, contactIdUuid, assignedToUuid,
                         data.serviceName, startIso, endIso,
                         data.location || null, data.notes || null,
                         JSON.stringify(data.metadata || {}),

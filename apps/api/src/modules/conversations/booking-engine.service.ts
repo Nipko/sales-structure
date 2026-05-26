@@ -15,15 +15,29 @@ import { InterpretedIntent } from './intent-interpreter.service';
  */
 
 /** Booking engine messages in 4 languages */
-const MESSAGES: Record<string, Record<string, string>> = {
+const MESSAGES: Record<string, Record<string, string | string[]>> = {
     es: {
-        serviceSelected: '{service} seleccionado. ¿Qué fecha te queda bien?',
-        switchedService: 'Cambiamos a {service}. ¿Qué fecha te queda bien?',
+        serviceSelected: [
+            '{service} seleccionado. ¿Qué fecha te queda bien?',
+            '¡Excelente elección! Reservaremos {service}. ¿Qué día te gustaría agendar?',
+            'Listo, he seleccionado {service} para ti. ¿Para qué fecha deseas la cita?',
+            'Perfecto, agendaremos {service}. Cuéntame, ¿qué día te viene mejor?'
+        ],
+        switchedService: [
+            'Cambiamos a {service}. ¿Qué fecha te queda bien?',
+            'Entendido, cambiamos al servicio {service}. ¿Qué día prefieres para la cita?',
+            'Listo, ahora estamos agendando {service}. ¿Qué fecha te gustaría?'
+        ],
         cancelled: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarte?',
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál te interesa?',
         slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefieres?',
-        noAvailability: 'No hay disponibilidad el {date}. ¿Te gustaría probar otra fecha?',
+        noAvailability: [
+            'No hay disponibilidad el {date}. ¿Te gustaría probar otra fecha?',
+            'El {date} ya está completamente lleno. ¿Qué tal si intentamos con otro día?',
+            'Lamentablemente no tenemos horarios libres el {date}. ¿Te sirve alguna otra fecha?',
+            'Disculpa, no encontré espacios el {date}. ¿Qué otro día te gustaría intentar?'
+        ],
         slotUnavailable: 'El horario de las {time} no está disponible. Horarios disponibles: {slots}. ¿Cuál te funciona?',
         askName: '{time} seleccionado para {service}. ¿Cuál es tu nombre completo?',
         askEmail: '¡Gracias {name}! Necesito tu correo electrónico para la invitación del calendario.',
@@ -33,7 +47,12 @@ const MESSAGES: Record<string, Record<string, string>> = {
         btnCancel: 'Cancelar',
         booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\nInvitación enviada a: {email}\n¿Algo más?',
         bookingError: 'Error al crear la cita: {error}. ¿Probamos otro horario?',
-        askDate: '¿Qué fecha te gustaría para {service}?',
+        askDate: [
+            '¿Qué fecha te gustaría para {service}?',
+            '¿Para qué día quieres programar {service}?',
+            '¿Qué fecha tienes disponible en tu agenda para {service}?',
+            'Dime qué día te queda mejor para {service} y revisamos horarios.'
+        ],
         whichTime: '¿Cuál horario? {slots}',
         whichName: '¿Cuál es tu nombre completo?',
         whichEmail: '¿Cuál es tu correo electrónico?',
@@ -118,7 +137,16 @@ const MESSAGES: Record<string, Record<string, string>> = {
 function msg(lang: string, key: string, vars: Record<string, string> = {}): string {
     const langCode = (lang || 'es').substring(0, 2).toLowerCase();
     const msgs = MESSAGES[langCode] || MESSAGES['es'];
-    let text = msgs[key] || MESSAGES['es'][key] || key;
+    const val = msgs[key] || MESSAGES['es'][key] || key;
+    
+    let text = '';
+    if (Array.isArray(val)) {
+        const idx = Math.floor(Math.random() * val.length);
+        text = val[idx];
+    } else {
+        text = val;
+    }
+
     for (const [k, v] of Object.entries(vars)) {
         text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
     }
@@ -288,13 +316,20 @@ export class BookingEngineService {
             // If the extracted date is before today, reset it so the bot re-asks.
             if (intent.dateMentioned < todayDate) {
                 this.logger.warn(`[Decide] dateMentioned=${intent.dateMentioned} is in the past (today=${todayDate}) — ignoring`);
-                // Don't apply the date; if slots are stale from a previous date, clear them too
-                if (state.date && state.date < todayDate) {
-                    state.date = undefined;
-                    state.slots = undefined;
-                    state.time = undefined;
-                    state.step = 'ask_date';
-                }
+                // Clear state values so they don't persist
+                state.date = undefined;
+                state.slots = undefined;
+                state.time = undefined;
+                state.step = 'ask_date';
+
+                // Return a friendly feedback message to explain the past date error
+                const pastDateMsgs = [
+                    `Disculpa, el ${intent.dateMentioned} ya pasó. 🗓️ ¿Qué otra fecha futura te gustaría seleccionar?`,
+                    `Esa fecha ya ha pasado. Por favor, selecciona una fecha a partir de hoy para tu cita.`,
+                    `Parece que el ${intent.dateMentioned} es una fecha del pasado. ¿Qué otro día te queda mejor?`
+                ];
+                const text = pastDateMsgs[Math.floor(Math.random() * pastDateMsgs.length)];
+                return { handled: true, state, text };
             } else {
                 // Date changed → clear slots so availability is re-checked
                 if (state.date && state.date !== intent.dateMentioned) {
@@ -340,7 +375,9 @@ export class BookingEngineService {
         if (intent.emailProvided) state.customerEmail = intent.emailProvided;
 
         // ── Auto-select single service ──
-        if (!state.serviceId && state.services?.length === 1 && (intent.isConfirmation || intent.intent === 'ask_availability')) {
+        const hasDateOrTime = !!(intent.dateMentioned || intent.timeMentioned);
+        const isBookingTrigger = intent.isConfirmation || intent.intent === 'select_service' || (intent.intent === 'ask_availability' && hasDateOrTime);
+        if (!state.serviceId && state.services?.length === 1 && isBookingTrigger) {
             state.serviceId = state.services[0].id;
             state.serviceName = state.services[0].name;
             this.logger.log(`[Decide] Auto-selected single service: ${state.serviceName}`);

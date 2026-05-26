@@ -315,10 +315,16 @@ export class HandoffService {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
         await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET status = 'active', assigned_to = NULL, updated_at = NOW() WHERE id = $1::uuid`,
+            `UPDATE conversations
+             SET status = 'active',
+                 assigned_to = NULL,
+                 metadata = COALESCE(metadata, '{}'::jsonb) - 'bookingState' - 'bookingStateUpdatedAt' - 'toolContext' - 'toolContextUpdatedAt',
+                 updated_at = NOW()
+             WHERE id = $1::uuid`,
             [conversationId],
         );
 
+        await this.redis.del(`booking:${conversationId}`).catch(() => {});
         await this.redis.del(`handoff:${tenantId}:${conversationId}`);
 
         this.eventEmitter.emit('handoff.completed', { tenantId, conversationId });

@@ -381,10 +381,13 @@ export class AgentConsoleService {
                      COALESCE(metadata, '{}'::jsonb),
                      '{failedAttempts}',
                      '0'::jsonb
-                 )
+                 ) - 'bookingState' - 'bookingStateUpdatedAt' - 'toolContext' - 'toolContextUpdatedAt'
              WHERE id = $1::uuid`,
             [conversationId],
         );
+
+        // Clear Redis booking state
+        await this.redis.del(`booking:${conversationId}`).catch(() => {});
 
         // Mark the active assignment as resolved
         await this.prisma.executeInTenantSchema(

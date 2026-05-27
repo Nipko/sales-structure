@@ -501,7 +501,9 @@ export class WhatsappController {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 
-    this.webhookService.handleWebhookPayload(payload).catch(console.error);
+    this.webhookService.handleWebhookPayload(payload).catch(err => {
+      this.logger.error(`Webhook processing failed: ${err.message}`, err.stack);
+    });
     return 'EVENT_RECEIVED';
   }
 }

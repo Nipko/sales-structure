@@ -92,7 +92,7 @@ export class LLMRouterService {
 
         const failKey = `llm:health:${provider}:failures`;
         this.redis.incrBy(failKey, 1).then(count => {
-            this.redis.expire(failKey, 600).catch(() => {});
+            this.redis.expire(failKey, 600).catch(e => this.logger.warn(`Redis expire failed for ${failKey}: ${e.message}`));
             if (count === 3 || count === 10 || count === 25) {
                 this.eventEmitter.emit('llm.provider.alert', {
                     provider,
@@ -102,7 +102,7 @@ export class LLMRouterService {
                     timestamp: new Date().toISOString(),
                 });
             }
-        }).catch(() => {});
+        }).catch(e => this.logger.warn(`Redis circuit breaker tracking failed for ${provider}: ${e.message}`));
     }
 
     private async buildCandidates(
@@ -168,7 +168,7 @@ export class LLMRouterService {
                     }
 
                     this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
-                    this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(() => {});
+                    this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
 
                     const decision: RoutingDecision = {
                         selectedTier: candidate.tier,
@@ -190,7 +190,7 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
-                    this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(() => {});
+                    this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
                     this.markProviderUnhealthy(candidate.provider, err.message);
                     lastError = err;
                     this.logger.warn(`[LLM] ${candidate.provider}/${candidate.id} failed: ${err.message} — trying next`);
@@ -228,11 +228,11 @@ export class LLMRouterService {
             const response = await provider.generate(reqOptions);
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
-            this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(() => {});
+            this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
-            this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(() => {});
+            this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             throw e;
         }
     }

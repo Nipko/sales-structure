@@ -653,7 +653,8 @@
     "errorSnooze": "No se pudo posponer la conversación. Intenta de nuevo.",
     "errorArchive": "No se pudo archivar la conversación. Intenta de nuevo.",
     "errorDelete": "No se pudo eliminar la conversación. Intenta de nuevo.",
-    "errorMacro": "No se pudo ejecutar la macro. Intenta de nuevo."
+    "errorMacro": "No se pudo ejecutar la macro. Intenta de nuevo.",
+    "errorAssign": "No se pudo asignar la conversacion. Intenta de nuevo."
   },
   "settings": {
     "title": "Configuración",
@@ -1774,6 +1775,7 @@
     "loading": "Cargando...",
     "customizeStages": "Personalizar etapas",
     "movedTo": "Oportunidad movida a {stage}",
+    "errorMoving": "No se pudo mover la oportunidad. Intenta de nuevo.",
     "kpi": {
       "totalValue": "Valor total",
       "weighted": "Ponderado",

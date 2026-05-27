@@ -79,6 +79,8 @@ export default function ContactsPage() {
     const [creating, setCreating] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+    const [reloadTrigger, setReloadTrigger] = useState(0);
+    const triggerReload = () => setReloadTrigger(n => n + 1);
 
     // Bulk selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -166,7 +168,7 @@ export default function ContactsPage() {
             }
         }
         load();
-    }, [activeTenantId, buildFilterQuery]);
+    }, [activeTenantId, buildFilterQuery, reloadTrigger]);
 
     const segments = [
         { key: "all", label: t('segments.all'), count: contacts.length },
@@ -197,6 +199,9 @@ export default function ContactsPage() {
                 body: JSON.stringify({ csvContent }),
             });
             setImportResult(result);
+            if (result?.success) {
+                triggerReload();
+            }
         } catch (err) {
             setImportResult({ success: false, error: tc("errorSaving") });
         } finally {
@@ -514,19 +519,7 @@ export default function ContactsPage() {
                                     setBulkAction("");
                                     setBulkPayload("");
                                     showToast(tc("saved"));
-                                    // Reload
-                                    const data = await api.fetch(`/crm/leads/${activeTenantId}`);
-                                    if (data.success && Array.isArray(data.data)) {
-                                        const mapped = data.data.map((l: any) => {
-                                            let seg = "new";
-                                            if (["calificado", "tibio", "caliente", "listo_cierre"].includes(l.stage)) seg = "qualified";
-                                            if (["ganado"].includes(l.stage)) seg = "customer";
-                                            if (["perdido", "no_interesado"].includes(l.stage)) seg = "churned";
-                                            if (["contactado", "respondio"].includes(l.stage)) seg = "lead";
-                                            return { id: l.id, name: `${l.first_name || ''} ${l.last_name || ''}`.trim() || 'Unknown', phone: l.phone || '', email: l.email || '', tags: l.tags?.map((tg: any) => tg.name) || [], segment: seg, conversations: 0, lifetimeValue: 0, lastInteraction: l.created_at ? new Date(l.created_at).toLocaleDateString() : '', city: l.company_name || '' };
-                                        });
-                                        setContacts(mapped);
-                                    }
+                                    triggerReload();
                                 } catch (err) {
                                     console.error("Bulk action failed:", err);
                                 } finally {
@@ -873,30 +866,7 @@ export default function ContactsPage() {
                                         setShowCreateModal(false);
                                         setCreateForm({ first_name: "", last_name: "", phone: "", email: "", stage: "nuevo" });
                                         showToast(tc("saved"));
-                                        // Reload
-                                        const data = await api.fetch(`/crm/leads/${activeTenantId}`);
-                                        if (data.success && Array.isArray(data.data)) {
-                                            const mappedLeads = data.data.map((l: any) => {
-                                                let segmentType = "new";
-                                                if (["calificado", "tibio", "caliente", "listo_cierre"].includes(l.stage)) segmentType = "qualified";
-                                                if (["ganado"].includes(l.stage)) segmentType = "customer";
-                                                if (["perdido", "no_interesado"].includes(l.stage)) segmentType = "churned";
-                                                if (["contactado", "respondio"].includes(l.stage)) segmentType = "lead";
-                                                return {
-                                                    id: l.id,
-                                                    name: `${l.first_name || ''} ${l.last_name || ''}`.trim() || 'Unknown',
-                                                    phone: l.phone || tc('noData'),
-                                                    email: l.email || '',
-                                                    tags: l.tags?.map((tg: any) => tg.name) || [],
-                                                    segment: segmentType,
-                                                    conversations: Number(l.conversations_count ?? 0),
-                                                    lifetimeValue: Number(l.lifetime_value ?? 0),
-                                                    lastInteraction: l.created_at ? new Date(l.created_at).toLocaleDateString(undefined) : t('noInteraction'),
-                                                    city: l.company_name || "",
-                                                };
-                                            });
-                                            setContacts(mappedLeads);
-                                        }
+                                        triggerReload();
                                     } catch (err) {
                                         console.error("Create lead failed:", err);
                                     } finally {

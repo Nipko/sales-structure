@@ -653,7 +653,8 @@
     "errorSnooze": "Failed to snooze conversation. Please try again.",
     "errorArchive": "Failed to archive conversation. Please try again.",
     "errorDelete": "Failed to delete conversation. Please try again.",
-    "errorMacro": "Failed to execute macro. Please try again."
+    "errorMacro": "Failed to execute macro. Please try again.",
+    "errorAssign": "Failed to assign conversation. Please try again."
   },
   "settings": {
     "title": "Settings",
@@ -1770,6 +1771,7 @@
     "loading": "Loading...",
     "customizeStages": "Customize stages",
     "movedTo": "Opportunity moved to {stage}",
+    "errorMoving": "Failed to move opportunity. Please try again.",
     "kpi": {
       "totalValue": "Total value",
       "weighted": "Weighted",

@@ -262,6 +262,7 @@ export default function InboxPage() {
     const [showNotes, setShowNotes] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [isLive, setIsLive] = useState(false);
+    const [socketConnected, setSocketConnected] = useState(true);
     const [loadingConv, setLoadingConv] = useState(true);
     // Tracks conversations whose contactAvatar URL failed to load (typical for
     // expired Instagram/Messenger CDN signatures). UI falls back to the
@@ -664,11 +665,13 @@ export default function InboxPage() {
         socket.on('connect', () => {
             console.log('Connected to Inbox live updates');
             setIsLive(true);
+            setSocketConnected(true);
         });
 
         socket.on('disconnect', () => {
             // Don't set isLive=false — data is still real, just temporarily disconnected.
             // The socket will auto-reconnect. Showing "DEMO" is misleading.
+            setSocketConnected(false);
         });
 
         socket.on('newMessage', (payload: any) => {
@@ -956,6 +959,7 @@ export default function InboxPage() {
             }
         } catch (err) {
             console.error('Failed to assign conversation:', err);
+            showInboxError(t("errorAssign"));
         } finally {
             setAssignLoading(false);
         }
@@ -1174,6 +1178,14 @@ export default function InboxPage() {
                         tips={tHelp.raw("inbox.tips") as string[]}
                     />
                 </div>
+
+                {/* Socket disconnected banner */}
+                {!socketConnected && (
+                    <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 animate-in fade-in slide-in-from-top-1">
+                        <Loader2 size={12} className="animate-spin flex-shrink-0" />
+                        <span>Conexion perdida — reconectando...</span>
+                    </div>
+                )}
 
                 {/* Conversation List */}
                 <div className="inbox-scrollbar flex-1 overflow-auto">

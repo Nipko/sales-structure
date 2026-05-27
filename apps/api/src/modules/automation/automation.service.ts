@@ -50,7 +50,15 @@ export class AutomationService {
                     // Parse actions_json safely
                     let actions = [];
                     if (typeof rule.actions_json === 'string') {
-                         try { actions = JSON.parse(rule.actions_json); } catch (e) { actions = []; }
+                         try { actions = JSON.parse(rule.actions_json); } catch (e: any) {
+                             this.logger.error(`[Automation] Rule '${rule.name}' has invalid actions_json: ${e.message}`);
+                             await this.prisma.executeInTenantSchema(
+                                 schemaName,
+                                 `UPDATE automation_executions SET status = 'failed', finished_at = CURRENT_TIMESTAMP, result_json = $2 WHERE id = $1::uuid`,
+                                 [execution[0].id, { error: `Invalid actions_json: ${e.message}` }],
+                             );
+                             continue;
+                         }
                     } else if (Array.isArray(rule.actions_json)) {
                          actions = rule.actions_json;
                     }

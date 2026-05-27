@@ -95,16 +95,21 @@ export class WhatsappWebhookService {
         const wabaId = entry?.id as string | undefined;
         const changes = entry?.changes ?? [];
         for (const change of changes) {
-          if (change?.field === 'messages') {
-            const value = change?.value;
-            const phoneNumberId = value?.metadata?.phone_number_id;
+          try {
+            if (change?.field === 'messages') {
+              const value = change?.value;
+              const phoneNumberId = value?.metadata?.phone_number_id;
 
-            if (phoneNumberId) {
-               await this.processMessageEvent(phoneNumberId, value);
-               handled = true;
+              if (phoneNumberId) {
+                 await this.processMessageEvent(phoneNumberId, value);
+                 handled = true;
+              }
+            } else if (change?.field === 'message_template_status_update' && wabaId) {
+              await this.processTemplateStatusEvent(wabaId, change.value);
+              handled = true;
             }
-          } else if (change?.field === 'message_template_status_update' && wabaId) {
-            await this.processTemplateStatusEvent(wabaId, change.value);
+          } catch (err: any) {
+            this.logger.error(`Webhook change processing failed (field=${change?.field}): ${err.message}`, err.stack);
             handled = true;
           }
         }
@@ -218,13 +223,16 @@ export class WhatsappWebhookService {
      // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
      if (messageText && this.complianceService.detectOptOut(messageText)) {
          this.logger.warn(`OptOut candidate from ${fromPhone}: "${messageText}" — pending admin review`);
-         this.complianceService.processOptOut(tenantId, {
-             phone: fromPhone,
-             channel: 'whatsapp',
-             triggerMessage: messageText,
-             detectedFrom: 'keyword',
-         }).catch(e => this.logger.error(`OptOut registration failed: ${e.message}`));
-         // Message continues to AI pipeline — admin reviews opt-out later
+         try {
+             await this.complianceService.processOptOut(tenantId, {
+                 phone: fromPhone,
+                 channel: 'whatsapp',
+                 triggerMessage: messageText,
+                 detectedFrom: 'keyword',
+             });
+         } catch (e: any) {
+             this.logger.error(`OptOut registration failed for ${fromPhone}: ${e.message}`, e.stack);
+         }
      }
 
      const contentType = msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type;
@@ -269,8 +277,8 @@ export class WhatsappWebhookService {
   private resolveAccessTokenAndMarkRead(tenantId: string, phoneNumberId: string, waMessageId: string): void {
       this.prisma.getTenantSchemaName(tenantId)
           .then(schemaName => this.whatsappConnection.getValidAccessToken(schemaName))
-          .then(creds => {
-              this.whatsappAdapter.markAsRead(phoneNumberId, waMessageId, creds.accessToken);
+          .then(async creds => {
+              await this.whatsappAdapter.markAsRead(phoneNumberId, waMessageId, creds.accessToken);
           })
           .catch(e => {
               this.logger.warn(`Could not send read receipt for ${waMessageId}: ${e.message}`);

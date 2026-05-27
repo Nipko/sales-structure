@@ -104,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     localStorage.removeItem("refreshToken");
                     localStorage.removeItem("user");
                     localStorage.removeItem("verticalConfig");
+                    localStorage.removeItem("impersonation");
                     router.push("/login?expired=1");
                 }
             };
@@ -440,6 +441,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
         localStorage.removeItem("verticalConfig");
+        localStorage.removeItem("impersonation");
         setUser(null);
         setVerticalConfig(null);
         if (kicked) {

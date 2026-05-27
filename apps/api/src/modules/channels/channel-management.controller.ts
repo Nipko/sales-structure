@@ -56,7 +56,11 @@ export class ChannelManagementController {
                     }
                 }
             }
-        } catch (e) { /* agent_personas table may not exist yet */ }
+        } catch (e: any) {
+            if (!e.message?.includes('does not exist') && !e.message?.includes('relation')) {
+                this.logger.warn(`Failed to load agent assignments: ${e.message}`);
+            }
+        }
 
         return {
             success: true,

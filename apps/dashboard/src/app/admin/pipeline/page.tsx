@@ -285,6 +285,8 @@ export default function PipelinePage() {
                                             setDraggedDeal(null);
                                             return;
                                         }
+                                        // Save snapshot for rollback
+                                        const kanbanSnapshot = kanban;
                                         // Optimistic update
                                         setKanban((prev: any) => {
                                             if (!prev) return prev;
@@ -315,6 +317,10 @@ export default function PipelinePage() {
                                             setTimeout(() => setToast(null), 2000);
                                         } catch (err) {
                                             console.error("Failed to move opportunity:", err);
+                                            // Rollback to previous state
+                                            setKanban(kanbanSnapshot);
+                                            setToast(t('errorMoving'));
+                                            setTimeout(() => setToast(null), 3000);
                                         }
                                     }
                                     setDragOverStage(null);

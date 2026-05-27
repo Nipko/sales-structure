@@ -653,7 +653,8 @@
     "errorSnooze": "Echec du report de la conversation. Veuillez reessayer.",
     "errorArchive": "Echec de l'archivage de la conversation. Veuillez reessayer.",
     "errorDelete": "Echec de la suppression de la conversation. Veuillez reessayer.",
-    "errorMacro": "Echec de l'execution de la macro. Veuillez reessayer."
+    "errorMacro": "Echec de l'execution de la macro. Veuillez reessayer.",
+    "errorAssign": "Echec de l'attribution de la conversation. Veuillez reessayer."
   },
   "settings": {
     "title": "Paramètres",
@@ -1770,6 +1771,7 @@
     "loading": "Chargement...",
     "customizeStages": "Personnaliser les étapes",
     "movedTo": "Opportunité déplacée vers {stage}",
+    "errorMoving": "Echec du deplacement de l'opportunite. Veuillez reessayer.",
     "kpi": {
       "totalValue": "Valeur totale",
       "weighted": "Pondéré",

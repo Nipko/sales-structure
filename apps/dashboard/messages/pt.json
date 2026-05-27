@@ -653,7 +653,8 @@
     "errorSnooze": "Falha ao adiar conversa. Tente novamente.",
     "errorArchive": "Falha ao arquivar conversa. Tente novamente.",
     "errorDelete": "Falha ao excluir conversa. Tente novamente.",
-    "errorMacro": "Falha ao executar macro. Tente novamente."
+    "errorMacro": "Falha ao executar macro. Tente novamente.",
+    "errorAssign": "Falha ao atribuir conversa. Tente novamente."
   },
   "settings": {
     "title": "Configurações",
@@ -1770,6 +1771,7 @@
     "loading": "Carregando...",
     "customizeStages": "Personalizar etapas",
     "movedTo": "Oportunidade movida para {stage}",
+    "errorMoving": "Falha ao mover oportunidade. Tente novamente.",
     "kpi": {
       "totalValue": "Valor total",
       "weighted": "Ponderado",

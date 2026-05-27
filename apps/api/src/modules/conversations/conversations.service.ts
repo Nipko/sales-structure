@@ -390,7 +390,7 @@ export class ConversationsService {
         } finally {
             // Release conversation lock
             if (lockAcquired) {
-                await this.redis.releaseLock(lockKey).catch(() => {});
+                await this.redis.releaseLock(lockKey).catch(e => this.logger.warn(`Lock release failed for ${lockKey}: ${e.message}`));
             }
         }
     }

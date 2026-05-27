@@ -80,6 +80,7 @@ export default function Lead360Page() {
     // Edit mode state
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [editForm, setEditForm] = useState<EditForm>({
         first_name: "",
         last_name: "",
@@ -126,18 +127,19 @@ export default function Lead360Page() {
                 setScoreData(scoreRes?.data);
             } catch (e) { /* non-critical */ }
 
-            // Load custom field definitions + values
+            // Load custom field definitions first, then values (sequential to avoid showing values without type definitions)
             try {
-                const [defsRes, valsRes] = await Promise.all([
-                    api.fetch(`/crm/custom-attributes/${tenantId}?entityType=lead`),
-                    api.fetch(`/crm/custom-attribute-values/${tenantId}/lead/${leadId}`),
-                ]);
+                const defsRes = await api.fetch(`/crm/custom-attributes/${tenantId}?entityType=lead`);
                 setCustomDefs(defsRes?.data || []);
-                const valMap: Record<string, any> = {};
-                for (const v of (valsRes?.data || [])) {
-                    valMap[v.definition_id] = v.value_text ?? v.value_number ?? v.value_boolean ?? v.value_date ?? v.value_json ?? '';
+
+                if (defsRes?.data?.length) {
+                    const valsRes = await api.fetch(`/crm/custom-attribute-values/${tenantId}/lead/${leadId}`);
+                    const valMap: Record<string, any> = {};
+                    for (const v of (valsRes?.data || [])) {
+                        valMap[v.definition_id] = v.value_text ?? v.value_number ?? v.value_boolean ?? v.value_date ?? v.value_json ?? '';
+                    }
+                    setCustomValues(valMap);
                 }
-                setCustomValues(valMap);
                 setCustomDirty(false);
             } catch (e) {
                 // Non-critical — custom fields may not exist yet
@@ -173,6 +175,7 @@ export default function Lead360Page() {
     const handleSave = async () => {
         if (!tenantId || !leadId) return;
         setSaving(true);
+        setSaveStatus('saving');
         try {
             const tagsArray = editForm.tags
                 .split(",")
@@ -191,9 +194,12 @@ export default function Lead360Page() {
                 }),
             });
             setEditing(false);
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2500);
             await load();
         } catch (e) {
             console.error("Error saving lead:", e);
+            setSaveStatus('error');
         } finally {
             setSaving(false);
         }
@@ -500,6 +506,14 @@ export default function Lead360Page() {
                                     className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
                                 />
                             </div>
+                        )}
+
+                        {/* Save status feedback */}
+                        {saveStatus === 'saved' && (
+                            <p className="mt-2 text-xs text-emerald-500 font-semibold">Guardado</p>
+                        )}
+                        {saveStatus === 'error' && (
+                            <p className="mt-2 text-xs text-red-500 font-semibold">Error al guardar. Intenta de nuevo.</p>
                         )}
 
                         {/* Save / Cancel buttons at bottom of card when editing */}

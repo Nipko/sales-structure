@@ -78,7 +78,9 @@ export class LeadsRepository {
             if (hasCol?.length) {
                 q += ` AND l.archived_at IS NULL`;
             }
-        } catch (e) { /* column check failed, skip filter */ }
+        } catch (e: any) {
+            this.logger.warn(`archived_at column check failed for schema ${schema}: ${e.message}`);
+        }
     }
     if (search) {
         q += ` AND (l.first_name ILIKE $${n} OR l.last_name ILIKE $${n} OR l.phone ILIKE $${n} OR l.email ILIKE $${n})`;
@@ -125,7 +127,6 @@ export class LeadsRepository {
       FROM leads l
       LEFT JOIN contact_identities ci ON ci.contact_id = l.contact_id
       WHERE 1=1`;
-    // Safe: only filter archived if column exists (handled by the same check above)
     if (!includeArchived) {
         try {
             const hasCol2 = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -133,7 +134,9 @@ export class LeadsRepository {
                 [schema],
             );
             if (hasCol2?.length) countQ += ` AND l.archived_at IS NULL`;
-        } catch (e) { /* skip */ }
+        } catch (e: any) {
+            this.logger.warn(`archived_at column check failed for count query (schema ${schema}): ${e.message}`);
+        }
     }
     const total = await this.prisma.executeInTenantSchema<any[]>(schema, countQ, []);
 
@@ -316,16 +319,22 @@ export class LeadsRepository {
           `INSERT INTO tags (name, color) VALUES ($1, '#6366f1') ON CONFLICT (name) DO NOTHING`,
           [tagName.trim()],
         );
-        // Add tag to all selected leads
+        // Add tag to all selected leads, tracking actual successes
+        let taggedCount = 0;
         for (const leadId of leadIds) {
-          await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO lead_tags (lead_id, tag_id)
-             SELECT $1::uuid, t.id FROM tags t WHERE t.name = $2
-             ON CONFLICT DO NOTHING`,
-            [leadId, tagName.trim()],
-          );
+          try {
+            await this.prisma.executeInTenantSchema(schema,
+              `INSERT INTO lead_tags (lead_id, tag_id)
+               SELECT $1::uuid, t.id FROM tags t WHERE t.name = $2
+               ON CONFLICT DO NOTHING`,
+              [leadId, tagName.trim()],
+            );
+            taggedCount++;
+          } catch {
+            // Skip individual failures (e.g. invalid UUID), continue with rest
+          }
         }
-        return { updated: leadIds.length };
+        return { updated: taggedCount };
       }
       default:
         throw new Error(`Unknown bulk action: ${action}`);

@@ -260,16 +260,37 @@ export class PropertiesService {
         try {
             const property = await this.getById(schemaName, propertyId);
             if (data.guestEmail) {
-                await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
-                    guest_name: data.guestName || 'Huésped',
-                    property_name: property?.name || '',
-                    check_in: data.checkIn,
-                    check_out: data.checkOut,
-                    nights: String(nights),
-                    total_price: String(totalPrice),
-                    currency: avail.currency,
-                    check_in_instructions: property?.check_in_instructions || '',
-                });
+                // Check if confirmation emails are enabled for properties
+                let emailConfirmationsEnabled = true;
+                try {
+                    const personaRows = await this.prisma.executeInTenantSchema<any[]>(
+                        schemaName,
+                        `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
+                        []
+                    );
+                    if (personaRows && personaRows.length > 0) {
+                        const config = personaRows[0].config_json || {};
+                        const propertiesTool = config.tools?.properties;
+                        if (propertiesTool && propertiesTool.emailConfirmations === false) {
+                            emailConfirmationsEnabled = false;
+                        }
+                    }
+                } catch (err) {
+                    this.logger.error(`Error checking persona settings for properties: ${err.message}`);
+                }
+
+                if (emailConfirmationsEnabled) {
+                    await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
+                        guest_name: data.guestName || 'Huésped',
+                        property_name: property?.name || '',
+                        check_in: data.checkIn,
+                        check_out: data.checkOut,
+                        nights: String(nights),
+                        total_price: String(totalPrice),
+                        currency: avail.currency,
+                        check_in_instructions: property?.check_in_instructions || '',
+                    });
+                }
             }
         } catch (e: any) {
             this.logger.warn(`Booking confirmation email failed: ${e.message}`);

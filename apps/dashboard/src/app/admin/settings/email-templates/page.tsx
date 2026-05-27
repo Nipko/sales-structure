@@ -236,6 +236,33 @@ export default function EmailTemplatesPage() {
       const res = await api.getEmailTemplates(activeTenantId);
       if (res.success && Array.isArray(res.data)) {
         setTemplates(res.data);
+        
+        // Auto-select template from query params if specified
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const templateSlug = params.get("template");
+          if (templateSlug) {
+            const match = res.data.find((t: any) => t.slug === templateSlug || t.id === templateSlug);
+            if (match) {
+              setSelectedId(match.id);
+              setIsCreating(false);
+              api.getEmailTemplate(activeTenantId, match.id).then((fullRes) => {
+                if (fullRes.success && fullRes.data) {
+                  const t = fullRes.data;
+                  setForm({
+                    name: t.name,
+                    slug: t.slug,
+                    subject: t.subject,
+                    bodyHtml: t.bodyHtml || "",
+                    bodyJson: t.bodyJson,
+                    variables: t.variables || [],
+                    isActive: t.isActive,
+                  });
+                }
+              }).catch(() => {});
+            }
+          }
+        }
       }
     } catch (err) {
       console.error("Error loading templates:", err);

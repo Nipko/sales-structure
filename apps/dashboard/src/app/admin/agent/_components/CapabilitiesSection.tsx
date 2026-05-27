@@ -169,6 +169,30 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("cancelAppointmentsDesc")}</p>
               </div>
             </label>
+            <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={apt.emailConfirmations !== false}
+                  onChange={(e) => updateTools({ emailConfirmations: e.target.checked })}
+                  className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                    Enviar confirmación por correo
+                  </span>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Envía un correo de confirmación formal automáticamente al agendar la cita.
+                  </p>
+                </div>
+              </label>
+              <Link
+                href="/admin/settings/email-templates?template=appointment_confirmation_email"
+                className="text-xs font-semibold text-indigo-500 hover:underline shrink-0 ml-3"
+              >
+                Editar plantilla
+              </Link>
+            </div>
           </div>
         )}
       </div>
@@ -183,6 +207,33 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {sortedVerticalTools.map(({ key, icon, industries }) => {
           const isRecommended = industries.includes(industry);
+          // Let's get the email template slug mapping for each key
+          const slugMap: Record<ToolKey, string> = {
+            properties: "property_booking_confirmation",
+            tours: "tour_booking_confirmation",
+            treatments: "treatment_booking_confirmation",
+            realEstate: "realestate_visit_confirmation",
+            pets: "veterinary_appointment_confirmation",
+            restaurants: "restaurant_reservation_confirmation",
+            gyms: "gym_class_confirmation",
+            education: "education_enrollment_confirmation",
+            insurance: "insurance_quote_confirmation",
+            homeServices: "homeservice_booking_confirmation",
+            petServices: "petservice_booking_confirmation",
+            photography: "photography_session_confirmation",
+            appointments: "appointment_confirmation_email",
+            // Fallbacks if any key doesn't have one
+            catalog: "",
+            faqs: "",
+            policies: "",
+            knowledge: "",
+            offers: "",
+            crm: "",
+            orders: "order_confirmation"
+          };
+          const templateSlug = slugMap[key];
+          const hasEmailConfirmation = !!templateSlug;
+
           return (
             <ToolToggleCard
               key={key}
@@ -193,6 +244,19 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
               onToggle={(v) => toggleTool(key, v)}
               recommended={isRecommended}
               recommendedLabel={t("recommended")}
+              emailConfirmations={hasEmailConfirmation ? (tools[key] as any)?.emailConfirmations : undefined}
+              onEmailConfirmationsChange={hasEmailConfirmation ? (v) => {
+                onChange({
+                  tools: {
+                    ...tools,
+                    [key]: {
+                      ...(tools[key] as any ?? { enabled: false }),
+                      emailConfirmations: v
+                    }
+                  }
+                });
+              } : undefined}
+              templateSlug={templateSlug}
             />
           );
         })}
@@ -210,7 +274,19 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         <ToolToggleCard icon={HelpCircle} title={t("faqsTitle")} description={t("faqsDesc")} enabled={tools.faqs?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, faqs: { enabled: v } } })} />
         <ToolToggleCard icon={Scale} title={t("policiesTitle")} description={t("policiesDesc")} enabled={tools.policies?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })} />
         <ToolToggleCard icon={Tag} title={t("offersTitle")} description={t("offersDesc")} enabled={tools.offers?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })} />
-        <ToolToggleCard icon={Package} title={t("ordersTitle")} description={t("ordersDesc")} enabled={tools.orders?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, orders: { enabled: v } } })} />
+        
+        {/* Orders supports confirmation emails! */}
+        <ToolToggleCard
+          icon={Package}
+          title={t("ordersTitle")}
+          description={t("ordersDesc")}
+          enabled={tools.orders?.enabled === true}
+          onToggle={(v) => onChange({ tools: { ...tools, orders: { ...(tools.orders ?? { enabled: false }), enabled: v } } })}
+          emailConfirmations={tools.orders?.emailConfirmations}
+          onEmailConfirmationsChange={(v) => onChange({ tools: { ...tools, orders: { ...(tools.orders ?? { enabled: false }), emailConfirmations: v } } })}
+          templateSlug="order_confirmation"
+        />
+
         <ToolToggleCard icon={UserCircle} title={t("crmTitle")} description={t("crmDesc")} enabled={tools.crm?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })} />
       </div>
 
@@ -226,7 +302,18 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
   );
 }
 
-function ToolToggleCard({ icon: Icon, title, description, enabled, onToggle, recommended, recommendedLabel }: {
+function ToolToggleCard({
+  icon: Icon,
+  title,
+  description,
+  enabled,
+  onToggle,
+  recommended,
+  recommendedLabel,
+  emailConfirmations,
+  onEmailConfirmationsChange,
+  templateSlug,
+}: {
   icon: any;
   title: string;
   description: string;
@@ -234,49 +321,78 @@ function ToolToggleCard({ icon: Icon, title, description, enabled, onToggle, rec
   onToggle: (v: boolean) => void;
   recommended?: boolean;
   recommendedLabel?: string;
+  emailConfirmations?: boolean;
+  onEmailConfirmationsChange?: (v: boolean) => void;
+  templateSlug?: string;
 }) {
   return (
     <div className={cn(
-      "rounded-lg border p-4 transition-colors",
+      "rounded-lg border p-4 transition-colors flex flex-col justify-between",
       enabled
         ? "border-indigo-300 dark:border-indigo-500/40 bg-indigo-500/[0.03] dark:bg-indigo-500/5"
         : "border-neutral-200 dark:border-neutral-700",
       recommended && !enabled && "border-indigo-200 dark:border-indigo-500/20"
     )}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className={cn(
-            "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
-            enabled ? "bg-indigo-500/15" : "bg-neutral-100 dark:bg-neutral-800"
-          )}>
-            <Icon size={18} className={enabled ? "text-indigo-500" : "text-neutral-500 dark:text-neutral-400"} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{title}</h4>
-              {recommended && (
-                <Badge className="bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400 text-[10px] shrink-0">
-                  <Star size={9} className="mr-0.5" /> {recommendedLabel}
-                </Badge>
-              )}
+      <div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={cn(
+              "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+              enabled ? "bg-indigo-500/15" : "bg-neutral-100 dark:bg-neutral-800"
+            )}>
+              <Icon size={18} className={enabled ? "text-indigo-500" : "text-neutral-500 dark:text-neutral-400"} />
             </div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">{description}</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{title}</h4>
+                {recommended && (
+                  <Badge className="bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400 text-[10px] shrink-0">
+                    <Star size={9} className="mr-0.5" /> {recommendedLabel}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-1">{description}</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => onToggle(!enabled)}
+            className={cn(
+              "relative w-11 h-6 rounded-full transition-colors shrink-0 ml-3",
+              enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600",
+            )}
+          >
+            <div className={cn(
+              "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
+              enabled ? "translate-x-[22px]" : "translate-x-0.5",
+            )} />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => onToggle(!enabled)}
-          className={cn(
-            "relative w-11 h-6 rounded-full transition-colors shrink-0 ml-3",
-            enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600",
-          )}
-        >
-          <div className={cn(
-            "absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
-            enabled ? "translate-x-[22px]" : "translate-x-0.5",
-          )} />
-        </button>
       </div>
+
+      {enabled && onEmailConfirmationsChange && (
+        <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={emailConfirmations !== false}
+              onChange={(e) => onEmailConfirmationsChange(e.target.checked)}
+              className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
+            />
+            <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+              Enviar confirmación por correo
+            </span>
+          </label>
+          {templateSlug && (
+            <Link
+              href={`/admin/settings/email-templates?template=${templateSlug}`}
+              className="text-[11px] font-semibold text-indigo-500 hover:underline"
+            >
+              Editar plantilla
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
 }

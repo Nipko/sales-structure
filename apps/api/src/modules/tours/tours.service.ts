@@ -319,18 +319,39 @@ export class ToursService {
         try {
             const guestEmail = data.guestEmail;
             if (guestEmail) {
-                await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
-                    guest_name: data.guestName || 'Huésped',
-                    package_name: pkg.name,
-                    departure_date: data.departureDate,
-                    departure_time: data.departureTime || '',
-                    party_size: String(data.partySize),
-                    adults: String(adults),
-                    children: String(children),
-                    total_price: String(totalPrice),
-                    currency: pkg.currency || 'COP',
-                    departure_location: pkg.departure_location || '',
-                });
+                // Check if confirmation emails are enabled for tours
+                let emailConfirmationsEnabled = true;
+                try {
+                    const personaRows = await this.prisma.executeInTenantSchema<any[]>(
+                        schemaName,
+                        `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
+                        []
+                    );
+                    if (personaRows && personaRows.length > 0) {
+                        const config = personaRows[0].config_json || {};
+                        const toursTool = config.tools?.tours;
+                        if (toursTool && toursTool.emailConfirmations === false) {
+                            emailConfirmationsEnabled = false;
+                        }
+                    }
+                } catch (err) {
+                    this.logger.error(`Error checking persona settings for tours: ${err.message}`);
+                }
+
+                if (emailConfirmationsEnabled) {
+                    await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
+                        guest_name: data.guestName || 'Huésped',
+                        package_name: pkg.name,
+                        departure_date: data.departureDate,
+                        departure_time: data.departureTime || '',
+                        party_size: String(data.partySize),
+                        adults: String(adults),
+                        children: String(children),
+                        total_price: String(totalPrice),
+                        currency: pkg.currency || 'COP',
+                        departure_location: pkg.departure_location || '',
+                    });
+                }
             }
         } catch (e: any) {
             this.logger.warn(`Tour confirmation email failed: ${e.message}`);

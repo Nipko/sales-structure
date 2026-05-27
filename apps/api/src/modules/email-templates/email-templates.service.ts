@@ -504,6 +504,480 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
         variables: ['customer_name', 'company_name', 'company_logo', 'plan_name', 'amount_charged', 'currency', 'failure_reason', 'update_payment_url'],
         isActive: true,
     },
+    {
+        name: 'Confirmación de Cita Médica (Salud)',
+        slug: 'treatment_booking_confirmation',
+        subject: 'Cita médica confirmada — {{service_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#00b894,#0984e3);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Cita Médica Confirmada</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Tu consulta médica ha sido confirmada con éxito. A continuación los detalles:</p>
+    <div style="background:#e8f4fd;padding:16px;border-radius:8px;border-left:4px solid #0984e3;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Especialidad/Servicio:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Consultorio/Lugar:</strong> {{location}}</p>{{/if}}
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Especialista:</strong> {{agent_name}}</p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#e74c3c;font-weight:600;margin-top:16px;">⚠️ Instrucciones Importantes:</p>
+    <ul style="font-size:13px;color:#555;padding-left:20px;line-height:1.6;">
+      <li>Por favor, llega 10 minutos antes de la hora indicada con tu documento de identidad.</li>
+      <li>Si es tu primera cita, trae exámenes recientes o historial médico en físico o digital.</li>
+      <li>En caso de no asistir, recuerda cancelar con al menos 24 horas de anticipación.</li>
+    </ul>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      Gracias por confiar en {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Cita de Estética (Belleza)',
+        slug: 'beauty_appointment_confirmation',
+        subject: 'Tu sesión está confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#fd79a8,#e84393);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">¡Tu Momento de Bienestar está Listo!</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Tu sesión en nuestro salón ha sido agendada con éxito. ¡Estamos ansiosos por recibirte!</p>
+    <div style="background:#fff0f6;padding:16px;border-radius:8px;border-left:4px solid #e84393;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Servicio(s):</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Estilista/Profesional:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Sede:</strong> {{location}}</p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      <strong>Políticas de cancelación:</strong> Para brindar el mejor servicio a todos nuestros clientes, solicitamos informar cualquier cambio o cancelación con al menos 12 horas de anticipación.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Nos vemos pronto en {{company_name}}!
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Visita a Inmueble (Inmobiliaria)',
+        slug: 'realestate_visit_confirmation',
+        subject: 'Visita guiada confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#2c3e50,#34495e);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Visita de Propiedad Confirmada</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Hemos programado la visita al inmueble de tu interés. A continuación, te compartimos toda la información:</p>
+    <div style="background:#f4f6f7;padding:16px;border-radius:8px;border-left:4px solid #2c3e50;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Propiedad/Código:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha de visita:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora de visita:</strong> {{appointment_time}}</p>
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Dirección exacta:</strong> {{location}}</p>{{/if}}
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Asesor asignado:</strong> {{agent_name}}</p>{{/if}}
+    </div>
+    <div style="background:#fff9db;border:1px solid #ffe066;border-radius:8px;padding:12px;font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      <strong>📌 Recomendaciones:</strong> Por favor, asiste con tu documento de identidad para ingresar al conjunto o edificio. Si vas con acompañantes, avísanos con anterioridad para registrarlos en portería.
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¿Tienes dudas? Escríbenos a nuestro WhatsApp corporativo.
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Reserva de Mesa (Restaurante)',
+        slug: 'restaurant_reservation_confirmation',
+        subject: '¡Reserva de mesa confirmada! — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#e67e22,#d35400);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Tu Mesa está Reservada 🍽️</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Estamos listos para brindarte una gran experiencia gastronómica. Los detalles de tu reserva son:</p>
+    <div style="background:#fffcf4;padding:16px;border-radius:8px;border-left:4px solid #e67e22;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Tipo de reserva:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Ubicación/Zona:</strong> {{location}}</p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      <strong>⚠️ Nota de tolerancia:</strong> Mantendremos tu reserva activa durante un máximo de 15 minutos después de la hora programada. Si vas a retrasarte, por favor infórmanos respondiendo a este chat.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Buen provecho! — El equipo de {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Taller (Automotriz)',
+        slug: 'automotive_service_confirmation',
+        subject: 'Cita de servicio confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#34495e,#2c3e50);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Cita de Taller Mecánico</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Hemos registrado la cita para el ingreso de tu vehículo a nuestro taller mecánico:</p>
+    <div style="background:#f2f4f4;padding:16px;border-radius:8px;border-left:4px solid #34495e;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Servicio solicitado:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha de recepción:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora de recepción:</strong> {{appointment_time}}</p>
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Sede/Taller:</strong> {{location}}</p>{{/if}}
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Técnico / Asesor:</strong> {{agent_name}}</p>{{/if}}
+    </div>
+    <ul style="font-size:13px;color:#666;padding-left:20px;line-height:1.6;margin-top:16px;">
+      <li>Por favor, retira todos los objetos de valor de tu vehículo antes de entregarlo.</li>
+      <li>Trae el vehículo con el tanque de combustible con al menos 1/4 de capacidad para pruebas.</li>
+      <li>El diagnóstico inicial estará listo en aproximadamente 2 horas después del ingreso.</li>
+    </ul>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Tu seguridad vial es nuestra prioridad! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Tutoría / Curso (Educación)',
+        slug: 'education_enrollment_confirmation',
+        subject: 'Inscripción confirmada: {{service_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#9b59b6,#8e44ad);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">¡Tu clase virtual está lista!</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Tu sesión educativa ha sido agendada. Aquí tienes los detalles del aula y horarios:</p>
+    <div style="background:#fbf5fd;padding:16px;border-radius:8px;border-left:4px solid #9b59b6;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Curso / Tutoría:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Tutor/Profesor:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Enlace de Aula Virtual:</strong> <a href="{{location}}" style="color:#9b59b6;font-weight:600;">Unirse a la clase</a></p>{{/if}}
+    </div>
+    <div style="background:#e8f4fd;border:1px solid #b3e5fc;border-radius:8px;padding:12px;font-size:13px;color:#555;line-height:1.6;margin-top:16px;">
+      <strong>📝 Recomendaciones pre-sesión:</strong> Conéctate 5 minutos antes con buena conexión a internet, prueba tu cámara y micrófono, y ten a la mano tu material de apuntes.
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Nunca dejes de aprender! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Asesoría Financiera (Finanzas)',
+        slug: 'finance_consultation_confirmation',
+        subject: 'Asesoría financiera confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#27ae60,#2ecc71);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Sesión de Consultoría Financiera</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Hemos programado tu consultoría de finanzas. Revisemos juntos tus objetivos y estrategias:</p>
+    <div style="background:#eef7f1;padding:16px;border-radius:8px;border-left:4px solid #27ae60;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Tipo de asesoría:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Consultor Financiero:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Sala de videoconferencia:</strong> <a href="{{location}}" style="color:#27ae60;font-weight:600;">Acceder a la videollamada</a></p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      <strong>📂 Preparación previa:</strong> Para aprovechar al máximo tu sesión, por favor ten a la mano tus extractos financieros, presupuestos o documentos contables de interés. Toda tu información es tratada bajo absoluta confidencialidad.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Hacia un futuro financiero próspero! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Consultoría (Servicios Profesionales)',
+        slug: 'professional_consultation_confirmation',
+        subject: 'Cita de consultoría confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#2980b9,#3498db);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Consulta Profesional Confirmada</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Confirmamos la hora reservada para tu asesoría especializada:</p>
+    <div style="background:#eaf2f8;padding:16px;border-radius:8px;border-left:4px solid #2980b9;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Especialidad/Área:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha de la cita:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora de la cita:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Consultor/Asesor:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Lugar/Enlace virtual:</strong> <a href="{{location}}" style="color:#2980b9;font-weight:600;">Entrar a la reunión</a></p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      Si necesitas reprogramar la sesión, por favor avísanos con al menos 24 horas de anticipación a través de nuestros canales oficiales.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Estamos listos para impulsarte! — El equipo de {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Demo de Software (Tecnología)',
+        slug: 'tech_demo_confirmation',
+        subject: 'Demo de Producto Agendada — {{service_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Sesión de Demostración de Producto</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">¡Tu demostración personalizada está confirmada! Te mostraremos cómo podemos ayudarte a potenciar tu negocio:</p>
+    <div style="background:#f3f0fe;padding:16px;border-radius:8px;border-left:4px solid #6c5ce7;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Módulo / Enfoque:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Presenter/Ejecutivo:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Acceso a la videollamada:</strong> <a href="{{location}}" style="color:#6c5ce7;font-weight:600;">Unirse a Google Meet/Zoom</a></p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      <strong>⚡ Importante:</strong> La demo tendrá una duración de 30 minutos. Te sugerimos conectarte desde tu ordenador para una mejor visualización de la plataforma.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Transformando tu operación! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Cita Veterinaria (Veterinaria)',
+        slug: 'veterinary_appointment_confirmation',
+        subject: 'Cita veterinaria confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#00cec9,#00b894);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Cita para tu Peludito Confirmada 🐾</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Confirmamos la cita agendada para el cuidado de tu mascota:</p>
+    <div style="background:#e6faf9;padding:16px;border-radius:8px;border-left:4px solid #00cec9;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Motivo de consulta:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Médico Veterinario:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Sede / Consultorio:</strong> {{location}}</p>{{/if}}
+    </div>
+    <ul style="font-size:13px;color:#666;padding-left:20px;line-height:1.6;margin-top:16px;">
+      <li>Si la cita es para cirugía o exámenes especiales, recuerda el tiempo de ayuno (generalmente 8-12 horas).</li>
+      <li>Por seguridad, por favor trae a tu perro con correa o a tu gato en su guacal.</li>
+      <li>No olvides traer el carnet de vacunación más reciente de tu mascota.</li>
+    </ul>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Amamos y cuidamos a tus mejores amigos! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Clase de Fitness (Gimnasios)',
+        slug: 'gym_class_confirmation',
+        subject: '¡Reserva de clase confirmada! 💪 — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#ff7675,#d63031);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">¡Tu Entreno está Reservado!</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Confirmamos tu spot reservado para entrenar:</p>
+    <div style="background:#fff3f3;padding:16px;border-radius:8px;border-left:4px solid #ff7675;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Clase / Disciplina:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Coach / Instructor:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Salón / Zona:</strong> {{location}}</p>{{/if}}
+    </div>
+    <ul style="font-size:13px;color:#666;padding-left:20px;line-height:1.6;margin-top:16px;">
+      <li>Trae tu toalla personal (es de uso obligatorio en nuestras salas).</li>
+      <li>Por favor, llega 5 minutos antes para que puedas calentar adecuadamente.</li>
+      <li>Si no puedes asistir, libera tu spot con mínimo 1 hora de anticipación para permitir que otro socio pueda entrenar.</li>
+    </ul>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡A darlo todo hoy! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Cotización de Seguro (Seguros)',
+        slug: 'insurance_quote_confirmation',
+        subject: 'Tu cotización de seguro está lista — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#0984e3,#74b9ff);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Tu Póliza / Cotización</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Hemos procesado la información para tu cotización de seguro personalizada:</p>
+    <div style="background:#eaf2f8;padding:16px;border-radius:8px;border-left:4px solid #0984e3;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Ramo/Cobertura:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha de solicitud:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora de radicación:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Asesor de seguros:</strong> {{agent_name}}</p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      Nuestro equipo se encuentra estructurando el desglose de coberturas, primas y deducibles específicos de acuerdo con tus necesidades. En breve te enviaremos la propuesta formal completa a este correo electrónico.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Protegiendo lo que más quieres! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Visita Técnica (Servicios del Hogar)',
+        slug: 'homeservice_booking_confirmation',
+        subject: 'Visita técnica confirmada — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#ffeaa7,#fdcb6e);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:#2d3436;margin:0;font-size:20px;">Visita Técnica Programada 🛠️</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Agendamos la visita del especialista técnico a tu domicilio de acuerdo con tu solicitud:</p>
+    <div style="background:#fffdf6;padding:16px;border-radius:8px;border-left:4px solid #fdcb6e;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Servicio solicitado:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha de visita:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora de visita:</strong> {{appointment_time}}</p>
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Dirección de atención:</strong> {{location}}</p>{{/if}}
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Profesional asignado:</strong> {{agent_name}}</p>{{/if}}
+    </div>
+    <div style="background:#f9f9f9;border-radius:8px;padding:12px;font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      <strong>🔒 Seguridad y Confianza:</strong> Todo nuestro personal técnico asiste debidamente uniformado e identificado con su respectiva escarapela corporativa de {{company_name}}.
+    </div>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Soluciones eficientes para tu hogar! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Cuidado (Cuidado de Mascotas)',
+        slug: 'petservice_booking_confirmation',
+        subject: 'Cuidado de mascota programado — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#55efc4,#00b894);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:#2d3436;margin:0;font-size:20px;">¡Cuidado Mascota Confirmado! 🐶</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">Hemos agendado el servicio para el cuidado de tu consentido:</p>
+    <div style="background:#eafaf4;padding:16px;border-radius:8px;border-left:4px solid #00b894;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Servicio de mascota:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha del servicio:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora del servicio:</strong> {{appointment_time}}</p>
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Cuidador / Paseador:</strong> {{agent_name}}</p>{{/if}}
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Punto de encuentro/Entrega:</strong> {{location}}</p>{{/if}}
+    </div>
+    <p style="font-size:13px;color:#666;line-height:1.6;margin-top:16px;">
+      Por favor, asegúrate de entregar a tu mascota con su respectivo collar, placa de identificación, correa y juguetes o alimentos específicos en caso de estadía completa.
+    </p>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Nos divertiremos un montón! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
+    {
+        name: 'Confirmación de Sesión de Fotos (Fotografía)',
+        slug: 'photography_session_confirmation',
+        subject: 'Tu sesión fotográfica está confirmada 📸 — {{company_name}}',
+        bodyHtml: `<div style="font-family:'Inter',Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;">
+  <div style="background:linear-gradient(135deg,#dfe6e9,#2d3436);padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    {{#if company_logo}}<img src="{{company_logo}}" alt="{{company_name}}" style="max-height:40px;margin-bottom:12px;" />{{/if}}
+    <h2 style="color:white;margin:0;font-size:20px;">Tu Sesión Fotográfica</h2>
+  </div>
+  <div style="background:#ffffff;padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 12px 12px;">
+    <p style="font-size:15px;color:#333;">Hola <strong>{{customer_name}}</strong>,</p>
+    <p style="font-size:14px;color:#555;">¡Agendamos con éxito tu sesión fotográfica! Capturaremos tus mejores momentos:</p>
+    <div style="background:#f9f9f9;padding:16px;border-radius:8px;border-left:4px solid #2d3436;margin:16px 0;">
+      <p style="margin:6px 0;font-size:14px;"><strong>Paquete de sesión:</strong> {{service_name}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Fecha pactada:</strong> {{appointment_date}}</p>
+      <p style="margin:6px 0;font-size:14px;"><strong>Hora pactada:</strong> {{appointment_time}}</p>
+      {{#if location}}<p style="margin:6px 0;font-size:14px;"><strong>Locación / Estudio:</strong> {{location}}</p>{{/if}}
+      {{#if agent_name}}<p style="margin:6px 0;font-size:14px;"><strong>Fotógrafo:</strong> {{agent_name}}</p>{{/if}}
+    </div>
+    <ul style="font-size:13px;color:#666;padding-left:20px;line-height:1.6;margin-top:16px;">
+      <li>Te sugerimos llegar con 10 minutos de anticipación para ultimar detalles de vestuario y maquillaje.</li>
+      <li>Si es en exteriores, revisa nuestro canal de WhatsApp el día previo por si hay novedades climáticas.</li>
+      <li>Si deseas traer props o elementos personalizados, háznoslo saber antes de la sesión.</li>
+    </ul>
+    <p style="font-size:12px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:16px;text-align:center;">
+      ¡Creando recuerdos para siempre! — {{company_name}}
+    </p>
+  </div>
+</div>`,
+        bodyJson: {},
+        variables: ['customer_name', 'company_name', 'company_logo', 'service_name', 'appointment_date', 'appointment_time', 'location', 'agent_name'],
+        isActive: true,
+    },
 ];
 
 @Injectable()
@@ -617,8 +1091,59 @@ export class EmailTemplatesService {
             return false;
         }
 
-        const subject = this.renderVariables(template.subject, variables);
-        const html = this.renderVariables(template.bodyHtml, variables);
+        // Resolve dynamic branding variables from the companies table
+        let companyName = '';
+        let companyLogo = '';
+        let companyPhone = '';
+        let companyEmail = '';
+        let companyAddress = '';
+        let companyWebsite = '';
+
+        try {
+            const companyRows = await this.prisma.executeInTenantSchema(schemaName,
+                `SELECT name, logo_url, phone, email, address, website FROM companies WHERE is_primary = true LIMIT 1`,
+                []
+            ) as any[];
+            if (companyRows && companyRows.length > 0) {
+                const c = companyRows[0];
+                companyName = c.name || '';
+                companyLogo = c.logo_url || '';
+                companyPhone = c.phone || '';
+                companyEmail = c.email || '';
+                companyAddress = c.address || '';
+                companyWebsite = c.website || '';
+            } else {
+                // Fallback to most recently updated
+                const fallbackRows = await this.prisma.executeInTenantSchema(schemaName,
+                    `SELECT name, logo_url, phone, email, address, website FROM companies ORDER BY updated_at DESC LIMIT 1`,
+                    []
+                ) as any[];
+                if (fallbackRows && fallbackRows.length > 0) {
+                    const c = fallbackRows[0];
+                    companyName = c.name || '';
+                    companyLogo = c.logo_url || '';
+                    companyPhone = c.phone || '';
+                    companyEmail = c.email || '';
+                    companyAddress = c.address || '';
+                    companyWebsite = c.website || '';
+                }
+            }
+        } catch (err) {
+            this.logger.error(`Error fetching branding from companies: ${err.message}`);
+        }
+
+        const mergedVars = {
+            company_name: companyName,
+            company_logo: companyLogo,
+            company_phone: companyPhone,
+            company_email: companyEmail,
+            company_address: companyAddress,
+            company_website: companyWebsite,
+            ...variables,
+        };
+
+        const subject = this.renderVariables(template.subject, mergedVars);
+        const html = this.renderVariables(template.bodyHtml, mergedVars);
 
         return this.emailService.send({ to, subject, html });
     }
@@ -629,14 +1154,51 @@ export class EmailTemplatesService {
     async sendTest(schemaName: string, templateId: string, to: string): Promise<boolean> {
         const template = await this.getById(schemaName, templateId);
 
+        // Resolve dynamic branding variables from the companies table
+        let companyName = 'Mi Empresa';
+        let companyLogo = 'https://parallly-chat.cloud/parallly-logo.svg';
+        let companyPhone = '+57 300 123 4567';
+        let companyEmail = 'contacto@miempresa.com';
+        let companyAddress = 'Calle 100 #15-22, Bogotá';
+        let companyWebsite = 'www.miempresa.com';
+
+        try {
+            const companyRows = await this.prisma.executeInTenantSchema(schemaName,
+                `SELECT name, logo_url, phone, email, address, website FROM companies WHERE is_primary = true LIMIT 1`,
+                []
+            ) as any[];
+            if (companyRows && companyRows.length > 0) {
+                const c = companyRows[0];
+                if (c.name) companyName = c.name;
+                if (c.logo_url) companyLogo = c.logo_url;
+                if (c.phone) companyPhone = c.phone;
+                if (c.email) companyEmail = c.email;
+                if (c.address) companyAddress = c.address;
+                if (c.website) companyWebsite = c.website;
+            }
+        } catch (err) {
+            this.logger.error(`Error fetching branding from companies for test: ${err.message}`);
+        }
+
         // Fill with sample values
         const sampleVars: Record<string, string> = {};
         for (const v of template.variables) {
             sampleVars[v] = this.getSampleValue(v);
         }
 
-        const subject = `[TEST] ${this.renderVariables(template.subject, sampleVars)}`;
-        const html = this.renderVariables(template.bodyHtml, sampleVars);
+        // Merge real branding values into test variables
+        const mergedVars = {
+            ...sampleVars,
+            company_name: companyName,
+            company_logo: companyLogo,
+            company_phone: companyPhone,
+            company_email: companyEmail,
+            company_address: companyAddress,
+            company_website: companyWebsite,
+        };
+
+        const subject = `[TEST] ${this.renderVariables(template.subject, mergedVars)}`;
+        const html = this.renderVariables(template.bodyHtml, mergedVars);
 
         return this.emailService.send({ to, subject, html });
     }

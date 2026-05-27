@@ -64,13 +64,34 @@ export class AppointmentNotificationsService {
             // Also send email confirmation if contact has an email address (fire-and-forget)
             try {
                 if (contact?.email) {
-                    await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
-                        customer_name: contact.name || 'Cliente',
-                        service_name: appointment.serviceName,
-                        appointment_date: new Date(appointment.startAt).toLocaleDateString('es-CO'),
-                        appointment_time: new Date(appointment.startAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
-                        location: appointment.location || '',
-                    });
+                    // Check if confirmation emails are enabled for appointments
+                    let emailConfirmationsEnabled = true;
+                    try {
+                        const personaRows = await this.prisma.executeInTenantSchema<any[]>(
+                            schemaName,
+                            `SELECT config_json FROM agent_personas WHERE is_active = true LIMIT 1`,
+                            []
+                        );
+                        if (personaRows && personaRows.length > 0) {
+                            const config = personaRows[0].config_json || {};
+                            const appointmentsTool = config.tools?.appointments;
+                            if (appointmentsTool && appointmentsTool.emailConfirmations === false) {
+                                emailConfirmationsEnabled = false;
+                            }
+                        }
+                    } catch (err) {
+                        this.logger.error(`Error checking persona settings for appointments: ${err.message}`);
+                    }
+
+                    if (emailConfirmationsEnabled) {
+                        await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
+                            customer_name: contact.name || 'Cliente',
+                            service_name: appointment.serviceName,
+                            appointment_date: new Date(appointment.startAt).toLocaleDateString('es-CO'),
+                            appointment_time: new Date(appointment.startAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+                            location: appointment.location || '',
+                        });
+                    }
                 }
             } catch { /* non-critical — channel notification already sent */ }
 

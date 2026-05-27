@@ -186,6 +186,7 @@ export interface ToolsConfig {
         enabled: boolean;
         canBook?: boolean;
         canCancel?: boolean;
+        emailConfirmations?: boolean;
     };
     catalog?: {
         enabled: boolean;
@@ -202,12 +203,61 @@ export interface ToolsConfig {
     };
     orders?: {
         enabled: boolean;
+        emailConfirmations?: boolean;
     };
     offers?: {
         enabled: boolean;
     };
     crm?: {
         enabled: boolean;
+    };
+    properties?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    tours?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    treatments?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    realEstate?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    pets?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    restaurants?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    gyms?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    education?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    insurance?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    homeServices?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    petServices?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
+    };
+    photography?: {
+        enabled: boolean;
+        emailConfirmations?: boolean;
     };
 }
 

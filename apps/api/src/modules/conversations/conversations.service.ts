@@ -1196,7 +1196,7 @@ export class ConversationsService {
                 });
 
                 // Check if LLM wants to call tools
-                if (response.toolCalls?.length && toolsEnabled) {
+                if (response.toolCalls?.length && hasTools) {
                     this.logger.log(`[Pipeline] LLM requested ${response.toolCalls.length} tool call(s) (iteration ${iteration + 1})`);
 
                     // Add assistant message with tool calls (using ChatMessage format)
@@ -1217,10 +1217,7 @@ export class ConversationsService {
                             schemaName, tenantId, contactId, tc.function.name, args, conversation.id,
                         );
 
-                        // Log tool result
-                        if (toolsEnabled) {
-                            this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
-                        }
+                        this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
 
                         currentMessages.push({
                             role: 'tool',

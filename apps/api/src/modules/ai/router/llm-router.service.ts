@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
 import { RedisService } from '../../redis/redis.service';
@@ -66,6 +67,7 @@ export class LLMRouterService {
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
         private redis: RedisService,
         private llmKeys: LlmKeyService,
+        private eventEmitter: EventEmitter2,
     ) { }
 
     getProvider(name: string): ILLMProvider {
@@ -84,9 +86,23 @@ export class LLMRouterService {
         return false;
     }
 
-    private markProviderUnhealthy(provider: string): void {
+    private markProviderUnhealthy(provider: string, errorMessage?: string): void {
         this.providerHealth.set(provider, Date.now() + this.CIRCUIT_BREAKER_TTL_MS);
         this.logger.warn(`[CircuitBreaker] ${provider} marked unhealthy for ${this.CIRCUIT_BREAKER_TTL_MS / 1000}s`);
+
+        const failKey = `llm:health:${provider}:failures`;
+        this.redis.incrBy(failKey, 1).then(count => {
+            this.redis.expire(failKey, 600).catch(() => {});
+            if (count === 3 || count === 10 || count === 25) {
+                this.eventEmitter.emit('llm.provider.alert', {
+                    provider,
+                    severity: count >= 10 ? 'critical' : 'warning',
+                    failures: count,
+                    error: errorMessage || 'Provider unavailable',
+                    timestamp: new Date().toISOString(),
+                });
+            }
+        }).catch(() => {});
     }
 
     private async buildCandidates(
@@ -175,11 +191,19 @@ export class LLMRouterService {
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
                     this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(() => {});
-                    this.markProviderUnhealthy(candidate.provider);
+                    this.markProviderUnhealthy(candidate.provider, err.message);
                     lastError = err;
                     this.logger.warn(`[LLM] ${candidate.provider}/${candidate.id} failed: ${err.message} — trying next`);
                 }
             }
+
+            this.eventEmitter.emit('llm.provider.alert', {
+                provider: 'all',
+                severity: 'critical',
+                failures: candidates.length,
+                error: `All ${candidates.length} LLM providers failed. Last: ${lastError?.message}`,
+                timestamp: new Date().toISOString(),
+            });
 
             throw lastError || new Error('All LLM providers failed');
         }
@@ -613,6 +637,32 @@ export class LLMRouterService {
             closing: 90, support: 50, complaint: 85,
         };
         return stageScores[stage] || 50;
+    }
+
+    async getProviderHealth(): Promise<Array<{
+        provider: string;
+        configured: boolean;
+        healthy: boolean;
+        recentFailures: number;
+        unhealthyUntil: string | null;
+    }>> {
+        const providers = ['openai', 'anthropic', 'google', 'xai', 'deepseek'];
+        const result = [];
+        for (const p of providers) {
+            const configured = await this.llmKeys.isConfigured(p);
+            const healthy = this.isProviderHealthy(p);
+            const failKey = `llm:health:${p}:failures`;
+            const failures = Number(await this.redis.get(failKey) || 0);
+            const unhealthyTs = this.providerHealth.get(p);
+            result.push({
+                provider: p,
+                configured,
+                healthy: configured && healthy,
+                recentFailures: failures,
+                unhealthyUntil: unhealthyTs ? new Date(unhealthyTs).toISOString() : null,
+            });
+        }
+        return result;
     }
 
     getModels(): ModelConfig[] {

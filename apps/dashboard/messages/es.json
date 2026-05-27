@@ -236,7 +236,10 @@
       "orderFor": "Pedido por",
       "pending": "pendiente",
       "systemError": "Error del sistema",
-      "connectionError": "Error de conexión"
+      "connectionError": "Error de conexión",
+      "llmCritical": "CRITICO: {provider} caido",
+      "llmWarning": "Alerta: {provider} con fallos",
+      "llmDown": "Proveedor de IA no disponible"
     },
     "userMenu": {
       "profile": "Mi perfil",

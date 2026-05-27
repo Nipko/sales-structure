@@ -236,7 +236,10 @@
       "orderFor": "Order for",
       "pending": "pending",
       "systemError": "System error",
-      "connectionError": "Connection error"
+      "connectionError": "Connection error",
+      "llmCritical": "CRITICAL: {provider} down",
+      "llmWarning": "Alert: {provider} failing",
+      "llmDown": "AI provider unavailable"
     },
     "userMenu": {
       "profile": "My profile",

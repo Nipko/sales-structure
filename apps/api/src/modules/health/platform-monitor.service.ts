@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
 import * as os from 'os';
 import * as fs from 'fs';
 
@@ -25,6 +26,7 @@ export class PlatformMonitorService implements OnModuleInit {
         private redis: RedisService,
         private email: EmailService,
         private prisma: PrismaService,
+        private llmRouter: LLMRouterService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
@@ -54,6 +56,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkDisk();
         await this.checkMemory();
         await this.checkRedisMemory();
+        await this.checkLlmProviders();
     }
 
     // ── Queue depth — every 5 minutes ──
@@ -216,6 +219,55 @@ export class PlatformMonitorService implements OnModuleInit {
     @Cron('0 * * * *')
     async refreshAdmins() {
         await this.refreshAdminEmails();
+    }
+
+    // ── LLM provider health ──
+
+    private async checkLlmProviders() {
+        try {
+            const providers = await this.llmRouter.getProviderHealth();
+            const unhealthy = providers.filter(p => p.configured && !p.healthy);
+            const unconfigured = providers.filter(p => !p.configured);
+            const withFailures = providers.filter(p => p.recentFailures >= 5);
+
+            if (unhealthy.length > 0) {
+                const names = unhealthy.map(p => `<b>${p.provider}</b> (${p.recentFailures} fallos)`).join(', ');
+                await this.alert(
+                    'llm:unhealthy',
+                    `Proveedor(es) LLM caidos: ${unhealthy.map(p => p.provider).join(', ')}`,
+                    `Los siguientes proveedores LLM estan marcados como no disponibles:<br>
+                     ${names}<br><br>
+                     El sistema esta usando proveedores de respaldo automaticamente.<br>
+                     Verifica las API keys y el estado del servicio en el dashboard.`,
+                    unhealthy.length,
+                );
+            }
+
+            for (const p of withFailures) {
+                await this.alert(
+                    `llm:failures:${p.provider}`,
+                    `LLM ${p.provider} — ${p.recentFailures} fallos recientes`,
+                    `El proveedor <b>${p.provider}</b> ha fallado <b>${p.recentFailures}</b> veces en los ultimos 10 minutos.<br>
+                     Estado: ${p.healthy ? 'Recuperado' : 'Caido'}<br>
+                     ${p.unhealthyUntil ? `Marcado como caido hasta: ${p.unhealthyUntil}` : ''}<br><br>
+                     Posibles causas: API key invalida, credito agotado, rate limit, servicio caido.`,
+                    p.recentFailures,
+                );
+            }
+
+            const configured = providers.filter(p => p.configured);
+            if (configured.length === 0) {
+                await this.alert(
+                    'llm:none_configured',
+                    'CRITICO: Ningun proveedor LLM configurado',
+                    `No hay <b>ningun</b> proveedor de IA configurado. Los agentes de IA no pueden responder.<br><br>
+                     Configura al menos una API key desde el panel de administracion.`,
+                    0,
+                );
+            }
+        } catch (e: any) {
+            this.logger.debug(`LLM health check skipped: ${e.message}`);
+        }
     }
 
     // ── Alert sender with cooldown ──

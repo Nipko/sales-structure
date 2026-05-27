@@ -142,4 +142,16 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     onCalendarSynced(payload: { tenantId: string }) {
         this.emitCalendarSynced(payload.tenantId);
     }
+
+    @OnEvent('llm.provider.alert')
+    onLlmProviderAlert(payload: { provider: string; severity: string; failures: number; error: string; timestamp: string }) {
+        this.logger.warn(`[LLM Alert] ${payload.provider}: ${payload.error} (failures: ${payload.failures})`);
+        const notified = new Set<string>();
+        for (const [, meta] of this.connectedClients) {
+            if ((meta.role === 'super_admin' || meta.role === 'tenant_admin') && !notified.has(meta.tenantId)) {
+                notified.add(meta.tenantId);
+                this.server.to(meta.tenantId).emit('system:llm_alert', payload);
+            }
+        }
+    }
 }

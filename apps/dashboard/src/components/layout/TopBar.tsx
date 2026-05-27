@@ -269,6 +269,22 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       addNotif("system", t("notifTitles.systemError"), typeof err === "string" ? err : err?.message || t("notifTitles.connectionError"));
     });
 
+    // ── LLM Provider Health ──
+    socket.on("system:llm_alert", (payload: any) => {
+      const isCritical = payload.severity === "critical";
+      const title = isCritical
+        ? t("notifTitles.llmCritical", { provider: payload.provider })
+        : t("notifTitles.llmWarning", { provider: payload.provider });
+      addNotif("system", title, (payload.error || "").slice(0, 100));
+      if (isCritical && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(title, {
+          body: payload.error || t("notifTitles.llmDown"),
+          icon: "/favicon.ico",
+          tag: `llm-alert-${payload.provider}`,
+        });
+      }
+    });
+
     socketRef.current = socket;
     return () => { socket.disconnect(); };
   }, [activeTenantId]);

@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PlatformMonitorService } from './platform-monitor.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
 import * as os from 'os';
 
 @ApiTags('health')
@@ -17,6 +18,7 @@ export class HealthController {
         private redis: RedisService,
         private monitor: PlatformMonitorService,
         private mediaCleanup: MediaCleanupService,
+        private llmRouter: LLMRouterService,
     ) { }
 
     @Get()
@@ -119,6 +121,14 @@ export class HealthController {
             checks,
             activeAlerts: monitorStatus.activeAlerts,
         };
+    }
+
+    @Get('llm-providers')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'LLM provider health status (super_admin only)' })
+    async llmProviderHealth() {
+        return this.llmRouter.getProviderHealth();
     }
 
     @Get('storage')

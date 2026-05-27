@@ -236,7 +236,10 @@
       "orderFor": "Commande de",
       "pending": "en attente",
       "systemError": "Erreur système",
-      "connectionError": "Erreur de connexion"
+      "connectionError": "Erreur de connexion",
+      "llmCritical": "CRITIQUE: {provider} en panne",
+      "llmWarning": "Alerte: {provider} en erreur",
+      "llmDown": "Fournisseur IA indisponible"
     },
     "userMenu": {
       "profile": "Mon profil",
